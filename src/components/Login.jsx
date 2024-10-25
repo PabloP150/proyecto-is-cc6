@@ -13,6 +13,7 @@ import {
 } from '@mui/material';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { useNavigate } from 'react-router-dom';
+import Navbar from './Navbar';
 
 const theme = createTheme({
   palette: {
@@ -78,20 +79,7 @@ function Login() {
           backgroundAttachment: 'fixed',
         }}
       >
-        <AppBar position="static" color="transparent" elevation={0}>
-          <Toolbar sx={{ justifyContent: 'space-between' }}>
-            <Typography variant="h4" component="div" sx={{ fontWeight: 'bold', fontSize: '2.5rem', letterSpacing: '1px' }}>
-              TaskMate
-            </Typography>
-            <Box>
-              <Button color="inherit">TASKS</Button>
-              <Button color="inherit">CALENDAR</Button>
-              <Button color="inherit">FLOW DIAGRAMS</Button>
-              <Button color="inherit">GROUPS</Button>
-              <Button color="inherit">PROFILE</Button>
-            </Box>
-          </Toolbar>
-        </AppBar>
+        <Navbar />
         <Container component="main" maxWidth="xs" sx={{ mt: 8 }}>
           <Paper elevation={6} sx={{ p: 4, backgroundColor: 'background.paper', borderRadius: 2 }}>
             <Typography component="h1" variant="h4" align="center" sx={{ mb: 1 }}>
