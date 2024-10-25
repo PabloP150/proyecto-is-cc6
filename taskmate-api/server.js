@@ -3,6 +3,7 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const tasksController = require('./controllers/tasks.controller');
 const userController = require('./controllers/user.controller');
+const groupController = require('./controllers/group.controller');
 
 dotenv.config();
 
@@ -22,6 +23,7 @@ app.use((req, res, next) => {
 
 app.use('/api/tasks', tasksController);
 app.use('/api/users', userController);
+app.use('/api/groups', groupController);
 
 app.listen(API_PORT, () => {
     console.log(`API running on PORT ${API_PORT}`);

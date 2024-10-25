@@ -35,7 +35,7 @@ function Login() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const response = await fetch('http://localhost:9000/api/register', {
+      const response = await fetch('http://localhost:9000/api/users/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -45,14 +45,13 @@ function Login() {
 
       if (response.ok) {
         const data = await response.json();
-        console.log(data.message);
         const userId = data.userId; // Asegúrate de que el backend devuelva el userId
-        sessionStorage.setItem('userId', userId); // Guarda el userId en sessionStorage
-        const errorData = await response.json();
+        console.log('User ID on login:', userId); // Verifica el formato aquí
+        localStorage.setItem('userId', userId);
         if (data.hasGroup) {
-          navigate('/recordatorios');
+          navigate('/home');
         } else {
-          navigate('/create-group');
+          navigate('/home');
         }
       } else {
         const errorData = await response.json();

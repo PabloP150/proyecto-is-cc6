@@ -63,6 +63,8 @@ export default function Recordatorios() {
     const fechaCompleta = `${fecha}T${hora}`; // Combina fecha y hora
     const nuevaTarea = { nombre, descripcion, fecha: fechaCompleta };
 
+    // Comentar o eliminar la solicitud a la base de datos
+    /*
     try {
       const response = await fetch('http://localhost:9000/api/tasks', {
         method: 'POST',
@@ -75,33 +77,34 @@ export default function Recordatorios() {
       if (response.ok) {
         const data = await response.json();
         console.log(data.message);
-
-        // Actualizar el estado local
-        if (editando !== null) {
-          const listaOriginal = listas.find(lista => lista.recordatorios.some((_, i) => i === editando));
-          if (listaOriginal) {
-            listaOriginal.recordatorios.splice(editando, 1);
-          }
-        }
-
-        const listaActual = listas.find(lista => lista.nombre === listaSeleccionada);
-        if (listaActual) {
-          listaActual.recordatorios.push(nuevaTarea);
-        }
-
-        setListas([...listas]);
-        setOpenRecordatorio(false);
-        setNombre('');
-        setDescripcion('');
-        setFecha('');
-        setHora('');
-        setEditando(null);
       } else {
         console.error('Error al agregar la tarea');
       }
     } catch (error) {
       console.error('Error en la solicitud:', error);
     }
+    */
+
+    // Actualizar el estado local
+    if (editando !== null) {
+      const listaOriginal = listas.find(lista => lista.recordatorios.some((_, i) => i === editando));
+      if (listaOriginal) {
+        listaOriginal.recordatorios.splice(editando, 1);
+      }
+    }
+
+    const listaActual = listas.find(lista => lista.nombre === listaSeleccionada);
+    if (listaActual) {
+      listaActual.recordatorios.push(nuevaTarea);
+    }
+
+    setListas([...listas]);
+    setOpenRecordatorio(false);
+    setNombre('');
+    setDescripcion('');
+    setFecha('');
+    setHora('');
+    setEditando(null);
   };
 
   const handleEliminar = (listaNombre, idx) => {
