@@ -17,6 +17,7 @@ import TwitterIcon from '@mui/icons-material/Twitter';
 import InstagramIcon from '@mui/icons-material/Instagram';
 import YouTubeIcon from '@mui/icons-material/YouTube';
 import LinkedInIcon from '@mui/icons-material/LinkedIn';
+import { useNavigate } from 'react-router-dom'; // Importa useNavigate
 
 const theme = createTheme({
   palette: {
@@ -34,10 +35,12 @@ const theme = createTheme({
 function Login() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const navigate = useNavigate(); // Inicializa useNavigate
 
   const handleSubmit = (e) => {
     e.preventDefault();
     console.log('Iniciar sesión con:', username, password);
+    navigate('/recordatorios'); // Redirige a Recordatorios
   };
 
   return (
@@ -48,6 +51,11 @@ function Login() {
           minHeight: '100vh',
           display: 'flex',
           flexDirection: 'column',
+          backgroundImage: 'url(/1.jpeg)', // Sin el ../
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat',
+          backgroundAttachment: 'fixed',
         }}
       >
         <AppBar position="static" color="transparent" elevation={0}>
