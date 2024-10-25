@@ -1,15 +1,12 @@
 import React, { useState } from 'react';
 import {
-  AppBar,
-  Toolbar,
-  Typography,
   Container,
   TextField,
   Button,
-  Link,
+  Typography,
+  Paper,
   Box,
   CssBaseline,
-  Paper
 } from '@mui/material';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { useNavigate } from 'react-router-dom';
@@ -27,15 +24,15 @@ const theme = createTheme({
   },
 });
 
-function Login() {
+function Register() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const navigate = useNavigate();
 
-  const handleSubmit = async (e) => {
+  const handleRegister = async (e) => {
     e.preventDefault();
     try {
-      const response = await fetch('http://localhost:9000/api/register', {
+      const response = await fetch('http://localhost:9000/api/users', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -46,14 +43,7 @@ function Login() {
       if (response.ok) {
         const data = await response.json();
         console.log(data.message);
-        const userId = data.userId; // Asegúrate de que el backend devuelva el userId
-        sessionStorage.setItem('userId', userId); // Guarda el userId en sessionStorage
-        const errorData = await response.json();
-        if (data.hasGroup) {
-          navigate('/recordatorios');
-        } else {
-          navigate('/create-group');
-        }
+        navigate('/'); // Redirige a la página de inicio de sesión
       } else {
         const errorData = await response.json();
         console.error(errorData.error);
@@ -78,29 +68,12 @@ function Login() {
           backgroundAttachment: 'fixed',
         }}
       >
-        <AppBar position="static" color="transparent" elevation={0}>
-          <Toolbar sx={{ justifyContent: 'space-between' }}>
-            <Typography variant="h4" component="div" sx={{ fontWeight: 'bold', fontSize: '2.5rem', letterSpacing: '1px' }}>
-              TaskMate
-            </Typography>
-            <Box>
-              <Button color="inherit">TASKS</Button>
-              <Button color="inherit">CALENDAR</Button>
-              <Button color="inherit">FLOW DIAGRAMS</Button>
-              <Button color="inherit">GROUPS</Button>
-              <Button color="inherit">PROFILE</Button>
-            </Box>
-          </Toolbar>
-        </AppBar>
         <Container component="main" maxWidth="xs" sx={{ mt: 8 }}>
           <Paper elevation={6} sx={{ p: 4, backgroundColor: 'background.paper', borderRadius: 2 }}>
-            <Typography component="h1" variant="h4" align="center" sx={{ mb: 1 }}>
-              Login
+            <Typography component="h1" variant="h5">
+              Register
             </Typography>
-            <Typography variant="body1" align="center" sx={{ mb: 3 }}>
-              Welcome to TaskMate
-            </Typography>
-            <Box component="form" onSubmit={handleSubmit} noValidate>
+            <Box component="form" onSubmit={handleRegister} noValidate>
               <TextField
                 margin="normal"
                 required
@@ -129,16 +102,10 @@ function Login() {
                 type="submit"
                 fullWidth
                 variant="contained"
-                sx={{ mb: 2, backgroundColor: 'grey.600' }}
+                sx={{ mt: 2 }}
               >
-                SIGN IN
+                Register
               </Button>
-              <Link href="#" variant="body2" align="center" display="block">
-                Forgot password?
-              </Link>
-              <Link href="/register" variant="body2" align="center" display="block" sx={{ mt: 2 }}>
-                Don't have an account? Register here.
-              </Link>
             </Box>
           </Paper>
         </Container>
@@ -147,4 +114,4 @@ function Login() {
   );
 }
 
-export default Login;
+export default Register;

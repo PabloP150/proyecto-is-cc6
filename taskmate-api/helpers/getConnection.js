@@ -9,7 +9,7 @@ const {
     DB_USERNAME,
     DB_PASSWORD,
     DB_NAME
-} = process.env
+} = process.env;
 
 const configConnection = {
     server: DB_SERVER,
@@ -25,7 +25,7 @@ const configConnection = {
         database: DB_NAME,
         rowCollectionOnDone: true
     }
-}
+};
 
 const getConnection = () => {
     const connect = () => new Promise((resolve, reject) => {
@@ -40,7 +40,7 @@ const getConnection = () => {
         });
         connectionInstance.connect();
     });
-    return {connect};
-}
+    return { connect };
+};
 
 module.exports = getConnection;

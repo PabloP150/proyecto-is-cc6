@@ -1,17 +1,17 @@
-import React, { useState } from 'react';
+import AddIcon from '@mui/icons-material/Add';
 import {
-  Container,
-  Button,
-  Typography,
   Box,
-  Paper,
+  Button,
+  Container,
   IconButton,
+  Paper,
+  Typography,
 } from '@mui/material';
 import { blue, grey } from '@mui/material/colors';
-import AddIcon from '@mui/icons-material/Add';
-import ListaRecordatorios from './ListaRecordatorios';
+import React, { useState } from 'react';
 import BarraLateral from './BarraLateral';
 import Dialogos from './Dialogos';
+import ListaRecordatorios from './ListaRecordatorios';
 
 export default function Recordatorios() {
   const [openRecordatorio, setOpenRecordatorio] = useState(false);
@@ -58,34 +58,50 @@ export default function Recordatorios() {
     setOpenLista(false);
   };
 
-  const handleSubmitRecordatorio = (e) => {
+  const handleSubmitRecordatorio = async (e) => {
     e.preventDefault();
-    const nuevoRecordatorio = { nombre, descripcion, fecha, hora, fechaCreacion: new Date() };
+    const fechaCompleta = `${fecha}T${hora}`; // Combina fecha y hora
+    const nuevaTarea = { nombre, descripcion, fecha: fechaCompleta };
 
-    if (editando !== null) {
-      // Encuentra la lista original y el recordatorio que se está editando
-      const listaOriginal = listas.find(lista => lista.recordatorios.includes(listas.find(lista => lista.nombre === listaSeleccionada).recordatorios[editando]));
-      
-      // Eliminar de la lista original
-      if (listaOriginal) {
-        listaOriginal.recordatorios.splice(editando, 1);
+    try {
+      const response = await fetch('http://localhost:9000/api/tasks', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(nuevaTarea),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log(data.message);
+
+        // Actualizar el estado local
+        if (editando !== null) {
+          const listaOriginal = listas.find(lista => lista.recordatorios.some((_, i) => i === editando));
+          if (listaOriginal) {
+            listaOriginal.recordatorios.splice(editando, 1);
+          }
+        }
+
+        const listaActual = listas.find(lista => lista.nombre === listaSeleccionada);
+        if (listaActual) {
+          listaActual.recordatorios.push(nuevaTarea);
+        }
+
+        setListas([...listas]);
+        setOpenRecordatorio(false);
+        setNombre('');
+        setDescripcion('');
+        setFecha('');
+        setHora('');
+        setEditando(null);
+      } else {
+        console.error('Error al agregar la tarea');
       }
+    } catch (error) {
+      console.error('Error en la solicitud:', error);
     }
-
-    // Agregar el recordatorio a la lista seleccionada
-    const listaActual = listas.find(lista => lista.nombre === listaSeleccionada);
-    if (listaActual) {
-      listaActual.recordatorios.push(nuevoRecordatorio);
-    }
-
-    // Actualizar el estado
-    setListas([...listas]);
-    setOpenRecordatorio(false);
-    setNombre('');
-    setDescripcion('');
-    setFecha('');
-    setHora('');
-    setEditando(null);
   };
 
   const handleEliminar = (listaNombre, idx) => {
@@ -122,22 +138,28 @@ export default function Recordatorios() {
         return listas.map(lista => ({
           ...lista,
           recordatorios: lista.recordatorios.filter(recordatorio => {
-              const hoy = new Date();
-              const fechaRecordatorio = new Date(recordatorio.fecha);
-              return fechaRecordatorio.toDateString() === hoy.toDateString();
-            }),
+            const hoy = new Date();
+            const fechaRecordatorio = new Date(recordatorio.fecha);
+
+            // Ajuste para comparar solo año, mes y día
+            return (
+              fechaRecordatorio.getUTCDate() === hoy.getUTCDate() &&
+              fechaRecordatorio.getUTCMonth() === hoy.getUTCMonth() &&
+              fechaRecordatorio.getUTCFullYear() === hoy.getUTCFullYear()
+            );
+          }),
         }));
       case 'mes':
         return listas.map(lista => ({
           ...lista,
           recordatorios: lista.recordatorios.filter(recordatorio => {
-              const hoy = new Date();
-              const fechaRecordatorio = new Date(recordatorio.fecha);
-              return (
-                fechaRecordatorio.getMonth() === hoy.getMonth() &&
-                fechaRecordatorio.getFullYear() === hoy.getFullYear()
-              );
-            }),
+            const mes = new Date();
+            const fechaRecordatorio = new Date(recordatorio.fecha);
+            return (
+              fechaRecordatorio.getUTCMonth() === mes.getUTCMonth() &&
+              fechaRecordatorio.getUTCFullYear() === mes.getUTCFullYear()
+            );
+          }),
         }));
       case 'todos':
         return listas;

@@ -12,11 +12,7 @@ const execQuery = (query, params, callbackEvent) => {
             });
             if (params) {
                 params.forEach(param => {
-                    request.addParameter(
-                        param.name,
-                        param.type,
-                        param.value
-                    );
+                    request.addParameter(param.name, param.type, param.value);
                 });
             }
             const close = () => instance.close();
@@ -41,7 +37,7 @@ const execWriteCommand = (query, params) => {
         });
     };
     return execQuery(query, params, callbackEvent);
-}
+};
 
 const execReadCommand = (query, params = null) => {
     const callbackEvent = (request, close, resolve) => {

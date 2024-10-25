@@ -23,7 +23,7 @@ tasksRoute.get('/:id', async (req, res) => {
             }
         })
         .catch(error => {
-            res.status(500).json({ error })
+            res.status(500).json({ error });
         });
 });
 
@@ -57,7 +57,7 @@ tasksRoute.post('/', async (req, res) => {
 });
 
 tasksRoute.put('/:id', async (req, res) => {
-    const { id: tid} = req.params;
+    const { id: tid } = req.params;
     const {
         gid,
         name,
@@ -85,15 +85,15 @@ tasksRoute.put('/:id', async (req, res) => {
     });
 });
 
-tasksRoute.delete(':/id', async (req, res) => {
-    const {id: tid} = req.params;
+tasksRoute.delete('/:id', async (req, res) => {
+    const { id: tid } = req.params;
     TasksModel.deleteTask(tid)
     .then((rowCount, more) => {
         res.status(200).json({ rowCount, more });
     })
     .catch(error => {
         res.status(500).json({ error });
-    })
+    });
 });
 
 module.exports = tasksRoute;

@@ -1,0 +1,29 @@
+CREATE TABLE dbo.Users (
+    uid 		UNIQUEIDENTIFIER 	NOT NULL PRIMARY KEY,
+    username 	VARCHAR(25)			NOT NULL,
+    password 	CHAR(25) 			NOT NULL
+);
+
+CREATE TABLE dbo.Groups (
+    gid 		UNIQUEIDENTIFIER 	NOT NULL PRIMARY KEY,
+	adminId		UNIQUEIDENTIFIER	NOT NULL,
+    name 		VARCHAR(25)		 	NOT NULL,
+	FOREIGN KEY (adminId) REFERENCES dbo.Users(uid)
+);
+
+CREATE TABLE dbo.UserGroups (
+    uid 		UNIQUEIDENTIFIER 	NOT NULL,
+    gid 		UNIQUEIDENTIFIER 	NOT NULL,
+    PRIMARY KEY (uid, gid),
+    FOREIGN KEY (uid) REFERENCES dbo.Users(uid),
+    FOREIGN KEY (gid) REFERENCES dbo.Groups(gid)
+);
+
+CREATE TABLE dbo.Tasks(
+	tid			UNIQUEIDENTIFIER	NOT NULL	PRIMARY KEY,
+	gid			UNIQUEIDENTIFIER	NOT NULL,
+	name		VARCHAR(25)			NOT NULL,
+	description	VARCHAR(1000)		NOT NULL,
+	datetime	SMALLDATETIME		NOT NULL,
+	FOREIGN KEY (gid) REFERENCES dbo.Groups(gid)
+);

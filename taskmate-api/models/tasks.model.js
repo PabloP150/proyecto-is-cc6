@@ -14,12 +14,12 @@ const addTask = (taskData) => {
     VALUES(@tid, @gid, @name, @description, @datetime)
     `;
     const params = [
-        {name: 'tid', type: TYPES.UniqueIdentifier, value: tid},
-        {name: 'gid', type: TYPES.UniqueIdentifier, value: gid},
-        {name: 'name', type: TYPES.VarChar, value: name},
-        {name: 'description', type: TYPES.Text, value: description},
-        {name: 'datetime', type: TYPES.SmallDateTime, value: datetime},
-    ]
+        { name: 'tid', type: TYPES.UniqueIdentifier, value: tid },
+        { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
+        { name: 'name', type: TYPES.VarChar, value: name },
+        { name: 'description', type: TYPES.Text, value: description },
+        { name: 'datetime', type: TYPES.SmallDateTime, value: datetime },
+    ];
     return execQuery.execWriteCommand(query, params);
 };
 
@@ -37,12 +37,12 @@ const updateTask = (taskData) => {
     WHERE tid=@tid
     `;
     const params = [
-        {name: 'tid', type: TYPES.UniqueIdentifier, value: tid},
-        {name: 'gid', type: TYPES.UniqueIdentifier, value: gid},
-        {name: 'name', type: TYPES.VarChar, value: name},
-        {name: 'description', type: TYPES.Text, value: description},
-        {name: 'datetime', type: TYPES.SmallDateTime, value: datetime},
-    ]
+        { name: 'tid', type: TYPES.UniqueIdentifier, value: tid },
+        { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
+        { name: 'name', type: TYPES.VarChar, value: name },
+        { name: 'description', type: TYPES.Text, value: description },
+        { name: 'datetime', type: TYPES.SmallDateTime, value: datetime },
+    ];
     return execQuery.execWriteCommand(query, params);
 };
 
@@ -51,7 +51,7 @@ const deleteTask = (tid) => {
     DELETE FROM [dbo].[Tasks] WHERE tid = @tid
     `;
     const params = [
-        {name: 'tid', type: TYPES.UniqueIdentifier, value: tid}
+        { name: 'tid', type: TYPES.UniqueIdentifier, value: tid }
     ];
     return execQuery.execWriteCommand(query, params);
 };
@@ -68,7 +68,17 @@ const getTask = (tid) => {
     SELECT * FROM [dbo].[Tasks] WHERE tid = @tid
     `;
     const params = [
-        {name: 'tid', type: TYPES.UniqueIdentifier, value: tid}
+        { name: 'tid', type: TYPES.UniqueIdentifier, value: tid }
+    ];
+    return execQuery.execReadCommand(query, params);
+};
+
+const getTasksByUserId = (userId) => {
+    const query = `
+    SELECT * FROM [dbo].[Tasks] WHERE userId = @userId
+    `;
+    const params = [
+        { name: 'userId', type: TYPES.UniqueIdentifier, value: userId },
     ];
     return execQuery.execReadCommand(query, params);
 };
@@ -79,4 +89,5 @@ module.exports = {
     deleteTask,
     getAllTasks,
     getTask,
-}
+    getTasksByUserId,
+};
