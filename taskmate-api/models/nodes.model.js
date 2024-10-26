@@ -1,81 +1,81 @@
 const execQuery = require('../helpers/execQuery');
 const TYPES = require('tedious').TYPES;
 
-const addTask = (taskData) => {
+const addNode = (nodeData) => {
     const {
-        tid,
+        nid,
         gid,
         name,
         description,
-        datetime
-    } = taskData;
+        date
+    } = nodeData;
     const query = `
-    INSERT INTO [dbo].[Tasks] (tid, gid, name, description, datetime) 
-    VALUES(@tid, @gid, @name, @description, @datetime)
+    INSERT INTO [dbo].[Nodes] (nid, gid, name, description, date) 
+    VALUES(@nid, @gid, @name, @description, @date)
     `;
     const params = [
-        { name: 'tid', type: TYPES.UniqueIdentifier, value: tid },
+        { name: 'nid', type: TYPES.UniqueIdentifier, value: nid },
         { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
         { name: 'name', type: TYPES.VarChar, value: name },
         { name: 'description', type: TYPES.Text, value: description },
-        { name: 'datetime', type: TYPES.SmallDateTime, value: datetime },
+        { name: 'date', type: TYPES.Date, value: date },
     ];
     return execQuery.execWriteCommand(query, params);
 };
 
-const updateTask = (taskData) => {
+const updateNode = (nodeData) => {
     const {
-        tid,
+        nid,
         gid,
         name,
         description,
-        datetime
-    } = taskData;
+        date
+    } = nodeData;
     const query = `
-    UPDATE [dbo].[Tasks] 
-    SET tid=@tid, gid=@gid, name=@name, description=@description, datetime=@datetime
-    WHERE tid=@tid
+    UPDATE [dbo].[Nodes] 
+    SET nid=@nid, gid=@gid, name=@name, description=@description, date=@date
+    WHERE nid=@nid
     `;
     const params = [
-        { name: 'tid', type: TYPES.UniqueIdentifier, value: tid },
+        { name: 'nid', type: TYPES.UniqueIdentifier, value: nid },
         { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
         { name: 'name', type: TYPES.VarChar, value: name },
         { name: 'description', type: TYPES.Text, value: description },
-        { name: 'datetime', type: TYPES.SmallDateTime, value: datetime },
+        { name: 'date', type: TYPES.Date, value: date },
     ];
     return execQuery.execWriteCommand(query, params);
 };
 
-const deleteTask = (tid) => {
+const deleteNode = (nid) => {
     const query = `
-    DELETE FROM [dbo].[Tasks] WHERE tid = @tid
+    DELETE FROM [dbo].[Nodes] WHERE nid = @nid
     `;
     const params = [
-        { name: 'tid', type: TYPES.UniqueIdentifier, value: tid }
+        { name: 'nid', type: TYPES.UniqueIdentifier, value: nid }
     ];
     return execQuery.execWriteCommand(query, params);
 };
 
-const getAllTasks = () => {
+const getAllNodes = () => {
     const query = `
-    SELECT * FROM [dbo].[Tasks]
+    SELECT * FROM [dbo].[Nodes]
     `;
     return execQuery.execReadCommand(query);
 };
 
-const getTask = (tid) => {
+const getNode = (nid) => {
     const query = `
-    SELECT * FROM [dbo].[Tasks] WHERE tid = @tid
+    SELECT * FROM [dbo].[Nodes] WHERE nid = @nid
     `;
     const params = [
-        { name: 'tid', type: TYPES.UniqueIdentifier, value: tid }
+        { name: 'nid', type: TYPES.UniqueIdentifier, value: nid }
     ];
     return execQuery.execReadCommand(query, params);
 };
 
-const getTasksByGroupId = (gid) => {
+const getNodesByGroupId = (gid) => {
     const query = `
-    SELECT * FROM [dbo].[Tasks] WHERE gid = @gid
+    SELECT * FROM [dbo].[Nodes] WHERE gid = @gid
     `;
     const params = [
         { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
@@ -84,10 +84,10 @@ const getTasksByGroupId = (gid) => {
 };
 
 module.exports = {
-    addTask,
-    updateTask,
-    deleteTask,
-    getAllTasks,
-    getTask,
-    getTasksByGroupId,
+    addNode,
+    updateNode,
+    deleteNode,
+    getAllNodes,
+    getNode,
+    getNodesByGroupId,
 };

@@ -1,3 +1,9 @@
+--DROP TABLE dbo.UserGroups;
+--DROP TABLE dbo.Tasks;
+--DROP TABLE dbo.Nodes;
+--DROP TABLE dbo.Groups;
+--DROP TABLE dbo.Users;
+
 CREATE TABLE dbo.Users (
     uid 		UNIQUEIDENTIFIER 	NOT NULL PRIMARY KEY,
     username 	VARCHAR(25)			NOT NULL,
@@ -19,11 +25,21 @@ CREATE TABLE dbo.UserGroups (
     FOREIGN KEY (gid) REFERENCES dbo.Groups(gid)
 );
 
-CREATE TABLE dbo.Tasks(
+CREATE TABLE dbo.Tasks (
 	tid			UNIQUEIDENTIFIER	NOT NULL	PRIMARY KEY,
 	gid			UNIQUEIDENTIFIER	NOT NULL,
 	name		VARCHAR(25)			NOT NULL,
 	description	VARCHAR(1000)		NOT NULL,
-	datetime	SMALLDATETIME		NOT NULL,
+	list		VARCHAR(25),
+	datetime	SMALLDATETIME		NOT NULL
+	FOREIGN KEY (gid) REFERENCES dbo.Groups(gid)
+);
+
+CREATE TABLE dbo.Nodes (
+	nid			UNIQUEIDENTIFIER	NOT NULL	PRIMARY KEY,
+	gid			UNIQUEIDENTIFIER	NOT NULL,
+	name		VARCHAR(25)			NOT NULL,
+	description	VARCHAR(1000)		NOT NULL,
+	data		DATE		NOT NULL
 	FOREIGN KEY (gid) REFERENCES dbo.Groups(gid)
 );

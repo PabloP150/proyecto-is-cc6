@@ -32,12 +32,14 @@ function BlockDiagram() {
       <CssBaseline />
       <Navbar />
       <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-        <Container component="main" maxWidth="md" sx={{ mt: 8 }}>
-          <Paper elevation={6} sx={{ p: 4, backgroundColor: 'background.paper', borderRadius: 2 }}>
+        <Container component="main" maxWidth="100vw" sx={{ mt: 8 }}>
+          <Paper elevation={6} sx={{ p: 2, backgroundColor: 'background.paper', borderRadius: 2 }}>
             <Typography component="h1" variant="h4" align="center" sx={{ mb: 1 }}>
               Project Visualizer
             </Typography>
-            <Flow />
+            <Box sx={{ height: '75vh' }}>
+              <Flow />
+            </Box>
           </Paper>
         </Container>
       </Box>

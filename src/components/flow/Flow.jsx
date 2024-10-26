@@ -14,6 +14,56 @@ const Flow = () => {
     completed: false
   });
 
+  const addNode = async (e) => {
+    e.preventDefault();
+    const gid = "00000000-0000-0000-0000-000000000001"; // Cambiar a localStorage cuando funcionen grupos
+    
+    try {
+      const response = await fetch('http://localhost:9000/api/nodes', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          gid,
+          name: nodeData.name,
+          description: nodeData.description,
+          date: nodeData.datetime
+        }),
+      });
+
+      console.log(nodeData.datetime);
+      if (response.ok) {
+        const data = await response.json();
+        const newNode = {
+          id: data.data.nid,
+          type: 'custom',
+          data: { 
+            ...nodeData,
+            id: data.data.nid,
+            completed: false,
+            toggleCompletion
+          },
+          position: { x: Math.random() * 400, y: Math.random() * 400 },
+        };
+        setNodes((prevNodes) => [...prevNodes, newNode]);
+        
+        // Reset form
+        setNodeData({
+          name: '',
+          description: '',
+          datetime: '',
+          completed: false
+        });
+      } else {
+        const errorData = await response.json();
+        console.error('Error creating node:', errorData.error);
+      }
+    } catch (error) {
+      console.error('Error in the request:', error);
+    }
+  };
+
   const onNodesChange = useCallback(
     (changes) => setNodes((nds) => applyNodeChanges(changes, nds)),
     []
@@ -56,29 +106,6 @@ const Flow = () => {
     );
   }, []);
 
-  const addNode = () => {
-    const newNode = {
-      id: `${nodes.length + 1}`,
-      type: 'custom',
-      data: { 
-        ...nodeData,
-        id: `${nodes.length + 1}`, // Add the ID to the data object
-        completed: false, // Explicitly set initial completed state
-        toggleCompletion
-      },
-      position: { x: Math.random() * 400, y: Math.random() * 400 },
-    };
-    setNodes((prevNodes) => [...prevNodes, newNode]);
-    // Reset form
-    setNodeData({
-      name: '',
-      description: '',
-      assignee: '',
-      priority: '',
-      completed: false
-    });
-  };
-
   const nodeTypes = {
     custom: CustomNode,  // Change this from 'textUpdater' to 'custom'
   };
@@ -86,7 +113,6 @@ const Flow = () => {
   return (
     <div className='flow'>
       <div style={{ 
-        marginBottom: '10px', 
         display: 'flex', 
         gap: '10px', 
         alignItems: 'center',
