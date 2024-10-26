@@ -2,14 +2,22 @@ const groupRoute = require('express').Router();
 const GroupModel = require('./../models/group.model');
 const UserGroupModel = require('./../models/userGroup.model');
 const { v4: uuidv4 } = require('uuid');
+const UserModel = require('./../models/user.model'); // Asegúrate de tener un modelo de usuario
 
 // Crear un nuevo grupo
-groupRoute.post('/', async (req, res) => {
+groupRoute.post('/group', async (req, res) => {
     const { adminId, name } = req.body;
-    const gid = uuidv4();
 
     try {
-        await GroupModel.addGroup({ gid, adminId, name });
+        // Obtén el userId desde la base de datos
+        const user = await UserModel.getidUser(adminId);
+        if (!user) {
+            return res.status(401).json({ error: 'Usuario no encontrado' });
+        }
+
+        const gid = uuidv4();
+
+        await GroupModel.addGroup({ gid, adminId: user.uid, name });
         res.status(201).json({ message: 'Group created successfully', gid });
     } catch (error) {
         res.status(500).json({ error: error.message });

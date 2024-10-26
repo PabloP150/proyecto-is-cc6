@@ -1,19 +1,16 @@
 import React, { useState } from 'react';
 import {
-  AppBar,
-  Toolbar,
-  Typography,
+  Box,
   Container,
   TextField,
   Button,
   Link,
-  Box,
+  Typography,
   CssBaseline,
   Paper
 } from '@mui/material';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { useNavigate } from 'react-router-dom';
-import Navbar from './Navbar';
 
 const theme = createTheme({
   palette: {
@@ -28,7 +25,7 @@ const theme = createTheme({
   },
 });
 
-function Login() {
+function Login({ onLogin }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const navigate = useNavigate();
@@ -36,7 +33,7 @@ function Login() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const response = await fetch('http://localhost:9000/api/register', {
+      const response = await fetch('http://localhost:9000/api/users/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -46,21 +43,19 @@ function Login() {
 
       if (response.ok) {
         const data = await response.json();
-        console.log(data.message);
-        const userId = data.userId; // Asegúrate de que el backend devuelva el userId
-        sessionStorage.setItem('userId', userId); // Guarda el userId en sessionStorage
-        const errorData = await response.json();
-        if (data.hasGroup) {
-          navigate('/recordatorios');
-        } else {
-          navigate('/create-group');
-        }
+        const userId = data.userId;
+        console.log('User ID on login:', userId);
+        localStorage.setItem('userId', userId);
+        onLogin({ id: userId, name: username }); // Actualiza el estado del usuario en App.js
+        navigate('/home');
       } else {
         const errorData = await response.json();
         console.error(errorData.error);
+        // Aquí podrías mostrar un mensaje de error al usuario
       }
     } catch (error) {
       console.error('Error en la solicitud:', error);
+      // Aquí podrías mostrar un mensaje de error al usuario
     }
   };
 
@@ -79,7 +74,6 @@ function Login() {
           backgroundAttachment: 'fixed',
         }}
       >
-        <Navbar />
         <Container component="main" maxWidth="xs" sx={{ mt: 8 }}>
           <Paper elevation={6} sx={{ p: 4, backgroundColor: 'background.paper', borderRadius: 2 }}>
             <Typography component="h1" variant="h4" align="center" sx={{ mb: 1 }}>
@@ -117,7 +111,7 @@ function Login() {
                 type="submit"
                 fullWidth
                 variant="contained"
-                sx={{ mb: 2, backgroundColor: 'grey.600' }}
+                sx={{ mt: 3, mb: 2, backgroundColor: 'grey.600' }}
               >
                 SIGN IN
               </Button>

@@ -1,9 +1,7 @@
-import React from 'react';
-import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import { ReactFlowProvider } from 'reactflow';
-import './App.css';
 import Login from './components/Login';
-import TaskList from './components/TaskList';
 import CalendarView from './components/CalendarView';
 import BlockDiagram from './components/BlockDiagram';
 import HomePage from './components/HomePage';
@@ -11,21 +9,59 @@ import Flow from './components/flow/Flow';
 import Recordatorios from './components/Recordatorios';
 import Register from './components/Register';
 import CreateGroup from './components/CreateGroup';
+import Navbar from './components/Navbar'; // Asegúrate de tener este componente
 
 function App() {
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+      setUser(JSON.parse(storedUser));
+    }
+  }, []);
+
+  const handleLogin = (userData) => {
+    setUser(userData);
+    localStorage.setItem('user', JSON.stringify(userData));
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+    localStorage.removeItem('user');
+  };
+
   return (
     <ReactFlowProvider>
       <Router>
+        {user && <Navbar user={user} onLogout={handleLogout} />}
         <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/tasks" element={<TaskList />} />
-          <Route path="/calendar" element={<CalendarView />} />
-          <Route path="/block-diagram" element={<BlockDiagram className='block-diagram' />} />
-          <Route path="/flow" element={<Flow />} />
-          <Route path="/recordatorios" element={<Recordatorios />} />
+          <Route path="/" element={user ? <Navigate to="/home" /> : <Login onLogin={handleLogin} />} />
           <Route path="/register" element={<Register />} />
-          <Route path="/create-group" element={<CreateGroup />} />
+          <Route 
+            path="/home" 
+            element={user ? <HomePage /> : <Navigate to="/" />} 
+          />
+          <Route 
+            path="/calendar" 
+            element={user ? <CalendarView /> : <Navigate to="/" />} 
+          />
+          <Route 
+            path="/block-diagram" 
+            element={user ? <BlockDiagram className='block-diagram' /> : <Navigate to="/" />} 
+          />
+          <Route 
+            path="/flow" 
+            element={user ? <Flow /> : <Navigate to="/" />} 
+          />
+          <Route 
+            path="/recordatorios" 
+            element={user ? <Recordatorios /> : <Navigate to="/" />} 
+          />
+          <Route 
+            path="/create-group" 
+            element={user ? <CreateGroup /> : <Navigate to="/" />} 
+          />
         </Routes>
       </Router>
     </ReactFlowProvider>
