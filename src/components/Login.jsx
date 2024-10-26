@@ -1,13 +1,11 @@
 import React, { useState } from 'react';
 import {
-  AppBar,
-  Toolbar,
-  Typography,
+  Box,
   Container,
   TextField,
   Button,
   Link,
-  Box,
+  Typography,
   CssBaseline,
   Paper
 } from '@mui/material';
@@ -27,7 +25,7 @@ const theme = createTheme({
   },
 });
 
-function Login() {
+function Login({ onLogin }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const navigate = useNavigate();
@@ -45,20 +43,19 @@ function Login() {
 
       if (response.ok) {
         const data = await response.json();
-        const userId = data.userId; // Asegúrate de que el backend devuelva el userId
-        console.log('User ID on login:', userId); // Verifica el formato aquí
+        const userId = data.userId;
+        console.log('User ID on login:', userId);
         localStorage.setItem('userId', userId);
-        if (data.hasGroup) {
-          navigate('/home');
-        } else {
-          navigate('/home');
-        }
+        onLogin({ id: userId, name: username }); // Actualiza el estado del usuario en App.js
+        navigate('/home');
       } else {
         const errorData = await response.json();
         console.error(errorData.error);
+        // Aquí podrías mostrar un mensaje de error al usuario
       }
     } catch (error) {
       console.error('Error en la solicitud:', error);
+      // Aquí podrías mostrar un mensaje de error al usuario
     }
   };
 
@@ -77,20 +74,6 @@ function Login() {
           backgroundAttachment: 'fixed',
         }}
       >
-        <AppBar position="static" color="transparent" elevation={0}>
-          <Toolbar sx={{ justifyContent: 'space-between' }}>
-            <Typography variant="h4" component="div" sx={{ fontWeight: 'bold', fontSize: '2.5rem', letterSpacing: '1px' }}>
-              TaskMate
-            </Typography>
-            <Box>
-              <Button color="inherit">TASKS</Button>
-              <Button color="inherit">CALENDAR</Button>
-              <Button color="inherit">FLOW DIAGRAMS</Button>
-              <Button color="inherit">GROUPS</Button>
-              <Button color="inherit">PROFILE</Button>
-            </Box>
-          </Toolbar>
-        </AppBar>
         <Container component="main" maxWidth="xs" sx={{ mt: 8 }}>
           <Paper elevation={6} sx={{ p: 4, backgroundColor: 'background.paper', borderRadius: 2 }}>
             <Typography component="h1" variant="h4" align="center" sx={{ mb: 1 }}>
@@ -128,7 +111,7 @@ function Login() {
                 type="submit"
                 fullWidth
                 variant="contained"
-                sx={{ mb: 2, backgroundColor: 'grey.600' }}
+                sx={{ mt: 3, mb: 2, backgroundColor: 'grey.600' }}
               >
                 SIGN IN
               </Button>

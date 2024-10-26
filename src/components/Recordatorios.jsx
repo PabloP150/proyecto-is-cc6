@@ -6,9 +6,10 @@ import {
   IconButton,
   Paper,
   Typography,
+  CssBaseline,
 } from '@mui/material';
 import { blue, grey } from '@mui/material/colors';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import BarraLateral from './BarraLateral';
 import Dialogos from './Dialogos';
 import ListaRecordatorios from './ListaRecordatorios';
@@ -29,6 +30,41 @@ export default function Recordatorios() {
   const [completados, setCompletados] = useState([]);
   const [filtro, setFiltro] = useState('todos');
   const [editando, setEditando] = useState(null);
+
+  useEffect(() => {
+    // Cargar las tareas existentes al montar el componente
+    cargarTareas();
+  }, []);
+
+  const cargarTareas = async () => {
+    try {
+      const response = await fetch('http://localhost:9000/api/tasks');
+      if (response.ok) {
+        const data = await response.json();
+        // Organizar las tareas en listas
+        const listasOrganizadas = organizarTareasEnListas(data.data);
+        setListas(listasOrganizadas);
+      } else {
+        console.error('Error al cargar las tareas');
+      }
+    } catch (error) {
+      console.error('Error en la solicitud:', error);
+    }
+  };
+
+  const organizarTareasEnListas = (tareas) => {
+    const listasTemp = {};
+    tareas.forEach(tarea => {
+      if (!listasTemp[tarea.list]) {
+        listasTemp[tarea.list] = [];
+      }
+      listasTemp[tarea.list].push(tarea);
+    });
+    return Object.keys(listasTemp).map(nombreLista => ({
+      nombre: nombreLista,
+      recordatorios: listasTemp[nombreLista]
+    }));
+  };
 
   const handleOpenRecordatorio = () => {
     setOpenRecordatorio(true);
@@ -61,10 +97,14 @@ export default function Recordatorios() {
   const handleSubmitRecordatorio = async (e) => {
     e.preventDefault();
     const fechaCompleta = `${fecha}T${hora}`; // Combina fecha y hora
-    const nuevaTarea = { nombre, descripcion, fecha: fechaCompleta };
+    const nuevaTarea = { 
+      gid: '00000000-0000-0000-0000-000000000001', // Asegúrate de tener un gid válido
+      name: nombre, 
+      description: descripcion, 
+      list: listaSeleccionada, 
+      datetime: fechaCompleta,
+    };
 
-    // Comentar o eliminar la solicitud a la base de datos
-    /*
     try {
       const response = await fetch('http://localhost:9000/api/tasks', {
         method: 'POST',
@@ -76,35 +116,52 @@ export default function Recordatorios() {
 
       if (response.ok) {
         const data = await response.json();
-        console.log(data.message);
+        console.log('Respuesta del servidor:', data);
+
+        // Actualizar el estado local con la nueva tarea
+        setListas(prevListas => {
+          const nuevasListas = prevListas.map(lista => {
+            if (lista.nombre === listaSeleccionada) {
+              return {
+                ...lista,
+                recordatorios: [
+                  ...lista.recordatorios,
+                  {
+                    ...nuevaTarea,
+                    id: data.data.tid // Asumiendo que el servidor devuelve el ID de la tarea
+                  }
+                ]
+              };
+            }
+            return lista;
+          });
+
+          // Si la lista seleccionada no existe, créala
+          if (!nuevasListas.some(lista => lista.nombre === listaSeleccionada)) {
+            nuevasListas.push({
+              nombre: listaSeleccionada,
+              recordatorios: [{
+                ...nuevaTarea,
+                id: data.data.tid
+              }]
+            });
+          }
+
+          return nuevasListas;
+        });
+
+        setOpenRecordatorio(false);
+        setNombre('');
+        setDescripcion('');
+        setFecha('');
+        setHora('');
+        setEditando(null);
       } else {
         console.error('Error al agregar la tarea');
       }
     } catch (error) {
       console.error('Error en la solicitud:', error);
     }
-    */
-
-    // Actualizar el estado local
-    if (editando !== null) {
-      const listaOriginal = listas.find(lista => lista.recordatorios.some((_, i) => i === editando));
-      if (listaOriginal) {
-        listaOriginal.recordatorios.splice(editando, 1);
-      }
-    }
-
-    const listaActual = listas.find(lista => lista.nombre === listaSeleccionada);
-    if (listaActual) {
-      listaActual.recordatorios.push(nuevaTarea);
-    }
-
-    setListas([...listas]);
-    setOpenRecordatorio(false);
-    setNombre('');
-    setDescripcion('');
-    setFecha('');
-    setHora('');
-    setEditando(null);
   };
 
   const handleEliminar = (listaNombre, idx) => {
@@ -138,31 +195,39 @@ export default function Recordatorios() {
   const filtrarRecordatorios = () => {
     switch (filtro) {
       case 'hoy':
+        const hoy = new Date();
+        hoy.setHours(0, 0, 0, 0);
         return listas.map(lista => ({
           ...lista,
           recordatorios: lista.recordatorios.filter(recordatorio => {
-            const hoy = new Date();
-            const fechaRecordatorio = new Date(recordatorio.fecha);
-
-            // Ajuste para comparar solo año, mes y día
-            return (
-              fechaRecordatorio.getUTCDate() === hoy.getUTCDate() &&
-              fechaRecordatorio.getUTCMonth() === hoy.getUTCMonth() &&
-              fechaRecordatorio.getUTCFullYear() === hoy.getUTCFullYear()
-            );
-          }),
+            const fechaRecordatorio = new Date(recordatorio.datetime);
+            return fechaRecordatorio >= hoy && fechaRecordatorio < new Date(hoy.getTime() + 24 * 60 * 60 * 1000);
+          })
+        }));
+      case 'semana':
+        const inicioSemana = new Date();
+        inicioSemana.setHours(0, 0, 0, 0);
+        inicioSemana.setDate(inicioSemana.getDate() - inicioSemana.getDay());
+        const finSemana = new Date(inicioSemana);
+        finSemana.setDate(finSemana.getDate() + 7);
+        return listas.map(lista => ({
+          ...lista,
+          recordatorios: lista.recordatorios.filter(recordatorio => {
+            const fechaRecordatorio = new Date(recordatorio.datetime);
+            return fechaRecordatorio >= inicioSemana && fechaRecordatorio < finSemana;
+          })
         }));
       case 'mes':
+        const inicioMes = new Date();
+        inicioMes.setDate(1);
+        inicioMes.setHours(0, 0, 0, 0);
+        const finMes = new Date(inicioMes.getFullYear(), inicioMes.getMonth() + 1, 0, 23, 59, 59, 999);
         return listas.map(lista => ({
           ...lista,
           recordatorios: lista.recordatorios.filter(recordatorio => {
-            const mes = new Date();
-            const fechaRecordatorio = new Date(recordatorio.fecha);
-            return (
-              fechaRecordatorio.getUTCMonth() === mes.getUTCMonth() &&
-              fechaRecordatorio.getUTCFullYear() === mes.getUTCFullYear()
-            );
-          }),
+            const fechaRecordatorio = new Date(recordatorio.datetime);
+            return fechaRecordatorio >= inicioMes && fechaRecordatorio <= finMes;
+          })
         }));
       case 'todos':
         return listas;
@@ -192,75 +257,114 @@ export default function Recordatorios() {
   };
 
   return (
-    <Container component="main" maxWidth="lg" sx={{ mt: 8 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography component="h1" variant="h4" sx={{ color: blue[600], fontWeight: 'bold' }}>
-          Recordatorios
-        </Typography>
-        <IconButton onClick={() => setDrawerOpen(true)} sx={{ color: grey[700] }}>
-          <AddIcon fontSize="large" />
-        </IconButton>
+    <>
+      <CssBaseline />
+      <Box
+        sx={{
+          height: '100vh',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          backgroundImage: 'url(/1.jpeg)',
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundAttachment: 'fixed',
+        }}
+      >
+        <Container 
+          component="main" 
+          maxWidth="lg" 
+          sx={{ 
+            flexGrow: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            pt: 12,
+            pb: 4,
+            overflow: 'hidden',
+          }}
+        >
+          <Paper 
+            elevation={6} 
+            sx={{ 
+              p: 4, 
+              backgroundColor: 'rgba(255, 255, 255, 0.8)',
+              display: 'flex',
+              flexDirection: 'column',
+              height: '100%',
+              overflow: 'hidden',
+            }}
+          >
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Typography component="h1" variant="h4" sx={{ color: blue[600], fontWeight: 'bold' }}>
+                Recordatorios
+              </Typography>
+              <IconButton onClick={() => setDrawerOpen(true)} sx={{ color: grey[700] }}>
+                <AddIcon fontSize="large" />
+              </IconButton>
+            </Box>
+
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
+              <Button
+                variant="contained"
+                onClick={handleOpenRecordatorio}
+                sx={{ backgroundColor: blue[600], color: 'white', borderRadius: 50 }}
+                startIcon={<AddIcon />}
+              >
+                Agregar Recordatorio
+              </Button>
+              <Button
+                variant="contained"
+                onClick={handleOpenLista}
+                sx={{ backgroundColor: blue[600], color: 'white', borderRadius: 50 }}
+                startIcon={<AddIcon />}
+              >
+                Agregar Lista
+              </Button>
+            </Box>
+
+            <Box sx={{ flexGrow: 1, overflow: 'auto' }}>
+              <ListaRecordatorios
+                listas={filtrarRecordatorios()}
+                handleEliminar={handleEliminar}
+                handleCompletar={handleCompletar}
+                handleEditar={handleEditar}
+                orden={orden}
+                setOrden={setOrden}
+                filtro={filtro}
+                handleRestaurar={handleRestaurar}
+              />
+            </Box>
+
+            <BarraLateral
+              drawerOpen={drawerOpen}
+              setDrawerOpen={setDrawerOpen}
+              setFiltro={setFiltro}
+            />
+
+            <Dialogos
+              openRecordatorio={openRecordatorio}
+              handleCloseRecordatorio={handleCloseRecordatorio}
+              openLista={openLista}
+              handleCloseLista={handleCloseLista}
+              handleSubmitRecordatorio={handleSubmitRecordatorio}
+              handleCreateList={handleCreateList}
+              nombre={nombre}
+              setNombre={setNombre}
+              descripcion={descripcion}
+              setDescripcion={setDescripcion}
+              fecha={fecha}
+              setFecha={setFecha}
+              hora={hora}
+              setHora={setHora}
+              nombreLista={nombreLista}
+              setNombreLista={setNombreLista}
+              listaSeleccionada={listaSeleccionada}
+              setListaSeleccionada={setListaSeleccionada}
+              listas={listas}
+            />
+          </Paper>
+        </Container>
       </Box>
-
-      <BarraLateral
-        drawerOpen={drawerOpen}
-        setDrawerOpen={setDrawerOpen}
-        setFiltro={setFiltro}
-      />
-
-      <Paper elevation={6} sx={{ p: 4, backgroundColor: grey[50] }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
-          <Button
-            variant="contained"
-            onClick={handleOpenRecordatorio}
-            sx={{ backgroundColor: blue[600], color: 'white', borderRadius: 50 }}
-            startIcon={<AddIcon />}
-          >
-            Agregar Recordatorio
-          </Button>
-          <Button
-            variant="contained"
-            onClick={handleOpenLista}
-            sx={{ backgroundColor: blue[600], color: 'white', borderRadius: 50 }}
-            startIcon={<AddIcon />}
-          >
-            Agregar Lista
-          </Button>
-        </Box>
-
-        <ListaRecordatorios
-          listas={filtrarRecordatorios()}
-          handleEliminar={handleEliminar}
-          handleCompletar={handleCompletar}
-          handleEditar={handleEditar}
-          orden={orden}
-          setOrden={setOrden}
-          filtro={filtro}
-          handleRestaurar={handleRestaurar}
-        />
-
-        <Dialogos
-          openRecordatorio={openRecordatorio}
-          handleCloseRecordatorio={handleCloseRecordatorio}
-          openLista={openLista}
-          handleCloseLista={handleCloseLista}
-          handleSubmitRecordatorio={handleSubmitRecordatorio}
-          handleCreateList={handleCreateList}
-          nombre={nombre}
-          setNombre={setNombre}
-          descripcion={descripcion}
-          setDescripcion={setDescripcion}
-          fecha={fecha}
-          setFecha={setFecha}
-          hora={hora}
-          setHora={setHora}
-          nombreLista={nombreLista}
-          setNombreLista={setNombreLista}
-          listaSeleccionada={listaSeleccionada}
-          setListaSeleccionada={setListaSeleccionada}
-          listas={listas}
-        />
-      </Paper>
-    </Container>
+    </>
   );
 }

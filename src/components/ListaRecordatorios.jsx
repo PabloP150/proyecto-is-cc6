@@ -25,14 +25,21 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
   const ordenarRecordatorios = (recordatorios) => {
     switch (orden) {
       case 'fechaCreacion':
-        return recordatorios.sort((a, b) => new Date(a.fechaCreacion) - new Date(b.fechaCreacion));
+        return recordatorios.sort((a, b) => new Date(a.datetime) - new Date(b.datetime));
       case 'fechaLimite':
-        return recordatorios.sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+        return recordatorios.sort((a, b) => new Date(a.datetime) - new Date(b.datetime));
       case 'prioridad':
-        return recordatorios.sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+        // Asumiendo que la prioridad está en el campo 'description' por ahora
+        return recordatorios.sort((a, b) => a.description.localeCompare(b.description));
       default:
         return recordatorios;
     }
+  };
+
+  const formatearFecha = (datetime) => {
+    if (!datetime) return 'Fecha no disponible';
+    const fecha = new Date(datetime);
+    return `${fecha.toLocaleDateString()} ${fecha.toLocaleTimeString()}`;
   };
 
   return (
@@ -57,30 +64,34 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
           <Box key={index} sx={{ mb: 2 }}>
             <Typography variant="h6" sx={{ color: blue[500] }}>{lista.nombre}</Typography>
             <List>
-              {ordenarRecordatorios(lista.recordatorios).map((recordatorio, idx) => (
-                <ListItem key={idx} button onClick={() => handleEditar(lista.nombre, idx)}>
-                  <ListItemText
-                    primary={recordatorio.nombre}
-                    secondary={`${recordatorio.descripcion} - ${recordatorio.fecha} ${
-                      recordatorio.hora ? `a las ${recordatorio.hora}` : ''
-                    }`}
-                  />
-                  {filtro === 'eliminados' || filtro === 'completados' ? (
-                    <IconButton edge="end" aria-label="restore" onClick={(e) => { e.stopPropagation(); handleRestaurar(lista.nombre, idx); }}>
-                      <RestoreIcon />
-                    </IconButton>
-                  ) : (
-                    <>
-                      <IconButton edge="end" aria-label="complete" onClick={(e) => { e.stopPropagation(); handleCompletar(lista.nombre, idx); }}>
-                        <CheckCircleIcon />
+              {lista.recordatorios && lista.recordatorios.length > 0 ? (
+                ordenarRecordatorios(lista.recordatorios).map((recordatorio, idx) => (
+                  <ListItem key={recordatorio.id || idx} button onClick={() => handleEditar(lista.nombre, idx)}>
+                    <ListItemText
+                      primary={recordatorio.name || 'Sin nombre'}
+                      secondary={`${recordatorio.description || 'Sin descripción'} - ${formatearFecha(recordatorio.datetime)}`}
+                    />
+                    {filtro === 'eliminados' || filtro === 'completados' ? (
+                      <IconButton edge="end" aria-label="restore" onClick={(e) => { e.stopPropagation(); handleRestaurar(lista.nombre, idx); }}>
+                        <RestoreIcon />
                       </IconButton>
-                      <IconButton edge="end" aria-label="delete" onClick={(e) => { e.stopPropagation(); handleEliminar(lista.nombre, idx); }}>
-                        <DeleteIcon />
-                      </IconButton>
-                    </>
-                  )}
+                    ) : (
+                      <>
+                        <IconButton edge="end" aria-label="complete" onClick={(e) => { e.stopPropagation(); handleCompletar(lista.nombre, idx); }}>
+                          <CheckCircleIcon />
+                        </IconButton>
+                        <IconButton edge="end" aria-label="delete" onClick={(e) => { e.stopPropagation(); handleEliminar(lista.nombre, idx); }}>
+                          <DeleteIcon />
+                        </IconButton>
+                      </>
+                    )}
+                  </ListItem>
+                ))
+              ) : (
+                <ListItem>
+                  <ListItemText primary="No hay recordatorios en esta lista" />
                 </ListItem>
-              ))}
+              )}
             </List>
           </Box>
         ))}

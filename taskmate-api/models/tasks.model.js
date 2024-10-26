@@ -7,17 +7,19 @@ const addTask = (taskData) => {
         gid,
         name,
         description,
+        list,
         datetime
     } = taskData;
     const query = `
-    INSERT INTO [dbo].[Tasks] (tid, gid, name, description, datetime) 
-    VALUES(@tid, @gid, @name, @description, @datetime)
+    INSERT INTO [dbo].[Tasks] (tid, gid, name, description, list, datetime) 
+    VALUES(@tid, @gid, @name, @description, @list, @datetime)
     `;
     const params = [
         { name: 'tid', type: TYPES.UniqueIdentifier, value: tid },
         { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
         { name: 'name', type: TYPES.VarChar, value: name },
         { name: 'description', type: TYPES.Text, value: description },
+        { name: 'list', type: TYPES.VarChar, value: list },
         { name: 'datetime', type: TYPES.SmallDateTime, value: datetime },
     ];
     return execQuery.execWriteCommand(query, params);
@@ -29,11 +31,12 @@ const updateTask = (taskData) => {
         gid,
         name,
         description,
+        list,
         datetime
     } = taskData;
     const query = `
     UPDATE [dbo].[Tasks] 
-    SET tid=@tid, gid=@gid, name=@name, description=@description, datetime=@datetime
+    SET tid=@tid, gid=@gid, name=@name, description=@description, list=@list, datetime=@datetime
     WHERE tid=@tid
     `;
     const params = [
@@ -41,6 +44,7 @@ const updateTask = (taskData) => {
         { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
         { name: 'name', type: TYPES.VarChar, value: name },
         { name: 'description', type: TYPES.Text, value: description },
+        { name: 'list', type: TYPES.VarChar, value: list },
         { name: 'datetime', type: TYPES.SmallDateTime, value: datetime },
     ];
     return execQuery.execWriteCommand(query, params);
