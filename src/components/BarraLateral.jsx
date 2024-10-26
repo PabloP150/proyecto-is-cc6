@@ -5,7 +5,7 @@ import EventNoteIcon from '@mui/icons-material/EventNote';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import DeleteIcon from '@mui/icons-material/Delete';
-import { blue } from '@mui/material/colors';
+import { alpha } from '@mui/material/styles';
 
 export default function BarraLateral({ drawerOpen, setDrawerOpen, setFiltro }) {
   const toggleDrawer = (open) => (event) => {
@@ -17,44 +17,52 @@ export default function BarraLateral({ drawerOpen, setDrawerOpen, setFiltro }) {
 
   return (
     <Drawer anchor="right" open={drawerOpen} onClose={toggleDrawer(false)}>
-      <Box sx={{ width: 250, backgroundColor: blue[50], height: '100%' }} role="presentation">
+      <Box 
+        sx={{ 
+          width: 250, 
+          backgroundColor: alpha('#1e1e1e', 0.85), 
+          height: '100%',
+          color: 'white'
+        }} 
+        role="presentation"
+      >
         <MUIList>
-          <MUIListItem>
-            <ListItemButton onClick={() => setFiltro('hoy')}>
+          <MUIListItem disablePadding>
+            <ListItemButton onClick={() => setFiltro('hoy')} sx={listItemButtonStyle}>
               <ListItemIcon>
-                <TodayIcon sx={{ color: blue[500] }} />
+                <TodayIcon sx={{ color: 'white' }} />
               </ListItemIcon>
               <ListItemText primary="Hoy" />
             </ListItemButton>
           </MUIListItem>
-          <MUIListItem>
-            <ListItemButton onClick={() => setFiltro('mes')}>
+          <MUIListItem disablePadding>
+            <ListItemButton onClick={() => setFiltro('mes')} sx={listItemButtonStyle}>
               <ListItemIcon>
-                <EventNoteIcon sx={{ color: blue[500] }} />
+                <EventNoteIcon sx={{ color: 'white' }} />
               </ListItemIcon>
               <ListItemText primary="Este mes" />
             </ListItemButton>
           </MUIListItem>
-          <MUIListItem>
-            <ListItemButton onClick={() => setFiltro('todos')}>
+          <MUIListItem disablePadding>
+            <ListItemButton onClick={() => setFiltro('todos')} sx={listItemButtonStyle}>
               <ListItemIcon>
-                <AssignmentIcon sx={{ color: blue[500] }} />
+                <AssignmentIcon sx={{ color: 'white' }} />
               </ListItemIcon>
               <ListItemText primary="Todos los recordatorios" />
             </ListItemButton>
           </MUIListItem>
-          <MUIListItem>
-            <ListItemButton onClick={() => setFiltro('completados')}>
+          <MUIListItem disablePadding>
+            <ListItemButton onClick={() => setFiltro('completados')} sx={listItemButtonStyle}>
               <ListItemIcon>
-                <CheckCircleIcon sx={{ color: blue[500] }} />
+                <CheckCircleIcon sx={{ color: 'white' }} />
               </ListItemIcon>
               <ListItemText primary="Completados" />
             </ListItemButton>
           </MUIListItem>
-          <MUIListItem>
-            <ListItemButton onClick={() => setFiltro('eliminados')}>
+          <MUIListItem disablePadding>
+            <ListItemButton onClick={() => setFiltro('eliminados')} sx={listItemButtonStyle}>
               <ListItemIcon>
-                <DeleteIcon sx={{ color: blue[500] }} />
+                <DeleteIcon sx={{ color: 'white' }} />
               </ListItemIcon>
               <ListItemText primary="Eliminados" />
             </ListItemButton>
@@ -64,3 +72,15 @@ export default function BarraLateral({ drawerOpen, setDrawerOpen, setFiltro }) {
     </Drawer>
   );
 }
+
+const listItemButtonStyle = {
+  '&:hover': {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  '&.Mui-selected': {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    '&:hover': {
+      backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    },
+  },
+};

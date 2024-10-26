@@ -45,7 +45,7 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
   return (
     <>
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 3 }}>
-        <IconButton onClick={handleClick}>
+        <IconButton onClick={handleClick} sx={{ color: 'white' }}>
           <FilterListIcon />
         </IconButton>
         <Menu
@@ -62,25 +62,43 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
       <List>
         {listas.map((lista, index) => (
           <Box key={index} sx={{ mb: 2 }}>
-            <Typography variant="h6" sx={{ color: blue[500] }}>{lista.nombre}</Typography>
+            <Typography variant="h6" sx={{ color: blue[300] }}>{lista.nombre}</Typography>
             <List>
               {lista.recordatorios && lista.recordatorios.length > 0 ? (
                 ordenarRecordatorios(lista.recordatorios).map((recordatorio, idx) => (
-                  <ListItem key={recordatorio.id || idx} button onClick={() => handleEditar(lista.nombre, idx)}>
+                  <ListItem 
+                    key={recordatorio.id || idx} 
+                    button 
+                    onClick={() => handleEditar(lista.nombre, idx)}
+                    sx={{ 
+                      backgroundColor: 'rgba(255, 255, 255, 0.1)', 
+                      mb: 1, 
+                      borderRadius: 1,
+                      '&:hover': { backgroundColor: 'rgba(255, 255, 255, 0.2)' }
+                    }}
+                  >
                     <ListItemText
-                      primary={recordatorio.name || 'Sin nombre'}
-                      secondary={`${recordatorio.description || 'Sin descripción'} - ${formatearFecha(recordatorio.datetime)}`}
+                      primary={
+                        <Typography sx={{ color: 'white', fontWeight: 'bold' }}>
+                          {recordatorio.name || 'Sin nombre'}
+                        </Typography>
+                      }
+                      secondary={
+                        <Typography sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
+                          {`${recordatorio.description || 'Sin descripción'} - ${formatearFecha(recordatorio.datetime)}`}
+                        </Typography>
+                      }
                     />
                     {filtro === 'eliminados' || filtro === 'completados' ? (
-                      <IconButton edge="end" aria-label="restore" onClick={(e) => { e.stopPropagation(); handleRestaurar(lista.nombre, idx); }}>
+                      <IconButton edge="end" aria-label="restore" onClick={(e) => { e.stopPropagation(); handleRestaurar(lista.nombre, idx); }} sx={{ color: 'white' }}>
                         <RestoreIcon />
                       </IconButton>
                     ) : (
                       <>
-                        <IconButton edge="end" aria-label="complete" onClick={(e) => { e.stopPropagation(); handleCompletar(lista.nombre, idx); }}>
+                        <IconButton edge="end" aria-label="complete" onClick={(e) => { e.stopPropagation(); handleCompletar(lista.nombre, idx); }} sx={{ color: 'white' }}>
                           <CheckCircleIcon />
                         </IconButton>
-                        <IconButton edge="end" aria-label="delete" onClick={(e) => { e.stopPropagation(); handleEliminar(lista.nombre, idx); }}>
+                        <IconButton edge="end" aria-label="delete" onClick={(e) => { e.stopPropagation(); handleEliminar(lista.nombre, idx); }} sx={{ color: 'white' }}>
                           <DeleteIcon />
                         </IconButton>
                       </>
@@ -89,7 +107,7 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
                 ))
               ) : (
                 <ListItem>
-                  <ListItemText primary="No hay recordatorios en esta lista" />
+                  <ListItemText primary={<Typography sx={{ color: 'white' }}>No hay recordatorios en esta lista</Typography>} />
                 </ListItem>
               )}
             </List>

@@ -13,6 +13,7 @@ import React, { useState, useEffect } from 'react';
 import BarraLateral from './BarraLateral';
 import Dialogos from './Dialogos';
 import ListaRecordatorios from './ListaRecordatorios';
+import { alpha } from '@mui/material/styles';
 
 export default function Recordatorios() {
   const [openRecordatorio, setOpenRecordatorio] = useState(false);
@@ -287,18 +288,19 @@ export default function Recordatorios() {
             elevation={6} 
             sx={{ 
               p: 4, 
-              backgroundColor: 'rgba(255, 255, 255, 0.8)',
+              backgroundColor: alpha('#1e1e1e', 0.85),
               display: 'flex',
               flexDirection: 'column',
               height: '100%',
               overflow: 'hidden',
+              color: 'white', // Cambiado a blanco
             }}
           >
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Typography component="h1" variant="h4" sx={{ color: blue[600], fontWeight: 'bold' }}>
-                Recordatorios
+              <Typography component="h1" variant="h4" sx={{ color: blue[300], fontWeight: 'bold' }}>
+                Tasks
               </Typography>
-              <IconButton onClick={() => setDrawerOpen(true)} sx={{ color: grey[700] }}>
+              <IconButton onClick={() => setDrawerOpen(true)} sx={{ color: 'white' }}>
                 <AddIcon fontSize="large" />
               </IconButton>
             </Box>
@@ -307,18 +309,18 @@ export default function Recordatorios() {
               <Button
                 variant="contained"
                 onClick={handleOpenRecordatorio}
-                sx={{ backgroundColor: blue[600], color: 'white', borderRadius: 50 }}
+                sx={{ backgroundColor: blue[700], color: 'white', borderRadius: 50, '&:hover': { backgroundColor: blue[800] } }}
                 startIcon={<AddIcon />}
               >
-                Agregar Recordatorio
+                Add Task
               </Button>
               <Button
                 variant="contained"
                 onClick={handleOpenLista}
-                sx={{ backgroundColor: blue[600], color: 'white', borderRadius: 50 }}
+                sx={{ backgroundColor: blue[700], color: 'white', borderRadius: 50, '&:hover': { backgroundColor: blue[800] } }}
                 startIcon={<AddIcon />}
               >
-                Agregar Lista
+                Add List
               </Button>
             </Box>
 
@@ -332,6 +334,7 @@ export default function Recordatorios() {
                 setOrden={setOrden}
                 filtro={filtro}
                 handleRestaurar={handleRestaurar}
+                sx={{ color: 'white' }} // Añadido para asegurar que el texto sea blanco
               />
             </Box>
 
