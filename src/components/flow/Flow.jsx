@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import './Flow.css'
 import { ReactFlow, Controls, Background, applyNodeChanges, applyEdgeChanges } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -14,9 +14,30 @@ const Flow = () => {
     completed: false
   });
 
+  const gid = "00000000-0000-0000-0000-000000000001";   // Cambiar a localStorage cuando funcionen grupos
+
+  useEffect(() => {
+    const loadEdges = async () => {
+        try {
+            const response = await fetch(`http://localhost:9000/api/edges/group/${gid}`);
+            if (response.ok) {
+                const data = await response.json();
+                const formattedEdges = data.data.map(edge => ({
+                    id: edge.eid,
+                    source: edge.sourceId,
+                    target: edge.targetId
+                }));
+                setEdges(formattedEdges);
+            }
+        } catch (error) {
+            console.error('Error loading edges:', error);
+        }
+    };
+    loadEdges();
+}, []);
+
   const addNode = async (e) => {
     e.preventDefault();
-    const gid = "00000000-0000-0000-0000-000000000001"; // Cambiar a localStorage cuando funcionen grupos
     
     try {
       const response = await fetch('http://localhost:9000/api/nodes', {
@@ -74,10 +95,31 @@ const Flow = () => {
     []
   );
 
-  const onConnect = useCallback(
-    (params) => setEdges((eds) => [...eds, { ...params, id: `e${eds.length + 1}` }]),
-    []
-  );
+  const onConnect = useCallback(async (params) => {
+    try {
+        const response = await fetch('http://localhost:9000/api/edges', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                gid,
+                sourceId: params.source,
+                targetId: params.target
+            }),
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            setEdges((eds) => [...eds, { 
+                ...params, 
+                id: data.data.eid 
+            }]);
+        }
+    } catch (error) {
+        console.error('Error saving edge:', error);
+    }
+}, []);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -107,7 +149,7 @@ const Flow = () => {
   }, []);
 
   const nodeTypes = {
-    custom: CustomNode,  // Change this from 'textUpdater' to 'custom'
+    custom: CustomNode, 
   };
 
   return (
@@ -116,7 +158,9 @@ const Flow = () => {
         display: 'flex', 
         gap: '10px', 
         alignItems: 'center',
-        flexWrap: 'wrap'
+        flexWrap: 'wrap',
+        marginTop: '-0.3em',
+        marginBottom: '0.3em'
       }}>
         <input
           type="text"

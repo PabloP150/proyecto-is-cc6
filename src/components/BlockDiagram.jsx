@@ -10,7 +10,6 @@ import {
   Paper
 } from '@mui/material';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
-import Navbar from './Navbar';
 import Flow from './flow/Flow';
 
 const theme = createTheme({
@@ -37,22 +36,36 @@ function BlockDiagram() {
           left: 0,
           width: '100%',
           height: '100%',
-          display: 'flex',
-          flexDirection: 'column',
           backgroundImage: 'url(/1.jpeg)',
           backgroundSize: 'cover',
           backgroundPosition: 'center',
           backgroundRepeat: 'no-repeat',
           zIndex: -1,
         }}
+      />
+      <Box
+        sx={{
+          minHeight: '100vh',
+          display: 'flex',
+          flexDirection: 'column',
+          position: 'relative',
+          zIndex: 1,
+        }}
       >
-        <Navbar />
-        <Container component="main" maxWidth="md" sx={{ mt: 8 }}>
-          <Paper elevation={6} sx={{ p: 4, backgroundColor: 'background.paper', borderRadius: 2 }}>
-            <Typography component="h1" variant="h4" align="center" sx={{ mb: 1 }}>
-              Project Visualizer
-            </Typography>
-            <Box sx={{ height: '75vh' }}>
+        <Container component="main" maxWidth="90vw">
+          <Paper elevation={6} sx={{ 
+            backgroundColor: 'background.paper', 
+            borderRadius: 2,
+          }}>
+            {/* Title Section */}
+            <Box sx={{ p: 2, borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}>
+              <Typography component="h1" variant="h4" align="center">
+                Project Visualizer
+              </Typography>
+            </Box>
+            
+            {/* Flow Section */}
+            <Box sx={{ mb: 2, p: 2, height: '80vh' }}>
               <Flow />
             </Box>
           </Paper>

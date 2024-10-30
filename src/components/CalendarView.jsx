@@ -9,7 +9,6 @@ import {
   Paper
 } from '@mui/material';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
-import Navbar from './Navbar'; // Import Navbar
 
 const theme = createTheme({
   palette: {
@@ -30,7 +29,7 @@ function CalendarView() {
       <CssBaseline />
       <Box
         sx={{
-          position: 'fixed', // Fija el fondo para que no se mueva
+          position: 'fixed',
           top: 0,
           left: 0,
           width: '100%',
@@ -41,19 +40,27 @@ function CalendarView() {
           backgroundSize: 'cover',
           backgroundPosition: 'center',
           backgroundRepeat: 'no-repeat',
-          zIndex: -1, // Asegura que el fondo esté detrás del contenido
+          zIndex: -1,
         }}
-      >
-        <Navbar />
-        <Container component="main" maxWidth="md" sx={{ mt: 8 }}>
-          <Paper elevation={6} sx={{ p: 4, backgroundColor: 'background.paper', borderRadius: 2 }}>
-            <Typography component="h1" variant="h4" align="center" sx={{ mb: 1 }}>
-              Your Calendar
-            </Typography>
-            {/* Calendar rendering logic goes here */}
-          </Paper>
-        </Container>
-      </Box>
+      />
+        <Box
+          sx={{
+            minHeight: '100vh',
+            display: 'flex',
+            flexDirection: 'column',
+            position: 'relative',
+            zIndex: 1,
+          }}
+        >
+          <Container component="main" maxWidth="md">
+            <Paper elevation={6} sx={{ p: 4, backgroundColor: 'background.paper', borderRadius: 2 }}>
+              <Typography component="h1" variant="h4" align="center">
+                Your Calendar
+              </Typography>
+              {/* Calendar rendering logic goes here */}
+            </Paper>
+          </Container>
+        </Box>
     </ThemeProvider>
   );
 }

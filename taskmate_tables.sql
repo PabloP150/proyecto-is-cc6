@@ -1,8 +1,9 @@
+--DROP TABLE dbo.Users;
+--DROP TABLE dbo.Groups;	NO BOTAR!!!
 --DROP TABLE dbo.UserGroups;
 --DROP TABLE dbo.Tasks;
+--DROP TABLE dbo.Edges;
 --DROP TABLE dbo.Nodes;
---DROP TABLE dbo.Groups;
---DROP TABLE dbo.Users;
 
 CREATE TABLE dbo.Users (
     uid 		UNIQUEIDENTIFIER 	NOT NULL PRIMARY KEY,
@@ -40,6 +41,26 @@ CREATE TABLE dbo.Nodes (
 	gid			UNIQUEIDENTIFIER	NOT NULL,
 	name		VARCHAR(25)			NOT NULL,
 	description	VARCHAR(1000)		NOT NULL,
-	data		DATE		NOT NULL
+	date		DATE		NOT NULL
 	FOREIGN KEY (gid) REFERENCES dbo.Groups(gid)
 );
+
+CREATE TABLE dbo.Edges (
+    eid         UNIQUEIDENTIFIER    NOT NULL    PRIMARY KEY,
+    gid         UNIQUEIDENTIFIER    NOT NULL,
+    sourceId    UNIQUEIDENTIFIER    NOT NULL,
+    targetId    UNIQUEIDENTIFIER    NOT NULL,
+    FOREIGN KEY (gid) REFERENCES dbo.Groups(gid),
+    FOREIGN KEY (sourceId) REFERENCES dbo.Nodes(nid),
+    FOREIGN KEY (targetId) REFERENCES dbo.Nodes(nid)
+);
+
+select * from dbo.Tasks;
+select * from dbo.Users;
+select * from dbo.Nodes;
+select * from dbo.Edges;
+
+INSERT INTO dbo.Groups (gid, adminId, name)
+VALUES ('00000000-0000-0000-0000-000000000001', 
+        'AAC12A42-25C8-4E18-9E4E-92F4E7094CDD', 
+        'Test Group');

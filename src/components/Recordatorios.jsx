@@ -14,6 +14,21 @@ import BarraLateral from './BarraLateral';
 import Dialogos from './Dialogos';
 import ListaRecordatorios from './ListaRecordatorios';
 import { alpha } from '@mui/material/styles';
+import { createTheme, ThemeProvider } from '@mui/material/styles';
+
+
+const theme = createTheme({
+  palette: {
+    mode: 'dark',
+    primary: {
+      main: '#4a90e2',
+    },
+    background: {
+      default: 'transparent',
+      paper: 'rgba(0, 0, 0, 0.6)',
+    },
+  },
+});
 
 export default function Recordatorios() {
   const [openRecordatorio, setOpenRecordatorio] = useState(false);
@@ -258,116 +273,118 @@ export default function Recordatorios() {
   };
 
   return (
-    <>
+    <ThemeProvider theme={theme}>
       <CssBaseline />
       <Box
         sx={{
-          height: '100vh',
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
           backgroundImage: 'url(/1.jpeg)',
           backgroundSize: 'cover',
           backgroundPosition: 'center',
-          backgroundAttachment: 'fixed',
+          backgroundRepeat: 'no-repeat',
+          zIndex: -1,
+        }}
+      />
+      <Container 
+        component="main" 
+        maxWidth="lg" 
+        sx={{ 
+          flexGrow: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          pt: 12,
+          pb: 4,
+          overflow: 'hidden',
         }}
       >
-        <Container 
-          component="main" 
-          maxWidth="lg" 
+        <Paper 
+          elevation={6} 
           sx={{ 
-            flexGrow: 1,
+            p: 4, 
+            backgroundColor: 'background.paper',
+            borderRadius: 2,
             display: 'flex',
             flexDirection: 'column',
-            pt: 12,
-            pb: 4,
+            height: '100%',
             overflow: 'hidden',
+            color: 'white',
           }}
         >
-          <Paper 
-            elevation={6} 
-            sx={{ 
-              p: 4, 
-              backgroundColor: alpha('#1e1e1e', 0.85),
-              display: 'flex',
-              flexDirection: 'column',
-              height: '100%',
-              overflow: 'hidden',
-              color: 'white', // Cambiado a blanco
-            }}
-          >
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Typography component="h1" variant="h4" sx={{ color: blue[300], fontWeight: 'bold' }}>
-                Tasks
-              </Typography>
-              <IconButton onClick={() => setDrawerOpen(true)} sx={{ color: 'white' }}>
-                <AddIcon fontSize="large" />
-              </IconButton>
-            </Box>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography component="h1" variant="h4" sx={{ color: blue[300], fontWeight: 'bold' }}>
+              Tasks
+            </Typography>
+            <IconButton onClick={() => setDrawerOpen(true)} sx={{ color: 'white' }}>
+              <AddIcon fontSize="large" />
+            </IconButton>
+          </Box>
 
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
-              <Button
-                variant="contained"
-                onClick={handleOpenRecordatorio}
-                sx={{ backgroundColor: blue[700], color: 'white', borderRadius: 50, '&:hover': { backgroundColor: blue[800] } }}
-                startIcon={<AddIcon />}
-              >
-                Add Task
-              </Button>
-              <Button
-                variant="contained"
-                onClick={handleOpenLista}
-                sx={{ backgroundColor: blue[700], color: 'white', borderRadius: 50, '&:hover': { backgroundColor: blue[800] } }}
-                startIcon={<AddIcon />}
-              >
-                Add List
-              </Button>
-            </Box>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
+            <Button
+              variant="contained"
+              onClick={handleOpenRecordatorio}
+              sx={{ backgroundColor: blue[700], color: 'white', borderRadius: 50, '&:hover': { backgroundColor: blue[800] } }}
+              startIcon={<AddIcon />}
+            >
+              Add Task
+            </Button>
+            <Button
+              variant="contained"
+              onClick={handleOpenLista}
+              sx={{ backgroundColor: blue[700], color: 'white', borderRadius: 50, '&:hover': { backgroundColor: blue[800] } }}
+              startIcon={<AddIcon />}
+            >
+              Add List
+            </Button>
+          </Box>
 
-            <Box sx={{ flexGrow: 1, overflow: 'auto' }}>
-              <ListaRecordatorios
-                listas={filtrarRecordatorios()}
-                handleEliminar={handleEliminar}
-                handleCompletar={handleCompletar}
-                handleEditar={handleEditar}
-                orden={orden}
-                setOrden={setOrden}
-                filtro={filtro}
-                handleRestaurar={handleRestaurar}
-                sx={{ color: 'white' }} // Añadido para asegurar que el texto sea blanco
-              />
-            </Box>
-
-            <BarraLateral
-              drawerOpen={drawerOpen}
-              setDrawerOpen={setDrawerOpen}
-              setFiltro={setFiltro}
+          <Box sx={{ flexGrow: 1, overflow: 'auto' }}>
+            <ListaRecordatorios
+              listas={filtrarRecordatorios()}
+              handleEliminar={handleEliminar}
+              handleCompletar={handleCompletar}
+              handleEditar={handleEditar}
+              orden={orden}
+              setOrden={setOrden}
+              filtro={filtro}
+              handleRestaurar={handleRestaurar}
+              sx={{ color: 'white' }} 
             />
+          </Box>
 
-            <Dialogos
-              openRecordatorio={openRecordatorio}
-              handleCloseRecordatorio={handleCloseRecordatorio}
-              openLista={openLista}
-              handleCloseLista={handleCloseLista}
-              handleSubmitRecordatorio={handleSubmitRecordatorio}
-              handleCreateList={handleCreateList}
-              nombre={nombre}
-              setNombre={setNombre}
-              descripcion={descripcion}
-              setDescripcion={setDescripcion}
-              fecha={fecha}
-              setFecha={setFecha}
-              hora={hora}
-              setHora={setHora}
-              nombreLista={nombreLista}
-              setNombreLista={setNombreLista}
-              listaSeleccionada={listaSeleccionada}
-              setListaSeleccionada={setListaSeleccionada}
-              listas={listas}
-            />
-          </Paper>
-        </Container>
-      </Box>
-    </>
+          <BarraLateral
+            drawerOpen={drawerOpen}
+            setDrawerOpen={setDrawerOpen}
+            setFiltro={setFiltro}
+          />
+
+          <Dialogos
+            openRecordatorio={openRecordatorio}
+            handleCloseRecordatorio={handleCloseRecordatorio}
+            openLista={openLista}
+            handleCloseLista={handleCloseLista}
+            handleSubmitRecordatorio={handleSubmitRecordatorio}
+            handleCreateList={handleCreateList}
+            nombre={nombre}
+            setNombre={setNombre}
+            descripcion={descripcion}
+            setDescripcion={setDescripcion}
+            fecha={fecha}
+            setFecha={setFecha}
+            hora={hora}
+            setHora={setHora}
+            nombreLista={nombreLista}
+            setNombreLista={setNombreLista}
+            listaSeleccionada={listaSeleccionada}
+            setListaSeleccionada={setListaSeleccionada}
+            listas={listas}
+          />
+        </Paper>
+      </Container>
+    </ThemeProvider>
   );
 }
