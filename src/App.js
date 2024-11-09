@@ -17,9 +17,18 @@ function App() {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
+    const isFirstVisit = localStorage.getItem('isFirstVisit');
+
+    if (!isFirstVisit) {
+      // Si es la primera visita, elimina el usuario y establece la bandera
+      localStorage.removeItem('user');
+      localStorage.setItem('isFirstVisit', 'true');
+    } else {
+      // Si no es la primera visita, carga el usuario almacenado
+      const storedUser = localStorage.getItem('user');
+      if (storedUser) {
+        setUser(JSON.parse(storedUser));
+      }
     }
   }, []);
 

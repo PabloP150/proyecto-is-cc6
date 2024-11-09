@@ -7,18 +7,16 @@ const UserModel = require('./../models/user.model'); // Asegúrate de tener un m
 // Crear un nuevo grupo
 groupRoute.post('/group', async (req, res) => {
     const { adminId, name } = req.body;
+    const gid = uuidv4();
 
     try {
-        // Obtén el userId desde la base de datos
-        const user = await UserModel.getidUser(adminId);
-        if (!user) {
-            return res.status(401).json({ error: 'Usuario no encontrado' });
-        }
+        // Crear el grupo
+        await GroupModel.addGroup({ gid, adminId, name });
 
-        const gid = uuidv4();
+        // Agregar el usuario que creó el grupo como miembro
+        await UserGroupModel.addUserToGroup({ uid: adminId, gid: gid });
 
-        await GroupModel.addGroup({ gid, adminId: user.uid, name });
-        res.status(201).json({ message: 'Group created successfully', gid });
+        res.status(201).json({ message: 'Group created successfully', gid: uuidv4() });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }

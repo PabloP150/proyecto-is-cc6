@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { Box, Typography, List, ListItem, CssBaseline, Paper, Container } from '@mui/material';
+import { Box, Typography, List, ListItem, CssBaseline, Paper, Container, Button, TextField, Dialog, DialogActions, DialogContent, DialogTitle } from '@mui/material';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { GroupContext } from './GroupContext'
 
@@ -7,6 +7,10 @@ function GroupsView() {
   const [groups, setGroups] = useState([]);
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [members, setMembers] = useState([]);
+  const [openCreateGroup, setOpenCreateGroup] = useState(false);
+  const [newGroupName, setNewGroupName] = useState('');
+  const [openAddUser, setOpenAddUser] = useState(false);
+  const [newUsername, setNewUsername] = useState('');
   const { setSelectedGroupId } = useContext(GroupContext);
 
   useEffect(() => {
@@ -35,10 +39,81 @@ function GroupsView() {
   const handleGroupClick = (group) => {
     setSelectedGroupId(group.gid);
     setSelectedGroup(group);
-    // Cargar miembros del grupo seleccionado
     fetch(`http://localhost:9000/api/groups/${group.gid}/members`)
       .then(response => response.json())
-      .then(data => setMembers(data.members));
+      .then(data => setMembers(data.members))
+      .catch(error => console.error('Error loading members:', error));
+  };
+
+  const handleCreateGroup = async () => {
+    const userId = localStorage.getItem('userId');
+    if (!userId) {
+      console.error('User ID is not available');
+      return;
+    }
+    try {
+      const response = await fetch('http://localhost:9000/api/groups/group', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ adminId: userId, name: newGroupName }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log(data.message);
+        setOpenCreateGroup(false);
+        cargarGrupos();
+      } else {
+        const errorData = await response.json();
+        console.error(errorData.error);
+      }
+    } catch (error) {
+      console.error('Error en la solicitud:', error);
+    }
+  };
+
+  const handleAddUserToGroup = async () => {
+    if (!selectedGroup) {
+      console.error('No group selected');
+      return;
+    }
+    try {
+      console.log('Username:', newUsername);
+      const userResponse = await fetch(`http://localhost:9000/api/users/getuid?username=${newUsername}`);
+      if (!userResponse.ok) {
+        const errorData = await userResponse.json();
+        console.error(errorData.error);
+        return;
+      }
+      const userData = await userResponse.json();
+      const uid = userData.uid;
+
+      if (!uid) {
+        console.error('UID is null or undefined');
+        return;
+      }
+
+      const response = await fetch('http://localhost:9000/api/groups/join', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ uid, gid: selectedGroup.gid }),
+      });
+
+      if (response.ok) {
+        console.log('User added successfully');
+        setOpenAddUser(false);
+        handleGroupClick(selectedGroup); // Refresh members
+      } else {
+        const errorData = await response.json();
+        console.error(errorData.error);
+      }
+    } catch (error) {
+      console.error('Error en la solicitud:', error);
+    }
   };
 
   const theme = createTheme({
@@ -73,34 +148,84 @@ function GroupsView() {
       >
         <Container component="main" maxWidth="ms" sx={{ mt: 8 }}>
           <Box sx={{ display: 'flex', flexGrow: 1, padding: 1 }}>
-            <Paper sx={{ width: '20%', marginRight: 2, padding: 2, overflow: 'auto' }}>
-            <Typography variant="h6" gutterBottom>Groups</Typography>
-            <List>
-              {groups.map(group => (
-                <ListItem key={group.gid} button onClick={() => handleGroupClick(group)}>
-                  {group.name}
-                </ListItem>
-              ))}
-            </List>
-          </Paper>
-          <Paper sx={{ width: '80%', padding: 2, overflow: 'auto' }}>
-            {selectedGroup ? (
-              <>
-                <Typography variant="h4" gutterBottom>{selectedGroup.name}</Typography>
-                <Typography variant="h6" gutterBottom>Members</Typography>
-                <List>
-                  {members.map(member => (
-                    <ListItem key={member.uid}>{member.username}</ListItem>
-                  ))}
-                </List>
-              </>
-            ) : (
-              <Typography variant="h6">Select a group to see details</Typography>
-            )}
-          </Paper>
+            <Paper sx={{ width: '20%', marginRight: 2, padding: 2, overflow: 'auto', position: 'relative' }}>
+              <Typography variant="h6" gutterBottom>Groups</Typography>
+              <List>
+                {groups.map(group => (
+                  <ListItem key={group.gid} button onClick={() => handleGroupClick(group)}>
+                    {group.name}
+                  </ListItem>
+                ))}
+              </List>
+              <Button
+                variant="contained"
+                onClick={() => setOpenCreateGroup(true)}
+                sx={{ position: 'absolute', top: 10, right: 10 }}
+              >
+                Create Group
+              </Button>
+            </Paper>
+            <Paper sx={{ width: '80%', padding: 2, overflow: 'auto' }}>
+              {selectedGroup ? (
+                <>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Typography variant="h4" gutterBottom>{selectedGroup.name}</Typography>
+                    <Button variant="contained" onClick={() => setOpenAddUser(true)}>Add User</Button>
+                  </Box>
+                  <Typography variant="h6" gutterBottom>Members</Typography>
+                  <List>
+                    {members.map(member => (
+                      <ListItem key={member.uid}>{member.username}</ListItem>
+                    ))}
+                  </List>
+                </>
+              ) : (
+                <Typography variant="h6">Select a group to see details</Typography>
+              )}
+            </Paper>
           </Box>
         </Container>
       </Box>
+
+      <Dialog open={openCreateGroup} onClose={() => setOpenCreateGroup(false)}>
+        <DialogTitle>Create New Group</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            id="groupName"
+            label="Group Name"
+            type="text"
+            fullWidth
+            value={newGroupName}
+            onChange={(e) => setNewGroupName(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenCreateGroup(false)}>Cancel</Button>
+          <Button onClick={handleCreateGroup}>Create</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={openAddUser} onClose={() => setOpenAddUser(false)}>
+        <DialogTitle>Add User to Group</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            id="username"
+            label="Username"
+            type="text"
+            fullWidth
+            value={newUsername}
+            onChange={(e) => setNewUsername(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenAddUser(false)}>Cancel</Button>
+          <Button onClick={handleAddUserToGroup}>Add</Button>
+        </DialogActions>
+      </Dialog>
     </ThemeProvider>
   );
 }

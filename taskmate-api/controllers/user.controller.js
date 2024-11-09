@@ -39,4 +39,20 @@ userRoute.post('/login', async (req, res) => {
     }
 });
 
+userRoute.get('/getuid', async (req, res) => {
+  const { username } = req.query;
+  try {
+    const user = await UserModel.getidUserByUsername(username);
+    if (user) {
+      res.status(200).json({ uid: user.uid });
+    } else {
+      res.status(404).json({ error: 'User not found' });
+    }
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+
 module.exports = userRoute;
