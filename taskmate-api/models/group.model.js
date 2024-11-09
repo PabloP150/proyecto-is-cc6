@@ -18,8 +18,7 @@ const addGroup = (groupData) => {
 
 const getGroupsByUserId = (uid) => {
     const query = `
-    SELECT * FROM [dbo].[Groups] WHERE adminId = @uid
-    `;
+    SELECT * FROM [dbo].[Groups] WHERE adminId = @uid`;
     const params = [
         { name: 'uid', type: TYPES.UniqueIdentifier, value: uid },
     ];

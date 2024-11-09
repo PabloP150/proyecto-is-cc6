@@ -43,10 +43,10 @@ function Login({ onLogin }) {
 
       if (response.ok) {
         const data = await response.json();
-        const userId = data.userId;
+        const userId = data.uid;
         console.log('User ID on login:', userId);
         localStorage.setItem('userId', userId);
-        onLogin({ id: userId, name: username }); // Actualiza el estado del usuario en App.js
+        onLogin({ uid: userId, name: username });
         navigate('/home');
       } else {
         const errorData = await response.json();

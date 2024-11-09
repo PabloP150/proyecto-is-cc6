@@ -27,31 +27,64 @@ export default function Dialogos({
   return (
     <>
       {/* Diálogo para agregar una nueva lista */}
-      <Dialog open={openLista} onClose={handleCloseLista}>
-        <DialogTitle>Agregar Nueva Lista</DialogTitle>
+      <Dialog 
+        open={openLista} 
+        onClose={handleCloseLista}
+        PaperProps={{
+          style: {
+            backgroundColor: '#333333', // Color gris oscuro
+          },
+        }}
+      >
+        <DialogTitle sx={{ color: 'white' }}>Agregar Nueva Lista</DialogTitle>
         <DialogContent>
           <TextField
             autoFocus
-            margin="normal"
+            margin="dense"
             id="nombreLista"
             label="Nombre de la Lista"
             type="text"
             fullWidth
             value={nombreLista}
-            onChange={e => setNombreLista(e.target.value)}
+            onChange={(e) => setNombreLista(e.target.value)}
+            sx={{
+              '& .MuiOutlinedInput-root': {
+                '& fieldset': {
+                  borderColor: 'white',
+                },
+                '&:hover fieldset': {
+                  borderColor: 'white',
+                },
+                '&.Mui-focused fieldset': {
+                  borderColor: 'white',
+                },
+              },
+              '& .MuiInputLabel-root': {
+                color: 'white',
+              },
+              '& .MuiInputBase-input': {
+                color: 'white',
+              },
+            }}
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseLista}>Cancelar</Button>
-          <Button onClick={handleCreateList} color="primary">
-            Agregar
-          </Button>
+          <Button onClick={handleCloseLista} sx={{ color: 'white' }}>CANCELAR</Button>
+          <Button onClick={handleCreateList} sx={{ color: 'white' }}>AGREGAR</Button>
         </DialogActions>
       </Dialog>
 
-      {/* Diálogo para agregar un nuevo recordatorio */}
-      <Dialog open={openRecordatorio} onClose={handleCloseRecordatorio}>
-        <DialogTitle>Agregar Recordatorio</DialogTitle>
+      {/* Diálogo para agregar un nuevo recordatorio (tarea) */}
+      <Dialog 
+        open={openRecordatorio} 
+        onClose={handleCloseRecordatorio}
+        PaperProps={{
+          style: {
+            backgroundColor: '#333333', // Color gris oscuro
+          },
+        }}
+      >
+        <DialogTitle sx={{ color: 'white' }}>Agregar Recordatorio</DialogTitle>
         <DialogContent>
           <Box component="form" onSubmit={handleSubmitRecordatorio} noValidate>
             <TextField
@@ -64,6 +97,7 @@ export default function Dialogos({
               value={nombre}
               onChange={(e) => setNombre(e.target.value)}
               InputLabelProps={{ shrink: true }}
+              sx={textFieldStyle}
             />
             <TextField
               margin="normal"
@@ -75,6 +109,7 @@ export default function Dialogos({
               value={descripcion}
               onChange={(e) => setDescripcion(e.target.value)}
               InputLabelProps={{ shrink: true }}
+              sx={textFieldStyle}
             />
             <TextField
               margin="normal"
@@ -88,6 +123,7 @@ export default function Dialogos({
               }}
               value={fecha}
               onChange={(e) => setFecha(e.target.value)}
+              sx={textFieldStyle}
             />
             <TextField
               margin="normal"
@@ -100,6 +136,7 @@ export default function Dialogos({
               }}
               value={hora}
               onChange={(e) => setHora(e.target.value)}
+              sx={textFieldStyle}
             />
             <TextField
               margin="normal"
@@ -110,6 +147,7 @@ export default function Dialogos({
               select
               value={listaSeleccionada}
               onChange={(e) => setListaSeleccionada(e.target.value)}
+              sx={textFieldStyle}
             >
               {listas.map((lista, index) => (
                 <MenuItem key={index} value={lista.nombre}>
@@ -120,7 +158,7 @@ export default function Dialogos({
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseRecordatorio}>Cancelar</Button>
+          <Button onClick={handleCloseRecordatorio} sx={{ color: 'white' }}>Cancelar</Button>
           <Button type="submit" onClick={handleSubmitRecordatorio} variant="contained" sx={{ backgroundColor: blue[600] }}>
             Agregar
           </Button>
@@ -129,3 +167,26 @@ export default function Dialogos({
     </>
   );
 }
+
+const textFieldStyle = {
+  '& .MuiOutlinedInput-root': {
+    '& fieldset': {
+      borderColor: 'white',
+    },
+    '&:hover fieldset': {
+      borderColor: 'white',
+    },
+    '&.Mui-focused fieldset': {
+      borderColor: 'white',
+    },
+  },
+  '& .MuiInputLabel-root': {
+    color: 'white',
+  },
+  '& .MuiInputBase-input': {
+    color: 'white',
+  },
+  '& .MuiSelect-icon': {
+    color: 'white',
+  },
+};

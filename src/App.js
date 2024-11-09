@@ -10,6 +10,8 @@ import Recordatorios from './components/Recordatorios';
 import Register from './components/Register';
 import CreateGroup from './components/CreateGroup';
 import Navbar from './components/Navbar'; // Asegúrate de tener este componente
+import GroupsView from './components/GroupsView';
+import { GroupProvider } from './components/GroupContext';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -25,6 +27,7 @@ function App() {
     setUser(userData);
     localStorage.setItem('user', JSON.stringify(userData));
   };
+  
 
   const handleLogout = () => {
     setUser(null);
@@ -32,8 +35,10 @@ function App() {
   };
 
   return (
-    <ReactFlowProvider>
-      <Router>
+    
+    <GroupProvider>
+      <ReactFlowProvider>
+        <Router>
         {user && <Navbar user={user} onLogout={handleLogout} />}
         <Routes>
           <Route path="/" element={user ? <Navigate to="/home" /> : <Login onLogin={handleLogin} />} />
@@ -62,9 +67,14 @@ function App() {
             path="/create-group" 
             element={user ? <CreateGroup /> : <Navigate to="/" />} 
           />
+          <Route 
+            path="/groups" 
+            element={user ? <GroupsView /> : <Navigate to="/" />} 
+          />
         </Routes>
       </Router>
-    </ReactFlowProvider>
+      </ReactFlowProvider>
+    </GroupProvider>
   );
 }
 

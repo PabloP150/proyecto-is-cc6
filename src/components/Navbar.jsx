@@ -73,6 +73,7 @@ const Navbar = ({ user, onLogout }) => {
           <Button component={Link} to="/recordatorios">TASKS</Button>
           <Button component={Link} to="/calendar">CALENDAR</Button>
           <Button component={Link} to="/block-diagram">BLOCK DIAGRAM</Button>
+          <Button component={Link} to="/groups">GROUPS</Button>
         </Box>
 
         {user && (

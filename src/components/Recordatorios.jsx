@@ -8,12 +8,11 @@ import {
   Typography,
   CssBaseline,
 } from '@mui/material';
-import { blue, grey } from '@mui/material/colors';
+import { blue} from '@mui/material/colors';
 import React, { useState, useEffect } from 'react';
 import BarraLateral from './BarraLateral';
 import Dialogos from './Dialogos';
 import ListaRecordatorios from './ListaRecordatorios';
-import { alpha } from '@mui/material/styles';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 
 

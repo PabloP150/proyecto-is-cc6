@@ -24,6 +24,31 @@ groupRoute.post('/group', async (req, res) => {
     }
 });
 
+//obtener los nombres de usuarios que pertenecen a un grupo
+groupRoute.get('/:gid/members', async (req, res) => {
+    const { gid } = req.params;
+    try {
+        const members = await UserGroupModel.getMembersByGroupId(gid);
+        res.status(200).json({ members });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+//obtener los grupos de un usuario
+groupRoute.get('/user-groups', async (req, res) => {
+    const { uid } = req.query;
+    if (!uid) {
+        return res.status(400).json({ error: 'User ID is required' });
+    }
+    try {
+        const groups = await GroupModel.getGroupsByUserId(uid);
+        res.status(200).json({ groups });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Unirse a un grupo existente
 groupRoute.post('/join', async (req, res) => {
     const { uid, gid } = req.body;
