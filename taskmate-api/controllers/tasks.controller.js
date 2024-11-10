@@ -102,4 +102,14 @@ tasksRoute.delete('/:id', async (req, res) => {
     });
 });
 
+tasksRoute.delete('/list/:gid/:list', async (req, res) => {
+    const { gid, list } = req.params;
+    try {
+        await TasksModel.deleteTasksByList(gid, list);
+        res.status(200).json({ message: 'Lista eliminada exitosamente' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 module.exports = tasksRoute;

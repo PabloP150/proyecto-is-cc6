@@ -47,6 +47,7 @@ function GroupsView() {
           setSelectedGroupName(firstGroup.name);
           setSelectedGroup(firstGroup);
           localStorage.setItem('selectedGroupId', firstGroup.gid);
+          localStorage.setItem('selectedGroupName', firstGroup.name);
         }
       } else {
         console.error('Error al cargar los grupos');
@@ -65,6 +66,7 @@ function GroupsView() {
     setSelectedGroupName(group.name);
     setSelectedGroup(group);
     localStorage.setItem('selectedGroupId', group.gid);
+    localStorage.setItem('selectedGroupName', group.name);
     fetch(`http://localhost:9000/api/groups/${group.gid}/members`)
       .then(response => response.json())
       .then(data => setMembers(data.members))

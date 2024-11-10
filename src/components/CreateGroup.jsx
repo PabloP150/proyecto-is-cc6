@@ -39,7 +39,6 @@ function CreateGroup() {
   const handleCreateGroup = async (e) => {
     e.preventDefault();
     const userId = localStorage.getItem('userId'); // Obtén el userId del localStorage
-    console.log('User ID:', userId); // Verifica el formato aquí
     if (!userId) {
       console.error('User ID is not available');
       return;

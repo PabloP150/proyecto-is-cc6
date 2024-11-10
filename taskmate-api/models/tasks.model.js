@@ -87,6 +87,17 @@ const getTasksByGroupId = (gid) => {
     return execQuery.execReadCommand(query, params);
 };
 
+const deleteTasksByList = (gid, list) => {
+    const query = `
+    DELETE FROM [dbo].[Tasks] WHERE gid = @gid AND list = @list
+    `;
+    const params = [
+        { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
+        { name: 'list', type: TYPES.VarChar, value: list }
+    ];
+    return execQuery.execWriteCommand(query, params);
+};
+
 module.exports = {
     addTask,
     updateTask,
@@ -94,4 +105,5 @@ module.exports = {
     getAllTasks,
     getTask,
     getTasksByGroupId,
+    deleteTasksByList,
 };

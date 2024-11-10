@@ -70,6 +70,7 @@ function Login({ onLogin }) {
             setSelectedGroupId(firstGroup.gid);
             setSelectedGroupName(firstGroup.name);
             localStorage.setItem('selectedGroupId', firstGroup.gid);
+            localStorage.setItem('selectedGroupName', firstGroup.name);
           }
         }
 

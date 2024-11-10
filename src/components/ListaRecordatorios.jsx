@@ -6,7 +6,7 @@ import RestoreIcon from '@mui/icons-material/Restore';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import { blue } from '@mui/material/colors';
 
-export default function ListaRecordatorios({ listas, handleEliminar, handleCompletar, handleEditar, orden, setOrden, filtro, handleRestaurar }) {
+export default function ListaRecordatorios({ listas, handleEliminar, handleCompletar, handleEditar, orden, setOrden, filtro, handleRestaurar, handleEliminarLista }) {
   const [anchorEl, setAnchorEl] = useState(null);
 
   const handleClick = (event) => {
@@ -62,7 +62,15 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
       <List>
         {listas.map((lista, index) => (
           <Box key={index} sx={{ mb: 2 }}>
-            <Typography variant="h6" sx={{ color: blue[300] }}>{lista.nombre}</Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+              <Typography variant="h6" sx={{ color: blue[300] }}>{lista.nombre}</Typography>
+              <IconButton 
+                onClick={() => handleEliminarLista(lista.nombre)}
+                sx={{ color: 'white', ml: 1 }}
+              >
+                <DeleteIcon />
+              </IconButton>
+            </Box>
             <List>
               {lista.recordatorios && lista.recordatorios.length > 0 ? (
                 ordenarRecordatorios(lista.recordatorios).map((recordatorio, idx) => (

@@ -9,7 +9,7 @@ import {
   CssBaseline,
 } from '@mui/material';
 import { blue} from '@mui/material/colors';
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useCallback } from 'react';
 import BarraLateral from './BarraLateral';
 import Dialogos from './Dialogos';
 import ListaRecordatorios from './ListaRecordatorios';
@@ -46,22 +46,16 @@ export default function Recordatorios() {
   const [completados, setCompletados] = useState([]);
   const [filtro, setFiltro] = useState('todos');
   const [editando, setEditando] = useState(null);
-  const { selectedGroupId, selectedGroupName, setSelectedGroupId } = useContext(GroupContext); // Usa el contexto para obtener el gid y el nombre
+  const { selectedGroupId, selectedGroupName, setSelectedGroupId, setSelectedGroupName } = useContext(GroupContext); // Usa el contexto para obtener el gid y el nombre
 
-  useEffect(() => {
-    const storedGroupId = localStorage.getItem('selectedGroupId');
-    if (storedGroupId) {
-      setSelectedGroupId(storedGroupId);
+  const cargarTareas = useCallback(async () => {
+    if (!selectedGroupId) {
+      return;
     }
-    cargarTareas();
-  }, [setSelectedGroupId]);
-
-  const cargarTareas = async () => {
     try {
       const response = await fetch(`http://localhost:9000/api/tasks?gid=${selectedGroupId}`);
       if (response.ok) {
         const data = await response.json();
-        // Organizar las tareas en listas
         const listasOrganizadas = organizarTareasEnListas(data.data);
         setListas(listasOrganizadas);
       } else {
@@ -70,7 +64,19 @@ export default function Recordatorios() {
     } catch (error) {
       console.error('Error en la solicitud:', error);
     }
-  };
+  }, [selectedGroupId]);
+
+  useEffect(() => {
+    const storedGroupId = localStorage.getItem('selectedGroupId');
+    const storedGroupName = localStorage.getItem('selectedGroupName');
+    
+    if (storedGroupId) {
+      setSelectedGroupId(storedGroupId);
+      setSelectedGroupName(storedGroupName);
+    }
+
+    cargarTareas();
+  }, [setSelectedGroupId, setSelectedGroupName, cargarTareas]);
 
   const organizarTareasEnListas = (tareas) => {
     const listasTemp = {};
@@ -93,6 +99,7 @@ export default function Recordatorios() {
   const handleCloseRecordatorio = () => {
     setOpenRecordatorio(false);
     setEditando(null);
+    console.log('Close Recordatorio', editando);
   };
 
   const handleOpenLista = () => {
@@ -276,6 +283,30 @@ export default function Recordatorios() {
     }
   };
 
+  const handleEliminarLista = async (nombreLista) => {
+    const gid = localStorage.getItem('selectedGroupId');
+    if (!gid) {
+      console.error('No hay grupo seleccionado');
+      return;
+    }
+
+    if (window.confirm(`¿Estás seguro de que deseas eliminar la lista "${nombreLista}" y todas sus tareas?`)) {
+      try {
+        const response = await fetch(`http://localhost:9000/api/tasks/list/${gid}/${encodeURIComponent(nombreLista)}`, {
+          method: 'DELETE',
+        });
+
+        if (response.ok) {
+          setListas(prevListas => prevListas.filter(lista => lista.nombre !== nombreLista));
+        } else {
+          console.error('Error al eliminar la lista');
+        }
+      } catch (error) {
+        console.error('Error en la solicitud:', error);
+      }
+    }
+  };
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
@@ -356,7 +387,8 @@ export default function Recordatorios() {
               setOrden={setOrden}
               filtro={filtro}
               handleRestaurar={handleRestaurar}
-              sx={{ color: 'white' }} 
+              handleEliminarLista={handleEliminarLista}
+              sx={{ color: 'white' }}
             />
           </Box>
 
