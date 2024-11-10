@@ -15,6 +15,8 @@ import { GroupProvider } from './components/GroupContext';
 
 function App() {
   const [user, setUser] = useState(null);
+  const [selectedGroupId, setSelectedGroupId] = useState(null);
+  const [selectedGroupName, setSelectedGroupName] = useState('');
 
   useEffect(() => {
     const isFirstVisit = localStorage.getItem('isFirstVisit');
@@ -41,6 +43,9 @@ function App() {
   const handleLogout = () => {
     setUser(null);
     localStorage.removeItem('user');
+    localStorage.removeItem('selectedGroupId');
+    setSelectedGroupId(null);
+    setSelectedGroupName('');
   };
 
   return (

@@ -9,11 +9,12 @@ import {
   CssBaseline,
 } from '@mui/material';
 import { blue} from '@mui/material/colors';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import BarraLateral from './BarraLateral';
 import Dialogos from './Dialogos';
 import ListaRecordatorios from './ListaRecordatorios';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
+import { GroupContext } from './GroupContext'; // Importa el contexto
 
 
 const theme = createTheme({
@@ -45,15 +46,19 @@ export default function Recordatorios() {
   const [completados, setCompletados] = useState([]);
   const [filtro, setFiltro] = useState('todos');
   const [editando, setEditando] = useState(null);
+  const { selectedGroupId, selectedGroupName, setSelectedGroupId } = useContext(GroupContext); // Usa el contexto para obtener el gid y el nombre
 
   useEffect(() => {
-    // Cargar las tareas existentes al montar el componente
+    const storedGroupId = localStorage.getItem('selectedGroupId');
+    if (storedGroupId) {
+      setSelectedGroupId(storedGroupId);
+    }
     cargarTareas();
-  }, []);
+  }, [setSelectedGroupId]);
 
   const cargarTareas = async () => {
     try {
-      const response = await fetch('http://localhost:9000/api/tasks');
+      const response = await fetch(`http://localhost:9000/api/tasks?gid=${selectedGroupId}`);
       if (response.ok) {
         const data = await response.json();
         // Organizar las tareas en listas
@@ -113,7 +118,7 @@ export default function Recordatorios() {
     e.preventDefault();
     const fechaCompleta = `${fecha}T${hora}`; // Combina fecha y hora
     const nuevaTarea = { 
-      gid: '00000000-0000-0000-0000-000000000001', // Asegúrate de tener un gid válido
+      gid: selectedGroupId, // Usa el gid del contexto
       name: nombre, 
       description: descripcion, 
       list: listaSeleccionada, 
@@ -315,7 +320,7 @@ export default function Recordatorios() {
         >
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
             <Typography component="h1" variant="h4" sx={{ color: blue[300], fontWeight: 'bold' }}>
-              Tasks
+              Tasks {selectedGroupName && `- ${selectedGroupName}`}
             </Typography>
             <IconButton onClick={() => setDrawerOpen(true)} sx={{ color: 'white' }}>
               <AddIcon fontSize="large" />
@@ -325,19 +330,19 @@ export default function Recordatorios() {
           <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
             <Button
               variant="contained"
-              onClick={handleOpenRecordatorio}
-              sx={{ backgroundColor: blue[700], color: 'white', borderRadius: 50, '&:hover': { backgroundColor: blue[800] } }}
-              startIcon={<AddIcon />}
-            >
-              Add Task
-            </Button>
-            <Button
-              variant="contained"
               onClick={handleOpenLista}
               sx={{ backgroundColor: blue[700], color: 'white', borderRadius: 50, '&:hover': { backgroundColor: blue[800] } }}
               startIcon={<AddIcon />}
             >
               Add List
+            </Button>
+            <Button
+              variant="contained"
+              onClick={handleOpenRecordatorio}
+              sx={{ backgroundColor: blue[700], color: 'white', borderRadius: 50, '&:hover': { backgroundColor: blue[800] } }}
+              startIcon={<AddIcon />}
+            >
+              Add Task
             </Button>
           </Box>
 

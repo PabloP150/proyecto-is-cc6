@@ -1,7 +1,16 @@
-import React, { useState, useEffect, useContext } from 'react';
-import { Box, Typography, List, ListItem, CssBaseline, Paper, Container, Button, TextField, Dialog, DialogActions, DialogContent, DialogTitle } from '@mui/material';
+import React, { useState, useEffect, useContext, useCallback } from 'react';
+import { Box, Typography, List, ListItem, CssBaseline, Paper, Container, Button, TextField, Dialog, DialogActions, DialogContent, DialogTitle, styled } from '@mui/material';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
-import { GroupContext } from './GroupContext'
+import { GroupContext } from './GroupContext';
+
+const UseButton = styled(Button)(({ theme, selected }) => ({
+  backgroundColor: selected ? 'green' : 'white',
+  color: selected ? 'white' : 'black',
+  marginLeft: '10px',
+  '&:hover': {
+    backgroundColor: selected ? '#006400' : '#f0f0f0',
+  },
+}));
 
 function GroupsView() {
   const [groups, setGroups] = useState([]);
@@ -11,13 +20,9 @@ function GroupsView() {
   const [newGroupName, setNewGroupName] = useState('');
   const [openAddUser, setOpenAddUser] = useState(false);
   const [newUsername, setNewUsername] = useState('');
-  const { setSelectedGroupId } = useContext(GroupContext);
+  const { selectedGroupId, setSelectedGroupId, setSelectedGroupName } = useContext(GroupContext);
 
-  useEffect(() => {
-    cargarGrupos();
-  }, []);
-
-  const cargarGrupos = async () => {
+  const cargarGrupos = useCallback(async () => {
     const userId = localStorage.getItem('userId');
     if (!userId) {
       console.error('User ID is not available');
@@ -28,17 +33,38 @@ function GroupsView() {
       if (response.ok) {
         const data = await response.json();
         setGroups(data.groups);
+        const storedGroupId = localStorage.getItem('selectedGroupId');
+        if (storedGroupId) {
+          const groupToSelect = data.groups.find(group => group.gid === storedGroupId);
+          if (groupToSelect) {
+            setSelectedGroupId(groupToSelect.gid);
+            setSelectedGroupName(groupToSelect.name);
+            setSelectedGroup(groupToSelect);
+          }
+        } else if (data.groups.length > 0) {
+          const firstGroup = data.groups[0];
+          setSelectedGroupId(firstGroup.gid);
+          setSelectedGroupName(firstGroup.name);
+          setSelectedGroup(firstGroup);
+          localStorage.setItem('selectedGroupId', firstGroup.gid);
+        }
       } else {
         console.error('Error al cargar los grupos');
       }
     } catch (error) {
       console.error('Error en la solicitud:', error);
     }
-  };
+  }, [setGroups, setSelectedGroupId, setSelectedGroupName, setSelectedGroup]);
+
+  useEffect(() => {
+    cargarGrupos();
+  }, [cargarGrupos]);
 
   const handleGroupClick = (group) => {
     setSelectedGroupId(group.gid);
+    setSelectedGroupName(group.name);
     setSelectedGroup(group);
+    localStorage.setItem('selectedGroupId', group.gid);
     fetch(`http://localhost:9000/api/groups/${group.gid}/members`)
       .then(response => response.json())
       .then(data => setMembers(data.members))
@@ -116,6 +142,11 @@ function GroupsView() {
     }
   };
 
+  const handleUseGroup = (group) => {
+    setSelectedGroupId(group.gid);
+    console.log(`Using group: ${group.name} with gid: ${group.gid}`);
+  };
+
   const theme = createTheme({
     palette: {
       mode: 'dark',
@@ -154,6 +185,7 @@ function GroupsView() {
                 {groups.map(group => (
                   <ListItem key={group.gid} button onClick={() => handleGroupClick(group)}>
                     {group.name}
+                    <UseButton selected={selectedGroupId === group.gid} onClick={() => handleUseGroup(group)}>Use</UseButton>
                   </ListItem>
                 ))}
               </List>

@@ -3,8 +3,12 @@ const { v4: uuidv4 } = require('uuid');
 const TasksModel = require('./../models/tasks.model');
 
 tasksRoute.get('/', async (req, res) => {
+    const { gid } = req.query;
+    if (!gid) {
+        return res.status(400).json({ error: 'Group ID is required' });
+    }
     try {
-        const data = await TasksModel.getAllTasks();
+        const data = await TasksModel.getTasksByGroupId(gid);
         res.status(200).json({ data });
     } catch (error) {
         console.error("Error fetching tasks:", error);

@@ -44,18 +44,26 @@ function Login({ onLogin }) {
       if (response.ok) {
         const data = await response.json();
         const userId = data.uid;
-        console.log('User ID on login:', userId);
         localStorage.setItem('userId', userId);
         onLogin({ uid: userId, name: username });
+
+        // Obtener los grupos del usuario
+        const groupsResponse = await fetch(`http://localhost:9000/api/groups/user-groups?uid=${userId}`);
+        if (groupsResponse.ok) {
+          const groupsData = await groupsResponse.json();
+          if (groupsData.groups.length > 0) {
+            const firstGroup = groupsData.groups[0];
+            localStorage.setItem('selectedGroupId', firstGroup.gid);
+          }
+        }
+
         navigate('/home');
       } else {
         const errorData = await response.json();
         console.error(errorData.error);
-        // Aquí podrías mostrar un mensaje de error al usuario
       }
     } catch (error) {
       console.error('Error en la solicitud:', error);
-      // Aquí podrías mostrar un mensaje de error al usuario
     }
   };
 
