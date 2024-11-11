@@ -17,7 +17,7 @@
 CREATE TABLE dbo.Users (
     uid 		UNIQUEIDENTIFIER 	NOT NULL PRIMARY KEY,
     username 	VARCHAR(25)			NOT NULL,
-    password 	CHAR(25) 			NOT NULL
+    password 	VARCHAR(60) 			NOT NULL
 );
 
 CREATE TABLE dbo.Groups (
@@ -91,11 +91,15 @@ VALUES ('00000000-0000-0000-0000-000000000001',
         'Test Group'
 		);
 
+select * from dbo.DeleteTask;
 select * from dbo.Complete;
 select * from dbo.UserGroups;
 select * from dbo.Groups;
+select * from dbo.Users;
 select * from dbo.DeleteTask;
 select * from dbo.Users;
 select * from dbo.Tasks;
 select * from dbo.Nodes;
 select * from dbo.Edges;
+
+--SELECT * FROM dbo.Users WHERE username='admin' AND password=HASHBYTES('SHA2_256','hola')

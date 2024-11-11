@@ -111,7 +111,7 @@ export default function Recordatorios() {
     cargarTareas();
     cargarCompletados(); // Asegúrate de cargar completados al iniciar
 
-    if (filtro === 'eliminados') {
+    if (filtro === 'deleted') {
       cargarEliminados(); // Cargar eliminados si el filtro es 'eliminados'
     }
   }, [setSelectedGroupId, setSelectedGroupName, cargarTareas, cargarCompletados, cargarEliminados, filtro]);
