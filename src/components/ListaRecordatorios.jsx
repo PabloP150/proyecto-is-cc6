@@ -4,6 +4,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import RestoreIcon from '@mui/icons-material/Restore';
 import FilterListIcon from '@mui/icons-material/FilterList';
+import EditIcon from '@mui/icons-material/Edit';
 import { blue } from '@mui/material/colors';
 
 export default function ListaRecordatorios({ listas, handleEliminar, handleCompletar, handleEditar, orden, setOrden, filtro, handleRestaurar, handleEliminarLista }) {
@@ -29,7 +30,6 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
       case 'fechaLimite':
         return recordatorios.sort((a, b) => new Date(a.datetime) - new Date(b.datetime));
       case 'prioridad':
-        // Asumiendo que la prioridad está en el campo 'description' por ahora
         return recordatorios.sort((a, b) => a.description.localeCompare(b.description));
       default:
         return recordatorios;
@@ -60,67 +60,79 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
       </Box>
 
       <List>
-        {listas.map((lista, index) => (
-          <Box key={index} sx={{ mb: 2 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-              <Typography variant="h6" sx={{ color: blue[300] }}>{lista.nombre}</Typography>
-              <IconButton 
-                onClick={() => handleEliminarLista(lista.nombre)}
-                sx={{ color: 'white', ml: 1 }}
-              >
-                <DeleteIcon />
-              </IconButton>
-            </Box>
-            <List>
-              {lista.recordatorios && lista.recordatorios.length > 0 ? (
-                ordenarRecordatorios(lista.recordatorios).map((recordatorio, idx) => (
-                  <ListItem 
-                    key={recordatorio.id || idx} 
-                    button 
-                    onClick={() => handleEditar(lista.nombre, idx)}
-                    sx={{ 
-                      backgroundColor: 'rgba(255, 255, 255, 0.1)', 
-                      mb: 1, 
-                      borderRadius: 1,
-                      '&:hover': { backgroundColor: 'rgba(255, 255, 255, 0.2)' }
-                    }}
-                  >
-                    <ListItemText
-                      primary={
-                        <Typography sx={{ color: 'white', fontWeight: 'bold' }}>
-                          {recordatorio.name || 'Sin nombre'}
-                        </Typography>
-                      }
-                      secondary={
-                        <Typography sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
-                          {`${recordatorio.description || 'Sin descripción'} - ${formatearFecha(recordatorio.datetime)}`}
-                        </Typography>
-                      }
-                    />
-                    {filtro === 'eliminados' || filtro === 'completados' ? (
-                      <IconButton edge="end" aria-label="restore" onClick={(e) => { e.stopPropagation(); handleRestaurar(lista.nombre, idx); }} sx={{ color: 'white' }}>
-                        <RestoreIcon />
+        {listas.length > 0 ? (
+          listas.map((lista, index) => (
+            <Box key={index} sx={{ mb: 2 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                <Typography variant="h6" sx={{ color: blue[300] }}>{lista.nombre}</Typography>
+                <IconButton 
+                  onClick={() => handleEliminarLista(lista.nombre)}
+                  sx={{ color: 'white', ml: 1 }}
+                >
+                  <DeleteIcon />
+                </IconButton>
+              </Box>
+              <List>
+                {lista.recordatorios && lista.recordatorios.length > 0 ? (
+                  ordenarRecordatorios(lista.recordatorios).map((recordatorio, idx) => (
+                    <ListItem 
+                      key={recordatorio.id || idx} 
+                      sx={{ 
+                        backgroundColor: 'rgba(255, 255, 255, 0.1)', 
+                        mb: 1, 
+                        borderRadius: 1,
+                        '&:hover': { backgroundColor: 'rgba(255, 255, 255, 0.2)' }
+                      }}
+                    >
+                      <ListItemText
+                        primary={
+                          <Typography sx={{ color: 'white', fontWeight: 'bold' }}>
+                            {recordatorio.name || 'Sin nombre'}
+                          </Typography>
+                        }
+                        secondary={
+                          <Typography sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
+                            {`${recordatorio.description || 'Sin descripción'} - ${formatearFecha(recordatorio.datetime)}`}
+                          </Typography>
+                        }
+                      />
+                      <IconButton 
+                        edge="end" 
+                        aria-label="edit" 
+                        onClick={() => handleEditar(lista.nombre, idx)} 
+                        sx={{ color: 'white' }}
+                      >
+                        <EditIcon />
                       </IconButton>
-                    ) : (
-                      <>
-                        <IconButton edge="end" aria-label="complete" onClick={(e) => { e.stopPropagation(); handleCompletar(lista.nombre, idx); }} sx={{ color: 'white' }}>
-                          <CheckCircleIcon />
+                      {filtro === 'eliminados' || filtro === 'completados' ? (
+                        <IconButton edge="end" aria-label="restore" onClick={(e) => { e.stopPropagation(); handleRestaurar(lista.nombre, idx); }} sx={{ color: 'white' }}>
+                          <RestoreIcon />
                         </IconButton>
-                        <IconButton edge="end" aria-label="delete" onClick={(e) => { e.stopPropagation(); handleEliminar(lista.nombre, idx); }} sx={{ color: 'white' }}>
-                          <DeleteIcon />
-                        </IconButton>
-                      </>
-                    )}
+                      ) : (
+                        <>
+                          <IconButton edge="end" aria-label="complete" onClick={(e) => { e.stopPropagation(); handleCompletar(lista.nombre, idx); }} sx={{ color: 'white' }}>
+                            <CheckCircleIcon />
+                          </IconButton>
+                          <IconButton edge="end" aria-label="delete" onClick={(e) => { e.stopPropagation(); handleEliminar(lista.nombre, idx); }} sx={{ color: 'white' }}>
+                            <DeleteIcon />
+                          </IconButton>
+                        </>
+                      )}
+                    </ListItem>
+                  ))
+                ) : (
+                  <ListItem>
+                    <ListItemText primary={<Typography sx={{ color: 'white' }}>There are no tasks yet</Typography>} />
                   </ListItem>
-                ))
-              ) : (
-                <ListItem>
-                  <ListItemText primary={<Typography sx={{ color: 'white' }}>No hay recordatorios en esta lista</Typography>} />
-                </ListItem>
-              )}
-            </List>
-          </Box>
-        ))}
+                )}
+              </List>
+            </Box>
+          ))
+        ) : (
+          <ListItem>
+            <ListItemText primary={<Typography sx={{ color: 'white' }}>Agrega tu lista para comenzar</Typography>} />
+          </ListItem>
+        )}
       </List>
     </>
   );

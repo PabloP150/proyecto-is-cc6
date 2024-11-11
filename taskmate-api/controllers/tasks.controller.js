@@ -68,6 +68,7 @@ tasksRoute.put('/:id', async (req, res) => {
         gid,
         name,
         description,
+        list,
         datetime
     } = req.body;
     TasksModel.updateTask({
@@ -75,6 +76,7 @@ tasksRoute.put('/:id', async (req, res) => {
         gid,
         name,
         description,
+        list,
         datetime
     })
     .then((rowCount, more) => {

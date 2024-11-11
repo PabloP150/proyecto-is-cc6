@@ -46,6 +46,8 @@ export default function Recordatorios() {
   const [completados, setCompletados] = useState([]);
   const [filtro, setFiltro] = useState('todos');
   const [editando, setEditando] = useState(null);
+  const [recordatorioEditar, setRecordatorioEditar] = useState(null);
+  const [openEditar, setOpenEditar] = useState(false); // Estado para el diálogo de edición
   const { selectedGroupId, selectedGroupName, setSelectedGroupId, setSelectedGroupName } = useContext(GroupContext); // Usa el contexto para obtener el gid y el nombre
 
   const cargarTareas = useCallback(async () => {
@@ -99,7 +101,6 @@ export default function Recordatorios() {
   const handleCloseRecordatorio = () => {
     setOpenRecordatorio(false);
     setEditando(null);
-    console.log('Close Recordatorio', editando);
   };
 
   const handleOpenLista = () => {
@@ -143,7 +144,6 @@ export default function Recordatorios() {
 
       if (response.ok) {
         const data = await response.json();
-        console.log('Respuesta del servidor:', data);
 
         // Actualizar el estado local con la nueva tarea
         setListas(prevListas => {
@@ -155,7 +155,7 @@ export default function Recordatorios() {
                   ...lista.recordatorios,
                   {
                     ...nuevaTarea,
-                    id: data.data.tid // Asumiendo que el servidor devuelve el ID de la tarea
+                    tid: data.data.tid // Asegúrate de que el ID se esté asignando correctamente
                   }
                 ]
               };
@@ -169,7 +169,7 @@ export default function Recordatorios() {
               nombre: listaSeleccionada,
               recordatorios: [{
                 ...nuevaTarea,
-                id: data.data.tid
+                tid: data.data.tid
               }]
             });
           }
@@ -207,16 +207,12 @@ export default function Recordatorios() {
     setListas([...listas]);
   };
 
-  const handleEditar = (listaNombre, idx) => {
-    const listaActual = listas.find(lista => lista.nombre === listaNombre);
-    const recordatorio = listaActual.recordatorios[idx];
-    setNombre(recordatorio.nombre);
-    setDescripcion(recordatorio.descripcion);
-    setFecha(recordatorio.fecha);
-    setHora(recordatorio.hora);
-    setListaSeleccionada(listaNombre);
-    setEditando(idx);
-    setOpenRecordatorio(true);
+  const handleEditar = (nombre, idx) => {
+    const recordatorio = listas.find(lista => lista.nombre === nombre)?.recordatorios[idx];
+    if (recordatorio) {
+      setRecordatorioEditar(recordatorio);
+      setOpenEditar(true);
+    }
   };
 
   const filtrarRecordatorios = () => {
@@ -298,6 +294,7 @@ export default function Recordatorios() {
 
         if (response.ok) {
           setListas(prevListas => prevListas.filter(lista => lista.nombre !== nombreLista));
+          cargarTareas();
         } else {
           console.error('Error al eliminar la lista');
         }
@@ -305,6 +302,60 @@ export default function Recordatorios() {
         console.error('Error en la solicitud:', error);
       }
     }
+  };
+
+  const handleSubmitEditar = async () => {
+    if (!recordatorioEditar?.tid) {
+        console.error('El TID es undefined. Asegúrate de que el recordatorio se haya seleccionado correctamente.');
+        return; 
+    }
+    try {
+      const response = await fetch(`http://localhost:9000/api/tasks/${recordatorioEditar.tid}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          gid: selectedGroupId,
+          name: recordatorioEditar.name,
+          description: recordatorioEditar.description,
+          list: recordatorioEditar.list,
+          datetime: recordatorioEditar.datetime,
+        }),
+      });
+
+      if (response.ok) {
+        const updatedRecordatorio = await response.json();
+
+        // Actualizar el estado local
+        setListas(prevListas => {
+            return prevListas.map(lista => {
+                if (lista.nombre === updatedRecordatorio.list) {
+                    return {
+                        ...lista,
+                        recordatorios: lista.recordatorios.map(recordatorio => 
+                            recordatorio.tid === updatedRecordatorio.tid ? updatedRecordatorio : recordatorio
+                        ),
+                    };
+                }
+                return lista;
+            });
+        });
+        cargarTareas();
+
+        handleCloseEditar();
+        setOpenEditar(false);
+      } else {
+        console.error('Error al actualizar el recordatorio');
+      }
+    } catch (error) {
+      console.error('Error en la solicitud:', error);
+    }
+  };
+
+  const handleCloseEditar = () => {
+    setOpenEditar(false);
+    setRecordatorioEditar(null);
   };
 
   return (
@@ -418,6 +469,12 @@ export default function Recordatorios() {
             listaSeleccionada={listaSeleccionada}
             setListaSeleccionada={setListaSeleccionada}
             listas={listas}
+            recordatorioEditar={recordatorioEditar}
+            setRecordatorioEditar={setRecordatorioEditar}
+            openEditar={openEditar}
+            setOpenEditar={setOpenEditar}
+            handleSubmitEditar={handleSubmitEditar}
+            handleCloseEditar={handleCloseEditar}
           />
         </Paper>
       </Container>

@@ -1,5 +1,5 @@
 // src/components/Dialogos.jsx
-import React from 'react';
+import React, { useState } from 'react';
 import { Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button, Box, MenuItem } from '@mui/material';
 import { blue } from '@mui/material/colors';
 
@@ -23,7 +23,14 @@ export default function Dialogos({
   listaSeleccionada,
   setListaSeleccionada,
   listas,
+  recordatorioEditar,
+  setRecordatorioEditar,
+  openEditar,
+  setOpenEditar,
+  handleSubmitEditar,
+  handleCloseEditar,
 }) {
+
   return (
     <>
       {/* Diálogo para agregar una nueva lista */}
@@ -47,25 +54,7 @@ export default function Dialogos({
             fullWidth
             value={nombreLista}
             onChange={(e) => setNombreLista(e.target.value)}
-            sx={{
-              '& .MuiOutlinedInput-root': {
-                '& fieldset': {
-                  borderColor: 'white',
-                },
-                '&:hover fieldset': {
-                  borderColor: 'white',
-                },
-                '&.Mui-focused fieldset': {
-                  borderColor: 'white',
-                },
-              },
-              '& .MuiInputLabel-root': {
-                color: 'white',
-              },
-              '& .MuiInputBase-input': {
-                color: 'white',
-              },
-            }}
+            sx={textFieldStyle}
           />
         </DialogContent>
         <DialogActions>
@@ -164,6 +153,94 @@ export default function Dialogos({
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Diálogo para editar un recordatorio */}
+      <Dialog open={openEditar} onClose={handleCloseEditar} PaperProps={{
+          style: {
+            backgroundColor: '#333333', // Color gris oscuro
+          },
+        }}>
+        <DialogTitle sx={{ color: 'white' }}>Editar Recordatorio</DialogTitle>
+        <DialogContent>
+          <TextField
+            margin="normal"
+            required
+            fullWidth
+            id="nombreEditar"
+            label="Nombre"
+            type="text"
+            value={recordatorioEditar?.name || ''}
+            onChange={(e) => setRecordatorioEditar({ ...recordatorioEditar, name: e.target.value })}
+            InputLabelProps={{ shrink: true }}
+            sx={{ color: 'white' }}
+          />
+          <TextField
+            margin="normal"
+            required
+            fullWidth
+            id="descripcionEditar"
+            label="Descripción"
+            type="text"
+            value={recordatorioEditar?.description || ''}
+            onChange={(e) => setRecordatorioEditar({ ...recordatorioEditar, description: e.target.value })}
+            InputLabelProps={{ shrink: true }}
+            sx={{ color: 'white' }}
+          />
+          <TextField
+            margin="normal"
+            required
+            fullWidth
+            id="fechaEditar"
+            label="Fecha"
+            type="date"
+            value={recordatorioEditar?.datetime.split('T')[0] || ''}
+            onChange={(e) => setRecordatorioEditar({ ...recordatorioEditar, datetime: e.target.value })}
+            InputLabelProps={{ shrink: true }}
+          />
+          <TextField
+            margin="normal"
+            required
+            fullWidth
+            id="horaEditar"
+            label="Hora"
+            type="time"
+            value={recordatorioEditar?.datetime ? new Date(recordatorioEditar.datetime).toLocaleTimeString('it-IT').substring(0, 5) : ''}
+            onChange={(e) => {
+              const newTime = e.target.value;
+              setHora(newTime);
+              setRecordatorioEditar({
+                ...recordatorioEditar,
+                datetime: `${recordatorioEditar?.datetime.split('T')[0]}T${newTime}`
+              });
+            }}
+            InputLabelProps={{ shrink: true }}
+          />
+          <TextField
+            margin="normal"
+            required
+            fullWidth
+            id="listaSeleccionadaEditar"
+            label="Seleccionar Lista"
+            select
+            value={recordatorioEditar?.list || ''}
+            onChange={(e) => {
+              const selectedList = e.target.value;
+              setRecordatorioEditar({ ...recordatorioEditar, list: selectedList });
+            }}
+            sx={textFieldStyle}
+          >
+            {listas.map((lista, index) => (
+              <MenuItem key={index} value={lista.nombre}>
+                {lista.nombre}
+              </MenuItem>
+            ))}
+          </TextField>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseEditar} sx={{ color: 'white' }}>Cancelar</Button>
+          <Button onClick={handleSubmitEditar} sx={{ color: 'white' }}>Actualizar</Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 }
@@ -190,3 +267,4 @@ const textFieldStyle = {
     color: 'white',
   },
 };
+
