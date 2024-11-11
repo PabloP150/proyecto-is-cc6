@@ -25,10 +25,11 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
   const ordenarRecordatorios = (recordatorios) => {
     switch (orden) {
       case 'fechaCreacion':
+        return [...recordatorios].sort((a, b) => new Date(a.datetime) - new Date(b.datetime));
       case 'fechaLimite':
-        return recordatorios.sort((a, b) => new Date(a.datetime) - new Date(b.datetime));
+        return [...recordatorios].sort((a, b) => new Date(a.fechaLimite) - new Date(b.fechaLimite));
       case 'prioridad':
-        return recordatorios.sort((a, b) => a.description.localeCompare(b.description));
+        return [...recordatorios].sort((a, b) => a.prioridad - b.prioridad);
       default:
         return recordatorios;
     }
