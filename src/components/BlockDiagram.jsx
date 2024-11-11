@@ -52,7 +52,19 @@ function BlockDiagram() {
     const formData = new FormData(e.target);
     const data = Object.fromEntries(formData.entries());
     try {
-      const response = await fetch(`http://localhost:9000/api/nodes/${selectedNode.nid}`, {
+      setFlowKey(flowKey + 1);
+      const response1 = await fetch(`http://localhost:9000/api/nodes/${selectedNode.nid}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: data.name,
+          description: data.description,
+          date: formatDate(data.date)
+        }),
+      });
+      const response2 = await fetch(`http://localhost:9000/api/tasks/nodes/${selectedNode.nid}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -64,8 +76,7 @@ function BlockDiagram() {
         }),
       });
 
-      if (response.ok) {
-        setFlowKey(flowKey + 1);
+      if (response1.ok && response2.ok) {
         setShowPopup(false);
         setSelectedNode(null);
       }
@@ -151,7 +162,7 @@ function BlockDiagram() {
                       <input
                         type="date"
                         name="date"
-                        value={selectedNode.date ? formatDate(selectedNode.date) : ''}
+                        value={new Date(selectedNode.date).toISOString().split('T')[0]}
                         onChange={handleInputChange}
                       />
                     </label>

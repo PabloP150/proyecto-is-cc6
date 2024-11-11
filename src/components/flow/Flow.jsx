@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useContext } from "react";
 import './Flow.css'
 import {
   ReactFlow,
@@ -14,8 +14,10 @@ import '@xyflow/react/dist/style.css';
 import CustomNode from './CustomNode';
 import CustomConnectionLine from './CustomConnectionLine';
 import FloatingEdge from './FloatingEdge';
+import { GroupContext } from '../GroupContext';
 
 const Flow = ({ handleNodeEdit, setSelectedNode }) => {
+  const { selectedGroupId } = useContext(GroupContext);
   const [tasks, setTasks] = useState([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const [nodes, setNodes] = useState([]);
@@ -26,9 +28,7 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
     date: '',
     completed: false,
     setSelectedNode
-  });
-
-  const gid = "00000000-0000-0000-0000-000000000001";   // Cambiar a localStorage cuando funcionen grupos
+  });   // Cambiar a localStorage cuando funcionen grupos
 
   function formatDateTimeToDate(datetime) {
     const date = new Date(datetime);
@@ -41,8 +41,8 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
   useEffect(() => {
     const loadNodesAndEdges = async () => {
       try {
-        const nodesResponse = await fetch(`http://localhost:9000/api/nodes/group/${gid}`);
-        const edgesResponse = await fetch(`http://localhost:9000/api/edges/group/${gid}`);
+        const nodesResponse = await fetch(`http://localhost:9000/api/nodes/group/${selectedGroupId}`);
+        const edgesResponse = await fetch(`http://localhost:9000/api/edges/group/${selectedGroupId}`);
 
         if (nodesResponse.ok && edgesResponse.ok) {
           const nodesData = await nodesResponse.json();
@@ -83,7 +83,7 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
   useEffect(() => {
     const getTasks = async () => {
       try {
-        const response = await fetch('http://localhost:9000/api/tasks');
+        const response = await fetch(`http://localhost:9000/api/tasks?gid=${selectedGroupId}`);
         if (response.ok) {
           const data = await response.json();
           setTasks(data.data);
@@ -130,7 +130,7 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
           },
           position: { x: data.data.x_pos, y: data.data.y_pos },
         };
-        
+
         setNodes((prevNodes) => [...prevNodes, newNode]);
 
       } else {
@@ -151,7 +151,7 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          gid: gid,
+          gid: selectedGroupId,
           name: nodeData.name,
           description: nodeData.description,
           date: nodeData.date,
@@ -230,7 +230,7 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          gid: gid,
+          gid: selectedGroupId,
           sourceId: params.source,
           targetId: params.target
         }),
@@ -267,12 +267,13 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
     setNodes((prevNodes) =>
       prevNodes.map((node) => {
         if (node.id === nodeId) {
+          //toggleCompletionDB(node);
           const updatedNode = {
             ...node,
             data: {
               ...node.data,
               completed: !node.data.completed,
-              toggleCompletion // Make sure to keep the function reference
+              toggleCompletion
             }
           };
           return updatedNode;
@@ -282,6 +283,39 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
     );
   }, []);
 
+  /*const toggleCompletionDB = async (node) => {
+    if (completion) {
+      try {
+        // Llamar a la API para eliminar la tarea
+        const response = await fetch(`http://localhost:9000/api/tasks/${node.id}`, {
+          method: 'DELETE',
+        });
+        if (response.ok) {
+          // Llamar a la API para agregar a la lista de eliminados
+          const eliminarResponse = await fetch('http://localhost:9000/api/delete', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(node),
+          });
+  
+          if (eliminarResponse.ok) {
+            listaActual.recordatorios.splice(idx, 1);
+            setListas([...listas]);
+            cargarCompletados(); // Opcional: cargar completados si es necesario
+          } else {
+            console.error('Error al agregar a eliminados');
+          }
+        } else {
+          console.error('Error al eliminar la tarea');
+        }
+      } catch (error) {
+        console.error('Error en la solicitud:', error);
+      }
+    }
+  }
+*/
   const onNodesDelete = async (event) => {
     try {
       const response1 = await fetch(`http://localhost:9000/api/edges/source/${event[0].id}`, {

@@ -61,7 +61,10 @@ function HomePage() {
                 Calendar View
               </Button>
               <Button component={RouterLink} to="/block-diagram" variant="contained" sx={{ backgroundColor: '#4a90e2' }}>
-                Project Visualizer
+                Milestone Viewer
+              </Button>
+              <Button component={RouterLink} to="/groups" variant="contained" sx={{ backgroundColor: '#4a90e2' }}>
+                Groups 
               </Button>
             </Box>
           </Paper>

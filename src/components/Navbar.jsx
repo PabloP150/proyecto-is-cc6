@@ -72,7 +72,7 @@ const Navbar = ({ user, onLogout }) => {
         <Box sx={{ display: 'flex', justifyContent: 'right', flexGrow: 1 }}>
           <Button component={Link} to="/tasks">TASKS</Button>
           <Button component={Link} to="/calendar">CALENDAR</Button>
-          <Button component={Link} to="/block-diagram">BLOCK DIAGRAM</Button>
+          <Button component={Link} to="/block-diagram">Milestones</Button>
           <Button component={Link} to="/groups">GROUPS</Button>
         </Box>
 

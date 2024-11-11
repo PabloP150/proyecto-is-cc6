@@ -99,20 +99,21 @@
   background-color: #2196F3;
 }
 
+.dropdown {
+  position: relative; /* Add this line to the parent element */
+  margin-left: auto;
+}
+
 .dropdown-menu {
-  background-color: #333;
-  border: 1px solid #ccc;
+  margin-top: 0;
+  background-color: #ccc;
+  border: 1px solid #333;
   padding: 5px;
   border-radius: 4px;
   position: absolute;
   top: 100%;
   left: 0;
-  z-index: 1; /* Add this line to ensure the dropdown is on top of other elements */
-}
-
-.dropdown {
-  position: relative; /* Add this line to the parent element */
-  margin-left: auto;
+  z-index: 1;
 }
 
 .dropdown-menu li {

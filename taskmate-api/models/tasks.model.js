@@ -50,6 +50,27 @@ const updateTask = (taskData) => {
     return execQuery.execWriteCommand(query, params);
 };
 
+const updateTaskFromNode = (taskData) => {
+    const {
+        tid,
+        name,
+        description,
+        date
+    } = taskData;
+    const query = `
+    UPDATE [dbo].[Tasks] 
+    SET name=@name, description=@description, datetime=CONVERT(datetime, @date, 120)
+    WHERE tid=@tid
+    `;
+    const params = [
+        { name: 'tid', type: TYPES.UniqueIdentifier, value: tid },
+        { name: 'name', type: TYPES.VarChar, value: name },
+        { name: 'description', type: TYPES.Text, value: description },
+        { name: 'date', type: TYPES.SmallDateTime, value: date },
+    ];
+    return execQuery.execWriteCommand(query, params);
+};
+
 const deleteTask = (tid) => {
     const query = `
     DELETE FROM [dbo].[Tasks] WHERE tid = @tid
@@ -101,6 +122,7 @@ const deleteTasksByList = (gid, list) => {
 module.exports = {
     addTask,
     updateTask,
+    updateTaskFromNode,
     deleteTask,
     getAllTasks,
     getTask,

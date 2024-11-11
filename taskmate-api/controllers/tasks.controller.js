@@ -93,6 +93,34 @@ tasksRoute.put('/:id', async (req, res) => {
     });
 });
 
+//smaller update for nodes
+tasksRoute.put('/nodes/:id', async (req, res) => {
+    const { id: tid } = req.params;
+    const {
+        name,
+        description,
+        date
+    } = req.body;
+    TasksModel.updateTaskFromNode({
+        tid,
+        name,
+        description,
+        date
+    })
+    .then((rowCount, more) => {
+        res.status(200).json({
+            data: {
+                rowCount,
+                more,
+                tid
+            },
+        });
+    })
+    .catch(error => {
+        res.status(500).json({ error });
+    });
+});
+
 tasksRoute.delete('/:id', async (req, res) => {
     const { id: tid } = req.params;
     TasksModel.deleteTask(tid)
