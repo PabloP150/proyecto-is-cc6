@@ -55,7 +55,7 @@ function App() {
             element={user ? <Flow /> : <Navigate to="/" />} 
           />
           <Route 
-            path="/recordatorios" 
+            path="/tasks" 
             element={user ? <Recordatorios /> : <Navigate to="/" />} 
           />
           <Route 

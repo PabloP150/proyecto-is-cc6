@@ -25,8 +25,8 @@ app.use((req, res, next) => {
 
 app.use('/api/tasks', tasksController);
 app.use('/api/users', userController);
-app.use('/api/nodes', nodesController);
 app.use('/api/groups', groupController);
+app.use('/api/nodes', nodesController);
 app.use('/api/edges', edgesController);
 
 app.listen(API_PORT, () => {

@@ -54,7 +54,7 @@ function HomePage() {
               Your all-in-one task management solution. Organize your tasks, manage your time, and visualize your projects with ease.
             </Typography>
             <Box sx={{ display: 'flex', justifyContent: 'space-around', flexDirection: { xs: 'column', sm: 'row' }, mb: 2 }}>
-              <Button component={RouterLink} to="/recordatorios" variant="contained" sx={{ mb: { xs: 2, sm: 0 }, backgroundColor: '#4a90e2' }}>
+              <Button component={RouterLink} to="/tasks" variant="contained" sx={{ mb: { xs: 2, sm: 0 }, backgroundColor: '#4a90e2' }}>
                 View Tasks
               </Button>
               <Button component={RouterLink} to="/calendar" variant="contained" sx={{ mb: { xs: 2, sm: 0 }, backgroundColor: '#4a90e2' }}>

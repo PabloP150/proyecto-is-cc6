@@ -70,7 +70,7 @@ const Navbar = ({ user, onLogout }) => {
           TaskMate
         </Typography>
         <Box sx={{ display: 'flex', justifyContent: 'right', flexGrow: 1 }}>
-          <Button component={Link} to="/recordatorios">TASKS</Button>
+          <Button component={Link} to="/tasks">TASKS</Button>
           <Button component={Link} to="/calendar">CALENDAR</Button>
           <Button component={Link} to="/block-diagram">BLOCK DIAGRAM</Button>
         </Box>

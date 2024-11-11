@@ -1,110 +1,99 @@
+import React from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { Divider } from '@mui/material';
 
-function CustomNode({ data, isConnectable }) {
-  const handleComplete = () => {
-    if (data.toggleCompletion) { 
-      data.toggleCompletion(data.id);
-    }
-  };
+export default function CustomNode({ data, id }) {
 
-  const formatDateTime = (dateTimeStr) => {
-    if (!dateTimeStr) return '';
-    const date = new Date(dateTimeStr);
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '';
+    const date = new Date(dateStr);
     return date.toLocaleString('en-US', {
       year: 'numeric',
       month: 'numeric',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
+      day: 'numeric'
     });
   };
 
+  const handleComplete = async () => {
+    if (data.toggleCompletion) {
+      try {
+        data.toggleCompletion(id);
+        await fetch(`http://localhost:9000/api/nodes/${id}/complete`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            nid: id
+          }),
+        });
+      } catch (error) {
+        console.error('Error updating node:', error);
+      }
+    }
+  };
+
   return (
-    <div className={`custom-node ${data.completed ? 'completed' : ''}`}>
-      {/* Top Handles */}
-      <Handle
-        type="target"
-        position={Position.Top}
-        id="top-target"
-        isConnectable={isConnectable}
-      />
-      <Handle
-        type="source"
-        position={Position.Top}
-        id="top-source"
-        isConnectable={isConnectable}
-      />
-
-      {/* Left Handles */}
-      <Handle
-        type="target"
-        position={Position.Left}
-        id="left-target"
-        isConnectable={isConnectable}
-      />
-      <Handle
-        type="source"
-        position={Position.Left}
-        id="left-source"
-        isConnectable={isConnectable}
-      />
-
-      <div>
+    <div className={`customNode ${data.completed ? 'completed' : ''}`}
+      style={{
+        width: '11em',
+        backgroundColor: '#F5F5F5',
+        margin: '-1px',
+      }}>
+      <div
+        className="customNodeBody"
+        style={{
+          padding: '10px',
+          flexDirection: 'column',
+        }}
+      >
+        {/* Display the label for connection */}
         <div><strong>{data.name}</strong></div>
-        <Divider />
+        <Divider style={{ width: '110%', height: '1px', backgroundColor: 'black' }} />
+
         {data.description && (
           <div style={{ fontSize: '0.9em' }}>{data.description}</div>
         )}
-        {data.datetime && (
-          <div style={{ fontSize: '0.8em' }}>{formatDateTime(data.datetime)}</div>
+        {data.date && (
+          <div style={{ fontSize: '0.8em' }}>{formatDate(data.date)}</div>
         )}
-        <button 
-          onClick={handleComplete}
-          className="nodrag completion-button"
+        <button
+          className="nodrag edit-button"
+          onClick={data.onClick}
           style={{
-            marginTop: '8px',
-            padding: '4px 8px',
-            backgroundColor: data.completed ? '#00aa00' : '#666',
+            backgroundColor: '#333',
             color: 'white',
             border: 'none',
             borderRadius: '4px',
-            cursor: 'pointer'
+            cursor: 'pointer',
+            zIndex: '1000',
+          }}
+        >
+          Edit
+        </button>
+        <button
+          onClick={handleComplete}
+          className="nodrag completion-button"
+          style={{
+            marginTop: '3px',
+            padding: '8px',
+            backgroundColor: data.completed ? '#4CAF50' : '#666',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            zIndex: '1000',
           }}
         >
           {data.completed ? '✓ Completed' : 'Mark Complete'}
         </button>
+
+        {/* Connection handles */}
+        <Handle type="source" position={Position.Top} id="a" />
+        <Handle type="source" position={Position.Right} id="b" />
+        <Handle type="source" position={Position.Bottom} id="c" />
+        <Handle type="source" position={Position.Left} id="d" />
       </div>
-
-      {/* Right Handles */}
-      <Handle
-        type="target"
-        position={Position.Right}
-        id="right-target"
-        isConnectable={isConnectable}
-      />
-      <Handle
-        type="source"
-        position={Position.Right}
-        id="right-source"
-        isConnectable={isConnectable}
-      />
-
-      {/* Bottom Handles */}
-      <Handle
-        type="target"
-        position={Position.Bottom}
-        id="bottom-target"
-        isConnectable={isConnectable}
-      />
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        id="bottom-source"
-        isConnectable={isConnectable}
-      />
     </div>
   );
 }
-
-export default CustomNode;

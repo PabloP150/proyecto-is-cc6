@@ -48,4 +48,14 @@ edgesRoute.delete('/:id', async (req, res) => {
     }
 });
 
+edgesRoute.delete('/source/:id', async (req, res) => {
+    const { id: nid } = req.params;
+    try {
+        await EdgesModel.deleteEdgeBySource(nid);
+        res.status(200).json({ message: 'Edge deleted successfully' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 module.exports = edgesRoute;

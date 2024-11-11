@@ -36,8 +36,19 @@ const deleteEdge = (eid) => {
     return execQuery.execWriteCommand(query, params);
 };
 
+const deleteEdgeBySource = (nid) => {
+    const query = `
+    DELETE FROM [dbo].[Edges] WHERE sourceId = @nid
+    `;
+    const params = [
+        { name: 'nid', type: TYPES.UniqueIdentifier, value: nid }
+    ];
+    return execQuery.execWriteCommand(query, params);
+};
+
 module.exports = {
     addEdge,
     getEdgesByGroupId,
-    deleteEdge
+    deleteEdge,
+    deleteEdgeBySource
 };

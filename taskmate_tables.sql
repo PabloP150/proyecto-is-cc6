@@ -1,9 +1,16 @@
---DROP TABLE dbo.Users;
---DROP TABLE dbo.Groups;	NO BOTAR!!!
+--DROP TABLE dbo.Groups;	--NO BOTAR!!!
 --DROP TABLE dbo.UserGroups;
+--DROP TABLE dbo.Users;
 --DROP TABLE dbo.Tasks;
 --DROP TABLE dbo.Edges;
 --DROP TABLE dbo.Nodes;
+
+--TRUNCATE TABLE dbo.Groups;	--NO TRUNCAR!!!
+--TRUNCATE TABLE dbo.UserGroups;
+--TRUNCATE TABLE dbo.Users;
+--TRUNCATE TABLE dbo.Tasks;
+--TRUNCATE TABLE dbo.Edges;
+--TRUNCATE TABLE dbo.Nodes;
 
 CREATE TABLE dbo.Users (
     uid 		UNIQUEIDENTIFIER 	NOT NULL PRIMARY KEY,
@@ -41,7 +48,10 @@ CREATE TABLE dbo.Nodes (
 	gid			UNIQUEIDENTIFIER	NOT NULL,
 	name		VARCHAR(25)			NOT NULL,
 	description	VARCHAR(1000)		NOT NULL,
-	date		DATE		NOT NULL
+	date		DATE				NOT NULL,
+	completed	BIT					NOT NULL,
+	x_pos		FLOAT				NOT NULL,
+	y_pos		FLOAT				NOT NULL,
 	FOREIGN KEY (gid) REFERENCES dbo.Groups(gid)
 );
 
@@ -55,12 +65,13 @@ CREATE TABLE dbo.Edges (
     FOREIGN KEY (targetId) REFERENCES dbo.Nodes(nid)
 );
 
-select * from dbo.Tasks;
-select * from dbo.Users;
-select * from dbo.Nodes;
-select * from dbo.Edges;
-
 INSERT INTO dbo.Groups (gid, adminId, name)
 VALUES ('00000000-0000-0000-0000-000000000001', 
         'AAC12A42-25C8-4E18-9E4E-92F4E7094CDD', 
         'Test Group');
+
+select * from dbo.Users;
+select * from dbo.Tasks;
+select * from dbo.Nodes;
+select * from dbo.Edges;
+select * from dbo.Groups;
