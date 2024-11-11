@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useContext } from 'react';
 import {
   Box,
   Container,
@@ -7,10 +7,14 @@ import {
   Link,
   Typography,
   CssBaseline,
-  Paper
+  Paper,
+  IconButton,
+  InputAdornment
 } from '@mui/material';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { useNavigate } from 'react-router-dom';
+import { GroupContext } from './GroupContext';
+import { Visibility, VisibilityOff } from '@mui/icons-material';
 
 const theme = createTheme({
   palette: {
@@ -28,10 +32,20 @@ const theme = createTheme({
 function Login({ onLogin }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState('');
   const navigate = useNavigate();
+  const { setSelectedGroupId, setSelectedGroupName } = useContext(GroupContext);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError('');
+
+    if (!username || !password) {
+      setError('Por favor, complete todos los campos.');
+      return;
+    }
+
     try {
       const response = await fetch('http://localhost:9000/api/users/login', {
         method: 'POST',
@@ -43,19 +57,30 @@ function Login({ onLogin }) {
 
       if (response.ok) {
         const data = await response.json();
-        const userId = data.userId;
-        console.log('User ID on login:', userId);
+        const userId = data.uid;
         localStorage.setItem('userId', userId);
-        onLogin({ id: userId, name: username }); // Actualiza el estado del usuario en App.js
+        onLogin({ uid: userId, name: username });
+
+        // Obtener los grupos del usuario
+        const groupsResponse = await fetch(`http://localhost:9000/api/groups/user-groups?uid=${userId}`);
+        if (groupsResponse.ok) {
+          const groupsData = await groupsResponse.json();
+          if (groupsData.groups && groupsData.groups.length > 0) {
+            const firstGroup = groupsData.groups[0];
+            setSelectedGroupId(firstGroup.gid);
+            setSelectedGroupName(firstGroup.name);
+            localStorage.setItem('selectedGroupId', firstGroup.gid);
+            localStorage.setItem('selectedGroupName', firstGroup.name);
+          }
+        }
+
         navigate('/home');
       } else {
-        const errorData = await response.json();
-        console.error(errorData.error);
-        // Aquí podrías mostrar un mensaje de error al usuario
+        setError('Credenciales incorrectas');
       }
     } catch (error) {
       console.error('Error en la solicitud:', error);
-      // Aquí podrías mostrar un mensaje de error al usuario
+      setError('Error en la solicitud');
     }
   };
 
@@ -101,12 +126,29 @@ function Login({ onLogin }) {
                 fullWidth
                 name="password"
                 label="Password"
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 id="password"
                 autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        onClick={() => setShowPassword(!showPassword)}
+                        edge="end"
+                      >
+                        {showPassword ? <VisibilityOff /> : <Visibility />}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
               />
+              {error && (
+                <Typography color="error" variant="body2">
+                  {error}
+                </Typography>
+              )}
               <Button
                 type="submit"
                 fullWidth

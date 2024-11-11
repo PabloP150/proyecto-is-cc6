@@ -1,6 +1,14 @@
+<<<<<<< HEAD
 --DROP TABLE dbo.Groups;	--NO BOTAR!!!
 --DROP TABLE dbo.UserGroups;
 --DROP TABLE dbo.Users;
+=======
+--DROP TABLE dbo.UserGroups;
+--DROP TABLE dbo.Groups;
+--DROP TABLE dbo.Users;
+--DROP TABLE dbo.DeleteTask
+--DROP TABLE dbo.Complete
+>>>>>>> refs/remotes/origin/master
 --DROP TABLE dbo.Tasks;
 --DROP TABLE dbo.Edges;
 --DROP TABLE dbo.Nodes;
@@ -65,6 +73,7 @@ CREATE TABLE dbo.Edges (
     FOREIGN KEY (targetId) REFERENCES dbo.Nodes(nid)
 );
 
+<<<<<<< HEAD
 INSERT INTO dbo.Groups (gid, adminId, name)
 VALUES ('00000000-0000-0000-0000-000000000001', 
         'AAC12A42-25C8-4E18-9E4E-92F4E7094CDD', 
@@ -75,3 +84,42 @@ select * from dbo.Tasks;
 select * from dbo.Nodes;
 select * from dbo.Edges;
 select * from dbo.Groups;
+=======
+CREATE TABLE dbo.Complete(
+	tid			UNIQUEIDENTIFIER	NOT NULL	PRIMARY KEY,
+	gid			UNIQUEIDENTIFIER	NOT NULL,
+	name		VARCHAR(25)			NOT NULL,
+	description	VARCHAR(1000)		NOT NULL,
+	datetime	SMALLDATETIME		NOT NULL
+	FOREIGN KEY (gid) REFERENCES dbo.Groups(gid)
+);
+
+CREATE TABLE dbo.DeleteTask(
+	tid			UNIQUEIDENTIFIER	NOT NULL	PRIMARY KEY,
+	gid			UNIQUEIDENTIFIER	NOT NULL,
+	name		VARCHAR(25)			NOT NULL,
+	description	VARCHAR(1000)		NOT NULL,
+	datetime	SMALLDATETIME		NOT NULL
+	FOREIGN KEY (gid) REFERENCES dbo.Groups(gid)
+);
+
+select * from dbo.Complete;
+select * from dbo.UserGroups;
+select * from dbo.Groups;
+select * from dbo.DeleteTask;
+select * from dbo.Tasks;
+select * from dbo.Users;
+select * from dbo.Nodes;
+select * from dbo.Edges;
+
+
+INSERT INTO dbo.Groups (gid, adminId, name)
+VALUES ('00000000-0000-0000-0000-000000000001', 
+        'DAD8127A-10FF-4A21-AC73-5E83F5CE0F61', 
+        'Test Group');
+
+
+
+
+
+>>>>>>> refs/remotes/origin/master

@@ -3,8 +3,12 @@ const { v4: uuidv4 } = require('uuid');
 const TasksModel = require('./../models/tasks.model');
 
 tasksRoute.get('/', async (req, res) => {
+    const { gid } = req.query;
+    if (!gid) {
+        return res.status(400).json({ error: 'Group ID is required' });
+    }
     try {
-        const data = await TasksModel.getAllTasks();
+        const data = await TasksModel.getTasksByGroupId(gid);
         res.status(200).json({ data });
     } catch (error) {
         console.error("Error fetching tasks:", error);
@@ -64,6 +68,7 @@ tasksRoute.put('/:id', async (req, res) => {
         gid,
         name,
         description,
+        list,
         datetime
     } = req.body;
     TasksModel.updateTask({
@@ -71,6 +76,7 @@ tasksRoute.put('/:id', async (req, res) => {
         gid,
         name,
         description,
+        list,
         datetime
     })
     .then((rowCount, more) => {
@@ -96,6 +102,16 @@ tasksRoute.delete('/:id', async (req, res) => {
     .catch(error => {
         res.status(500).json({ error });
     });
+});
+
+tasksRoute.delete('/list/:gid/:list', async (req, res) => {
+    const { gid, list } = req.params;
+    try {
+        await TasksModel.deleteTasksByList(gid, list);
+        res.status(200).json({ message: 'Lista eliminada exitosamente' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
 });
 
 module.exports = tasksRoute;

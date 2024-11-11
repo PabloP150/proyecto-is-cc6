@@ -25,6 +25,12 @@ const getUserByUsername = (username) => {
     ];
     return execQuery.execReadCommand(query, params);
 };
+const getidUserByUsername = async (username) => {
+    const query = `SELECT uid FROM [dbo].[Users] WHERE username = @username`;
+    const params = [{ name: 'username', type: TYPES.VarChar, value: username }];
+    const result = await execQuery.execReadCommand(query, params);
+    return result.length > 0 ? result[0] : null;
+};
 
 const getidUser = async (uid) => {
     const query = `
@@ -41,4 +47,5 @@ module.exports = {
     addUser,
     getUserByUsername,
     getidUser,
+    getidUserByUsername,
 };

@@ -10,14 +10,27 @@ import Recordatorios from './components/Recordatorios';
 import Register from './components/Register';
 import CreateGroup from './components/CreateGroup';
 import Navbar from './components/Navbar'; // Asegúrate de tener este componente
+import GroupsView from './components/GroupsView';
+import { GroupProvider } from './components/GroupContext';
 
 function App() {
   const [user, setUser] = useState(null);
+  const [selectedGroupId, setSelectedGroupId] = useState(null);
+  const [selectedGroupName, setSelectedGroupName] = useState('');
 
   useEffect(() => {
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
+    const isFirstVisit = localStorage.getItem('isFirstVisit');
+
+    if (!isFirstVisit) {
+      // Si es la primera visita, elimina el usuario y establece la bandera
+      localStorage.removeItem('user');
+      localStorage.setItem('isFirstVisit', 'true');
+    } else {
+      // Si no es la primera visita, carga el usuario almacenado
+      const storedUser = localStorage.getItem('user');
+      if (storedUser) {
+        setUser(JSON.parse(storedUser));
+      }
     }
   }, []);
 
@@ -25,15 +38,21 @@ function App() {
     setUser(userData);
     localStorage.setItem('user', JSON.stringify(userData));
   };
+  
 
   const handleLogout = () => {
     setUser(null);
     localStorage.removeItem('user');
+    localStorage.removeItem('selectedGroupId');
+    setSelectedGroupId(null);
+    setSelectedGroupName('');
   };
 
   return (
-    <ReactFlowProvider>
-      <Router>
+    
+    <GroupProvider>
+      <ReactFlowProvider>
+        <Router>
         {user && <Navbar user={user} onLogout={handleLogout} />}
         <Routes>
           <Route path="/" element={user ? <Navigate to="/home" /> : <Login onLogin={handleLogin} />} />
@@ -62,9 +81,14 @@ function App() {
             path="/create-group" 
             element={user ? <CreateGroup /> : <Navigate to="/" />} 
           />
+          <Route 
+            path="/groups" 
+            element={user ? <GroupsView /> : <Navigate to="/" />} 
+          />
         </Routes>
       </Router>
-    </ReactFlowProvider>
+      </ReactFlowProvider>
+    </GroupProvider>
   );
 }
 

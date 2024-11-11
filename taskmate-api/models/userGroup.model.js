@@ -15,7 +15,20 @@ const addUserToGroup = (userGroupData) => {
   return execQuery.execWriteCommand(query, params);
 };
 
+const getMembersByGroupId = (gid) => {
+  const query = `
+  SELECT u.uid, u.username
+  FROM [dbo].[UserGroups] ug
+  JOIN [dbo].[Users] u ON ug.uid = u.uid
+  WHERE ug.gid = @gid`;
+  const params = [
+      { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
+  ];
+  return execQuery.execReadCommand(query, params);
+};
+
 module.exports = {
   addUserToGroup,
+  getMembersByGroupId,
 };
 
