@@ -28,43 +28,43 @@ export default function BarraLateral({ drawerOpen, setDrawerOpen, setFiltro }) {
       >
         <MUIList>
           <MUIListItem disablePadding>
-            <ListItemButton onClick={() => setFiltro('hoy')} sx={listItemButtonStyle}>
+            <ListItemButton onClick={() => setFiltro('today')} sx={listItemButtonStyle}>
               <ListItemIcon>
                 <TodayIcon sx={{ color: 'white' }} />
               </ListItemIcon>
-              <ListItemText primary="Hoy" />
+              <ListItemText primary="Today" />
             </ListItemButton>
           </MUIListItem>
           <MUIListItem disablePadding>
-            <ListItemButton onClick={() => setFiltro('mes')} sx={listItemButtonStyle}>
+            <ListItemButton onClick={() => setFiltro('month')} sx={listItemButtonStyle}>
               <ListItemIcon>
                 <EventNoteIcon sx={{ color: 'white' }} />
               </ListItemIcon>
-              <ListItemText primary="Este mes" />
+              <ListItemText primary="This Month" />
             </ListItemButton>
           </MUIListItem>
           <MUIListItem disablePadding>
-            <ListItemButton onClick={() => setFiltro('todos')} sx={listItemButtonStyle}>
+            <ListItemButton onClick={() => setFiltro('all')} sx={listItemButtonStyle}>
               <ListItemIcon>
                 <AssignmentIcon sx={{ color: 'white' }} />
               </ListItemIcon>
-              <ListItemText primary="Todos los recordatorios" />
+              <ListItemText primary="All Tasks" />
             </ListItemButton>
           </MUIListItem>
           <MUIListItem disablePadding>
-            <ListItemButton onClick={() => setFiltro('completados')} sx={listItemButtonStyle}>
+            <ListItemButton onClick={() => setFiltro('completed')} sx={listItemButtonStyle}>
               <ListItemIcon>
                 <CheckCircleIcon sx={{ color: 'white' }} />
               </ListItemIcon>
-              <ListItemText primary="Completados" />
+              <ListItemText primary="Completed" />
             </ListItemButton>
           </MUIListItem>
           <MUIListItem disablePadding>
-            <ListItemButton onClick={() => setFiltro('eliminados')} sx={listItemButtonStyle}>
+            <ListItemButton onClick={() => setFiltro('deleted')} sx={listItemButtonStyle}>
               <ListItemIcon>
                 <DeleteIcon sx={{ color: 'white' }} />
               </ListItemIcon>
-              <ListItemText primary="Eliminados" />
+              <ListItemText primary="Deleted" />
             </ListItemButton>
           </MUIListItem>
         </MUIList>

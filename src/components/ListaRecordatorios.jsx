@@ -24,19 +24,31 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
 
   const ordenarRecordatorios = (recordatorios) => {
     switch (orden) {
-      case 'fechaCreacion':
-        return [...recordatorios].sort((a, b) => new Date(a.datetime) - new Date(b.datetime));
-      case 'fechaLimite':
-        return [...recordatorios].sort((a, b) => new Date(a.fechaLimite) - new Date(b.fechaLimite));
-      case 'prioridad':
-        return [...recordatorios].sort((a, b) => a.prioridad - b.prioridad);
+      case 'CreationDate':
+        return [...recordatorios].sort((a, b) => {
+          const fechaA = new Date(a.datetime);
+          const fechaB = new Date(b.datetime);
+          return fechaA - fechaB;
+        });
+      case 'Deadline':
+        return [...recordatorios].sort((a, b) => {
+          const fechaA = new Date(a.fechaLimite);
+          const fechaB = new Date(b.fechaLimite);
+          return fechaA - fechaB;
+        });
+      case 'Priority':
+        return [...recordatorios].sort((a, b) => {
+          const fechaA = new Date(a.fechaLimite);
+          const fechaB = new Date(b.fechaLimite);
+          return fechaA - fechaB;
+        });
       default:
         return recordatorios;
     }
   };
 
   const formatearFecha = (datetime) => {
-    if (!datetime) return 'Fecha no disponible';
+    if (!datetime) return 'Date Not Available';
     const fecha = new Date(datetime);
     return `${fecha.toLocaleDateString()} ${fecha.toLocaleTimeString()}`;
   };
@@ -44,14 +56,14 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
   return (
     <>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
-        {filtro === 'completados' && (
+        {filtro === 'completed' && (
           <Box sx={{ marginLeft: 'auto' }}>
             <Button variant="contained" color="error" onClick={handleVaciarCompletados}>
               Empty Completed
             </Button>
           </Box>
         )}
-        {filtro === 'eliminados' && (
+        {filtro === 'deleted' && (
           <Box sx={{ marginLeft: 'auto' }}>
             <Button variant="contained" color="error" onClick={handleVaciarEliminados}>
               Empty Deleted
@@ -61,19 +73,20 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
       </Box>
 
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 3 }}>
-        {filtro !== 'completados' && filtro !== 'eliminados' && (
-          <IconButton onClick={handleClick} sx={{ color: 'white' }}>
-            <FilterListIcon />
-          </IconButton>
-        )}
+        <Typography sx={{ color: 'white', alignSelf: 'center', mr: 1 }}>
+          {orden === 'CreationDate' ? 'Creation Date' : orden === 'Deadline' ? 'Deadline' : 'Priority'}
+        </Typography>
+        <IconButton onClick={handleClick} sx={{ color: 'white' }}>
+          <FilterListIcon />
+        </IconButton>
         <Menu
           anchorEl={anchorEl}
           open={Boolean(anchorEl)}
           onClose={handleClose}
         >
-          <MenuItem onClick={() => handleMenuItemClick('fechaCreacion')}>Fecha de Creación</MenuItem>
-          <MenuItem onClick={() => handleMenuItemClick('fechaLimite')}>Fecha Límite</MenuItem>
-          <MenuItem onClick={() => handleMenuItemClick('prioridad')}>Prioridad</MenuItem>
+          <MenuItem onClick={() => handleMenuItemClick('CreationDate')}>Creation Date</MenuItem>
+          <MenuItem onClick={() => handleMenuItemClick('Deadline')}>Deadline</MenuItem>
+          <MenuItem onClick={() => handleMenuItemClick('Priority')}>Priority</MenuItem>
         </Menu>
       </Box>
 
@@ -83,7 +96,7 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
             <Box key={index} sx={{ mb: 2 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                 <Typography variant="h6" sx={{ color: blue[300] }}>{lista.nombre}</Typography>
-                {filtro !== 'completados' && filtro !== 'eliminados' && (
+                {filtro !== 'completed' && filtro !== 'deleted' && (
                   <IconButton 
                     onClick={() => handleEliminarLista(lista.nombre)}
                     sx={{ color: 'white', ml: 1 }}
@@ -107,16 +120,16 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
                       <ListItemText
                         primary={
                           <Typography sx={{ color: 'white', fontWeight: 'bold' }}>
-                            {recordatorio.name || 'Sin nombre'}
+                            {recordatorio.name || 'No name'}
                           </Typography>
                         }
                         secondary={
                           <Typography sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
-                            {`${recordatorio.description || 'Sin descripción'} - ${formatearFecha(recordatorio.datetime)}`}
+                            {`${recordatorio.description || 'No description'} - ${formatearFecha(recordatorio.datetime)}`}
                           </Typography>
                         }
                       />
-                      {filtro === 'eliminados' || filtro === 'completados' ? (
+                      {filtro === 'deleted' || filtro === 'completed' ? (
                         null
                       ) : (
                         <>

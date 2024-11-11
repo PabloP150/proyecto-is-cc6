@@ -306,7 +306,7 @@ export default function Recordatorios() {
 
   const filtrarRecordatorios = () => {
     switch (filtro) {
-      case 'hoy':
+      case 'today':
         const hoy = new Date();
         hoy.setHours(0, 0, 0, 0);
         return listas.map(lista => ({
@@ -316,7 +316,7 @@ export default function Recordatorios() {
             return fechaRecordatorio >= hoy && fechaRecordatorio < new Date(hoy.getTime() + 24 * 60 * 60 * 1000);
           })
         }));
-      case 'semana':
+      case 'week':
         const inicioSemana = new Date();
         inicioSemana.setHours(0, 0, 0, 0);
         inicioSemana.setDate(inicioSemana.getDate() - inicioSemana.getDay());
@@ -329,7 +329,7 @@ export default function Recordatorios() {
             return fechaRecordatorio >= inicioSemana && fechaRecordatorio < finSemana;
           })
         }));
-      case 'mes':
+      case 'month':
         const inicioMes = new Date();
         inicioMes.setDate(1);
         inicioMes.setHours(0, 0, 0, 0);
@@ -341,12 +341,12 @@ export default function Recordatorios() {
             return fechaRecordatorio >= inicioMes && fechaRecordatorio <= finMes;
           })
         }));
-      case 'todos':
+      case 'all':
         return listas;
-      case 'eliminados':
-        return [{ nombre: 'Eliminados', recordatorios: eliminados }];
-      case 'completados':
-        return [{ nombre: 'Completados', recordatorios: completados }];
+      case 'deleted':
+        return [{ nombre: 'Deleted', recordatorios: eliminados }];
+      case 'completed':
+        return [{ nombre: 'Completed', recordatorios: completados }];
       default:
         return listas;
     }
@@ -433,12 +433,12 @@ export default function Recordatorios() {
 
   const getSectionTitle = () => {
     switch (filtro) {
-      case 'hoy':
-        return 'Hoy';
-      case 'mes':
-        return 'Este Mes';
-      case 'todos':
-        return 'Todos los Recordatorios';
+      case 'today':
+        return 'Today';
+      case 'month':
+        return 'This Month';
+      case 'all':
+        return 'All Tasks';
     }
   };
 
@@ -528,7 +528,7 @@ export default function Recordatorios() {
           </Box>
 
           <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
-            {filtro !== 'completados' && filtro !== 'eliminados' && (
+            {filtro !== 'completed' && filtro !== 'deleted' && (
               <Button
                 variant="contained"
                 onClick={handleOpenLista}
@@ -541,7 +541,7 @@ export default function Recordatorios() {
             <Typography variant="h6" sx={{ color: 'white', alignSelf: 'center' }}>
               {getSectionTitle()}
             </Typography>
-            {filtro !== 'completados' && filtro !== 'eliminados' && (
+            {filtro !== 'completed' && filtro !== 'deleted' && (
               <Button
                 variant="contained"
                 onClick={handleOpenRecordatorio}

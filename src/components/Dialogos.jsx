@@ -43,13 +43,13 @@ export default function Dialogos({
           },
         }}
       >
-        <DialogTitle sx={{ color: 'white' }}>Agregar Nueva Lista</DialogTitle>
+        <DialogTitle sx={{ color: 'white' }}>Add New List</DialogTitle>
         <DialogContent>
           <TextField
             autoFocus
             margin="dense"
             id="nombreLista"
-            label="Nombre de la Lista"
+            label="List Name"
             type="text"
             fullWidth
             value={nombreLista}
@@ -58,8 +58,8 @@ export default function Dialogos({
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseLista} sx={{ color: 'white' }}>CANCELAR</Button>
-          <Button onClick={handleCreateList} sx={{ color: 'white' }}>AGREGAR</Button>
+          <Button onClick={handleCloseLista} sx={{ color: 'white' }}>CANCEL</Button>
+          <Button onClick={handleCreateList} sx={{ color: 'white' }}>ADD</Button>
         </DialogActions>
       </Dialog>
 
@@ -73,7 +73,7 @@ export default function Dialogos({
           },
         }}
       >
-        <DialogTitle sx={{ color: 'white' }}>Agregar Recordatorio</DialogTitle>
+        <DialogTitle sx={{ color: 'white' }}>Add Task</DialogTitle>
         <DialogContent>
           <Box component="form" onSubmit={handleSubmitRecordatorio} noValidate>
             <TextField
@@ -81,7 +81,7 @@ export default function Dialogos({
               required
               fullWidth
               id="nombre"
-              label="Nombre"
+              label="Task Name"
               name="nombre"
               value={nombre}
               onChange={(e) => setNombre(e.target.value)}
@@ -93,7 +93,7 @@ export default function Dialogos({
               required
               fullWidth
               id="descripcion"
-              label="Descripción"
+              label="Description"
               name="descripcion"
               value={descripcion}
               onChange={(e) => setDescripcion(e.target.value)}
@@ -105,7 +105,7 @@ export default function Dialogos({
               required
               fullWidth
               id="fecha"
-              label="Fecha Final"
+              label="Deadline"
               type="date"
               InputLabelProps={{
                 shrink: true,
@@ -118,7 +118,7 @@ export default function Dialogos({
               margin="normal"
               fullWidth
               id="hora"
-              label="Hora (opcional)"
+              label="Time"
               type="time"
               InputLabelProps={{
                 shrink: true,
@@ -132,7 +132,7 @@ export default function Dialogos({
               required
               fullWidth
               id="listaSeleccionada"
-              label="Seleccionar Lista"
+              label="Select List"
               select
               value={listaSeleccionada}
               onChange={(e) => setListaSeleccionada(e.target.value)}
@@ -147,9 +147,9 @@ export default function Dialogos({
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseRecordatorio} sx={{ color: 'white' }}>Cancelar</Button>
+          <Button onClick={handleCloseRecordatorio} sx={{ color: 'white' }}>CANCEL</Button>
           <Button type="submit" onClick={handleSubmitRecordatorio} variant="contained" sx={{ backgroundColor: blue[600] }}>
-            Agregar
+            ADD
           </Button>
         </DialogActions>
       </Dialog>
@@ -160,14 +160,14 @@ export default function Dialogos({
             backgroundColor: '#333333', // Color gris oscuro
           },
         }}>
-        <DialogTitle sx={{ color: 'white' }}>Editar Recordatorio</DialogTitle>
+        <DialogTitle sx={{ color: 'white' }}>Edit Task</DialogTitle>
         <DialogContent>
           <TextField
             margin="normal"
             required
             fullWidth
             id="nombreEditar"
-            label="Nombre"
+            label="Task Name"
             type="text"
             value={recordatorioEditar?.name || ''}
             onChange={(e) => setRecordatorioEditar({ ...recordatorioEditar, name: e.target.value })}
@@ -179,7 +179,7 @@ export default function Dialogos({
             required
             fullWidth
             id="descripcionEditar"
-            label="Descripción"
+            label="Description"
             type="text"
             value={recordatorioEditar?.description || ''}
             onChange={(e) => setRecordatorioEditar({ ...recordatorioEditar, description: e.target.value })}
@@ -191,7 +191,7 @@ export default function Dialogos({
             required
             fullWidth
             id="fechaEditar"
-            label="Fecha"
+            label="Date"
             type="date"
             value={recordatorioEditar?.datetime.split('T')[0] || ''}
             onChange={(e) => setRecordatorioEditar({ ...recordatorioEditar, datetime: e.target.value })}
@@ -202,7 +202,7 @@ export default function Dialogos({
             required
             fullWidth
             id="horaEditar"
-            label="Hora"
+            label="Time"
             type="time"
             value={recordatorioEditar?.datetime ? new Date(recordatorioEditar.datetime).toLocaleTimeString('it-IT').substring(0, 5) : ''}
             onChange={(e) => {
@@ -220,7 +220,7 @@ export default function Dialogos({
             required
             fullWidth
             id="listaSeleccionadaEditar"
-            label="Seleccionar Lista"
+            label="Select List"
             select
             value={recordatorioEditar?.list || ''}
             onChange={(e) => {
@@ -237,8 +237,8 @@ export default function Dialogos({
           </TextField>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseEditar} sx={{ color: 'white' }}>Cancelar</Button>
-          <Button onClick={handleSubmitEditar} sx={{ color: 'white' }}>Actualizar</Button>
+          <Button onClick={handleCloseEditar} sx={{ color: 'white' }}>CANCEL</Button>
+          <Button onClick={handleSubmitEditar} sx={{ color: 'white' }}>UPDATE</Button>
         </DialogActions>
       </Dialog>
     </>
