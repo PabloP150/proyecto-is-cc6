@@ -1,13 +1,12 @@
 import React, { useState } from 'react';
-import { List, ListItem, ListItemText, IconButton, Box, Typography, Menu, MenuItem } from '@mui/material';
+import { List, ListItem, ListItemText, IconButton, Box, Typography, Menu, MenuItem, Button } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import RestoreIcon from '@mui/icons-material/Restore';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import EditIcon from '@mui/icons-material/Edit';
 import { blue } from '@mui/material/colors';
 
-export default function ListaRecordatorios({ listas, handleEliminar, handleCompletar, handleEditar, orden, setOrden, filtro, handleRestaurar, handleEliminarLista }) {
+export default function ListaRecordatorios({ listas, handleEliminar, handleCompletar, handleEditar, filtro, handleEliminarLista, orden, setOrden, handleVaciarCompletados, handleVaciarEliminados }) {
   const [anchorEl, setAnchorEl] = useState(null);
 
   const handleClick = (event) => {
@@ -26,7 +25,6 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
   const ordenarRecordatorios = (recordatorios) => {
     switch (orden) {
       case 'fechaCreacion':
-        return recordatorios.sort((a, b) => new Date(a.datetime) - new Date(b.datetime));
       case 'fechaLimite':
         return recordatorios.sort((a, b) => new Date(a.datetime) - new Date(b.datetime));
       case 'prioridad':
@@ -44,10 +42,29 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
 
   return (
     <>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
+        {filtro === 'completados' && (
+          <Box sx={{ marginLeft: 'auto' }}>
+            <Button variant="contained" color="error" onClick={handleVaciarCompletados}>
+              Empty Completed
+            </Button>
+          </Box>
+        )}
+        {filtro === 'eliminados' && (
+          <Box sx={{ marginLeft: 'auto' }}>
+            <Button variant="contained" color="error" onClick={handleVaciarEliminados}>
+              Empty Deleted
+            </Button>
+          </Box>
+        )}
+      </Box>
+
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 3 }}>
-        <IconButton onClick={handleClick} sx={{ color: 'white' }}>
-          <FilterListIcon />
-        </IconButton>
+        {filtro !== 'completados' && filtro !== 'eliminados' && (
+          <IconButton onClick={handleClick} sx={{ color: 'white' }}>
+            <FilterListIcon />
+          </IconButton>
+        )}
         <Menu
           anchorEl={anchorEl}
           open={Boolean(anchorEl)}
@@ -65,12 +82,14 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
             <Box key={index} sx={{ mb: 2 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                 <Typography variant="h6" sx={{ color: blue[300] }}>{lista.nombre}</Typography>
-                <IconButton 
-                  onClick={() => handleEliminarLista(lista.nombre)}
-                  sx={{ color: 'white', ml: 1 }}
-                >
-                  <DeleteIcon />
-                </IconButton>
+                {filtro !== 'completados' && filtro !== 'eliminados' && (
+                  <IconButton 
+                    onClick={() => handleEliminarLista(lista.nombre)}
+                    sx={{ color: 'white', ml: 1 }}
+                  >
+                    <DeleteIcon />
+                  </IconButton>
+                )}
               </Box>
               <List>
                 {lista.recordatorios && lista.recordatorios.length > 0 ? (
@@ -96,20 +115,13 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
                           </Typography>
                         }
                       />
-                      <IconButton 
-                        edge="end" 
-                        aria-label="edit" 
-                        onClick={() => handleEditar(lista.nombre, idx)} 
-                        sx={{ color: 'white' }}
-                      >
-                        <EditIcon />
-                      </IconButton>
                       {filtro === 'eliminados' || filtro === 'completados' ? (
-                        <IconButton edge="end" aria-label="restore" onClick={(e) => { e.stopPropagation(); handleRestaurar(lista.nombre, idx); }} sx={{ color: 'white' }}>
-                          <RestoreIcon />
-                        </IconButton>
+                        null
                       ) : (
                         <>
+                          <IconButton edge="end" aria-label="edit" onClick={(e) => { e.stopPropagation(); handleEditar(lista.nombre, idx); }} sx={{ color: 'white' }}>
+                            <EditIcon />
+                          </IconButton>
                           <IconButton edge="end" aria-label="complete" onClick={(e) => { e.stopPropagation(); handleCompletar(lista.nombre, idx); }} sx={{ color: 'white' }}>
                             <CheckCircleIcon />
                           </IconButton>
@@ -122,7 +134,7 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
                   ))
                 ) : (
                   <ListItem>
-                    <ListItemText primary={<Typography sx={{ color: 'white' }}>There are no tasks yet</Typography>} />
+                    <ListItemText primary={<Typography sx={{ color: 'white', textAlign: 'center', width: '100%' }}>There are no tasks yet</Typography>} />
                   </ListItem>
                 )}
               </List>
@@ -130,7 +142,7 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
           ))
         ) : (
           <ListItem>
-            <ListItemText primary={<Typography sx={{ color: 'white' }}>Agrega tu lista para comenzar</Typography>} />
+            <ListItemText primary={<Typography sx={{ color: 'white', textAlign: 'center', width: '100%' }}>Add a list to start</Typography>} />
           </ListItem>
         )}
       </List>

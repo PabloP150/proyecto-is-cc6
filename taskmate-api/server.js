@@ -6,7 +6,8 @@ const userController = require('./controllers/user.controller');
 const nodesController = require('./controllers/nodes.controller');
 const groupController = require('./controllers/group.controller');
 const edgesController = require('./controllers/edges.controller');
-
+const completeController = require('./controllers/complete.controller');
+const deleteController = require('./controllers/delete.controller');
 dotenv.config();
 
 const {
@@ -28,7 +29,8 @@ app.use('/api/users', userController);
 app.use('/api/nodes', nodesController);
 app.use('/api/groups', groupController);
 app.use('/api/edges', edgesController);
-
+app.use('/api/completados', completeController);
+app.use('/api/delete', deleteController);
 app.listen(API_PORT, () => {
     console.log(`API running on PORT ${API_PORT}`);
 });

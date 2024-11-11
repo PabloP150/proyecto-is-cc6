@@ -8,14 +8,13 @@ import {
   Typography,
   CssBaseline,
 } from '@mui/material';
-import { blue} from '@mui/material/colors';
+import { blue } from '@mui/material/colors';
 import React, { useState, useEffect, useContext, useCallback } from 'react';
 import BarraLateral from './BarraLateral';
 import Dialogos from './Dialogos';
 import ListaRecordatorios from './ListaRecordatorios';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { GroupContext } from './GroupContext'; // Importa el contexto
-
 
 const theme = createTheme({
   palette: {
@@ -68,6 +67,38 @@ export default function Recordatorios() {
     }
   }, [selectedGroupId]);
 
+  const cargarCompletados = useCallback(async () => {
+    if (!selectedGroupId) return;
+
+    try {
+      const response = await fetch(`http://localhost:9000/api/completados/${selectedGroupId}`);
+      if (response.ok) {
+        const data = await response.json();
+        setCompletados(data.data);
+      } else {
+        console.error('Error al cargar las tareas completadas:', response.status, response.statusText);
+      }
+    } catch (error) {
+      console.error('Error en la solicitud:', error);
+    }
+  }, [selectedGroupId]);
+
+  const cargarEliminados = useCallback(async () => {
+    if (!selectedGroupId) return;
+
+    try {
+      const response = await fetch(`http://localhost:9000/api/delete/${selectedGroupId}`);
+      if (response.ok) {
+        const data = await response.json();
+        setEliminados(data.data);
+      } else {
+        console.error('Error al cargar los eliminados:', response.status, response.statusText);
+      }
+    } catch (error) {
+      console.error('Error en la solicitud:', error);
+    }
+  }, [selectedGroupId]);
+
   useEffect(() => {
     const storedGroupId = localStorage.getItem('selectedGroupId');
     const storedGroupName = localStorage.getItem('selectedGroupName');
@@ -78,7 +109,12 @@ export default function Recordatorios() {
     }
 
     cargarTareas();
-  }, [setSelectedGroupId, setSelectedGroupName, cargarTareas]);
+    cargarCompletados(); // Asegúrate de cargar completados al iniciar
+
+    if (filtro === 'eliminados') {
+      cargarEliminados(); // Cargar eliminados si el filtro es 'eliminados'
+    }
+  }, [setSelectedGroupId, setSelectedGroupName, cargarTareas, cargarCompletados, cargarEliminados, filtro]);
 
   const organizarTareasEnListas = (tareas) => {
     const listasTemp = {};
@@ -191,20 +227,73 @@ export default function Recordatorios() {
     }
   };
 
-  const handleEliminar = (listaNombre, idx) => {
+  const handleEliminar = async (listaNombre, idx) => {
     const listaActual = listas.find(lista => lista.nombre === listaNombre);
-    const recordatorioEliminado = listaActual.recordatorios.splice(idx, 1)[0];
-    recordatorioEliminado.listaOriginal = listaNombre; // Agregar lista original
-    setEliminados([...eliminados, recordatorioEliminado]);
-    setListas([...listas]);
+    const recordatorioEliminado = listaActual.recordatorios[idx];
+
+    try {
+      // Llamar a la API para eliminar la tarea
+      const response = await fetch(`http://localhost:9000/api/tasks/${recordatorioEliminado.tid}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        // Llamar a la API para agregar a la lista de eliminados
+        const eliminarResponse = await fetch('http://localhost:9000/api/delete', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(recordatorioEliminado),
+        });
+
+        if (eliminarResponse.ok) {
+          listaActual.recordatorios.splice(idx, 1);
+          setListas([...listas]);
+          cargarCompletados(); // Opcional: cargar completados si es necesario
+        } else {
+          console.error('Error al agregar a eliminados');
+        }
+      } else {
+        console.error('Error al eliminar la tarea');
+      }
+    } catch (error) {
+      console.error('Error en la solicitud:', error);
+    }
   };
 
-  const handleCompletar = (listaNombre, idx) => {
+  const handleCompletar = async (listaNombre, idx) => {
     const listaActual = listas.find(lista => lista.nombre === listaNombre);
-    const recordatorioCompletado = listaActual.recordatorios.splice(idx, 1)[0];
-    recordatorioCompletado.listaOriginal = listaNombre; // Agregar lista original
-    setCompletados([...completados, recordatorioCompletado]);
-    setListas([...listas]);
+    const recordatorioCompletado = listaActual.recordatorios[idx];
+
+    try {
+      const response = await fetch(`http://localhost:9000/api/tasks/${recordatorioCompletado.tid}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        const completarResponse = await fetch('http://localhost:9000/api/completados', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(recordatorioCompletado),
+        });
+
+        if (completarResponse.ok) {
+          setCompletados(prevCompletados => [...prevCompletados, recordatorioCompletado]);
+          listaActual.recordatorios.splice(idx, 1);
+          setListas([...listas]);
+          cargarCompletados();
+        } else {
+          console.error('Error al agregar a completados');
+        }
+      } else {
+        console.error('Error al eliminar la tarea');
+      }
+    } catch (error) {
+      console.error('Error en la solicitud:', error);
+    }
   };
 
   const handleEditar = (nombre, idx) => {
@@ -260,22 +349,6 @@ export default function Recordatorios() {
         return [{ nombre: 'Completados', recordatorios: completados }];
       default:
         return listas;
-    }
-  };
-
-  const handleRestaurar = (nombreLista, idx) => {
-    const recordatorio = filtro === 'eliminados' ? eliminados[idx] : completados[idx];
-    const listaOriginal = listas.find(lista => lista.nombre === recordatorio.listaOriginal);
-
-    if (listaOriginal) {
-      listaOriginal.recordatorios.push(recordatorio);
-      setListas([...listas]);
-
-      if (filtro === 'eliminados') {
-        setEliminados(eliminados.filter((_, i) => i !== idx));
-      } else {
-        setCompletados(completados.filter((_, i) => i !== idx));
-      }
     }
   };
 
@@ -358,6 +431,51 @@ export default function Recordatorios() {
     setRecordatorioEditar(null);
   };
 
+  const getSectionTitle = () => {
+    switch (filtro) {
+      case 'hoy':
+        return 'Hoy';
+      case 'mes':
+        return 'Este Mes';
+      case 'todos':
+        return 'Todos los Recordatorios';
+    }
+  };
+
+  const handleVaciarEliminados = async () => {
+    const gid = localStorage.getItem('selectedGroupId');
+    if (!gid) {
+      console.error('No hay grupo seleccionado');
+      return;
+    }
+
+    try {
+      await fetch(`http://localhost:9000/api/delete/${gid}`, {
+        method: 'DELETE',
+      });
+      setEliminados([]); // Vaciar el estado de eliminados
+    } catch (error) {
+      console.error('Error al vaciar los eliminados:', error);
+    }
+  };
+
+  const handleVaciarCompletados = async () => {
+    const gid = localStorage.getItem('selectedGroupId');
+    if (!gid) {
+      console.error('No hay grupo seleccionado');
+      return;
+    }
+
+    try {
+      await fetch(`http://localhost:9000/api/completados/${gid}`, {
+        method: 'DELETE',
+      });
+      setCompletados([]); // Vaciar el estado de completados
+    } catch (error) {
+      console.error('Error al vaciar los completados:', error);
+    }
+  };
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
@@ -410,22 +528,29 @@ export default function Recordatorios() {
           </Box>
 
           <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
-            <Button
-              variant="contained"
-              onClick={handleOpenLista}
-              sx={{ backgroundColor: blue[700], color: 'white', borderRadius: 50, '&:hover': { backgroundColor: blue[800] } }}
-              startIcon={<AddIcon />}
-            >
-              Add List
-            </Button>
-            <Button
-              variant="contained"
-              onClick={handleOpenRecordatorio}
-              sx={{ backgroundColor: blue[700], color: 'white', borderRadius: 50, '&:hover': { backgroundColor: blue[800] } }}
-              startIcon={<AddIcon />}
-            >
-              Add Task
-            </Button>
+            {filtro !== 'completados' && filtro !== 'eliminados' && (
+              <Button
+                variant="contained"
+                onClick={handleOpenLista}
+                sx={{ backgroundColor: blue[700], color: 'white', borderRadius: 50, '&:hover': { backgroundColor: blue[800] } }}
+                startIcon={<AddIcon />}
+              >
+                Add List
+              </Button>
+            )}
+            <Typography variant="h6" sx={{ color: 'white', alignSelf: 'center' }}>
+              {getSectionTitle()}
+            </Typography>
+            {filtro !== 'completados' && filtro !== 'eliminados' && (
+              <Button
+                variant="contained"
+                onClick={handleOpenRecordatorio}
+                sx={{ backgroundColor: blue[700], color: 'white', borderRadius: 50, '&:hover': { backgroundColor: blue[800] } }}
+                startIcon={<AddIcon />}
+              >
+                Add Task
+              </Button>
+            )}
           </Box>
 
           <Box sx={{ flexGrow: 1, overflow: 'auto' }}>
@@ -437,9 +562,10 @@ export default function Recordatorios() {
               orden={orden}
               setOrden={setOrden}
               filtro={filtro}
-              handleRestaurar={handleRestaurar}
               handleEliminarLista={handleEliminarLista}
               sx={{ color: 'white' }}
+              handleVaciarCompletados={handleVaciarCompletados}
+              handleVaciarEliminados={handleVaciarEliminados}
             />
           </Box>
 
