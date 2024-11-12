@@ -167,6 +167,7 @@ export default function Recordatorios() {
       description: descripcion, 
       list: listaSeleccionada, 
       datetime: fechaCompleta,
+      percentage: 0,
     };
 
     try {
@@ -394,6 +395,7 @@ export default function Recordatorios() {
           description: recordatorioEditar.description,
           list: recordatorioEditar.list,
           datetime: recordatorioEditar.datetime,
+          percentage: recordatorioEditar.percentage,
         }),
       });
 
