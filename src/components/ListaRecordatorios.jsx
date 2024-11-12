@@ -138,7 +138,7 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
                         null
                       ) : (
                         <>
-                          <SeleccionarPersona onSelect={(member) => console.log(`Selected: ${member.name}`)} />
+                          <SeleccionarPersona tid={recordatorio.tid}/>
                           <IconButton edge="end" aria-label="edit" onClick={(e) => { e.stopPropagation(); handleEditar(lista.nombre, idx); }} sx={{ color: 'white' }}>
                             <EditIcon />
                           </IconButton>

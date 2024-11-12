@@ -1,11 +1,14 @@
---DROP TABLE dbo.UserGroups;
---DROP TABLE dbo.Groups		--NO BOTAR!!!
---DROP TABLE dbo.Users;
---DROP TABLE dbo.DeleteTask
---DROP TABLE dbo.Complete
---DROP TABLE dbo.Tasks;
---DROP TABLE dbo.Edges;
---DROP TABLE dbo.Nodes;
+DROP TABLE dbo.UserGroups;
+DROP TABLE dbo.UserTask;
+DROP TABLE dbo.DeleteTask
+DROP TABLE dbo.Complete
+DROP TABLE dbo.Tasks;
+DROP TABLE dbo.Edges;
+DROP TABLE dbo.Nodes;
+DROP TABLE dbo.Groups		
+DROP TABLE dbo.Users;
+DROP TABLE dbo.UserTask;
+
 
 --TRUNCATE TABLE dbo.Groups;	--NO TRUNCAR!!!
 --TRUNCATE TABLE dbo.UserGroups;
@@ -40,9 +43,20 @@ CREATE TABLE dbo.Tasks (
 	gid			UNIQUEIDENTIFIER	NOT NULL,
 	name		VARCHAR(25)			NOT NULL,
 	description	VARCHAR(1000)		NOT NULL,
-	list		VARCHAR(25),
-	datetime	SMALLDATETIME		NOT NULL
+	list		VARCHAR(25)			NOT NULL,
+	datetime	SMALLDATETIME		NOT NULL,
+	percentage	INT CHECK(percentage BETWEEN 0 AND 100),
 	FOREIGN KEY (gid) REFERENCES dbo.Groups(gid)
+);
+
+CREATE TABLE dbo.UserTask(
+	utid	UNIQUEIDENTIFIER	NOT NULL,
+	uid		UNIQUEIDENTIFIER	NOT NULL,
+	tid		UNIQUEIDENTIFIER	NOT NULL,
+	completed	BIT				NOT NULL,
+	PRIMARY KEY (uid, tid),
+	FOREIGN KEY (tid) REFERENCES dbo.Tasks,
+	FOREIGN KEY (uid) REFERENCES dbo.Users
 );
 
 CREATE TABLE dbo.Nodes (
@@ -72,6 +86,7 @@ CREATE TABLE dbo.Complete(
 	gid			UNIQUEIDENTIFIER	NOT NULL,
 	name		VARCHAR(25)			NOT NULL,
 	description	VARCHAR(1000)		NOT NULL,
+	percentage	INT CHECK(percentage BETWEEN 0 AND 100),
 	datetime	SMALLDATETIME		NOT NULL
 	FOREIGN KEY (gid) REFERENCES dbo.Groups(gid)
 );
@@ -91,14 +106,14 @@ VALUES ('00000000-0000-0000-0000-000000000001',
         'Test Group'
 		);
 
-select * from dbo.DeleteTask;
 select * from dbo.Complete;
 select * from dbo.UserGroups;
 select * from dbo.Groups;
 select * from dbo.Users;
+select * from dbo.UserTask;
+select * from dbo.Tasks;
 select * from dbo.DeleteTask;
 select * from dbo.Users;
-select * from dbo.Tasks;
 select * from dbo.Nodes;
 select * from dbo.Edges;
 
