@@ -4,6 +4,7 @@
 --DROP TABLE dbo.DeleteTask
 --DROP TABLE dbo.Complete
 --DROP TABLE dbo.Tasks;
+--DROP TABLE dbo.UserTask;
 --DROP TABLE dbo.Edges;
 --DROP TABLE dbo.Nodes;
 
@@ -45,6 +46,16 @@ CREATE TABLE dbo.Tasks (
 	list		VARCHAR(25),
 	datetime	SMALLDATETIME		NOT NULL
 	FOREIGN KEY (gid) REFERENCES dbo.Groups(gid)
+);
+
+CREATE TABLE dbo.UserTask(
+utid			UNIQUEIDENTIFIER	NOT NULL,
+uid				UNIQUEIDENTIFIER	NOT NULL,
+tid				UNIQUEIDENTIFIER	NOT NULL,
+completed		BIT					NOT NULL,
+PRIMARY KEY (uid, tid),
+FOREIGN KEY (tid) REFERENCES dbo.Tasks,
+FOREIGN KEY (uid) REFERENCES dbo.Users
 );
 
 CREATE TABLE dbo.Nodes (

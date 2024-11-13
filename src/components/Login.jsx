@@ -157,9 +157,6 @@ function Login({ onLogin }) {
               >
                 SIGN IN
               </Button>
-              <Link href="#" variant="body2" align="center" display="block">
-                Forgot password?
-              </Link>
               <Link href="/register" variant="body2" align="center" display="block" sx={{ mt: 2 }}>
                 Don't have an account? Register here.
               </Link>
