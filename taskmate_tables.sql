@@ -3,6 +3,7 @@
 --DROP TABLE dbo.DeleteTask
 --DROP TABLE dbo.Complete
 --DROP TABLE dbo.Tasks;
+--DROP TABLE dbo.UserTask;
 --DROP TABLE dbo.Edges;
 --DROP TABLE dbo.Nodes;
 --DROP TABLE dbo.Groups		
