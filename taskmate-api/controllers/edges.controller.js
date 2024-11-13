@@ -13,7 +13,7 @@ edgesRoute.post('/', async (req, res) => {
             sourceId,
             targetId
         });
-        
+
         res.status(200).json({
             data: {
                 eid,
@@ -25,6 +25,30 @@ edgesRoute.post('/', async (req, res) => {
     } catch (error) {
         console.error("Error adding edge:", error);
         res.status(500).json({ error: error.message || "An error occurred" });
+    }
+});
+
+edgesRoute.get('/:eid', async (req, res) => {
+    const { eid } = req.params;
+    try {
+        const data = await EdgesModel.getEdgesById(eid);
+        res.status(200).json({ data });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+edgesRoute.put('/:eid', async (req, res) => {
+    const { eid } = req.params;
+    const { prerequisite } = req.body;
+    try {
+        await EdgesModel.updatePrerequisite({
+            eid,
+            prerequisite
+        });
+        res.status(200).json({ message: 'Edge prerequisite updated successfully' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
     }
 });
 

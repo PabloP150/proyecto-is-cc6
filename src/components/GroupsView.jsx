@@ -20,8 +20,6 @@ function GroupsView() {
   const [newGroupName, setNewGroupName] = useState('');
   const [openAddUser, setOpenAddUser] = useState(false);
   const [newUsername, setNewUsername] = useState('');
-  const [openDeleteUser, setOpenDeleteUser] = useState(false);
-  const [usernameToDelete, setUsernameToDelete] = useState('');
   const { selectedGroupId, setSelectedGroupId, setSelectedGroupName } = useContext(GroupContext);
 
   const cargarGrupos = useCallback(async () => {
@@ -102,7 +100,6 @@ function GroupsView() {
     } catch (error) {
       console.error('Error en la solicitud:', error);
     }
-    setNewGroupName('');
   };
 
   const handleAddUserToGroup = async () => {
@@ -138,7 +135,6 @@ function GroupsView() {
         console.log('User added successfully');
         setOpenAddUser(false);
         handleGroupClick(selectedGroup); // Refresh members
-        setNewUsername('');
       } else {
         const errorData = await response.json();
         console.error(errorData.error);
@@ -151,132 +147,6 @@ function GroupsView() {
   const handleUseGroup = (group) => {
     setSelectedGroupId(group.gid);
     console.log(`Using group: ${group.name} with gid: ${group.gid}`);
-  };
-
-  const handleDeleteUser = async () => {
-    const userId = localStorage.getItem('userId');
-    if (!userId) {
-      console.error('User ID is not available');
-      return;
-    }
-
-    try {
-      console.log('Username to delete:', usernameToDelete);
-
-      const userResponse = await fetch(`http://localhost:9000/api/users/getuid?username=${usernameToDelete}`);
-      if (!userResponse.ok) {
-        const errorData = await userResponse.json();
-        console.error(errorData.error);
-        return;
-      }
-
-      const userData = await userResponse.json();
-      const uid = userData.uid;
-
-      console.log('UID obtained for user:', uid, selectedGroup.gid);
-
-      const response = await fetch(`http://localhost:9000/api/groups/remove-member`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ uid, gid: selectedGroup.gid }),
-      });
-
-      if (response.ok) {
-        console.log(`User ${usernameToDelete} deleted successfully`);
-        // Actualiza la lista de miembros
-        fetch(`http://localhost:9000/api/groups/${selectedGroup.gid}/members`)
-          .then(response => response.json())
-          .then(data => setMembers(data.members))
-          .catch(error => console.error('Error loading members:', error));
-      } else {
-        const errorData = await response.json();
-        console.error('Error deleting user:', errorData.error);
-      }
-    } catch (error) {
-      console.error('Error in request:', error);
-    }
-
-    setOpenDeleteUser(false);
-    setUsernameToDelete('');
-  };
-
-  const handleLeaveGroup = async () => {
-    const userId = localStorage.getItem('userId');
-    console.log(userId);
-    if (!userId) {
-      console.error('User ID is not available');
-      return;
-    }
-
-    try {
-      const response = await fetch(`http://localhost:9000/api/groups/leave`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ uid: userId, gid: selectedGroup.gid }),
-      });
-
-      if (response.ok) {
-        console.log('User left group successfully');
-        fetch(`http://localhost:9000/api/groups/${selectedGroup.gid}/members`)
-          .then(response => response.json())
-          .then(data => setMembers(data.members))
-          .catch(error => console.error('Error loading members:', error));
-      } else {
-        const errorData = await response.json();
-        console.error('Error leaving group:', errorData.error);
-      }
-    } catch (error) {
-      console.error('Error in request:', error);
-    }
-  };
-
-  const handleDeleteGroup = async () => {
-    const userId = localStorage.getItem('userId');
-    if (!userId) {
-      console.error('User ID is not available');
-      return;
-    }
-
-    try {
-      // Primero, elimina al grupo de la tabla UserGroup
-      const userGroupResponse = await fetch(`http://localhost:9000/api/groups/leave`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ uid: userId, gid: selectedGroup.gid }), // Enviar el GID del grupo
-      });
-
-      if (!userGroupResponse.ok) {
-        const errorData = await userGroupResponse.json();
-        console.error('Error removing group from UserGroup:', errorData.error);
-        return;
-      }
-
-      // Luego, elimina el grupo de la tabla principal
-      const groupResponse = await fetch(`http://localhost:9000/api/groups/delete`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ gid: selectedGroup.gid, adminId: userId }), // Enviar el GID del grupo y el ID del administrador 
-      });
-
-      if (groupResponse.ok) {
-        console.log('Group deleted successfully');
-        await cargarGrupos(); // Actualiza la lista de grupos
-        setSelectedGroup(null); // Restablece el grupo seleccionado
-      } else {
-        const errorData = await groupResponse.json();
-        console.error('Error deleting group:', errorData.error);
-      }
-    } catch (error) {
-      console.error('Error in request:', error);
-    }
   };
 
   const theme = createTheme({
@@ -314,18 +184,12 @@ function GroupsView() {
             <Paper sx={{ width: '20%', marginRight: 2, padding: 2, overflow: 'auto', position: 'relative' }}>
               <Typography variant="h6" gutterBottom>Groups</Typography>
               <List>
-                {groups.length === 0 ? (
-                  <ListItem>
-                    <Typography>No group yet</Typography>
+                {groups.map(group => (
+                  <ListItem key={group.gid} button onClick={() => handleGroupClick(group)}>
+                    {group.name}
+                    <UseButton selected={selectedGroupId === group.gid} onClick={() => handleUseGroup(group)}>Use</UseButton>
                   </ListItem>
-                ) : (
-                  groups.map(group => (
-                    <ListItem key={group.gid} button onClick={() => handleGroupClick(group)}>
-                      {group.name}
-                      <UseButton selected={selectedGroupId === group.gid} onClick={() => handleUseGroup(group)}>Use</UseButton>
-                    </ListItem>
-                  ))
-                )}
+                ))}
               </List>
               <Button
                 variant="contained"
@@ -340,82 +204,22 @@ function GroupsView() {
                 <>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <Typography variant="h4" gutterBottom>{selectedGroup.name}</Typography>
-                    <Box>
-                      {selectedGroup.adminId === localStorage.getItem('userId') ? (
-                        <>
-                          {members.length === 1 && (
-                            <Button variant="contained" color="error" onClick={handleDeleteGroup} sx={{ marginRight: 2 }}>
-                              Delete Group
-                            </Button>
-                          )}
-                          {members.length > 1 && (
-                            <Button variant="contained" color="error" onClick={() => setOpenDeleteUser(true)} sx={{ marginRight: 2 }}>
-                              Delete Member
-                            </Button>
-                          )}
-                          <Button variant="contained" onClick={() => setOpenAddUser(true)}>Add User</Button>
-                        </>
-                      ) : (
-                        <Button variant="contained" color="error" onClick={handleLeaveGroup}>Abandon Group</Button>
-                      )}
-                    </Box>
+                    <Button variant="contained" onClick={() => setOpenAddUser(true)}>Add User</Button>
                   </Box>
                   <Typography variant="h6" gutterBottom>Members</Typography>
                   <List>
                     {members.map(member => (
-                      <ListItem key={member.uid}>
-                        {member.username}
-                      </ListItem>
+                      <ListItem key={member.uid}>{member.username}</ListItem>
                     ))}
                   </List>
                 </>
               ) : (
-                <Typography variant="h6">Create a group to start.</Typography>
+                <Typography variant="h6">Select a group to see details</Typography>
               )}
             </Paper>
           </Box>
         </Container>
       </Box>
-
-      <Dialog open={openAddUser} onClose={() => setOpenAddUser(false)}>
-        <DialogTitle>Add User to Group</DialogTitle>
-        <DialogContent>
-          <TextField
-            autoFocus
-            margin="dense"
-            id="username"
-            label="Username"
-            type="text"
-            fullWidth
-            value={newUsername}
-            onChange={(e) => setNewUsername(e.target.value)}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpenAddUser(false)}>Cancel</Button>
-          <Button onClick={handleAddUserToGroup}>Add</Button>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog open={openDeleteUser} onClose={() => setOpenDeleteUser(false)}>
-        <DialogTitle>Delete User from Group</DialogTitle>
-        <DialogContent>
-          <TextField
-            autoFocus
-            margin="dense"
-            id="deleteUsername"
-            label="Username to Delete"
-            type="text"
-            fullWidth
-            value={usernameToDelete}
-            onChange={(e) => setUsernameToDelete(e.target.value)}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpenDeleteUser(false)}>Cancel</Button>
-          <Button onClick={handleDeleteUser}>Delete</Button>
-        </DialogActions>
-      </Dialog>
 
       <Dialog open={openCreateGroup} onClose={() => setOpenCreateGroup(false)}>
         <DialogTitle>Create New Group</DialogTitle>
@@ -434,6 +238,26 @@ function GroupsView() {
         <DialogActions>
           <Button onClick={() => setOpenCreateGroup(false)}>Cancel</Button>
           <Button onClick={handleCreateGroup}>Create</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={openAddUser} onClose={() => setOpenAddUser(false)}>
+        <DialogTitle>Add User to Group</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            id="username"
+            label="Username"
+            type="text"
+            fullWidth
+            value={newUsername}
+            onChange={(e) => setNewUsername(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenAddUser(false)}>Cancel</Button>
+          <Button onClick={handleAddUserToGroup}>Add</Button>
         </DialogActions>
       </Dialog>
     </ThemeProvider>

@@ -4,8 +4,8 @@ const TYPES = require('tedious').TYPES;
 const addNode = async (nodeData) => {
     const { nid, gid, name, description, date, completed, x_pos, y_pos } = nodeData;
     const query = `
-    INSERT INTO dbo.Nodes (nid, gid, name, description, completed, date, x_pos, y_pos)
-    VALUES (@nid, @gid, @name, @description, @completed, @date, @x_pos, @y_pos)
+    INSERT INTO dbo.Nodes (nid, gid, name, description, completed, date, x_pos, y_pos, percentage)
+    VALUES (@nid, @gid, @name, @description, @completed, @date, @x_pos, @y_pos, 0)
     `;
     const params = [
         { name: 'nid', type: TYPES.UniqueIdentifier, value: nid },
@@ -62,16 +62,34 @@ const updateNodeCoords = (nodeData) => {
 
 const updateNodeCompleted = (nodeData) => {
     const {
-        nid
+        nid,
+        completed
     } = nodeData;
     const query = `
     UPDATE [dbo].[Nodes] 
-    SET completed=1
+    SET completed=@completed
     WHERE nid=@nid
     `;
     const params = [
         { name: 'nid', type: TYPES.UniqueIdentifier, value: nid },
-        { name: 'complete', type: TYPES.Bit, value: 1 },
+        { name: 'completed', type: TYPES.Bit, value: completed },
+    ];
+    return execQuery.execWriteCommand(query, params);
+};
+
+const updateNodePercentage = (nodeData) => {
+    const {
+        nid,
+        percentage
+    } = nodeData;
+    const query = `
+    UPDATE [dbo].[Nodes] 
+    SET percentage=@percentage
+    WHERE nid=@nid
+    `;
+    const params = [
+        { name: 'nid', type: TYPES.UniqueIdentifier, value: nid },
+        { name: 'percentage', type: TYPES.Int, value: percentage },
     ];
     return execQuery.execWriteCommand(query, params);
 };
@@ -91,6 +109,25 @@ const getAllNodes = () => {
     SELECT * FROM [dbo].[Nodes]
     `;
     return execQuery.execReadCommand(query);
+};
+
+const getNodesAndTasks = (gid) => {
+    const query = `
+    SELECT DISTINCT name, id, date, description
+    FROM (
+        SELECT name, nid AS id, date, description 
+		FROM dbo.Nodes
+		WHERE gid=@gid
+        UNION
+	    SELECT name, tid AS id, datetime, description 
+		FROM dbo.Tasks
+		WHERE gid=@gid
+    ) AS results;
+    `;
+    const params = [
+        { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
+    ];
+    return execQuery.execReadCommand(query, params);
 };
 
 const getNode = (nid) => {
@@ -118,8 +155,10 @@ module.exports = {
     updateNode,
     updateNodeCoords,
     updateNodeCompleted,
+    updateNodePercentage,
     deleteNode,
     getAllNodes,
+    getNodesAndTasks,
     getNode,
     getNodesByGroupId,
 };

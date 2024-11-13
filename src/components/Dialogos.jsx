@@ -219,26 +219,6 @@ export default function Dialogos({
             margin="normal"
             required
             fullWidth
-            id="porcentajeEditar"
-            label="Percentage"
-            select
-            value={recordatorioEditar?.percentage || 0}
-            onChange={(e) => {
-              const selectedPercentage = Number(e.target.value);
-                setRecordatorioEditar({ ...recordatorioEditar, percentage: selectedPercentage });
-            }}
-            sx={textFieldStyle}
-          >
-            {[0,10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((value) => (
-              <MenuItem key={value} value={value}>
-                {value}%
-              </MenuItem>
-            ))}
-          </TextField>
-          <TextField
-            margin="normal"
-            required
-            fullWidth
             id="listaSeleccionadaEditar"
             label="Select List"
             select

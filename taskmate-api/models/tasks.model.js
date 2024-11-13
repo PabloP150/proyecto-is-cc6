@@ -8,12 +8,11 @@ const addTask = (taskData) => {
         name,
         description,
         list,
-        datetime,
-        percentage
+        datetime
     } = taskData;
     const query = `
-    INSERT INTO [dbo].[Tasks] (tid, gid, name, description, list, datetime, percentage) 
-    VALUES(@tid, @gid, @name, @description, @list, @datetime, @percentage)
+    INSERT INTO [dbo].[Tasks] (tid, gid, name, description, list, datetime) 
+    VALUES(@tid, @gid, @name, @description, @list, @datetime)
     `;
     const params = [
         { name: 'tid', type: TYPES.UniqueIdentifier, value: tid },
@@ -22,7 +21,6 @@ const addTask = (taskData) => {
         { name: 'description', type: TYPES.Text, value: description },
         { name: 'list', type: TYPES.VarChar, value: list },
         { name: 'datetime', type: TYPES.SmallDateTime, value: datetime },
-        { name: 'percentage', type: TYPES.Int, value: percentage },
     ];
     return execQuery.execWriteCommand(query, params);
 };
@@ -34,12 +32,11 @@ const updateTask = (taskData) => {
         name,
         description,
         list,
-        datetime,
-        percentage
+        datetime
     } = taskData;
     const query = `
     UPDATE [dbo].[Tasks] 
-    SET tid=@tid, gid=@gid, name=@name, description=@description, list=@list, datetime=@datetime, percentage=@percentage
+    SET tid=@tid, gid=@gid, name=@name, description=@description, list=@list, datetime=@datetime
     WHERE tid=@tid
     `;
     const params = [
@@ -49,7 +46,6 @@ const updateTask = (taskData) => {
         { name: 'description', type: TYPES.Text, value: description },
         { name: 'list', type: TYPES.VarChar, value: list },
         { name: 'datetime', type: TYPES.SmallDateTime, value: datetime },
-        { name: 'percentage', type: TYPES.Int, value: percentage },
     ];
     return execQuery.execWriteCommand(query, params);
 };
@@ -59,12 +55,11 @@ const updateTaskFromNode = (taskData) => {
         tid,
         name,
         description,
-        date,
-        percentage
+        date
     } = taskData;
     const query = `
     UPDATE [dbo].[Tasks] 
-    SET name=@name, description=@description, datetime=CONVERT(datetime, @date, 120), percentage=@percentage
+    SET name=@name, description=@description, datetime=CONVERT(datetime, @date, 120)
     WHERE tid=@tid
     `;
     const params = [
@@ -72,7 +67,6 @@ const updateTaskFromNode = (taskData) => {
         { name: 'name', type: TYPES.VarChar, value: name },
         { name: 'description', type: TYPES.Text, value: description },
         { name: 'date', type: TYPES.SmallDateTime, value: date },
-        { name: 'percentage', type: TYPES.Int, value: percentage },
     ];
     return execQuery.execWriteCommand(query, params);
 };

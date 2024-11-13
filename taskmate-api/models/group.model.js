@@ -27,17 +27,7 @@ const getGroupsByUserId = (uid) => {
     return execQuery.execReadCommand(query, params);
 };
 
-const deleteGroup = (gid, adminId) => {
-    const query = `DELETE FROM [dbo].[Groups] WHERE gid = @gid AND adminId = @adminId`;
-    const params = [
-        { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
-        { name: 'adminId', type: TYPES.UniqueIdentifier, value: adminId },
-    ];
-    return execQuery.execWriteCommand(query, params);
-};
-
 module.exports = {
     addGroup,
     getGroupsByUserId,
-    deleteGroup,
 };

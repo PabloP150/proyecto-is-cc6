@@ -13,10 +13,20 @@ nodesRoute.get('/', async (req, res) => {
     }
 });
 
+nodesRoute.get('/tasks/:gid', async (req, res) => {
+    const { gid } = req.params;
+    try {
+        const data = await NodesModel.getNodesAndTasks(gid);
+        res.status(200).json({ data });
+    } catch (error) {
+        console.error("Error fetching nodes by group ID:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Get a node by ID
 nodesRoute.get('/:id', async (req, res) => {
     const { id: nid } = req.params;
-    console.log("test");
     try {
         const data = await NodesModel.getNode(nid);
         if (data.length > 0) {
@@ -45,7 +55,6 @@ nodesRoute.get('/group/:gid', async (req, res) => {
 // Create a new node
 nodesRoute.post('/', async (req, res) => {
     const nid = req.body.nid ? req.body.nid : uuidv4();
-    console.log(nid);
     const { gid, name, description, date, completed, x_pos, y_pos } = req.body;
 
     try {
@@ -57,7 +66,7 @@ nodesRoute.post('/', async (req, res) => {
             date,
             completed,
             x_pos,
-            y_pos
+            y_pos,
         });
 
         res.status(200).json({
@@ -121,12 +130,34 @@ nodesRoute.put('/:id/coords', async (req, res) => {
     }
 });
 
-// Update a node's complete status
-nodesRoute.put('/:id/complete', async (req, res) => {
+//update a node's percentage
+nodesRoute.put('/:id/percentage', async (req, res) => {
     const { id: nid } = req.params;
+    const { percentage } = req.body;
+    try {
+        await NodesModel.updateNodePercentage({
+            nid,
+            percentage
+        });
+
+        res.status(200).json({
+            message: 'Node percentage updated successfully',
+            nid
+        });
+    } catch (error) {
+        console.error("Error updating node:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Update a node's complete status
+nodesRoute.put('/:id/toggleComplete', async (req, res) => {
+    const { id: nid } = req.params;
+    const { completed } = req.body;
     try {
         await NodesModel.updateNodeCompleted({
-            nid
+            nid,
+            completed
         });
 
         res.status(200).json({

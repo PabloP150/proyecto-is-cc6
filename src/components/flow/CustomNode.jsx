@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { Divider } from '@mui/material';
 
 export default function CustomNode({ data, id }) {
+  const [inputValue, setInputValue] = useState(`${data.percentage}`);
+  const [isComplete, setIsComplete] = useState(data.completed);
 
   const formatDate = (dateStr) => {
     if (!dateStr) return '';
@@ -14,17 +16,22 @@ export default function CustomNode({ data, id }) {
     });
   };
 
-  const handleComplete = async () => {
+  useEffect(() => {
+    setInputValue(data.percentage);
+  }, [data.percentage]);
+
+  const handleToggleComplete = async () => {
     if (data.toggleCompletion) {
       try {
         data.toggleCompletion(id);
-        await fetch(`http://localhost:9000/api/nodes/${id}/complete`, {
+        await fetch(`http://localhost:9000/api/nodes/${id}/toggleComplete`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            nid: id
+            nid: id,
+            completed: data.completed ? 0 : 1
           }),
         });
       } catch (error) {
@@ -33,8 +40,43 @@ export default function CustomNode({ data, id }) {
     }
   };
 
+  const handleBlur = async (e) => {
+    const percentageRegex = /^(0|[1-9][0-9]?|100)$/;
+    let inputValue = e.target.value;
+    if (percentageRegex.test(inputValue) && inputValue <= 100) {
+      inputValue = parseInt(inputValue);
+      if (inputValue === 100) {
+        setIsComplete(true);
+        await handleToggleComplete();
+      }
+
+      else if (isComplete && (inputValue !== 100)) {
+        setIsComplete(false);
+        await handleToggleComplete();
+      }
+      setInputValue(inputValue);
+      try {
+        await fetch(`http://localhost:9000/api/nodes/${id}/percentage`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            nid: id,
+            percentage: inputValue
+          }),
+        });
+        data.setRefresh(!data.refresh);
+      } catch (error) {
+        console.error('Error updating node percentage:', error);
+      }
+    } else {
+      setInputValue(data.percentage);
+    }
+  }
+
   return (
-    <div className={`customNode ${data.completed ? 'completed' : ''}`}
+    <div className={`customNode ${data.percentage==100 ? 'completed' : ''}`}
       style={{
         width: '11em',
         backgroundColor: '#F5F5F5',
@@ -55,7 +97,40 @@ export default function CustomNode({ data, id }) {
           <div style={{ fontSize: '0.9em' }}>{data.description}</div>
         )}
         {data.date && (
-          <div style={{ fontSize: '0.8em' }}>{formatDate(data.date)}</div>
+          <div style={{ fontSize: '0.8em' }}>Deadline: {formatDate(data.date)}</div>
+        )}
+        {(data.percentage != null) && (
+          <div
+            style={{
+              fontSize: '0.8em',
+              cursor: 'pointer',
+              justifyContent: 'right',
+              textAlign: 'center',
+            }}
+          >
+            Progress:
+            <input
+              type="text"
+              className="nodrag"
+              value={inputValue}
+              style={{
+                fontWeight: 'bold',
+                fontSize: '1em',
+                border: 'none',
+                width: '20%',
+                textAlign: 'right',
+                backgroundColor: 'transparent',
+              }}
+              onChange={(e) => {
+                const percentageRegex = /^\d{0,3}$/;
+                if (percentageRegex.test(e.target.value)) {
+                  setInputValue(e.target.value);
+                }
+              }}
+              onBlur={handleBlur}
+            />
+            %
+          </div>
         )}
         <button
           className="nodrag edit-button"
@@ -71,22 +146,18 @@ export default function CustomNode({ data, id }) {
         >
           Edit
         </button>
-        <button
-          onClick={handleComplete}
-          className="nodrag completion-button"
+        <div
           style={{
-            marginTop: '3px',
-            padding: '8px',
-            backgroundColor: data.completed ? '#4CAF50' : '#666',
-            color: 'white',
+            backgroundColor: 'transparent',
+            color: '#333',
             border: 'none',
             borderRadius: '4px',
             cursor: 'pointer',
             zIndex: '1000',
           }}
         >
-          {data.completed ? '✓ Completed' : 'Mark Complete'}
-        </button>
+          {data.percentage==100 ? '✓ Completed' : ''}
+        </div>
 
         {/* Connection handles */}
         <Handle type="source" position={Position.Top} id="a" />

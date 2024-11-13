@@ -18,6 +18,7 @@ import { GroupContext } from '../GroupContext';
 
 const Flow = ({ handleNodeEdit, setSelectedNode }) => {
   const { selectedGroupId } = useContext(GroupContext);
+  const [refresh, setRefresh] = useState(false);
   const [tasks, setTasks] = useState([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const [nodes, setNodes] = useState([]);
@@ -27,7 +28,10 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
     description: '',
     date: '',
     completed: false,
-    setSelectedNode
+    percentage: 0,
+    setSelectedNode,
+    refresh: refresh,
+    setRefresh
   });   // Cambiar a localStorage cuando funcionen grupos
 
   function formatDateTimeToDate(datetime) {
@@ -56,13 +60,15 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
               description: node.description,
               date: node.date,
               completed: node.completed == 1,
+              percentage: node.percentage,
               toggleCompletion,
               onClick: () => handleNodeEdit(node),
-              setSelectedNode
+              setSelectedNode,
+              refresh: refresh,
+              setRefresh
             },
             position: { x: node.x_pos, y: node.y_pos },
           }));
-          console.log(formattedNodes);
           const formattedEdges = edgesData.data.map(edge => ({
             id: edge.eid,
             source: edge.sourceId,
@@ -76,9 +82,8 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
         console.error('Error loading nodes and edges:', error);
       }
     };
-
     loadNodesAndEdges();
-  }, []);
+  }, [refresh]);
 
   useEffect(() => {
     const getTasks = async () => {
@@ -171,6 +176,7 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
             id: data.data.nid,
             completed: false,
             toggleCompletion,
+            onClick: () => handleNodeEdit(data.data)
           },
           position: { x: data.data.x_pos, y: data.data.y_pos },
         };
@@ -283,39 +289,6 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
     );
   }, []);
 
-  /*const toggleCompletionDB = async (node) => {
-    if (completion) {
-      try {
-        // Llamar a la API para eliminar la tarea
-        const response = await fetch(`http://localhost:9000/api/tasks/${node.id}`, {
-          method: 'DELETE',
-        });
-        if (response.ok) {
-          // Llamar a la API para agregar a la lista de eliminados
-          const eliminarResponse = await fetch('http://localhost:9000/api/delete', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(node),
-          });
-  
-          if (eliminarResponse.ok) {
-            listaActual.recordatorios.splice(idx, 1);
-            setListas([...listas]);
-            cargarCompletados(); // Opcional: cargar completados si es necesario
-          } else {
-            console.error('Error al agregar a eliminados');
-          }
-        } else {
-          console.error('Error al eliminar la tarea');
-        }
-      } catch (error) {
-        console.error('Error en la solicitud:', error);
-      }
-    }
-  }
-*/
   const onNodesDelete = async (event) => {
     try {
       const response1 = await fetch(`http://localhost:9000/api/edges/source/${event[0].id}`, {

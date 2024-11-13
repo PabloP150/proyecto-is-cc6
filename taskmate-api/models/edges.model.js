@@ -5,7 +5,11 @@ const addEdge = (edgeData) => {
     const { eid, gid, sourceId, targetId } = edgeData;
     const query = `
     INSERT INTO [dbo].[Edges] (eid, gid, sourceId, targetId) 
-    VALUES(@eid, @gid, @sourceId, @targetId)
+    VALUES(@eid, @gid, @sourceId, @targetId);
+
+    UPDATE [dbo].[Nodes] 
+    SET connections = connections + 1
+    WHERE nid = @sourceId;
     `;
     const params = [
         { name: 'eid', type: TYPES.UniqueIdentifier, value: eid },
@@ -14,6 +18,16 @@ const addEdge = (edgeData) => {
         { name: 'targetId', type: TYPES.UniqueIdentifier, value: targetId },
     ];
     return execQuery.execWriteCommand(query, params);
+};
+
+const getEdgesById = (eid) => {
+    const query = `
+    SELECT * FROM [dbo].[Edges] WHERE eid = @eid
+    `;
+    const params = [
+        { name: 'eid', type: TYPES.UniqueIdentifier, value: eid },
+    ];
+    return execQuery.execReadCommand(query, params);
 };
 
 const getEdgesByGroupId = (gid) => {
@@ -25,6 +39,20 @@ const getEdgesByGroupId = (gid) => {
     ];
     return execQuery.execReadCommand(query, params);
 };
+
+const updatePrerequisite = (edgeData) => {
+    const { eid, prerequisite } = edgeData;
+    const query = `
+    UPDATE [dbo].[Edges]
+    SET prerequisite = @prerequisite
+    WHERE eid = @eid
+    `;
+    const params = [
+        { name: 'eid', type: TYPES.UniqueIdentifier, value: eid },
+        { name: 'prerequisite', type: TYPES.Bit, value: prerequisite },
+    ];
+    return execQuery.execWriteCommand(query, params);
+}
 
 const deleteEdge = (eid) => {
     const query = `
@@ -48,7 +76,9 @@ const deleteEdgeBySource = (nid) => {
 
 module.exports = {
     addEdge,
+    getEdgesById,
     getEdgesByGroupId,
+    updatePrerequisite,
     deleteEdge,
     deleteEdgeBySource
 };

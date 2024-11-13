@@ -59,37 +59,4 @@ groupRoute.post('/join', async (req, res) => {
     }
 });
 
-//eliminar un miembro de un grupo
-groupRoute.delete('/remove-member', async (req, res) => {
-    const { uid, gid } = req.body;
-    try {
-        await UserGroupModel.removeMemberFromGroup(uid, gid);
-        res.status(200).json({ message: 'Member removed successfully' });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-//abandonar un grupo
-groupRoute.delete('/leave', async (req, res) => {
-    const { uid, gid } = req.body;
-    try {
-        await UserGroupModel.removeMemberFromGroup(uid, gid);
-        res.status(200).json({ message: 'Group left successfully' });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});    
-
-//eliminar un grupo
-groupRoute.delete('/delete', async (req, res) => {
-    const { gid, adminId } = req.body;
-    try {
-        await GroupModel.deleteGroup(gid, adminId);
-        res.status(200).json({ message: 'Group deleted successfully' });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
 module.exports = groupRoute;
