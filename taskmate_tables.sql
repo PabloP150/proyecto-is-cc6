@@ -1,12 +1,12 @@
---DROP TABLE dbo.UserGroups;
---DROP TABLE dbo.Groups		--NO BOTAR!!!
---DROP TABLE dbo.Users;
---DROP TABLE dbo.DeleteTask
---DROP TABLE dbo.Complete
---DROP TABLE dbo.Tasks;
---DROP TABLE dbo.UserTask;
---DROP TABLE dbo.Edges;
---DROP TABLE dbo.Nodes;
+DROP TABLE dbo.UserGroups;
+DROP TABLE dbo.UserTask;
+DROP TABLE dbo.Users;
+DROP TABLE dbo.DeleteTask
+DROP TABLE dbo.Complete
+DROP TABLE dbo.Tasks;
+DROP TABLE dbo.Edges;
+DROP TABLE dbo.Nodes;
+DROP TABLE dbo.Groups
 
 --DROP TRIGGER dbo.UpdateTargetNodePercentage
 
@@ -44,18 +44,19 @@ CREATE TABLE dbo.Tasks (
 	name		VARCHAR(25)			NOT NULL,
 	description	VARCHAR(1000)		NOT NULL,
 	list		VARCHAR(25),
-	datetime	SMALLDATETIME		NOT NULL
+	datetime	SMALLDATETIME		NOT NULL,
+	percentage	INT CHECK(percentage BETWEEN 0 AND 100),
 	FOREIGN KEY (gid) REFERENCES dbo.Groups(gid)
 );
 
 CREATE TABLE dbo.UserTask(
-utid			UNIQUEIDENTIFIER	NOT NULL,
-uid				UNIQUEIDENTIFIER	NOT NULL,
-tid				UNIQUEIDENTIFIER	NOT NULL,
-completed		BIT					NOT NULL,
-PRIMARY KEY (uid, tid),
-FOREIGN KEY (tid) REFERENCES dbo.Tasks,
-FOREIGN KEY (uid) REFERENCES dbo.Users
+	utid			UNIQUEIDENTIFIER	NOT NULL,
+	uid				UNIQUEIDENTIFIER	NOT NULL,
+	tid				UNIQUEIDENTIFIER	NOT NULL,
+	completed		BIT					NOT NULL,
+	PRIMARY KEY (uid, tid),
+	FOREIGN KEY (tid) REFERENCES dbo.Tasks,
+	FOREIGN KEY (uid) REFERENCES dbo.Users
 );
 
 CREATE TABLE dbo.Nodes (
@@ -200,5 +201,8 @@ select * from dbo.Users;
 select * from dbo.Tasks;
 select * from dbo.Nodes;
 select * from dbo.Edges;
+
+
+delete from dbo.Users where uid='F3DB0B3A-23A8-451E-9566-0A018410112C'
 
 --SELECT * FROM dbo.Users WHERE username='admin' AND password=HASHBYTES('SHA2_256','hola')
