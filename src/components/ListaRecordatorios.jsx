@@ -129,7 +129,7 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
                           </Typography>
                         }
                       />
-                      <Box sx={{ display: 'flex', justifyContent: 'center', width: '71%' }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'center', width: 'auto', minWidth: '50%' }}>
                         <Typography sx={{ color: 'white' }}>
                             Percent Completed: {recordatorio.percentage || 0}%
                         </Typography>
