@@ -9,6 +9,7 @@ completeRoute.post('/', async (req, res) => {
         gid,
         name,
         description,
+        percentage,
         datetime
     } = req.body;
     CompleteModel.addComplete({ 
@@ -16,6 +17,7 @@ completeRoute.post('/', async (req, res) => {
         gid,
         name,
         description,
+        percentage,
         datetime
     })
     .then((rowCount, more) => {

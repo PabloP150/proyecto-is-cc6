@@ -56,6 +56,7 @@ nodesRoute.get('/group/:gid', async (req, res) => {
 nodesRoute.post('/', async (req, res) => {
     const nid = req.body.nid ? req.body.nid : uuidv4();
     const { gid, name, description, date, completed, x_pos, y_pos } = req.body;
+    const percentage = req.body.percentage === undefined ? 0 : req.body.percentage;
 
     try {
         await NodesModel.addNode({
@@ -65,6 +66,7 @@ nodesRoute.post('/', async (req, res) => {
             description,
             date,
             completed,
+            percentage,
             x_pos,
             y_pos,
         });
@@ -77,6 +79,7 @@ nodesRoute.post('/', async (req, res) => {
                 description,
                 date,
                 completed,
+                percentage,
                 x_pos,
                 y_pos
             }

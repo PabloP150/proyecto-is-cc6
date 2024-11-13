@@ -27,8 +27,27 @@ const getMembersByGroupId = (gid) => {
   return execQuery.execReadCommand(query, params);
 };
 
+const removeMemberFromGroup = (uid, gid) => {
+  const query = `DELETE FROM [dbo].[UserGroups] WHERE uid = @uid AND gid = @gid`;
+  const params = [
+    { name: 'uid', type: TYPES.UniqueIdentifier, value: uid },
+    { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
+  ];
+  return execQuery.execWriteCommand(query, params);
+};
+
+const leaveGroup = (uid, gid) => {
+  const query = `DELETE FROM [dbo].[UserGroups] WHERE uid = @uid AND gid = @gid`;
+  const params = [
+    { name: 'uid', type: TYPES.UniqueIdentifier, value: uid },
+    { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
+  ];
+  return execQuery.execWriteCommand(query, params);
+};
+
 module.exports = {
   addUserToGroup,
   getMembersByGroupId,
+  removeMemberFromGroup,
+  leaveGroup,
 };
-

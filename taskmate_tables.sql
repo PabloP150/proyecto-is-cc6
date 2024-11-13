@@ -1,11 +1,12 @@
 --DROP TABLE dbo.UserGroups;
---DROP TABLE dbo.Groups		--NO BOTAR!!!
---DROP TABLE dbo.Users;
+--DROP TABLE dbo.UserTask;
 --DROP TABLE dbo.DeleteTask
 --DROP TABLE dbo.Complete
 --DROP TABLE dbo.Tasks;
 --DROP TABLE dbo.Edges;
 --DROP TABLE dbo.Nodes;
+--DROP TABLE dbo.Groups		
+--DROP TABLE dbo.Users;
 
 --DROP TRIGGER dbo.UpdateTargetNodePercentage
 
@@ -19,7 +20,8 @@
 CREATE TABLE dbo.Users (
     uid 		UNIQUEIDENTIFIER 	NOT NULL PRIMARY KEY,
     username 	VARCHAR(25)			NOT NULL,
-    password 	VARCHAR(60) 			NOT NULL
+    password 	VARCHAR(60) 		NOT NULL
+	CONSTRAINT noDuplicates UNIQUE (username)
 );
 
 CREATE TABLE dbo.Groups (
@@ -42,9 +44,20 @@ CREATE TABLE dbo.Tasks (
 	gid			UNIQUEIDENTIFIER	NOT NULL,
 	name		VARCHAR(25)			NOT NULL,
 	description	VARCHAR(1000)		NOT NULL,
-	list		VARCHAR(25),
-	datetime	SMALLDATETIME		NOT NULL
+	list		VARCHAR(25)			NOT NULL,
+	datetime	SMALLDATETIME		NOT NULL,
+	percentage	INT CHECK(percentage BETWEEN 0 AND 100),
 	FOREIGN KEY (gid) REFERENCES dbo.Groups(gid)
+);
+
+CREATE TABLE dbo.UserTask(
+	utid	UNIQUEIDENTIFIER	NOT NULL,
+	uid		UNIQUEIDENTIFIER	NOT NULL,
+	tid		UNIQUEIDENTIFIER	NOT NULL,
+	completed	BIT				NOT NULL,
+	PRIMARY KEY (uid, tid),
+	FOREIGN KEY (tid) REFERENCES dbo.Tasks,
+	FOREIGN KEY (uid) REFERENCES dbo.Users
 );
 
 CREATE TABLE dbo.Nodes (
@@ -77,6 +90,7 @@ CREATE TABLE dbo.Complete(
 	gid			UNIQUEIDENTIFIER	NOT NULL,
 	name		VARCHAR(25)			NOT NULL,
 	description	VARCHAR(1000)		NOT NULL,
+	percentage	INT CHECK(percentage BETWEEN 0 AND 100),
 	datetime	SMALLDATETIME		NOT NULL
 	FOREIGN KEY (gid) REFERENCES dbo.Groups(gid)
 );
@@ -89,8 +103,6 @@ CREATE TABLE dbo.DeleteTask(
 	datetime	SMALLDATETIME		NOT NULL
 	FOREIGN KEY (gid) REFERENCES dbo.Groups(gid)
 );
-
-DROP TRIGGER dbo.UpdateTargetNodePercentage;
 
 CREATE TRIGGER UpdateTargetNodePercentage
 ON dbo.Nodes
@@ -157,31 +169,16 @@ BEGIN
     DEALLOCATE target_cursor;
 END;
 
-UPDATE dbo.Nodes 
-    SET percentage=0
-    WHERE nid='7353E228-CD24-450A-A95A-244CE64EEC94';
-select * from dbo.Nodes;
-
 INSERT INTO dbo.Groups (gid, adminId, name)
 VALUES ('00000000-0000-0000-0000-000000000001', 
         'DAD8127A-10FF-4A21-AC73-5E83F5CE0F61', 
         'Test Group'
 		);
 
-SELECT DISTINCT name, id, date, description
-    FROM (
-        SELECT name, nid AS id, date, description 
-		FROM dbo.Nodes
-		WHERE gid='D4978471-AA2F-4E1E-9C64-381AA3069D1C'
-        UNION 
-	    SELECT name, tid AS id, datetime, description 
-		FROM dbo.Tasks
-		WHERE gid='D4978471-AA2F-4E1E-9C64-381AA3069D1C'
-    ) AS results;
-
 select * from dbo.DeleteTask;
 select * from dbo.Complete;
 select * from dbo.Users;
+select * from dbo.UserTask;
 select * from dbo.UserGroups;
 select * from dbo.Groups;
 select * from dbo.DeleteTask;
