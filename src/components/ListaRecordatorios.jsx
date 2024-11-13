@@ -5,7 +5,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import EditIcon from '@mui/icons-material/Edit';
 import { blue } from '@mui/material/colors';
-
+import SeleccionarPersona from './SeleccionarPersona';
 export default function ListaRecordatorios({ listas, handleEliminar, handleCompletar, handleEditar, filtro, handleEliminarLista, orden, setOrden, handleVaciarCompletados, handleVaciarEliminados }) {
   const [anchorEl, setAnchorEl] = useState(null);
 
@@ -129,10 +129,16 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
                           </Typography>
                         }
                       />
+                      <Box sx={{ display: 'flex', justifyContent: 'center', width: 'auto', minWidth: '50%' }}>
+                        <Typography sx={{ color: 'white' }}>
+                            Percent Completed: {recordatorio.percentage || 0}%
+                        </Typography>
+                      </Box>
                       {filtro === 'deleted' || filtro === 'completed' ? (
                         null
                       ) : (
                         <>
+                          <SeleccionarPersona tid={recordatorio.tid}/>
                           <IconButton edge="end" aria-label="edit" onClick={(e) => { e.stopPropagation(); handleEditar(lista.nombre, idx); }} sx={{ color: 'white' }}>
                             <EditIcon />
                           </IconButton>

@@ -8,11 +8,12 @@ const addComplete = (completeData) => {
         gid,
         name,
         description,
-        datetime
+        datetime,
+        percentage
     } = completeData;
     const query = `
-    INSERT INTO [dbo].[Complete] (tid, gid, name, description, datetime) 
-    VALUES(@tid, @gid, @name, @description, @datetime)
+    INSERT INTO [dbo].[Complete] (tid, gid, name, description, datetime, percentage) 
+    VALUES(@tid, @gid, @name, @description, @datetime, @percentage)
     `;
     const params = [
         { name: 'tid', type: TYPES.UniqueIdentifier, value: tid },
@@ -20,6 +21,7 @@ const addComplete = (completeData) => {
         { name: 'name', type: TYPES.VarChar, value: name },
         { name: 'description', type: TYPES.Text, value: description },
         { name: 'datetime', type: TYPES.SmallDateTime, value: datetime },
+        { name: 'percentage', type: TYPES.Int, value: percentage },
     ];
     return execQuery.execWriteCommand(query, params);
 };

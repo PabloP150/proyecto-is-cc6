@@ -101,7 +101,6 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
   }, []);
 
   const handleImportTask = async (task) => {
-    // Import task data into a new node
     try {
       const response = await fetch('http://localhost:9000/api/nodes', {
         method: 'POST',
@@ -115,6 +114,7 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
           description: task.description,
           date: formatDateTimeToDate(task.datetime),
           completed: 0,
+          percentage: task.percentage,
           x_pos: 10,
           y_pos: 10
         }),
@@ -130,6 +130,7 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
             description: data.data.description,
             date: data.data.date,
             completed: false,
+            percentage: data.data.percentage,
             toggleCompletion,
             onClick: () => handleNodeEdit(data.data),
           },

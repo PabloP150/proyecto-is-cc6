@@ -2,10 +2,10 @@ const execQuery = require('../helpers/execQuery');
 const TYPES = require('tedious').TYPES;
 
 const addNode = async (nodeData) => {
-    const { nid, gid, name, description, date, completed, x_pos, y_pos } = nodeData;
+    const { nid, gid, name, description, date, completed, percentage, x_pos, y_pos } = nodeData;
     const query = `
     INSERT INTO dbo.Nodes (nid, gid, name, description, completed, date, x_pos, y_pos, percentage)
-    VALUES (@nid, @gid, @name, @description, @completed, @date, @x_pos, @y_pos, 0)
+    VALUES (@nid, @gid, @name, @description, @completed, @date, @x_pos, @y_pos, @percentage)
     `;
     const params = [
         { name: 'nid', type: TYPES.UniqueIdentifier, value: nid },
@@ -14,6 +14,7 @@ const addNode = async (nodeData) => {
         { name: 'description', type: TYPES.Text, value: description },
         { name: 'date', type: TYPES.Date, value: date },
         { name: 'completed', type: TYPES.Bit, value: completed },
+        { name: 'percentage', type: TYPES.Int, value: percentage },
         { name: 'x_pos', type: TYPES.Float, value: x_pos },
         { name: 'y_pos', type: TYPES.Float, value: y_pos },
     ];
@@ -85,7 +86,10 @@ const updateNodePercentage = (nodeData) => {
     const query = `
     UPDATE [dbo].[Nodes] 
     SET percentage=@percentage
-    WHERE nid=@nid
+    WHERE nid=@nid;
+    UPDATE [dbo].[Tasks]
+    SET percentage=@percentage
+    WHERE tid=@nid
     `;
     const params = [
         { name: 'nid', type: TYPES.UniqueIdentifier, value: nid },

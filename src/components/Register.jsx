@@ -10,7 +10,7 @@ import {
 } from '@mui/material';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { useNavigate } from 'react-router-dom';
-import bcrypt from 'bcryptjs'; 
+import bcrypt from 'bcryptjs'; // Importa bcryptjs
 
 const theme = createTheme({
   palette: {
@@ -33,13 +33,13 @@ function Register() {
   const handleRegister = async (e) => {
     e.preventDefault();
     try {
-      const hashedPassword = await bcrypt.hash(password, 10); 
+      const hashedPassword = await bcrypt.hash(password, 10); // Encripta la contraseña
       const response = await fetch('http://localhost:9000/api/users', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ username, password: hashedPassword }), 
+        body: JSON.stringify({ username, password: hashedPassword }), // Envía la contraseña encriptada
       });
 
       if (response.ok) {

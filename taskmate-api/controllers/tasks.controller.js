@@ -38,7 +38,8 @@ tasksRoute.post('/', async (req, res) => {
         name,
         description,
         list,
-        datetime
+        datetime,
+        percentage
     } = req.body;
     TasksModel.addTask({
         tid,
@@ -46,7 +47,8 @@ tasksRoute.post('/', async (req, res) => {
         name,
         description,
         list,
-        datetime
+        datetime,
+        percentage
     })
     .then((rowCount, more) => {
         res.status(200).json({
@@ -69,7 +71,8 @@ tasksRoute.put('/:id', async (req, res) => {
         name,
         description,
         list,
-        datetime
+        datetime,
+        percentage
     } = req.body;
     TasksModel.updateTask({
         tid,
@@ -77,7 +80,8 @@ tasksRoute.put('/:id', async (req, res) => {
         name,
         description,
         list,
-        datetime
+        datetime,
+        percentage
     })
     .then((rowCount, more) => {
         res.status(200).json({
