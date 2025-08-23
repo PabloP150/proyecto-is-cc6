@@ -1,45 +1,27 @@
-const execQuery = require('../helpers/execQuery');
-const TYPES = require('tedious').TYPES;
-
+const MockDatabase = require('../helpers/mockDatabase');
 
 const addComplete = (completeData) => {
-    const {
-        tid,
-        gid,
-        name,
-        description,
-        datetime,
-        percentage
-    } = completeData;
-    const query = `
-    INSERT INTO [dbo].[Complete] (tid, gid, name, description, datetime, percentage) 
-    VALUES(@tid, @gid, @name, @description, @datetime, @percentage)
-    `;
-    const params = [
-        { name: 'tid', type: TYPES.UniqueIdentifier, value: tid },
-        { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
-        { name: 'name', type: TYPES.VarChar, value: name },
-        { name: 'description', type: TYPES.Text, value: description },
-        { name: 'datetime', type: TYPES.SmallDateTime, value: datetime },
-        { name: 'percentage', type: TYPES.Int, value: percentage },
-    ];
-    return execQuery.execWriteCommand(query, params);
+    // Add to mock completed tasks
+    const mockCompletedTasks = require('../helpers/mockDatabase');
+    if (!mockCompletedTasks.mockCompletedTasks) {
+        mockCompletedTasks.mockCompletedTasks = [];
+    }
+    mockCompletedTasks.mockCompletedTasks.push(completeData);
+    return Promise.resolve({ success: true });
 };
 
 const getCompletados = (gid) => {
-    const query = `SELECT * FROM [dbo].[Complete] WHERE gid = @gid`;
-    const params = [
-        { name: 'gid', type: TYPES.UniqueIdentifier, value: gid }
-    ];
-    return execQuery.execReadCommand(query, params);
+    const mockCompletedTasks = require('../helpers/mockDatabase');
+    const completedTasks = mockCompletedTasks.mockCompletedTasks || [];
+    return Promise.resolve(completedTasks.filter(task => task.gid === gid));
 };
 
 const deleteAll = (gid) => {
-    const query = `DELETE FROM [dbo].[Complete] WHERE gid = @gid`;
-    const params = [
-        { name: 'gid', type: TYPES.UniqueIdentifier, value: gid }
-    ];
-    return execQuery.execWriteCommand(query, params);
+    const mockCompletedTasks = require('../helpers/mockDatabase');
+    if (mockCompletedTasks.mockCompletedTasks) {
+        mockCompletedTasks.mockCompletedTasks = mockCompletedTasks.mockCompletedTasks.filter(task => task.gid !== gid);
+    }
+    return Promise.resolve({ success: true });
 };
 
 

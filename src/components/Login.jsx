@@ -58,8 +58,10 @@ function Login({ onLogin }) {
       if (response.ok) {
         const data = await response.json();
         const userId = data.uid;
+        const token = data.token;
         localStorage.setItem('userId', userId);
-        onLogin({ uid: userId, name: username });
+        localStorage.setItem('token', token);
+        onLogin({ uid: userId, name: username, token: token });
 
         // Obtener los grupos del usuario
         const groupsResponse = await fetch(`http://localhost:9000/api/groups/user-groups?uid=${userId}`);

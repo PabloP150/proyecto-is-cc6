@@ -1,6 +1,8 @@
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
+const http = require('http');
+const WebSocketServer = require('./services/WebSocketServer');
 const tasksController = require('./controllers/tasks.controller');
 const userController = require('./controllers/user.controller');
 const nodesController = require('./controllers/nodes.controller');
@@ -33,6 +35,14 @@ app.use('/api/edges', edgesController);
 app.use('/api/completados', completeController);
 app.use('/api/delete', deleteController);
 app.use('/api/usertask', userTaskController);
-app.listen(API_PORT, () => {
+
+// Create HTTP server
+const server = http.createServer(app);
+
+// Initialize WebSocket server
+const wsServer = new WebSocketServer(server);
+
+server.listen(API_PORT, () => {
     console.log(`API running on PORT ${API_PORT}`);
+    console.log(`WebSocket server available at ws://localhost:${API_PORT}/chat`);
 });

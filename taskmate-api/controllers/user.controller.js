@@ -3,6 +3,7 @@ const userRoute = require('express').Router();
 const UserModel = require('./../models/user.model');
 const GroupModel = require('./../models/group.model');
 const UserGroupModel = require('./../models/userGroup.model');
+const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 
 userRoute.post('/', async (req, res) => {
@@ -33,7 +34,18 @@ userRoute.post('/login', async (req, res) => {
     const user = await UserModel.getUserByUsername(username);
 
     if (user.length > 0) {
-        res.status(200).json({ message: 'Login successful', uid: user[0].uid });
+        // Generate JWT token
+        const token = jwt.sign(
+            { userId: user[0].uid, username: username },
+            process.env.JWT_SECRET || 'your-jwt-secret-key-change-in-production',
+            { expiresIn: '24h' }
+        );
+
+        res.status(200).json({ 
+            message: 'Login successful', 
+            uid: user[0].uid,
+            token: token
+        });
     } else {
         res.status(401).json({ error: 'Invalid credentials' });
     }

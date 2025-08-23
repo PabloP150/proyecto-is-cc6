@@ -11,6 +11,8 @@ import Register from './components/Register';
 import CreateGroup from './components/CreateGroup';
 import Navbar from './components/Navbar'; // Asegúrate de tener este componente
 import GroupsView from './components/GroupsView';
+import ChatPage from './components/ChatPage';
+import WebSocketTest from './components/WebSocketTest';
 import { GroupProvider } from './components/GroupContext';
 
 function App() {
@@ -84,6 +86,14 @@ function App() {
           <Route 
             path="/groups" 
             element={user ? <GroupsView /> : <Navigate to="/" />} 
+          />
+          <Route 
+            path="/chat" 
+            element={user ? <ChatPage /> : <Navigate to="/" />} 
+          />
+          <Route 
+            path="/websocket-test" 
+            element={<WebSocketTest />} 
           />
         </Routes>
       </Router>

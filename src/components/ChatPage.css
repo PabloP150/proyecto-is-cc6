@@ -1,0 +1,126 @@
+/* Chat Page Responsive Styles */
+
+/* Mobile-specific adjustments */
+@media (max-width: 768px) {
+  .chat-container {
+    padding-top: 80px !important; /* Account for mobile navbar height */
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+  }
+  
+  .chat-paper {
+    margin: 0 !important;
+    border-radius: 8px !important;
+  }
+  
+  .chat-message-container {
+    max-width: 95% !important;
+  }
+  
+  .chat-input-container {
+    padding: 12px !important;
+    gap: 8px !important;
+  }
+  
+  .chat-message-bubble {
+    padding: 12px !important;
+    font-size: 0.9rem !important;
+  }
+  
+  .chat-avatar {
+    width: 28px !important;
+    height: 28px !important;
+  }
+}
+
+/* Tablet adjustments */
+@media (max-width: 1024px) and (min-width: 769px) {
+  .chat-message-container {
+    max-width: 85% !important;
+  }
+}
+
+/* Custom scrollbar for chat messages */
+.chat-messages-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chat-messages-container::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+.chat-messages-container::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+}
+
+.chat-messages-container::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.5);
+}
+
+/* Smooth animations for messages */
+.chat-message-enter {
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+.chat-message-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 300ms ease-in-out, transform 300ms ease-in-out;
+}
+
+/* Typing indicator animation */
+@keyframes typing-dots {
+  0%, 60%, 100% {
+    transform: translateY(0);
+  }
+  30% {
+    transform: translateY(-10px);
+  }
+}
+
+.typing-dot {
+  animation: typing-dots 1.4s infinite ease-in-out;
+}
+
+.typing-dot:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.typing-dot:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+/* Focus styles for accessibility */
+.chat-input:focus-within {
+  outline: 2px solid #4a90e2;
+  outline-offset: 2px;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .chat-message-bubble {
+    border: 1px solid rgba(255, 255, 255, 0.5);
+  }
+  
+  .chat-paper {
+    border: 1px solid rgba(255, 255, 255, 0.3);
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .chat-message-enter-active {
+    transition: none;
+  }
+  
+  .typing-dot {
+    animation: none;
+  }
+  
+  * {
+    scroll-behavior: auto !important;
+  }
+}

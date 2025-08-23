@@ -74,6 +74,7 @@ const Navbar = ({ user, onLogout }) => {
           <Button component={Link} to="/calendar">CALENDAR</Button>
           <Button component={Link} to="/block-diagram">Milestones</Button>
           <Button component={Link} to="/groups">GROUPS</Button>
+          <Button component={Link} to="/chat">CHAT</Button>
         </Box>
 
         {user && (

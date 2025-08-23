@@ -1,39 +1,23 @@
 // models/group.model.js
-const execQuery = require('../helpers/execQuery');
-const TYPES = require('tedious').TYPES;
+const MockDatabase = require('../helpers/mockDatabase');
 
-const addGroup = (groupData) => {
-    const { gid, adminId, name } = groupData;
-    const query = `
-    INSERT INTO [dbo].[Groups] (gid, adminId, name) 
-    VALUES(@gid, @adminId, @name)
-    `;
-    const params = [
-        { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
-        { name: 'adminId', type: TYPES.UniqueIdentifier, value: adminId },
-        { name: 'name', type: TYPES.VarChar, value: name },
-    ];
-    return execQuery.execWriteCommand(query, params);
+const addGroup = async (groupData) => {
+    return await MockDatabase.addGroup(groupData);
 };
 
-const getGroupsByUserId = (uid) => {
-    const query = `
-    SELECT g.* FROM [dbo].[Groups] g
-    JOIN [dbo].[UserGroups] ug ON g.gid = ug.gid
-    WHERE ug.uid = @uid`;
-    const params = [
-        { name: 'uid', type: TYPES.UniqueIdentifier, value: uid },
-    ];
-    return execQuery.execReadCommand(query, params);
+const getGroupsByUserId = async (uid) => {
+    return await MockDatabase.getGroupsByUserId(uid);
 };
 
 const deleteGroup = (gid, adminId) => {
-    const query = `DELETE FROM [dbo].[Groups] WHERE gid = @gid AND adminId = @adminId`;
-    const params = [
-        { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
-        { name: 'adminId', type: TYPES.UniqueIdentifier, value: adminId },
-    ];
-    return execQuery.execWriteCommand(query, params);
+    // Add deleteGroup method to MockDatabase if it doesn't exist
+    const mockGroups = require('../helpers/mockDatabase');
+    const index = mockGroups.mockGroups?.findIndex(g => g.gid === gid && g.adminId === adminId);
+    if (index !== -1) {
+        mockGroups.mockGroups.splice(index, 1);
+        return Promise.resolve({ success: true });
+    }
+    return Promise.resolve({ success: false, message: 'Group not found' });
 };
 
 module.exports = {
