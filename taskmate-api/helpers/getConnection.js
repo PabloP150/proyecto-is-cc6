@@ -42,6 +42,8 @@ const configConnection = {
         rowCollectionOnDone: true,
         encrypt,
         trustServerCertificate,
+    // Evita convertir fechas a UTC, usa zona horaria local del servidor
+    useUTC: false,
         ...(DB_PORT ? { port: Number(DB_PORT) } : {}),
         ...(DB_INSTANCE ? { instanceName: DB_INSTANCE } : {}),
     }

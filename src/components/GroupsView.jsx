@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useContext, useCallback } from 'react';
-import { Box, Typography, List, ListItem, CssBaseline, Paper, Container, Button, TextField, Dialog, DialogActions, DialogContent, DialogTitle, styled } from '@mui/material';
+import { Box, Button, Container, CssBaseline, Dialog, DialogActions, DialogContent, DialogTitle, List, ListItem, Paper, styled, TextField, Typography } from '@mui/material';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
+import { useCallback, useContext, useEffect, useState } from 'react';
 import { GroupContext } from './GroupContext';
 
 const UseButton = styled(Button)(({ theme, selected }) => ({
@@ -311,8 +311,11 @@ function GroupsView() {
       >
         <Container component="main" maxWidth="ms" sx={{ mt: 8 }}>
           <Box sx={{ display: 'flex', flexGrow: 1, padding: 1 }}>
-            <Paper sx={{ width: '20%', marginRight: 2, padding: 2, overflow: 'auto', position: 'relative' }}>
-              <Typography variant="h6" gutterBottom>Groups</Typography>
+            <Paper sx={{ width: '20%', marginRight: 2, padding: 2, overflow: 'auto' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, mb: 1 }}>
+                <Typography variant="h6" sx={{ fontWeight: 600, mr: 1, flex: '1 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Groups</Typography>
+                <Button variant="contained" size="small" onClick={() => setOpenCreateGroup(true)}>Create</Button>
+              </Box>
               <List>
                 {groups.length === 0 ? (
                   <ListItem>
@@ -320,27 +323,45 @@ function GroupsView() {
                   </ListItem>
                 ) : (
                   groups.map(group => (
-                    <ListItem key={group.gid} button onClick={() => handleGroupClick(group)}>
-                      {group.name}
-                      <UseButton selected={selectedGroupId === group.gid} onClick={() => handleUseGroup(group)}>Use</UseButton>
+                    <ListItem key={group.gid} button onClick={() => handleGroupClick(group)} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Box sx={{ flex: '1 1 auto', minWidth: 0 }}>
+                        <Typography sx={{
+                          overflow: 'hidden',
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                        }} title={group.name}>
+                          {group.name}
+                        </Typography>
+                      </Box>
+                      <UseButton selected={selectedGroupId === group.gid} onClick={(e) => { e.stopPropagation(); handleUseGroup(group); }}>Use</UseButton>
                     </ListItem>
                   ))
                 )}
               </List>
-              <Button
-                variant="contained"
-                onClick={() => setOpenCreateGroup(true)}
-                sx={{ position: 'absolute', top: 10, right: 10 }}
-              >
-                Create Group
-              </Button>
             </Paper>
             <Paper sx={{ width: '80%', padding: 2, overflow: 'auto' }}>
               {selectedGroup ? (
                 <>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Typography variant="h4" gutterBottom>{selectedGroup.name}</Typography>
-                    <Box>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1.5, flexWrap: { xs: 'wrap', sm: 'nowrap' } }}>
+                    <Typography
+                      variant="h6"
+                      component="h2"
+                      gutterBottom
+                      sx={{
+                        flex: '1 1 auto',
+                        minWidth: 0,
+                        fontSize: 'clamp(1rem, 2.2vw, 1.6rem)',
+                        fontWeight: 600,
+                        lineHeight: 1.3,
+                        overflowWrap: 'anywhere',
+                        whiteSpace: 'normal',
+                      }}
+                      title={selectedGroup?.name}
+                    >
+                      {selectedGroup.name}
+                    </Typography>
+                    <Box sx={{ display: 'flex', gap: 1, flexShrink: 0, flexWrap: 'wrap', justifyContent: { xs: 'flex-start', md: 'flex-end' } }}>
                       {selectedGroup.adminId === localStorage.getItem('userId') ? (
                         <>
                           {members.length === 1 && (

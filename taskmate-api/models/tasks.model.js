@@ -1,6 +1,29 @@
 const { execReadCommand, execWriteCommand } = require('../helpers/execQuery');
 const { TYPES } = require('tedious');
 
+// Convierte strings de fecha a Date en hora local sin interpretaciones UTC.
+// Soporta: 'YYYY-MM-DD', 'YYYY-MM-DDTHH:mm', 'YYYY-MM-DDTHH:mm:ss', y objetos Date.
+const toLocalDate = (dt) => {
+    if (!dt) return null;
+    if (dt instanceof Date) return dt;
+    if (typeof dt === 'string') {
+        // Solo fecha
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dt)) {
+            const [y,m,d] = dt.split('-').map(Number);
+            return new Date(y, m - 1, d, 0, 0, 0, 0);
+        }
+        // Fecha con hora (al menos HH:mm)
+        if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(dt)) {
+            const [datePart, timePart] = dt.split('T');
+            const [y,m,d] = datePart.split('-').map(Number);
+            const [hh,mm,ss] = timePart.split(':').map(Number);
+            return new Date(y, m - 1, d, hh || 0, mm || 0, ss || 0, 0);
+        }
+    }
+    // Fallback a parser nativo
+    return new Date(dt);
+};
+
 const addTask = async (taskData) => {
     const { tid, gid, name, description, list, datetime, percentage } = taskData;
     const query = `INSERT INTO dbo.Tasks (tid, gid, name, description, list, datetime, percentage)
@@ -11,7 +34,7 @@ const addTask = async (taskData) => {
         { name: 'name', type: TYPES.VarChar, value: name },
         { name: 'description', type: TYPES.VarChar, value: description },
         { name: 'list', type: TYPES.VarChar, value: list },
-        { name: 'datetime', type: TYPES.SmallDateTime, value: new Date(datetime) },
+        { name: 'datetime', type: TYPES.SmallDateTime, value: toLocalDate(datetime) },
         { name: 'percentage', type: TYPES.Int, value: percentage ?? 0 },
     ];
     return execWriteCommand(query, params);
@@ -29,7 +52,7 @@ const updateTask = async (taskData) => {
         { name: 'name', type: TYPES.VarChar, value: name },
         { name: 'description', type: TYPES.VarChar, value: description },
         { name: 'list', type: TYPES.VarChar, value: list },
-        { name: 'datetime', type: TYPES.SmallDateTime, value: new Date(datetime) },
+        { name: 'datetime', type: TYPES.SmallDateTime, value: toLocalDate(datetime) },
         { name: 'percentage', type: TYPES.Int, value: percentage ?? 0 },
     ];
     return execWriteCommand(query, params);
@@ -45,7 +68,7 @@ const updateTaskFromNode = async (taskData) => {
         { name: 'tid', type: TYPES.UniqueIdentifier, value: tid },
         { name: 'name', type: TYPES.VarChar, value: name },
         { name: 'description', type: TYPES.VarChar, value: description },
-        { name: 'datetime', type: TYPES.SmallDateTime, value: new Date(date) },
+        { name: 'datetime', type: TYPES.SmallDateTime, value: toLocalDate(date) },
         { name: 'percentage', type: TYPES.Int, value: percentage ?? null },
     ];
     return execWriteCommand(query, params);

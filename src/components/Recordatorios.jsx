@@ -3,18 +3,18 @@ import {
   Box,
   Button,
   Container,
+  CssBaseline,
   IconButton,
   Paper,
   Typography,
-  CssBaseline,
 } from '@mui/material';
 import { blue } from '@mui/material/colors';
-import React, { useState, useEffect, useContext, useCallback } from 'react';
+import { createTheme, ThemeProvider } from '@mui/material/styles';
+import { useCallback, useContext, useEffect, useState } from 'react';
 import BarraLateral from './BarraLateral';
 import Dialogos from './Dialogos';
-import ListaRecordatorios from './ListaRecordatorios';
-import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { GroupContext } from './GroupContext'; // Importa el contexto
+import ListaRecordatorios from './ListaRecordatorios';
 
 const theme = createTheme({
   palette: {
@@ -160,7 +160,9 @@ export default function Recordatorios() {
 
   const handleSubmitRecordatorio = async (e) => {
     e.preventDefault();
-    const fechaCompleta = `${fecha}T${hora}`; // Combina fecha y hora
+  // Combina fecha y hora; si no hay hora seleccionada, default a 00:00 para evitar fechas inválidas
+  const safeTime = (typeof hora === 'string' && /^\d{2}:\d{2}$/.test(hora)) ? hora : '00:00';
+  const fechaCompleta = `${fecha}T${safeTime}`;
     const nuevaTarea = { 
       gid: selectedGroupId, // Usa el gid del contexto
       name: nombre, 
@@ -300,7 +302,19 @@ export default function Recordatorios() {
   const handleEditar = (nombre, idx) => {
     const recordatorio = listas.find(lista => lista.nombre === nombre)?.recordatorios[idx];
     if (recordatorio) {
-      setRecordatorioEditar(recordatorio);
+      // Normalizar datetime a 'YYYY-MM-DDTHH:mm' en hora local para edición estable
+      const normalizeLocal = (dt) => {
+        if (!dt) return '';
+        if (typeof dt === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(dt)) return dt;
+        const d = new Date(dt);
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2,'0');
+        const da = String(d.getDate()).padStart(2,'0');
+        const hh = String(d.getHours()).padStart(2,'0');
+        const mm = String(d.getMinutes()).padStart(2,'0');
+        return `${y}-${m}-${da}T${hh}:${mm}`;
+      };
+      setRecordatorioEditar({ ...recordatorio, datetime: normalizeLocal(recordatorio.datetime) });
       setOpenEditar(true);
     }
   };

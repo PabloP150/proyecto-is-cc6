@@ -1,6 +1,5 @@
 // src/components/Dialogos.jsx
-import React, { useState } from 'react';
-import { Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button, Box, MenuItem } from '@mui/material';
+import { Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, TextField } from '@mui/material';
 import { blue } from '@mui/material/colors';
 
 export default function Dialogos({
@@ -194,7 +193,21 @@ export default function Dialogos({
             label="Date"
             type="date"
             value={recordatorioEditar?.datetime.split('T')[0] || ''}
-            onChange={(e) => setRecordatorioEditar({ ...recordatorioEditar, datetime: e.target.value })}
+            onChange={(e) => {
+              const newDate = e.target.value;
+              // Preservar la hora existente (HH:mm) o usar 00:00 si no hay
+              const existingTime = (() => {
+                const dt = recordatorioEditar?.datetime || '';
+                const timePart = dt.includes('T') ? dt.split('T')[1] : '';
+                if (timePart) {
+                  return timePart.substring(0, 5);
+                }
+                // Si no hay hora previa, usar la del estado `hora` si existe
+                if (typeof hora === 'string' && hora.length >= 4) return hora.substring(0,5);
+                return '00:00';
+              })();
+              setRecordatorioEditar({ ...recordatorioEditar, datetime: `${newDate}T${existingTime}` });
+            }}
             InputLabelProps={{ shrink: true }}
           />
           <TextField
@@ -204,7 +217,19 @@ export default function Dialogos({
             id="horaEditar"
             label="Time"
             type="time"
-            value={recordatorioEditar?.datetime ? new Date(recordatorioEditar.datetime).toLocaleTimeString('it-IT').substring(0, 5) : ''}
+            value={(() => {
+              if (!recordatorioEditar?.datetime) return '';
+              // Obtener HH:mm de forma consistente en hora local
+              const dtStr = recordatorioEditar.datetime;
+              if (dtStr.includes('T')) {
+                const t = dtStr.split('T')[1].substring(0,5);
+                if (/^\d{2}:\d{2}$/.test(t)) return t;
+              }
+              const d = new Date(dtStr);
+              const hh = String(d.getHours()).padStart(2,'0');
+              const mm = String(d.getMinutes()).padStart(2,'0');
+              return `${hh}:${mm}`;
+            })()}
             onChange={(e) => {
               const newTime = e.target.value;
               setHora(newTime);

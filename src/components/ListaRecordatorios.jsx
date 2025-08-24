@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
-import { List, ListItem, ListItemText, IconButton, Box, Typography, Menu, MenuItem, Button } from '@mui/material';
-import DeleteIcon from '@mui/icons-material/Delete';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import FilterListIcon from '@mui/icons-material/FilterList';
+import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
+import FilterListIcon from '@mui/icons-material/FilterList';
+import { Box, Button, IconButton, List, ListItem, ListItemText, Menu, MenuItem, Typography } from '@mui/material';
 import { blue } from '@mui/material/colors';
+import { useState } from 'react';
 import SeleccionarPersona from './SeleccionarPersona';
 export default function ListaRecordatorios({ listas, handleEliminar, handleCompletar, handleEditar, filtro, handleEliminarLista, orden, setOrden, handleVaciarCompletados, handleVaciarEliminados }) {
   const [anchorEl, setAnchorEl] = useState(null);
@@ -49,8 +49,31 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
 
   const formatearFecha = (datetime) => {
     if (!datetime) return 'Date Not Available';
-    const fecha = new Date(datetime);
-    return `${fecha.toLocaleDateString()} ${fecha.toLocaleTimeString()}`;
+    // Normalizar a un Date en local sin cambiar el día cuando viene 'YYYY-MM-DD' o 'YYYY-MM-DDTHH:mm'
+    try {
+      let d;
+      if (typeof datetime === 'string') {
+        // Si viene solo fecha, añadir T00:00 explícito para evitar interpretaciones de UTC
+        if (/^\d{4}-\d{2}-\d{2}$/.test(datetime)) {
+          const [y,m,da] = datetime.split('-').map(Number);
+          d = new Date(y, m - 1, da, 0, 0, 0, 0); // año, mes indexado 0
+        } else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(datetime)) {
+          const [datePart,timePart] = datetime.split('T');
+          const [y,m,da] = datePart.split('-').map(Number);
+          const [hh,mm] = timePart.substring(0,5).split(':').map(Number);
+          d = new Date(y, m - 1, da, hh, mm, 0, 0);
+        } else {
+          d = new Date(datetime);
+        }
+      } else {
+        d = new Date(datetime);
+      }
+      const fecha = d;
+      return `${fecha.toLocaleDateString()} ${fecha.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    } catch {
+      const f = new Date(datetime);
+      return `${f.toLocaleDateString()} ${f.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    }
   };
 
   return (
