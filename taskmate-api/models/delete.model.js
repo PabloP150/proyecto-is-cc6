@@ -1,27 +1,30 @@
-const MockDatabase = require('../helpers/mockDatabase');
+const { execReadCommand, execWriteCommand } = require('../helpers/execQuery');
+const { TYPES } = require('tedious');
 
-const addDelete = (deleteData) => {
-    // Add to mock deleted tasks
-    const mockDatabase = require('../helpers/mockDatabase');
-    if (!mockDatabase.mockDeletedTasks) {
-        mockDatabase.mockDeletedTasks = [];
-    }
-    mockDatabase.mockDeletedTasks.push(deleteData);
-    return Promise.resolve({ success: true });
+const addDelete = async (deleteData) => {
+    const { tid, gid, name, description, datetime } = deleteData;
+    const query = `INSERT INTO dbo.DeleteTask (tid, gid, name, description, datetime)
+                   VALUES (@tid, @gid, @name, @description, @datetime)`;
+    const params = [
+        { name: 'tid', type: TYPES.UniqueIdentifier, value: tid },
+        { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
+        { name: 'name', type: TYPES.VarChar, value: name },
+        { name: 'description', type: TYPES.VarChar, value: description },
+        { name: 'datetime', type: TYPES.SmallDateTime, value: new Date(datetime) },
+    ];
+    return execWriteCommand(query, params);
 };
 
-const getEliminados = (gid) => {
-    const mockDatabase = require('../helpers/mockDatabase');
-    const deletedTasks = mockDatabase.mockDeletedTasks || [];
-    return Promise.resolve(deletedTasks.filter(task => task.gid === gid));
+const getEliminados = async (gid) => {
+    const query = `SELECT tid, gid, name, description, datetime FROM dbo.DeleteTask WHERE gid=@gid`;
+    const params = [{ name: 'gid', type: TYPES.UniqueIdentifier, value: gid }];
+    return execReadCommand(query, params);
 };
 
-const deleteAll = (gid) => {
-    const mockDatabase = require('../helpers/mockDatabase');
-    if (mockDatabase.mockDeletedTasks) {
-        mockDatabase.mockDeletedTasks = mockDatabase.mockDeletedTasks.filter(task => task.gid !== gid);
-    }
-    return Promise.resolve({ success: true });
+const deleteAll = async (gid) => {
+    const query = `DELETE FROM dbo.DeleteTask WHERE gid=@gid`;
+    const params = [{ name: 'gid', type: TYPES.UniqueIdentifier, value: gid }];
+    return execWriteCommand(query, params);
 };
 
 module.exports = {

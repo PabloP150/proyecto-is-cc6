@@ -1,7 +1,15 @@
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
+const path = require('path');
 const http = require('http');
+
+// IMPORTANT: Load environment variables BEFORE requiring modules that read process.env
+// Load .env from taskmate-api first (optional)
+dotenv.config();
+// Then load root-level env files if present
+dotenv.config({ path: path.resolve(__dirname, '../.env'), override: false });
+
 const WebSocketServer = require('./services/WebSocketServer');
 const tasksController = require('./controllers/tasks.controller');
 const userController = require('./controllers/user.controller');
@@ -11,7 +19,6 @@ const edgesController = require('./controllers/edges.controller');
 const completeController = require('./controllers/complete.controller');
 const deleteController = require('./controllers/delete.controller');
 const userTaskController = require('./controllers/usertask.controller');
-dotenv.config();
 
 const {
     API_PORT = 9000,

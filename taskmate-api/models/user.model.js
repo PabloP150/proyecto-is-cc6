@@ -1,22 +1,37 @@
 // models/user.model.js
-const MockDatabase = require('../helpers/mockDatabase');
+const { execReadCommand, execWriteCommand } = require('../helpers/execQuery');
+const { TYPES } = require('tedious');
 
 const addUser = async (userData) => {
-    return await MockDatabase.addUser(userData);
+    const { uid, username, password } = userData;
+    const query = `INSERT INTO dbo.Users (uid, username, password) VALUES (@uid, @username, @password)`;
+    const params = [
+        { name: 'uid', type: TYPES.UniqueIdentifier, value: uid },
+        { name: 'username', type: TYPES.VarChar, value: username },
+        { name: 'password', type: TYPES.VarChar, value: password },
+    ];
+    await execWriteCommand(query, params);
+    return { success: true };
 };
 
 const getUserByUsername = async (username) => {
-    return await MockDatabase.getUserByUsername(username);
+    const query = `SELECT uid, username, password FROM dbo.Users WHERE username = @username`;
+    const params = [{ name: 'username', type: TYPES.VarChar, value: username }];
+    return execReadCommand(query, params);
 };
+
 const getidUserByUsername = async (username) => {
-    return await MockDatabase.getidUserByUsername(username);
+    const query = `SELECT uid FROM dbo.Users WHERE username = @username`;
+    const params = [{ name: 'username', type: TYPES.VarChar, value: username }];
+    const rows = await execReadCommand(query, params);
+    return rows?.[0] || null;
 };
 
 const getidUser = async (uid) => {
-    // Add getidUser method to MockDatabase if it doesn't exist
-    const mockDatabase = require('../helpers/mockDatabase');
-    const user = mockDatabase.mockUsers?.find(u => u.uid === uid);
-    return user ? { uid: user.uid } : null;
+    const query = `SELECT uid FROM dbo.Users WHERE uid = @uid`;
+    const params = [{ name: 'uid', type: TYPES.UniqueIdentifier, value: uid }];
+    const rows = await execReadCommand(query, params);
+    return rows?.[0] || null;
 };
 
 module.exports = {

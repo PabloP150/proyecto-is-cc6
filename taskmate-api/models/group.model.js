@@ -1,23 +1,38 @@
 // models/group.model.js
-const MockDatabase = require('../helpers/mockDatabase');
+const { execReadCommand, execWriteCommand } = require('../helpers/execQuery');
+const { TYPES } = require('tedious');
 
 const addGroup = async (groupData) => {
-    return await MockDatabase.addGroup(groupData);
+    const { gid, adminId, name } = groupData;
+    const query = `INSERT INTO dbo.Groups (gid, adminId, name) VALUES (@gid, @adminId, @name)`;
+    const params = [
+        { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
+        { name: 'adminId', type: TYPES.UniqueIdentifier, value: adminId },
+        { name: 'name', type: TYPES.VarChar, value: name },
+    ];
+    await execWriteCommand(query, params);
+    return { success: true };
 };
 
 const getGroupsByUserId = async (uid) => {
-    return await MockDatabase.getGroupsByUserId(uid);
+    const query = `
+        SELECT g.gid, g.adminId, g.name
+        FROM dbo.Groups g
+        INNER JOIN dbo.UserGroups ug ON ug.gid = g.gid
+        WHERE ug.uid = @uid
+    `;
+    const params = [{ name: 'uid', type: TYPES.UniqueIdentifier, value: uid }];
+    return execReadCommand(query, params);
 };
 
-const deleteGroup = (gid, adminId) => {
-    // Add deleteGroup method to MockDatabase if it doesn't exist
-    const mockGroups = require('../helpers/mockDatabase');
-    const index = mockGroups.mockGroups?.findIndex(g => g.gid === gid && g.adminId === adminId);
-    if (index !== -1) {
-        mockGroups.mockGroups.splice(index, 1);
-        return Promise.resolve({ success: true });
-    }
-    return Promise.resolve({ success: false, message: 'Group not found' });
+const deleteGroup = async (gid, adminId) => {
+    const query = `DELETE FROM dbo.Groups WHERE gid = @gid AND adminId = @adminId`;
+    const params = [
+        { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
+        { name: 'adminId', type: TYPES.UniqueIdentifier, value: adminId },
+    ];
+    await execWriteCommand(query, params);
+    return { success: true };
 };
 
 module.exports = {

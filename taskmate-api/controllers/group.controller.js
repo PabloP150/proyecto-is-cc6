@@ -16,7 +16,8 @@ groupRoute.post('/group', async (req, res) => {
         // Agregar el usuario que creó el grupo como miembro
         await UserGroupModel.addUserToGroup({ uid: adminId, gid: gid });
 
-        res.status(201).json({ message: 'Group created successfully', gid: uuidv4() });
+    // Importante: devolver el gid creado (no un nuevo uuid)
+    res.status(201).json({ message: 'Group created successfully', gid });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }

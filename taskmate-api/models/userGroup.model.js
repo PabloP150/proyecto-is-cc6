@@ -1,65 +1,40 @@
 // models/userGroup.model.js
-const mockDatabase = require('../helpers/mockDatabase');
+const { execReadCommand, execWriteCommand } = require('../helpers/execQuery');
+const { TYPES } = require('tedious');
 
 const addUserToGroup = async (userGroupData) => {
   const { uid, gid } = userGroupData;
-  
-  // Check if the relationship already exists
-  const existingRelation = mockDatabase.userGroups.find(
-    ug => ug.uid === uid && ug.gid === gid
-  );
-  
-  if (existingRelation) {
-    return { success: false, message: 'User already in group' };
-  }
-  
-  // Add the user-group relationship
-  mockDatabase.userGroups.push({ uid, gid });
-  return { success: true, message: 'User added to group successfully' };
+  const query = `INSERT INTO dbo.UserGroups (uid, gid) VALUES (@uid, @gid)`;
+  const params = [
+    { name: 'uid', type: TYPES.UniqueIdentifier, value: uid },
+    { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
+  ];
+  await execWriteCommand(query, params);
+  return { success: true };
 };
 
-const getMembersByGroupId = (gid) => {
-  // Get user IDs in the group
-  const usersInGroup = mockDatabase.userGroups
-    .filter(ug => ug.gid === gid)
-    .map(ug => ug.uid);
-  
-  // Get user details for those IDs
-  const members = mockDatabase.users
-    .filter(user => usersInGroup.includes(user.uid))
-    .map(user => ({
-      uid: user.uid,
-      username: user.username
-    }));
-  
-  return Promise.resolve(members);
+const getMembersByGroupId = async (gid) => {
+  const query = `
+    SELECT u.uid, u.username
+    FROM dbo.Users u
+    INNER JOIN dbo.UserGroups ug ON ug.uid = u.uid
+    WHERE ug.gid = @gid
+  `;
+  const params = [{ name: 'gid', type: TYPES.UniqueIdentifier, value: gid }];
+  return execReadCommand(query, params);
 };
 
-const removeMemberFromGroup = (uid, gid) => {
-  const relationIndex = mockDatabase.userGroups.findIndex(
-    ug => ug.uid === uid && ug.gid === gid
-  );
-  
-  if (relationIndex !== -1) {
-    mockDatabase.userGroups.splice(relationIndex, 1);
-    return Promise.resolve({ success: true, message: 'User removed from group' });
-  }
-  
-  return Promise.resolve({ success: false, message: 'User not found in group' });
+const removeMemberFromGroup = async (uid, gid) => {
+  const query = `DELETE FROM dbo.UserGroups WHERE uid = @uid AND gid = @gid`;
+  const params = [
+    { name: 'uid', type: TYPES.UniqueIdentifier, value: uid },
+    { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
+  ];
+  await execWriteCommand(query, params);
+  return { success: true };
 };
 
-const leaveGroup = (uid, gid) => {
-  const relationIndex = mockDatabase.userGroups.findIndex(
-    ug => ug.uid === uid && ug.gid === gid
-  );
-  
-  if (relationIndex !== -1) {
-    mockDatabase.userGroups.splice(relationIndex, 1);
-    return Promise.resolve({ success: true, message: 'Left group successfully' });
-  }
-  
-  return Promise.resolve({ success: false, message: 'User not found in group' });
-};
+const leaveGroup = async (uid, gid) => removeMemberFromGroup(uid, gid);
 
 module.exports = {
   addUserToGroup,

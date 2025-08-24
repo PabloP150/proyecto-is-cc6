@@ -28,6 +28,17 @@ edgesRoute.post('/', async (req, res) => {
     }
 });
 
+// Nota: declarar primero rutas más específicas
+edgesRoute.get('/group/:gid', async (req, res) => {
+    const { gid } = req.params;
+    try {
+        const data = await EdgesModel.getEdgesByGroupId(gid);
+        res.status(200).json({ data });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 edgesRoute.get('/:eid', async (req, res) => {
     const { eid } = req.params;
     try {
@@ -47,16 +58,6 @@ edgesRoute.put('/:eid', async (req, res) => {
             prerequisite
         });
         res.status(200).json({ message: 'Edge prerequisite updated successfully' });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-edgesRoute.get('/group/:gid', async (req, res) => {
-    const { gid } = req.params;
-    try {
-        const data = await EdgesModel.getEdgesByGroupId(gid);
-        res.status(200).json({ data });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
