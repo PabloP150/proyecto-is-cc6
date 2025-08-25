@@ -9,17 +9,10 @@ tasksRoute.get('/', async (req, res) => {
     }
     try {
         const data = await TasksModel.getTasksByGroupId(gid);
-        const toLocalString = (val) => {
-            if (!val) return null;
-            const d = new Date(val);
-            const y = d.getFullYear();
-            const m = String(d.getMonth() + 1).padStart(2,'0');
-            const da = String(d.getDate()).padStart(2,'0');
-            const hh = String(d.getHours()).padStart(2,'0');
-            const mm = String(d.getMinutes()).padStart(2,'0');
-            return `${y}-${m}-${da}T${hh}:${mm}`;
-        };
-        const normalized = data.map(t => ({ ...t, datetime: toLocalString(t.datetime) }));
+            const normalized = data.map(t => ({
+                ...t,
+                datetime: t.datetimeStr ? t.datetimeStr.replace(' ', 'T') : null
+            }));
         res.status(200).json({ data: normalized });
     } catch (error) {
         console.error("Error fetching tasks:", error);
@@ -33,13 +26,7 @@ tasksRoute.get('/:id', async (req, res) => {
         .then(data => {
             if (data.length > 0) {
                 const row = data[0];
-                const d = row?.datetime ? new Date(row.datetime) : null;
-                const y = d ? d.getFullYear() : null;
-                const m = d ? String(d.getMonth() + 1).padStart(2,'0') : null;
-                const da = d ? String(d.getDate()).padStart(2,'0') : null;
-                const hh = d ? String(d.getHours()).padStart(2,'0') : null;
-                const mm = d ? String(d.getMinutes()).padStart(2,'0') : null;
-                const norm = d ? `${y}-${m}-${da}T${hh}:${mm}` : null;
+                    const norm = row.datetimeStr ? row.datetimeStr.replace(' ', 'T') : null;
                 res.status(200).json({ data: { ...row, datetime: norm } });
             } else {
                 res.status(404).json({ error: 'Task not found' });

@@ -29,7 +29,7 @@ export default function Dialogos({
   handleSubmitEditar,
   handleCloseEditar,
 }) {
-
+  const isAddDisabled = !nombre?.trim() || !descripcion?.trim() || !fecha || !listaSeleccionada;
   return (
     <>
       {/* Diálogo para agregar una nueva lista */}
@@ -147,7 +147,7 @@ export default function Dialogos({
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseRecordatorio} sx={{ color: 'white' }}>CANCEL</Button>
-          <Button type="submit" onClick={handleSubmitRecordatorio} variant="contained" sx={{ backgroundColor: blue[600] }}>
+          <Button type="submit" onClick={handleSubmitRecordatorio} variant="contained" sx={{ backgroundColor: blue[600] }} disabled={isAddDisabled}>
             ADD
           </Button>
         </DialogActions>

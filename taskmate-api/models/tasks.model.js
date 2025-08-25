@@ -81,18 +81,21 @@ const deleteTask = async (tid) => {
 };
 
 const getAllTasks = async () => {
-    const query = `SELECT tid, gid, name, description, list, datetime, percentage FROM dbo.Tasks`;
+    // Devuelve la fecha/hora como string exacto desde SQL (YYYY-MM-DD HH:mm)
+    const query = `SELECT tid, gid, name, description, list, CONVERT(VARCHAR(16), datetime, 120) AS datetimeStr, percentage FROM dbo.Tasks`;
     return execReadCommand(query);
 };
 
 const getTask = async (tid) => {
-    const query = `SELECT tid, gid, name, description, list, datetime, percentage FROM dbo.Tasks WHERE tid=@tid`;
+    // Devuelve la fecha/hora como string exacto desde SQL (YYYY-MM-DD HH:mm)
+    const query = `SELECT tid, gid, name, description, list, CONVERT(VARCHAR(16), datetime, 120) AS datetimeStr, percentage FROM dbo.Tasks WHERE tid=@tid`;
     const params = [{ name: 'tid', type: TYPES.UniqueIdentifier, value: tid }];
     return execReadCommand(query, params);
 };
 
 const getTasksByGroupId = async (gid) => {
-    const query = `SELECT tid, gid, name, description, list, datetime, percentage FROM dbo.Tasks WHERE gid=@gid`;
+    // Devuelve la fecha/hora como string exacto desde SQL (YYYY-MM-DD HH:mm)
+    const query = `SELECT tid, gid, name, description, list, CONVERT(VARCHAR(16), datetime, 120) AS datetimeStr, percentage FROM dbo.Tasks WHERE gid=@gid`;
     const params = [{ name: 'gid', type: TYPES.UniqueIdentifier, value: gid }];
     return execReadCommand(query, params);
 };

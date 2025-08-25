@@ -49,30 +49,34 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
 
   const formatearFecha = (datetime) => {
     if (!datetime) return 'Date Not Available';
-    // Normalizar a un Date en local sin cambiar el día cuando viene 'YYYY-MM-DD' o 'YYYY-MM-DDTHH:mm'
-    try {
-      let d;
-      if (typeof datetime === 'string') {
-        // Si viene solo fecha, añadir T00:00 explícito para evitar interpretaciones de UTC
-        if (/^\d{4}-\d{2}-\d{2}$/.test(datetime)) {
-          const [y,m,da] = datetime.split('-').map(Number);
-          d = new Date(y, m - 1, da, 0, 0, 0, 0); // año, mes indexado 0
-        } else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(datetime)) {
-          const [datePart,timePart] = datetime.split('T');
-          const [y,m,da] = datePart.split('-').map(Number);
-          const [hh,mm] = timePart.substring(0,5).split(':').map(Number);
-          d = new Date(y, m - 1, da, hh, mm, 0, 0);
-        } else {
-          d = new Date(datetime);
-        }
-      } else {
-        d = new Date(datetime);
+    // Mostrar exactamente la hora recibida, sin aplicar conversiones de zona horaria.
+    // Soporta: 'YYYY-MM-DDTHH:mm', 'YYYY-MM-DD HH:mm', ISO con Z ('YYYY-MM-DDTHH:mm:ss.sssZ') y solo fecha.
+    if (typeof datetime === 'string') {
+      // ISO con hora (T o espacio) – tomar HH:mm literal
+      const m1 = datetime.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+      if (m1) {
+        const [, y, m, d, hh, mm] = m1;
+        return `${Number(d)}/${Number(m)}/${y} ${hh}:${mm}`;
       }
-      const fecha = d;
-      return `${fecha.toLocaleDateString()} ${fecha.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-    } catch {
+      // Solo fecha
+      const m2 = datetime.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (m2) {
+        const [, y, m, d] = m2;
+        return `${Number(d)}/${Number(m)}/${y} 00:00`;
+      }
+      // ISO completo con Z – extraer partes sin convertir
+      const m3 = datetime.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):\d{2}(?:\.\d+)?Z$/);
+      if (m3) {
+        const [, y, m, d, hh, mm] = m3;
+        return `${Number(d)}/${Number(m)}/${y} ${hh}:${mm}`;
+      }
+    }
+    // Fallback: usar Date solo si no coincide ningún formato conocido
+    try {
       const f = new Date(datetime);
       return `${f.toLocaleDateString()} ${f.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    } catch {
+      return String(datetime);
     }
   };
 

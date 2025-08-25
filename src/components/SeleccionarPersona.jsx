@@ -32,32 +32,33 @@ const SeleccionarPersona = ({ tid }) => {
 
   useEffect(() => {
     const cargarEstado = async () => {
-      if (!selectedGroupId || members.length === 0) return;
+      // Solo consulta cuando hay grupo, miembros cargados y el menú está abierto
+      if (!selectedGroupId || members.length === 0 || !anchorEl) return;
 
       try {
         const response = await fetch(`http://localhost:9000/api/usertask?tid=${tid}`);
-        
         if (response.ok) {
           const data = await response.json();
           if (!data.data || data.data.length === 0) {
             setSelectedMembers([]);
             return;
           }
-
           const completedUsers = data.data
             .filter(task => task.completed)
             .map(task => task.uid);
           setSelectedMembers(completedUsers);
-        } else {
-          console.error('No es error solo no hay ninguna tarea asignada');
+          return;
         }
+        // Tratar cualquier estado no-OK (incluye 404) como "sin asignaciones" sin loguear error
+        setSelectedMembers([]);
       } catch (error) {
-        console.error('Error en la solicitud:', error);
+        // Silenciar errores de red u otras excepciones
+        setSelectedMembers([]);
       }
     };
 
     cargarEstado();
-  }, [selectedGroupId, tid, members]);
+  }, [selectedGroupId, tid, members, anchorEl]);
 
   const handleSelect = async (member) => {
     const isSelected = selectedMembers.includes(member.uid);
@@ -77,7 +78,7 @@ const SeleccionarPersona = ({ tid }) => {
   };
 
   const handleClick = (event) => {
-    setAnchorEl(event.currentTarget);
+    setAnchorEl(event.currentTarget); // abrir menú dispara la carga del estado
   };
 
   const handleClose = () => {

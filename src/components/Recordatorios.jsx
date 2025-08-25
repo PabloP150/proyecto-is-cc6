@@ -131,7 +131,9 @@ export default function Recordatorios() {
   };
 
   const handleOpenRecordatorio = () => {
-    setOpenRecordatorio(true);
+  // Hora por defecto 00:00 si está vacía
+  setHora(prev => (prev && /^\d{2}:\d{2}$/.test(prev) ? prev : '00:00'));
+  setOpenRecordatorio(true);
   };
 
   const handleCloseRecordatorio = () => {
