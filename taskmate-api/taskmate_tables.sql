@@ -105,90 +105,25 @@ CREATE TABLE dbo.DeleteTask(
 	FOREIGN KEY (gid) REFERENCES dbo.Groups(gid)
 );
 
-CREATE TRIGGER UpdateTargetNodePercentage
-ON dbo.Nodes
-AFTER UPDATE
-AS
-BEGIN
-    DECLARE @sourceId UNIQUEIDENTIFIER;
-    DECLARE @targetId UNIQUEIDENTIFIER;
-    DECLARE @childCount INT;
-    DECLARE @completedCount INT;
+--INSERT INTO dbo.Groups (gid, adminId, name)
+--VALUES ('00000000-0000-0000-0000-000000000001', 
+--        'DAD8127A-10FF-4A21-AC73-5E83F5CE0F61', 
+--        'Test Group'
+--		);
 
-    SELECT @sourceId = i.nid
-    FROM inserted i;
-
-    DECLARE target_cursor CURSOR FOR
-        SELECT DISTINCT targetId
-        FROM dbo.Edges INNER JOIN dbo.Nodes ON targetId = nid
-        WHERE sourceId = @sourceId AND prerequisite=0;
-
-    OPEN target_cursor;
-
-    FETCH NEXT FROM target_cursor INTO @targetId;
-
-	WHILE @@FETCH_STATUS = 0
-	BEGIN
-		WHILE @@FETCH_STATUS = 0
-		BEGIN
-			PRINT 'Processing target node: ' + CAST(@targetId AS VARCHAR(50));
-
-			-- Count the total number of child nodes
-			SELECT @childCount = COUNT(*)
-			FROM dbo.Edges
-			WHERE targetId = @targetId;
-
-			-- Count the number of completed child nodes
-			SELECT @completedCount = COUNT(*)
-			FROM dbo.Edges e
-			INNER JOIN dbo.Nodes n ON e.sourceId = n.nid
-			WHERE e.targetId = @targetId AND n.percentage = 100;
-
-			-- Calculate the percentage and update the target node
-			UPDATE dbo.Nodes
-			SET percentage = (@completedCount * 100) / @childCount
-			WHERE nid = @targetId;
-
-			PRINT 'Completed: ' + CAST(@completedCount AS VARCHAR(50)) + ', children: ' + CAST(@childCount AS VARCHAR(50));
-			PRINT 'Updated target node: ' + CAST(@targetId AS VARCHAR(50)) + ', new percentage: ' + CAST((@completedCount * 100) / @childCount AS VARCHAR(10));
-
-			FETCH NEXT FROM target_cursor INTO @targetId;
-		END;
-		CLOSE target_cursor;
-		DEALLOCATE target_cursor;
-
-		DECLARE target_cursor CURSOR FOR
-        SELECT DISTINCT targetId
-        FROM dbo.Edges INNER JOIN dbo.Nodes ON targetId = nid
-        WHERE sourceId = @targetId;
-
-		OPEN target_cursor;
-		FETCH NEXT FROM target_cursor INTO @targetId;
-	END
-
-    CLOSE target_cursor;
-    DEALLOCATE target_cursor;
-END;
-
-INSERT INTO dbo.Groups (gid, adminId, name)
-VALUES ('00000000-0000-0000-0000-000000000001', 
-        'DAD8127A-10FF-4A21-AC73-5E83F5CE0F61', 
-        'Test Group'
-		);
-
-select * from dbo.DeleteTask;
-select * from dbo.Complete;
-select * from dbo.Users;
-select * from dbo.UserTask;
-select * from dbo.UserGroups;
-select * from dbo.Groups;
-select * from dbo.DeleteTask;
-select * from dbo.Users;
-select * from dbo.Tasks;
-select * from dbo.Nodes;
-select * from dbo.Edges;
+--select * from dbo.Complete;
+--select * from dbo.Users;
+--select * from dbo.DeleteTask;
+--select * from dbo.UserTask;
+--select * from dbo.UserGroups;
+--select * from dbo.Groups;
+--select * from dbo.DeleteTask;
+--select * from dbo.Users;
+--select * from dbo.Tasks;
+--select * from dbo.Nodes;
+--select * from dbo.Edges;
 
 
-delete from dbo.Users where uid='F3DB0B3A-23A8-451E-9566-0A018410112C'
+--delete from dbo.Users where uid='F3DB0B3A-23A8-451E-9566-0A018410112C'
 
 --SELECT * FROM dbo.Users WHERE username='admin' AND password=HASHBYTES('SHA2_256','hola')
