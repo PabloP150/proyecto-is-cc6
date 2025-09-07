@@ -518,13 +518,13 @@ export default function Recordatorios() {
           flexGrow: 1,
           display: 'flex',
           flexDirection: 'column',
-          pt: 12,
+          pt: 5,
           pb: 4,
           overflow: 'hidden',
         }}
       >
         <Paper 
-          elevation={6} 
+          elevation={9} 
           sx={{ 
             p: 4, 
             backgroundColor: 'background.paper',
