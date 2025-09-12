@@ -2,11 +2,11 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import FilterListIcon from '@mui/icons-material/FilterList';
-import { Alert, Box, Button, Divider, IconButton, LinearProgress, List, ListItem, ListItemText, Menu, MenuItem, Snackbar, Typography } from '@mui/material';
+import { Alert, Box, Divider, IconButton, LinearProgress, List, ListItem, ListItemText, Menu, MenuItem, Snackbar, Typography } from '@mui/material';
 import Tooltip from '@mui/material/Tooltip';
-import { blue } from '@mui/material/colors';
 import { useEffect, useRef, useState } from 'react';
 import SeleccionarPersona from './SeleccionarPersona';
+import Button from './ui/Button';
 export default function ListaRecordatorios({ listas, handleEliminar, handleCompletar, handleEditar, filtro, handleEliminarLista, orden, setOrden, handleVaciarCompletados, handleVaciarEliminados }) {
   // Snackbar state
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
@@ -136,14 +136,36 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
     {/* Título y acciones */}
         {filtro === 'completed' && (
           <Box sx={{ marginLeft: 'auto' }}>
-            <Button variant="contained" color="error" onClick={handleVaciarCompletados}>
+            <Button 
+              variant="outline" 
+              onClick={handleVaciarCompletados}
+              sx={{ 
+                color: '#ef4444',
+                borderColor: '#ef4444',
+                '&:hover': {
+                  background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                  color: 'white',
+                },
+              }}
+            >
               Empty Completed
             </Button>
           </Box>
         )}
         {filtro === 'deleted' && (
           <Box sx={{ marginLeft: 'auto' }}>
-            <Button variant="contained" color="error" onClick={handleVaciarEliminados}>
+            <Button 
+              variant="outline" 
+              onClick={handleVaciarEliminados}
+              sx={{ 
+                color: '#ef4444',
+                borderColor: '#ef4444',
+                '&:hover': {
+                  background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                  color: 'white',
+                },
+              }}
+            >
               Empty Deleted
             </Button>
           </Box>
@@ -153,20 +175,79 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
 
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 3 }}>
     {/* Filtros y orden */}
-        <Typography sx={{ color: 'white', alignSelf: 'center', mr: 1 }}>
+        <Typography sx={{ 
+          color: 'white', 
+          alignSelf: 'center', 
+          mr: 1,
+          fontWeight: 500,
+          textShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
+        }}>
           {orden === 'CreationDate' ? 'Creation Date' : orden === 'Deadline' ? 'Deadline' : 'Priority'}
         </Typography>
-        <IconButton onClick={handleClick} sx={{ color: 'white' }}>
+        <IconButton 
+          onClick={handleClick} 
+          sx={{ 
+            color: 'white',
+            background: 'rgba(59, 130, 246, 0.1)',
+            border: '1px solid rgba(59, 130, 246, 0.3)',
+            borderRadius: 1,
+            transition: 'all 0.3s cubic-bezier(.4, 2, .3, 1)',
+            '&:hover': {
+              background: 'rgba(59, 130, 246, 0.2)',
+              transform: 'scale(1.05)',
+              boxShadow: '0 4px 12px 0 rgba(59, 130, 246, 0.3)',
+            },
+          }}
+        >
           <FilterListIcon />
         </IconButton>
         <Menu
           anchorEl={anchorEl}
           open={Boolean(anchorEl)}
           onClose={handleClose}
+          PaperProps={{
+            sx: {
+              background: 'linear-gradient(135deg, rgba(30, 58, 138, 0.95) 0%, rgba(55, 65, 81, 0.98) 100%)',
+              backdropFilter: 'blur(20px)',
+              border: '1px solid rgba(59, 130, 246, 0.2)',
+              borderRadius: '14px',
+              color: 'white',
+            },
+          }}
         >
-          <MenuItem onClick={() => handleMenuItemClick('CreationDate')}>Creatioriorte</MenuItem>
-          <MenuItem onClick={() => handleMenuItemClick('Deadline')}>Deadline</MenuItem>
-          <MenuItem onClick={() => handleMenuItemClick('Priority')}>Priority</MenuItem>
+          <MenuItem 
+            onClick={() => handleMenuItemClick('CreationDate')}
+            sx={{ 
+              color: 'white',
+              '&:hover': {
+                background: 'rgba(59, 130, 246, 0.2)',
+              },
+            }}
+          >
+            Creation Date
+          </MenuItem>
+          <MenuItem 
+            onClick={() => handleMenuItemClick('Deadline')}
+            sx={{ 
+              color: 'white',
+              '&:hover': {
+                background: 'rgba(59, 130, 246, 0.2)',
+              },
+            }}
+          >
+            Deadline
+          </MenuItem>
+          <MenuItem 
+            onClick={() => handleMenuItemClick('Priority')}
+            sx={{ 
+              color: 'white',
+              '&:hover': {
+                background: 'rgba(59, 130, 246, 0.2)',
+              },
+            }}
+          >
+            Priority
+          </MenuItem>
         </Menu>
       </Box>
     <Divider sx={{ mb: 2, background: 'rgba(255,255,255,0.08)' }} />
@@ -176,11 +257,32 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
           listas.map((lista, index) => (
             <Box key={index} sx={{ mb: 2 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                <Typography variant="h6" sx={{ color: blue[300] }}>{lista.nombre}</Typography>
+                <Typography variant="h6" sx={{ 
+                  color: 'primary.light',
+                  fontWeight: 600,
+                  background: 'linear-gradient(90deg, #3b82f6 0%, #f59e0b 100%)',
+                  backgroundClip: 'text',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                }}>
+                  {lista.nombre}
+                </Typography>
                 {filtro !== 'completed' && filtro !== 'deleted' && (
                   <IconButton 
                     onClick={() => handleEliminarLista(lista.nombre)}
-                    sx={{ color: 'white', ml: 1 }}
+                    sx={{ 
+                      color: 'white', 
+                      ml: 1,
+                      background: 'rgba(239, 68, 68, 0.1)',
+                      border: '1px solid rgba(239, 68, 68, 0.3)',
+                      borderRadius: 1,
+                      transition: 'all 0.3s cubic-bezier(.4, 2, .3, 1)',
+                      '&:hover': {
+                        background: 'rgba(239, 68, 68, 0.2)',
+                        transform: 'scale(1.05)',
+                        boxShadow: '0 4px 12px 0 rgba(239, 68, 68, 0.3)',
+                      },
+                    }}
                   >
                     <DeleteIcon />
                   </IconButton>
@@ -200,15 +302,16 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
                         flex: '1 1 calc(33.333% - 16px)',
                         maxWidth: 'calc(33.333% - 16px)',
                         minWidth: '220px',
-                        background: 'linear-gradient(135deg, rgba(40,60,110,0.92) 0%, rgba(35,39,47,0.98) 100%)',
+                        background: 'linear-gradient(135deg, rgba(30, 58, 138, 0.2) 0%, rgba(55, 65, 81, 0.95) 100%)',
                         borderRadius: '14px',
                         boxShadow: '0 2px 12px 0 rgba(0,0,0,0.18)',
-                        padding: '14px',
+                        padding: '16px',
                         display: 'flex',
                         flexDirection: 'column',
                         justifyContent: 'space-between',
                         position: 'relative',
-                        transition: 'box-shadow 0.35s cubic-bezier(.4,2,.3,1), background 0.35s cubic-bezier(.4,2,.3,1), opacity 1.7s, transform 0.25s cubic-bezier(.4,2,.3,1)',
+                        border: '1px solid rgba(59, 130, 246, 0.1)',
+                        transition: 'all 0.35s cubic-bezier(.4,2,.3,1)',
                         opacity: nuevosIds.includes(recordatorio.tid || recordatorio.id) ? 0 : 1,
                         animation: nuevosIds.includes(recordatorio.tid || recordatorio.id)
                           ? 'fadeInTask 1.7s forwards'
@@ -219,9 +322,26 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
                         },
                         '&:hover': {
                           boxShadow: '0 12px 36px 0 rgba(40,60,110,0.45), 0 4px 24px 0 rgba(0,0,0,0.28)',
-                          background: 'linear-gradient(135deg, rgba(60,90,180,0.98) 0%, rgba(38,43,52,1) 100%)',
+                          background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(55, 65, 81, 1) 100%)',
+                          borderColor: 'rgba(59, 130, 246, 0.3)',
                           cursor: 'pointer',
-                          transform: 'scale(1.035)',
+                          transform: 'scale(1.02)',
+                        },
+                        // Add gradient accent line at top
+                        '&::before': {
+                          content: '""',
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          height: '3px',
+                          background: 'linear-gradient(90deg, #3b82f6 0%, #f59e0b 100%)',
+                          borderRadius: '14px 14px 0 0',
+                          opacity: 0,
+                          transition: 'opacity 0.3s ease',
+                        },
+                        '&:hover::before': {
+                          opacity: 1,
                         },
                       }}
                     >
@@ -242,7 +362,7 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
                             },
                           }}
                         >
-                          <CheckCircleIcon sx={{ color: '#4caf50', fontSize: 38, filter: 'drop-shadow(0 2px 8px #4caf5077)' }} />
+                          <CheckCircleIcon sx={{ color: '#10b981', fontSize: 38, filter: 'drop-shadow(0 2px 8px #10b98177)' }} />
                         </Box>
                       )}
                       <Typography sx={{ color: 'white', fontWeight: 'bold', textAlign: 'left', width: '100%' }}>
@@ -263,30 +383,85 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
                           mt: 1,
                           backgroundColor: 'rgba(255,255,255,0.08)',
                           '& .MuiLinearProgress-bar': {
-                            background: 'linear-gradient(90deg, #4fc3f7 0%, #1976d2 100%)',
+                            background: Number(recordatorio.percentage) >= 100 
+                              ? 'linear-gradient(90deg, #10b981 0%, #065f46 100%)'
+                              : 'linear-gradient(90deg, #3b82f6 0%, #f59e0b 100%)',
+                            borderRadius: 5,
+                            transition: 'all 0.3s ease',
                           },
                         }}
                       />
                        {filtro === 'deleted' || filtro === 'completed' ? null : (
-                         <Box sx={{ display: 'flex', flexDirection: 'row', gap: 1.5, mt: 1 }}>
+                         <Box sx={{ display: 'flex', flexDirection: 'row', gap: 1, mt: 2 }}>
                            <Tooltip title="Asignar usuario" arrow>
                              <span>
                                <SeleccionarPersona tid={recordatorio.tid} />
                              </span>
                            </Tooltip>
                            <Tooltip title="Editar tarea" arrow>
-                             <IconButton edge="end" aria-label="edit" size="large" onClick={(e) => { e.stopPropagation(); handleEditarConFeedback(lista.nombre, idx); }} sx={{ color: 'white' }}>
-                               <EditIcon fontSize="inherit" />
+                             <IconButton 
+                               edge="end" 
+                               aria-label="edit" 
+                               size="small" 
+                               onClick={(e) => { e.stopPropagation(); handleEditarConFeedback(lista.nombre, idx); }} 
+                               sx={{ 
+                                 color: 'white',
+                                 background: 'rgba(59, 130, 246, 0.1)',
+                                 border: '1px solid rgba(59, 130, 246, 0.3)',
+                                 borderRadius: 1,
+                                 transition: 'all 0.3s cubic-bezier(.4, 2, .3, 1)',
+                                 '&:hover': {
+                                   background: 'rgba(59, 130, 246, 0.2)',
+                                   transform: 'scale(1.1)',
+                                   boxShadow: '0 4px 12px 0 rgba(59, 130, 246, 0.3)',
+                                 },
+                               }}
+                             >
+                               <EditIcon fontSize="small" />
                              </IconButton>
                            </Tooltip>
                            <Tooltip title="Completar tarea" arrow>
-                             <IconButton edge="end" aria-label="complete" size="large" onClick={(e) => { e.stopPropagation(); handleCompletarConFeedback(lista.nombre, idx); }} sx={{ color: 'white' }}>
-                               <CheckCircleIcon fontSize="inherit" />
+                             <IconButton 
+                               edge="end" 
+                               aria-label="complete" 
+                               size="small" 
+                               onClick={(e) => { e.stopPropagation(); handleCompletarConFeedback(lista.nombre, idx); }} 
+                               sx={{ 
+                                 color: 'white',
+                                 background: 'rgba(16, 185, 129, 0.1)',
+                                 border: '1px solid rgba(16, 185, 129, 0.3)',
+                                 borderRadius: 1,
+                                 transition: 'all 0.3s cubic-bezier(.4, 2, .3, 1)',
+                                 '&:hover': {
+                                   background: 'rgba(16, 185, 129, 0.2)',
+                                   transform: 'scale(1.1)',
+                                   boxShadow: '0 4px 12px 0 rgba(16, 185, 129, 0.3)',
+                                 },
+                               }}
+                             >
+                               <CheckCircleIcon fontSize="small" />
                              </IconButton>
                            </Tooltip>
                            <Tooltip title="Eliminar tarea" arrow>
-                             <IconButton edge="end" aria-label="delete" size="large" onClick={(e) => { e.stopPropagation(); handleEliminarConFeedback(lista.nombre, idx); }} sx={{ color: 'white' }}>
-                               <DeleteIcon fontSize="inherit" />
+                             <IconButton 
+                               edge="end" 
+                               aria-label="delete" 
+                               size="small" 
+                               onClick={(e) => { e.stopPropagation(); handleEliminarConFeedback(lista.nombre, idx); }} 
+                               sx={{ 
+                                 color: 'white',
+                                 background: 'rgba(239, 68, 68, 0.1)',
+                                 border: '1px solid rgba(239, 68, 68, 0.3)',
+                                 borderRadius: 1,
+                                 transition: 'all 0.3s cubic-bezier(.4, 2, .3, 1)',
+                                 '&:hover': {
+                                   background: 'rgba(239, 68, 68, 0.2)',
+                                   transform: 'scale(1.1)',
+                                   boxShadow: '0 4px 12px 0 rgba(239, 68, 68, 0.3)',
+                                 },
+                               }}
+                             >
+                               <DeleteIcon fontSize="small" />
                              </IconButton>
                            </Tooltip>
                          </Box>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import { ReactFlowProvider } from 'reactflow';
+import { ThemeProvider } from './theme';
 import Login from './components/Login';
 import CalendarView from './components/CalendarView';
 import BlockDiagram from './components/BlockDiagram';
@@ -13,6 +14,7 @@ import Navbar from './components/Navbar'; // Asegúrate de tener este componente
 import GroupsView from './components/GroupsView';
 import ChatPage from './components/ChatPage';
 import WebSocketTest from './components/WebSocketTest';
+import ThemeTest from './theme/ThemeTest';
 import { GroupProvider } from './components/GroupContext';
 
 function App() {
@@ -40,7 +42,7 @@ function App() {
     setUser(userData);
     localStorage.setItem('user', JSON.stringify(userData));
   };
-  
+
 
   const handleLogout = () => {
     setUser(null);
@@ -51,54 +53,59 @@ function App() {
   };
 
   return (
-    
-    <GroupProvider>
-      <ReactFlowProvider>
-        <Router>
-        {user && <Navbar user={user} onLogout={handleLogout} />}
-        <Routes>
-          <Route path="/" element={user ? <Navigate to="/home" /> : <Login onLogin={handleLogin} />} />
-          <Route path="/register" element={<Register />} />
-          <Route 
-            path="/home" 
-            element={user ? <HomePage /> : <Navigate to="/" />} 
-          />
-          <Route 
-            path="/calendar" 
-            element={user ? <CalendarView /> : <Navigate to="/" />} 
-          />
-          <Route 
-            path="/block-diagram" 
-            element={user ? <BlockDiagram className='block-diagram' /> : <Navigate to="/" />} 
-          />
-          <Route 
-            path="/flow" 
-            element={user ? <Flow /> : <Navigate to="/" />} 
-          />
-          <Route 
-            path="/tasks" 
-            element={user ? <Recordatorios /> : <Navigate to="/" />} 
-          />
-          <Route 
-            path="/create-group" 
-            element={user ? <CreateGroup /> : <Navigate to="/" />} 
-          />
-          <Route 
-            path="/groups" 
-            element={user ? <GroupsView /> : <Navigate to="/" />} 
-          />
-          <Route 
-            path="/chat" 
-            element={user ? <ChatPage /> : <Navigate to="/" />} 
-          />
-          <Route 
-            path="/websocket-test" 
-            element={<WebSocketTest />} 
-          />
-        </Routes>
-      </Router>
-      </ReactFlowProvider>
-    </GroupProvider>
+    <ThemeProvider>
+      <GroupProvider>
+        <ReactFlowProvider>
+          <Router>
+            {user && <Navbar user={user} onLogout={handleLogout} />}
+            <Routes>
+              <Route path="/" element={user ? <Navigate to="/home" /> : <Login onLogin={handleLogin} />} />
+              <Route path="/register" element={<Register />} />
+              <Route
+                path="/home"
+                element={user ? <HomePage /> : <Navigate to="/" />}
+              />
+              <Route
+                path="/calendar"
+                element={user ? <CalendarView /> : <Navigate to="/" />}
+              />
+              <Route
+                path="/block-diagram"
+                element={user ? <BlockDiagram className='block-diagram' /> : <Navigate to="/" />}
+              />
+              <Route
+                path="/flow"
+                element={user ? <Flow /> : <Navigate to="/" />}
+              />
+              <Route
+                path="/tasks"
+                element={user ? <Recordatorios /> : <Navigate to="/" />}
+              />
+              <Route
+                path="/create-group"
+                element={user ? <CreateGroup /> : <Navigate to="/" />}
+              />
+              <Route
+                path="/groups"
+                element={user ? <GroupsView /> : <Navigate to="/" />}
+              />
+              <Route
+                path="/chat"
+                element={user ? <ChatPage /> : <Navigate to="/" />}
+              />
+              <Route
+                path="/websocket-test"
+                element={<WebSocketTest />}
+              />
+              <Route
+                path="/theme-test"
+                element={<ThemeTest />}
+              />
+            </Routes>
+          </Router>
+        </ReactFlowProvider>
+      </GroupProvider>
+    </ThemeProvider>
   );
 }
 

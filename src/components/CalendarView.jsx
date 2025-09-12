@@ -4,26 +4,19 @@ import {
   Container,
   Box,
   CssBaseline,
-  Paper
 } from '@mui/material';
-import { createTheme, ThemeProvider } from '@mui/material/styles';
+import { ThemeProvider } from '@mui/material/styles';
 import { Calendar, momentLocalizer } from 'react-big-calendar';
 import moment from 'moment';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import { GroupContext } from './GroupContext';
 import './CalendarView.css';
 
-const localizer = momentLocalizer(moment);
+// Import the design system components
+import { Card } from './ui';
+import { theme } from '../theme';
 
-const theme = createTheme({
-  palette: {
-    mode: 'dark',
-    background: {
-      default: 'transparent',
-      paper: 'rgba(0, 0, 0, 0.6)',
-    },
-  },
-});
+const localizer = momentLocalizer(moment);
 
 function CalendarView() {
   const { selectedGroupId } = useContext(GroupContext);
@@ -48,58 +41,125 @@ function CalendarView() {
       }
     };
     fetchTasks();
-  }, []);
+  }, [selectedGroupId]);
 
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
+      {/* Animated Background Layer - matching HomePage */}
       <Box
         sx={{
           position: 'fixed',
           top: 0,
           left: 0,
-          width: '100%',
-          height: '100vh',
-          display: 'flex',
-          flexDirection: 'column',
-          backgroundImage: 'url(/1.jpeg)',
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          backgroundRepeat: 'no-repeat',
-          zIndex: -1,
+          right: 0,
+          bottom: 0,
+          zIndex: -2,
+          background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%)',
         }}
       />
+
+      {/* Simple Radial Gradient Overlays - matching HomePage */}
       <Box
         sx={{
-          height: '100vh',
-          display: 'flex',
-          flexDirection: 'column',
-          zIndex: 1,
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: -1,
+          background: `
+            radial-gradient(circle at 20% 80%, rgba(59, 130, 246, 0.2) 0%, transparent 50%),
+            radial-gradient(circle at 80% 20%, rgba(245, 158, 11, 0.15) 0%, transparent 50%)
+          `,
+        }}
+      />
+      
+      <Box
+        sx={{
+          minHeight: '100vh',
+          width: '100%',
+          position: 'relative',
+          '&::before': {
+            content: '""',
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'radial-gradient(ellipse at top, rgba(59, 130, 246, 0.15) 0%, transparent 50%), radial-gradient(ellipse at bottom, rgba(245, 158, 11, 0.1) 0%, transparent 50%)',
+            zIndex: 1,
+          },
         }}
       >
-        <Container component="main">
-          <Paper elevation={6}
+        <Container 
+          component="main" 
+          maxWidth="xl"
+          sx={{
+            position: 'relative',
+            zIndex: 2,
+            pt: 12, // Add top padding to account for navbar
+            pb: 4,
+          }}
+        >
+          <Card
+            variant="gradient"
             sx={{
-              height: '90vh',
+              minHeight: '85vh',
               width: '100%',
               p: 4,
-              backgroundColor: 'background.paper',
-              borderRadius: 2,
-            }}>
-            <Typography component="h1" variant="h4" align="center" marginTop={-2} marginBottom={2}>
+              background: 'linear-gradient(135deg, rgba(30, 58, 138, 0.2) 0%, rgba(55, 65, 81, 0.95) 100%)',
+              backdropFilter: 'blur(20px)',
+              border: '1px solid rgba(59, 130, 246, 0.2)',
+              // Disable all animations
+              transition: 'none !important',
+              transform: 'none !important',
+              cursor: 'default',
+              '&:hover': {
+                transform: 'none !important',
+                background: 'linear-gradient(135deg, rgba(30, 58, 138, 0.2) 0%, rgba(55, 65, 81, 0.95) 100%)',
+                borderColor: 'rgba(59, 130, 246, 0.2)',
+                boxShadow: 'none',
+              },
+              '&:active': {
+                transform: 'none !important',
+              },
+            }}
+          >
+            <Typography 
+              component="h1" 
+              variant="h3" 
+              align="center" 
+              sx={{
+                mb: 4,
+                fontWeight: 700,
+                background: 'linear-gradient(90deg, #3b82f6 0%, #f59e0b 100%)',
+                backgroundClip: 'text',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+              }}
+            >
               Your Calendar
             </Typography>
-            <div style={{ height: 600 }}>
+            <Box 
+              sx={{ 
+                height: 'calc(85vh - 120px)',
+                minHeight: '600px',
+                '& .rbc-calendar': {
+                  height: '100% !important',
+                },
+              }}
+            >
               <Calendar
                 localizer={localizer}
                 events={events}
                 startAccessor="start"
                 endAccessor="end"
-                style={{ height: 550 }}
+                style={{ height: '100%' }}
                 views={['month']}
               />
-            </div>
-          </Paper>
+            </Box>
+          </Card>
         </Container>
       </Box>
     </ThemeProvider>

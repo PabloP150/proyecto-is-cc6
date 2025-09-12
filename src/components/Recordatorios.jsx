@@ -1,33 +1,23 @@
 import AddIcon from '@mui/icons-material/Add';
 import {
   Box,
-  Button,
   Container,
   CssBaseline,
   IconButton,
-  Paper,
   Typography,
 } from '@mui/material';
-import { blue } from '@mui/material/colors';
-import { createTheme, ThemeProvider } from '@mui/material/styles';
+import { ThemeProvider } from '@mui/material/styles';
 import { useCallback, useContext, useEffect, useState } from 'react';
 import BarraLateral from './BarraLateral';
 import Dialogos from './Dialogos';
 import { GroupContext } from './GroupContext'; // Importa el contexto
 import ListaRecordatorios from './ListaRecordatorios';
+// Import new theme and UI components
+import theme from '../theme/theme';
+import Button from './ui/Button';
+import Card from './ui/Card';
 
-const theme = createTheme({
-  palette: {
-    mode: 'dark',
-    primary: {
-      main: '#4a90e2',
-    },
-    background: {
-      default: 'transparent',
-      paper: 'rgba(0, 0, 0, 0.6)',
-    },
-  },
-});
+
 
 export default function Recordatorios() {
   const [openRecordatorio, setOpenRecordatorio] = useState(false);
@@ -502,13 +492,26 @@ export default function Recordatorios() {
           position: 'fixed',
           top: 0,
           left: 0,
-          width: '100%',
-          height: '100%',
-          backgroundImage: 'url(/1.jpeg)',
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          backgroundRepeat: 'no-repeat',
+          right: 0,
+          bottom: 0,
+          zIndex: -2,
+          background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%)',
+        }}
+      />
+
+      {/* Simple Radial Gradient Overlays */}
+      <Box
+        sx={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
           zIndex: -1,
+          background: `
+            radial-gradient(circle at 20% 80%, rgba(59, 130, 246, 0.2) 0%, transparent 50%),
+            radial-gradient(circle at 80% 20%, rgba(245, 158, 11, 0.15) 0%, transparent 50%)
+          `,
         }}
       />
       <Container 
@@ -518,29 +521,56 @@ export default function Recordatorios() {
           flexGrow: 1,
           display: 'flex',
           flexDirection: 'column',
-          pt: 5,
+          pt: 12, // Match the Welcome to Taskmate card spacing
           pb: 4,
           overflow: 'hidden',
         }}
       >
-        <Paper 
-          elevation={9} 
+        <Card 
+          variant="gradient"
           sx={{ 
-            p: 4, 
-            backgroundColor: 'background.paper',
-            borderRadius: 2,
+            p: 6, 
             display: 'flex',
             flexDirection: 'column',
             height: '100%',
             overflow: 'hidden',
             color: 'white',
+            cursor: 'default',
+            background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(245, 158, 11, 0.1) 50%, rgba(55, 65, 81, 0.95) 100%)',
+            '&:hover': {
+              transform: 'none',
+              boxShadow: '0 2px 12px 0 rgba(0,0,0,0.18)', // Keep original shadow
+              borderColor: 'rgba(59, 130, 246, 0.1)', // Keep original border color
+              background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(245, 158, 11, 0.1) 50%, rgba(55, 65, 81, 0.95) 100%)', // Keep original background
+            },
           }}
         >
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography component="h1" variant="h4" sx={{ color: blue[300], fontWeight: 'bold' }}>
+            <Typography component="h1" variant="h4" sx={{ 
+              color: 'primary.light', 
+              fontWeight: 'bold',
+              background: 'linear-gradient(90deg, #3b82f6 0%, #f59e0b 100%)',
+              backgroundClip: 'text',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+            }}>
               Tasks {selectedGroupName && `- ${selectedGroupName}`}
             </Typography>
-            <IconButton onClick={() => setDrawerOpen(true)} sx={{ color: 'white' }}>
+            <IconButton 
+              onClick={() => setDrawerOpen(true)} 
+              sx={{ 
+                color: 'white',
+                background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(245, 158, 11, 0.2) 100%)',
+                border: '1px solid rgba(59, 130, 246, 0.3)',
+                borderRadius: 2,
+                transition: 'all 0.3s cubic-bezier(.4, 2, .3, 1)',
+                '&:hover': {
+                  background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.3) 0%, rgba(245, 158, 11, 0.3) 100%)',
+                  transform: 'scale(1.05)',
+                  boxShadow: '0 4px 16px 0 rgba(59, 130, 246, 0.4)',
+                },
+              }}
+            >
               <AddIcon fontSize="large" />
             </IconButton>
           </Box>
@@ -548,24 +578,41 @@ export default function Recordatorios() {
           <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
             {filtro !== 'completed' && filtro !== 'deleted' && (
               <Button
-                variant="contained"
+                variant="primary"
                 onClick={handleOpenLista}
-                sx={{ backgroundColor: blue[700], color: 'white', borderRadius: 50, '&:hover': { backgroundColor: blue[800] } }}
-                startIcon={<AddIcon />}
+                sx={{ 
+                  borderRadius: '50px',
+                  px: 3,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1,
+                }}
               >
+                <AddIcon />
                 Add List
               </Button>
             )}
-            <Typography variant="h6" sx={{ color: 'white', alignSelf: 'center' }}>
+            <Typography variant="h6" sx={{ 
+              color: 'white', 
+              alignSelf: 'center',
+              fontWeight: 600,
+              textShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
+            }}>
               {getSectionTitle()}
             </Typography>
             {filtro !== 'completed' && filtro !== 'deleted' && (
               <Button
-                variant="contained"
+                variant="secondary"
                 onClick={handleOpenRecordatorio}
-                sx={{ backgroundColor: blue[700], color: 'white', borderRadius: 50, '&:hover': { backgroundColor: blue[800] } }}
-                startIcon={<AddIcon />}
+                sx={{ 
+                  borderRadius: '50px',
+                  px: 3,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1,
+                }}
               >
+                <AddIcon />
                 Add Task
               </Button>
             )}
@@ -620,7 +667,7 @@ export default function Recordatorios() {
             handleSubmitEditar={handleSubmitEditar}
             handleCloseEditar={handleCloseEditar}
           />
-        </Paper>
+        </Card>
       </Container>
     </ThemeProvider>
   );

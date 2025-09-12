@@ -2,49 +2,58 @@ import React, { useState, useContext } from 'react';
 import {
   Box,
   Container,
-  TextField,
-  Button,
   Link,
   Typography,
   CssBaseline,
-  Paper,
   IconButton,
-  InputAdornment
+  Alert,
+  Fade,
+  Grow
 } from '@mui/material';
-import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { useNavigate } from 'react-router-dom';
 import { GroupContext } from './GroupContext';
-import { Visibility, VisibilityOff } from '@mui/icons-material';
-
-const theme = createTheme({
-  palette: {
-    mode: 'dark',
-    primary: {
-      main: '#4a90e2',
-    },
-    background: {
-      default: 'transparent',
-      paper: 'rgba(0, 0, 0, 0.6)',
-    },
-  },
-});
+import { Visibility, VisibilityOff, Login as LoginIcon } from '@mui/icons-material';
+import { ThemeProvider } from '../theme';
+import Card from './ui/Card';
+import TextField from './ui/TextField';
+import Button from './ui/Button';
 
 function Login({ onLogin }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [validationErrors, setValidationErrors] = useState({});
   const navigate = useNavigate();
   const { setSelectedGroupId, setSelectedGroupName } = useContext(GroupContext);
+
+  // Form validation
+  const validateForm = () => {
+    const errors = {};
+
+    if (!username.trim()) {
+      errors.username = 'Username is required';
+    }
+
+    if (!password) {
+      errors.password = 'Password is required';
+    }
+
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setValidationErrors({});
 
-    if (!username || !password) {
-      setError('Por favor, complete todos los campos.');
+    if (!validateForm()) {
       return;
     }
+
+    setIsLoading(true);
 
     try {
       const response = await fetch('http://localhost:9000/api/users/login', {
@@ -78,92 +87,174 @@ function Login({ onLogin }) {
 
         navigate('/home');
       } else {
-        setError('Credenciales incorrectas');
+        const errorData = await response.json();
+        setError(errorData.message || 'Invalid credentials. Please try again.');
       }
     } catch (error) {
       console.error('Error en la solicitud:', error);
-      setError('Error en la solicitud');
+      setError('Network error. Please check your connection and try again.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
-    <ThemeProvider theme={theme}>
+    <ThemeProvider>
       <CssBaseline />
       <Box
         sx={{
           minHeight: '100vh',
           display: 'flex',
           flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
           backgroundImage: 'url(/1.jpeg)',
           backgroundSize: 'cover',
           backgroundPosition: 'center',
           backgroundRepeat: 'no-repeat',
           backgroundAttachment: 'fixed',
+          padding: 2,
         }}
       >
-        <Container component="main" maxWidth="xs" sx={{ mt: 8 }}>
-          <Paper elevation={6} sx={{ p: 4, backgroundColor: 'background.paper', borderRadius: 2 }}>
-            <Typography component="h1" variant="h4" align="center" sx={{ mb: 1 }}>
-              Login
-            </Typography>
-            <Typography variant="body1" align="center" sx={{ mb: 3 }}>
-              Welcome to TaskMate
-            </Typography>
-            <Box component="form" onSubmit={handleSubmit} noValidate>
-              <TextField
-                margin="normal"
-                required
-                fullWidth
-                id="username"
-                label="Username"
-                name="username"
-                autoComplete="username"
-                autoFocus
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-              />
-              <TextField
-                margin="normal"
-                required
-                fullWidth
-                name="password"
-                label="Password"
-                type={showPassword ? 'text' : 'password'}
-                id="password"
-                autoComplete="current-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                InputProps={{
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton
-                        onClick={() => setShowPassword(!showPassword)}
-                        edge="end"
-                      >
-                        {showPassword ? <VisibilityOff /> : <Visibility />}
-                      </IconButton>
-                    </InputAdornment>
-                  ),
-                }}
-              />
-              {error && (
-                <Typography color="error" variant="body2">
-                  {error}
+        <Container component="main" maxWidth="sm">
+          <Grow in={true} timeout={800}>
+            <Card
+              variant="glass"
+              sx={{
+                p: 4,
+                maxWidth: 480,
+                mx: 'auto',
+                '&:hover': {
+                  transform: 'none',
+                  boxShadow: 'none',
+                  borderColor: 'rgba(255, 255, 255, 0.1)',
+                  background: 'rgba(30, 58, 138, 0.1)',
+                },
+                cursor: 'default',
+              }}
+            >
+              <Box sx={{ textAlign: 'center', mb: 4 }}>
+                <Box
+                  sx={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: 64,
+                    height: 64,
+                    borderRadius: '50%',
+                    background: 'linear-gradient(135deg, #3b82f6 0%, #f59e0b 100%)',
+                    mb: 2,
+                  }}
+                >
+                  <LoginIcon sx={{ fontSize: 32, color: 'white' }} />
+                </Box>
+                <Typography component="h1" variant="h4" sx={{ mb: 1, fontWeight: 700 }}>
+                  Welcome Back
                 </Typography>
-              )}
-              <Button
-                type="submit"
-                fullWidth
-                variant="contained"
-                sx={{ mt: 3, mb: 2, backgroundColor: 'grey.600' }}
-              >
-                SIGN IN
-              </Button>
-              <Link href="/register" variant="body2" align="center" display="block" sx={{ mt: 2 }}>
-                Don't have an account? Register here.
-              </Link>
-            </Box>
-          </Paper>
+                <Typography variant="body1" color="text.secondary" sx={{ mb: 0 }}>
+                  Sign in to your TaskMate account
+                </Typography>
+              </Box>
+
+              <Box component="form" onSubmit={handleSubmit} noValidate>
+                <TextField
+                  margin="normal"
+                  required
+                  fullWidth
+                  id="username"
+                  label="Username"
+                  name="username"
+                  autoComplete="username"
+                  autoFocus
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  error={!!validationErrors.username}
+                  helperText={validationErrors.username}
+                  sx={{ mb: 2 }}
+                />
+
+                <TextField
+                  margin="normal"
+                  required
+                  fullWidth
+                  name="password"
+                  label="Password"
+                  type={showPassword ? 'text' : 'password'}
+                  id="password"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  error={!!validationErrors.password}
+                  helperText={validationErrors.password}
+                  endAdornment={
+                    <IconButton
+                      onClick={() => setShowPassword(!showPassword)}
+                      edge="end"
+                      sx={{ color: 'text.secondary' }}
+                    >
+                      {showPassword ? <VisibilityOff /> : <Visibility />}
+                    </IconButton>
+                  }
+                  sx={{ mb: 3 }}
+                />
+
+                {error && (
+                  <Fade in={!!error}>
+                    <Alert
+                      severity="error"
+                      sx={{
+                        mb: 2,
+                        background: 'rgba(239, 68, 68, 0.1)',
+                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                        color: '#f87171',
+                        '& .MuiAlert-icon': {
+                          color: '#ef4444',
+                        },
+                      }}
+                    >
+                      {error}
+                    </Alert>
+                  </Fade>
+                )}
+
+                <Button
+                  type="submit"
+                  fullWidth
+                  variant="primary"
+                  disabled={isLoading}
+                  sx={{
+                    mb: 3,
+                    py: 1.5,
+                    fontSize: '1.1rem',
+                    fontWeight: 600,
+                  }}
+                >
+                  {isLoading ? 'Signing In...' : 'Sign In'}
+                </Button>
+
+                <Box sx={{ textAlign: 'center' }}>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                    Don't have an account?
+                  </Typography>
+                  <Link
+                    href="/register"
+                    sx={{
+                      color: 'primary.main',
+                      textDecoration: 'none',
+                      fontWeight: 600,
+                      fontSize: '1rem',
+                      '&:hover': {
+                        textDecoration: 'underline',
+                        color: 'primary.light',
+                      },
+                    }}
+                  >
+                    Create Account
+                  </Link>
+                </Box>
+              </Box>
+            </Card>
+          </Grow>
         </Container>
       </Box>
     </ThemeProvider>

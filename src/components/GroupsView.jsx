@@ -1,14 +1,33 @@
-import { Box, Button, Container, CssBaseline, Dialog, DialogActions, DialogContent, DialogTitle, List, ListItem, Paper, styled, TextField, Typography } from '@mui/material';
-import { createTheme, ThemeProvider } from '@mui/material/styles';
+import { Box, Container, CssBaseline, Dialog, DialogActions, DialogContent, DialogTitle, List, ListItem, styled, TextField, Typography } from '@mui/material';
+import { ThemeProvider } from '@mui/material/styles';
 import { useCallback, useContext, useEffect, useState } from 'react';
 import { GroupContext } from './GroupContext';
+import Card from './ui/Card';
+import Button from './ui/Button';
+import theme from '../theme/theme';
 
 const UseButton = styled(Button)(({ theme, selected }) => ({
-  backgroundColor: selected ? 'green' : 'white',
-  color: selected ? 'white' : 'black',
-  marginLeft: '10px',
+  marginLeft: theme.spacing(1),
+  minWidth: '60px',
+  padding: theme.spacing(0.75, 1.5),
+  fontSize: '0.875rem',
+  background: selected 
+    ? 'linear-gradient(135deg, #10b981 0%, #065f46 100%)'
+    : 'linear-gradient(135deg, #3b82f6 0%, #1e3a8a 100%)',
+  color: '#ffffff',
+  border: 'none',
+  transition: 'all 0.3s cubic-bezier(.4,2,.3,1)',
   '&:hover': {
-    backgroundColor: selected ? '#006400' : '#f0f0f0',
+    background: selected
+      ? 'linear-gradient(135deg, #6ee7b7 0%, #10b981 100%)'
+      : 'linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%)',
+    transform: 'translateY(-1px)',
+    boxShadow: selected
+      ? '0 6px 20px 0 rgba(16, 185, 129, 0.6)'
+      : '0 6px 20px 0 rgba(59, 130, 246, 0.6)',
+  },
+  '&:active': {
+    transform: 'translateY(0)',
   },
 }));
 
@@ -279,57 +298,123 @@ function GroupsView() {
     }
   };
 
-  const theme = createTheme({
-    palette: {
-      mode: 'dark',
-      primary: {
-        main: '#4a90e2',
-      },
-      background: {
-        default: 'transparent',
-        paper: 'rgba(0, 0, 0, 0.6)',
-      },
-    },
-  });
+
 
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
+      {/* Animated Background Layer */}
       <Box
         sx={{
           position: 'fixed',
           top: 0,
           left: 0,
-          width: '100%',
-          height: '100%',
-          backgroundImage: 'url(/1.jpeg)',
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          backgroundRepeat: 'no-repeat',
+          right: 0,
+          bottom: 0,
+          zIndex: -2,
+          background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%)',
+        }}
+      />
+
+      {/* Simple Radial Gradient Overlays */}
+      <Box
+        sx={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
           zIndex: -1,
+          background: `
+            radial-gradient(circle at 20% 80%, rgba(59, 130, 246, 0.2) 0%, transparent 50%),
+            radial-gradient(circle at 80% 20%, rgba(245, 158, 11, 0.15) 0%, transparent 50%)
+          `,
+        }}
+      />
+      
+      <Box
+        sx={{
+          minHeight: '100vh',
+          width: '100%',
+          position: 'relative',
+          '&::before': {
+            content: '""',
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'radial-gradient(ellipse at top, rgba(59, 130, 246, 0.15) 0%, transparent 50%), radial-gradient(ellipse at bottom, rgba(245, 158, 11, 0.1) 0%, transparent 50%)',
+            zIndex: 1,
+          },
         }}
       >
-        <Container component="main" maxWidth="ms" sx={{ mt: 8 }}>
-          <Box sx={{ display: 'flex', flexGrow: 1, padding: 1 }}>
-            <Paper sx={{ width: '20%', marginRight: 2, padding: 2, overflow: 'auto' }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, mb: 1 }}>
+        <Container 
+          component="main" 
+          maxWidth="xl" 
+          sx={{ 
+            position: 'relative',
+            zIndex: 2,
+            pt: 12, // Add top padding to account for navbar
+            pb: 4,
+          }}
+        >
+          <Box sx={{ display: 'flex', flexGrow: 1, padding: 1, gap: 2 }}>
+            <Card 
+              variant="default" 
+              sx={{ 
+                width: '20%', 
+                padding: 2, 
+                overflow: 'auto',
+                cursor: 'default',
+                '&:hover': {
+                  transform: 'none',
+                }
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, mb: 2 }}>
                 <Typography variant="h6" sx={{ fontWeight: 600, mr: 1, flex: '1 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Groups</Typography>
-                <Button variant="contained" size="small" onClick={() => setOpenCreateGroup(true)}>Create</Button>
+                <Button variant="secondary" size="small" onClick={() => setOpenCreateGroup(true)}>Create</Button>
               </Box>
-              <List>
+              <List sx={{ padding: 0 }}>
                 {groups.length === 0 ? (
-                  <ListItem>
-                    <Typography>No group yet</Typography>
+                  <ListItem sx={{ padding: 2, justifyContent: 'center' }}>
+                    <Typography color="text.secondary">No groups yet</Typography>
                   </ListItem>
                 ) : (
                   groups.map(group => (
-                    <ListItem key={group.gid} button onClick={() => handleGroupClick(group)} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <ListItem 
+                      key={group.gid} 
+                      button 
+                      onClick={() => handleGroupClick(group)} 
+                      sx={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: 1,
+                        padding: 1.5,
+                        borderRadius: 2,
+                        marginBottom: 1,
+                        transition: 'all 0.3s cubic-bezier(.4,2,.3,1)',
+                        background: selectedGroupId === group.gid 
+                          ? 'rgba(59, 130, 246, 0.15)' 
+                          : 'transparent',
+                        border: selectedGroupId === group.gid 
+                          ? '1px solid rgba(59, 130, 246, 0.3)' 
+                          : '1px solid transparent',
+                        '&:hover': {
+                          background: 'rgba(59, 130, 246, 0.1)',
+                          borderColor: 'rgba(59, 130, 246, 0.2)',
+                          transform: 'translateX(4px)',
+                        }
+                      }}
+                    >
                       <Box sx={{ flex: '1 1 auto', minWidth: 0 }}>
                         <Typography sx={{
                           overflow: 'hidden',
                           display: '-webkit-box',
                           WebkitLineClamp: 2,
                           WebkitBoxOrient: 'vertical',
+                          fontWeight: selectedGroupId === group.gid ? 600 : 400,
                         }} title={group.name}>
                           {group.name}
                         </Typography>
@@ -339,68 +424,162 @@ function GroupsView() {
                   ))
                 )}
               </List>
-            </Paper>
-            <Paper sx={{ width: '80%', padding: 2, overflow: 'auto' }}>
+            </Card>
+            <Card 
+              variant="default" 
+              sx={{ 
+                width: '80%', 
+                padding: 3, 
+                overflow: 'auto',
+                cursor: 'default',
+                '&:hover': {
+                  transform: 'none',
+                }
+              }}
+            >
               {selectedGroup ? (
                 <>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1.5, flexWrap: { xs: 'wrap', sm: 'nowrap' } }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, flexWrap: { xs: 'wrap', sm: 'nowrap' }, mb: 3 }}>
                     <Typography
-                      variant="h6"
+                      variant="h4"
                       component="h2"
-                      gutterBottom
                       sx={{
                         flex: '1 1 auto',
                         minWidth: 0,
-                        fontSize: 'clamp(1rem, 2.2vw, 1.6rem)',
+                        fontSize: 'clamp(1.25rem, 2.2vw, 1.75rem)',
                         fontWeight: 600,
                         lineHeight: 1.3,
                         overflowWrap: 'anywhere',
                         whiteSpace: 'normal',
+                        background: 'linear-gradient(90deg, #3b82f6 0%, #f59e0b 100%)',
+                        backgroundClip: 'text',
+                        WebkitBackgroundClip: 'text',
+                        WebkitTextFillColor: 'transparent',
                       }}
                       title={selectedGroup?.name}
                     >
                       {selectedGroup.name}
                     </Typography>
-                    <Box sx={{ display: 'flex', gap: 1, flexShrink: 0, flexWrap: 'wrap', justifyContent: { xs: 'flex-start', md: 'flex-end' } }}>
+                    <Box sx={{ display: 'flex', gap: 1.5, flexShrink: 0, flexWrap: 'wrap', justifyContent: { xs: 'flex-start', md: 'flex-end' } }}>
                       {selectedGroup.adminId === localStorage.getItem('userId') ? (
                         <>
                           {members.length === 1 && (
-                            <Button variant="contained" color="error" onClick={handleDeleteGroup} sx={{ marginRight: 2 }}>
+                            <Button variant="primary" onClick={handleDeleteGroup} sx={{ 
+                              background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                              '&:hover': {
+                                background: 'linear-gradient(135deg, #f87171 0%, #ef4444 100%)',
+                                boxShadow: '0 8px 24px 0 rgba(239, 68, 68, 0.6)',
+                              }
+                            }}>
                               Delete Group
                             </Button>
                           )}
                           {members.length > 1 && (
-                            <Button variant="contained" color="error" onClick={() => setOpenDeleteUser(true)} sx={{ marginRight: 2 }}>
+                            <Button variant="primary" onClick={() => setOpenDeleteUser(true)} sx={{ 
+                              background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                              '&:hover': {
+                                background: 'linear-gradient(135deg, #f87171 0%, #ef4444 100%)',
+                                boxShadow: '0 8px 24px 0 rgba(239, 68, 68, 0.6)',
+                              }
+                            }}>
                               Delete Member
                             </Button>
                           )}
-                          <Button variant="contained" onClick={() => setOpenAddUser(true)}>Add User</Button>
+                          <Button variant="primary" onClick={() => setOpenAddUser(true)}>Add User</Button>
                         </>
                       ) : (
-                        <Button variant="contained" color="error" onClick={handleLeaveGroup}>Abandon Group</Button>
+                        <Button variant="primary" onClick={handleLeaveGroup} sx={{ 
+                          background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                          '&:hover': {
+                            background: 'linear-gradient(135deg, #f87171 0%, #ef4444 100%)',
+                            boxShadow: '0 8px 24px 0 rgba(239, 68, 68, 0.6)',
+                          }
+                        }}>Abandon Group</Button>
                       )}
                     </Box>
                   </Box>
-                  <Typography variant="h6" gutterBottom>Members</Typography>
-                  <List>
-                    {members.map(member => (
-                      <ListItem key={member.uid}>
-                        {member.username}
+                  <Typography variant="h5" gutterBottom sx={{ fontWeight: 600, mb: 2 }}>Members</Typography>
+                  <List sx={{ padding: 0 }}>
+                    {members.map((member, index) => (
+                      <ListItem 
+                        key={member.uid}
+                        sx={{
+                          padding: 2,
+                          marginBottom: 1,
+                          borderRadius: 2,
+                          background: 'rgba(59, 130, 246, 0.05)',
+                          border: '1px solid rgba(59, 130, 246, 0.1)',
+                          transition: 'all 0.3s cubic-bezier(.4,2,.3,1)',
+                          '&:hover': {
+                            background: 'rgba(59, 130, 246, 0.1)',
+                            borderColor: 'rgba(59, 130, 246, 0.2)',
+                            transform: 'translateX(4px)',
+                          }
+                        }}
+                      >
+                        <Typography sx={{ fontWeight: 500 }}>
+                          {member.username}
+                          {selectedGroup.adminId === member.uid && (
+                            <Typography 
+                              component="span" 
+                              sx={{ 
+                                ml: 1, 
+                                fontSize: '0.75rem',
+                                background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                                color: 'white',
+                                padding: '2px 8px',
+                                borderRadius: 1,
+                                fontWeight: 600,
+                              }}
+                            >
+                              Admin
+                            </Typography>
+                          )}
+                        </Typography>
                       </ListItem>
                     ))}
                   </List>
                 </>
               ) : (
-                <Typography variant="h6">Create a group to start.</Typography>
+                <Box sx={{ 
+                  display: 'flex', 
+                  flexDirection: 'column', 
+                  alignItems: 'center', 
+                  justifyContent: 'center',
+                  minHeight: '300px',
+                  textAlign: 'center',
+                  gap: 2
+                }}>
+                  <Typography variant="h5" sx={{ fontWeight: 600, color: 'text.secondary' }}>
+                    No Group Selected
+                  </Typography>
+                  <Typography variant="body1" sx={{ color: 'text.secondary', maxWidth: '400px' }}>
+                    Select a group from the sidebar to view its details and manage members, or create a new group to get started.
+                  </Typography>
+                  <Button variant="secondary" onClick={() => setOpenCreateGroup(true)} sx={{ mt: 1 }}>
+                    Create Your First Group
+                  </Button>
+                </Box>
               )}
-            </Paper>
+            </Card>
           </Box>
         </Container>
       </Box>
 
-      <Dialog open={openAddUser} onClose={() => setOpenAddUser(false)}>
-        <DialogTitle>Add User to Group</DialogTitle>
-        <DialogContent>
+      <Dialog 
+        open={openAddUser} 
+        onClose={() => setOpenAddUser(false)}
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            background: 'linear-gradient(135deg, rgba(30, 58, 138, 0.2) 0%, rgba(55, 65, 81, 0.95) 100%)',
+            border: '1px solid rgba(59, 130, 246, 0.2)',
+            backdropFilter: 'blur(20px)',
+          }
+        }}
+      >
+        <DialogTitle sx={{ fontWeight: 600, fontSize: '1.25rem' }}>Add User to Group</DialogTitle>
+        <DialogContent sx={{ padding: 3 }}>
           <TextField
             autoFocus
             margin="dense"
@@ -412,15 +591,26 @@ function GroupsView() {
             onChange={(e) => setNewUsername(e.target.value)}
           />
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpenAddUser(false)}>Cancel</Button>
-          <Button onClick={handleAddUserToGroup}>Add</Button>
+        <DialogActions sx={{ padding: 2, gap: 1 }}>
+          <Button variant="ghost" onClick={() => setOpenAddUser(false)}>Cancel</Button>
+          <Button variant="primary" onClick={handleAddUserToGroup}>Add</Button>
         </DialogActions>
       </Dialog>
 
-      <Dialog open={openDeleteUser} onClose={() => setOpenDeleteUser(false)}>
-        <DialogTitle>Delete User from Group</DialogTitle>
-        <DialogContent>
+      <Dialog 
+        open={openDeleteUser} 
+        onClose={() => setOpenDeleteUser(false)}
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            background: 'linear-gradient(135deg, rgba(30, 58, 138, 0.2) 0%, rgba(55, 65, 81, 0.95) 100%)',
+            border: '1px solid rgba(239, 68, 68, 0.2)',
+            backdropFilter: 'blur(20px)',
+          }
+        }}
+      >
+        <DialogTitle sx={{ fontWeight: 600, fontSize: '1.25rem', color: 'error.main' }}>Delete User from Group</DialogTitle>
+        <DialogContent sx={{ padding: 3 }}>
           <TextField
             autoFocus
             margin="dense"
@@ -432,15 +622,32 @@ function GroupsView() {
             onChange={(e) => setUsernameToDelete(e.target.value)}
           />
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpenDeleteUser(false)}>Cancel</Button>
-          <Button onClick={handleDeleteUser}>Delete</Button>
+        <DialogActions sx={{ padding: 2, gap: 1 }}>
+          <Button variant="ghost" onClick={() => setOpenDeleteUser(false)}>Cancel</Button>
+          <Button variant="primary" onClick={handleDeleteUser} sx={{ 
+            background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+            '&:hover': {
+              background: 'linear-gradient(135deg, #f87171 0%, #ef4444 100%)',
+              boxShadow: '0 8px 24px 0 rgba(239, 68, 68, 0.6)',
+            }
+          }}>Delete</Button>
         </DialogActions>
       </Dialog>
 
-      <Dialog open={openCreateGroup} onClose={() => setOpenCreateGroup(false)}>
-        <DialogTitle>Create New Group</DialogTitle>
-        <DialogContent>
+      <Dialog 
+        open={openCreateGroup} 
+        onClose={() => setOpenCreateGroup(false)}
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            background: 'linear-gradient(135deg, rgba(30, 58, 138, 0.2) 0%, rgba(55, 65, 81, 0.95) 100%)',
+            border: '1px solid rgba(245, 158, 11, 0.2)',
+            backdropFilter: 'blur(20px)',
+          }
+        }}
+      >
+        <DialogTitle sx={{ fontWeight: 600, fontSize: '1.25rem', color: 'secondary.main' }}>Create New Group</DialogTitle>
+        <DialogContent sx={{ padding: 3 }}>
           <TextField
             autoFocus
             margin="dense"
@@ -452,9 +659,9 @@ function GroupsView() {
             onChange={(e) => setNewGroupName(e.target.value)}
           />
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpenCreateGroup(false)}>Cancel</Button>
-          <Button onClick={handleCreateGroup}>Create</Button>
+        <DialogActions sx={{ padding: 2, gap: 1 }}>
+          <Button variant="ghost" onClick={() => setOpenCreateGroup(false)}>Cancel</Button>
+          <Button variant="secondary" onClick={handleCreateGroup}>Create</Button>
         </DialogActions>
       </Dialog>
     </ThemeProvider>

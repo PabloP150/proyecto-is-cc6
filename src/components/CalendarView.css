@@ -1,88 +1,231 @@
-.rbc-month-row + .rbc-month-row {
+/* Calendar container styling with new design system */
+.rbc-calendar {
+    background: transparent;
+    color: #f8fafc;
+    font-family: "Inter", "Roboto", "Helvetica", "Arial", sans-serif;
+    border-radius: 14px;
+    overflow: hidden;
+}
 
-    border: 1px solid #777;
+/* Month view grid styling */
+.rbc-month-view {
+    border: 1px solid rgba(59, 130, 246, 0.2);
+    border-radius: 14px;
+    overflow: hidden;
+    background: rgba(30, 58, 138, 0.05);
+}
+
+.rbc-month-row+.rbc-month-row {
+    border-top: 1px solid rgba(59, 130, 246, 0.15);
     padding: 0;
 }
 
-.rbc-day-bg + .rbc-day-bg {
-    border: 1px solid #777;
+.rbc-day-bg+.rbc-day-bg {
+    border-left: 1px solid rgba(59, 130, 246, 0.15);
 }
 
-.rbc-month-view {
-    border: 1px solid #777;
+/* Day background hover effect - triggers on rbc-day-bg hover */
+.rbc-day-bg {
+    position: relative;
+    transition: none;
+    cursor: pointer;
 }
 
+/* Create overlay effect when hovering over rbc-day-bg */
+.rbc-day-bg:hover::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(245, 158, 11, 0.1) 100%);
+    border-radius: 8px;
+    pointer-events: none;
+    z-index: 10;
+}
+
+/* Header styling with new color scheme */
+.rbc-header {
+    background: linear-gradient(135deg, #3b82f6 0%, #1e3a8a 100%);
+    color: #ffffff;
+    font-weight: 600;
+    font-size: 0.875rem;
+    padding: 12px 8px;
+    border-bottom: 1px solid rgba(59, 130, 246, 0.3);
+    text-align: center;
+    letter-spacing: 0.02em;
+}
+
+/* Today's date highlighting */
+.rbc-today {
+    background-color: rgba(59, 130, 246, 0.15);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+/* Out-of-range dates styling */
 .rbc-off-range {
-    color: #666;
-    /* dark grey color for out-of-range dates */
+    color: rgba(248, 250, 252, 0.4);
 }
 
 .rbc-off-range-bg {
-    background: #444;
-    /* dark grey background color for out-of-range dates */
+    background: rgba(55, 65, 81, 0.3);
 }
 
-.rbc-header {
-    background-color: #1976D2;
-    border-bottom: 1px solid #555;
-    /* dark grey border color */
-}
-
-.rbc-today {
-    background-color: #255580 ;
-}
+/* Toolbar styling with professional buttons */
 .rbc-toolbar {
-    padding-right: 12em;
+    margin-bottom: 20px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
 
-    & button {
-        color: #fff;
-        /* white color for button links */
+    .rbc-btn-group {
+        display: flex;
+        gap: 8px;
+    }
+
+    button {
+        background: linear-gradient(135deg, rgba(30, 58, 138, 0.2) 0%, rgba(55, 65, 81, 0.8) 100%);
+        color: #f8fafc;
+        border: 1px solid rgba(59, 130, 246, 0.3);
+        border-radius: 14px;
+        padding: 8px 16px;
+        font-weight: 500;
+        font-size: 0.875rem;
+        cursor: pointer;
+        font-family: "Inter", "Roboto", "Helvetica", "Arial", sans-serif;
+        transition: none;
+
+        &:hover {
+            background: linear-gradient(135deg, rgba(30, 58, 138, 0.2) 0%, rgba(55, 65, 81, 0.8) 100%);
+        }
 
         &:active,
         &.rbc-active {
-            background-image: none;
-            box-shadow: inset 0 3px 5px rgba(0, 0, 0, .125);
-            background-color: #1976D2;
-            /* blue background color for today's date */
-            border-color: #555;
-            /* dark grey border color */
+            background: linear-gradient(135deg, #3b82f6 0%, #1e3a8a 100%);
+            border-color: #3b82f6;
+            box-shadow: 0 2px 8px 0 rgba(59, 130, 246, 0.6);
 
             &:hover,
             &:focus {
-                color: #fff;
-                /* white color for links */
-                background-color: #1976D2;
-                /* blue background color for today's date */
-                border-color: #555;
-                /* dark grey border color */
+                opacity: 0.9;
             }
         }
 
         &:focus {
-            color: #fff;
-            /* white color for links */
-            background-color: #1976D2;
-            /* blue background color for today's date */
-            border-color: #555;
-            /* dark grey border color */
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
         }
+    }
+
+    .rbc-toolbar-label {
+        color: #f8fafc;
+        font-weight: 600;
+        font-size: 1.25rem;
+        margin: 0 16px;
+        text-align: center;
+        flex: 1;
+        min-width: 200px;
+    }
+}
+
+/* Event styling with gradient backgrounds */
+.rbc-event {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.8) 0%, rgba(6, 95, 70, 0.9) 100%);
+    border: 1px solid rgba(16, 185, 129, 0.6);
+    border-radius: 8px;
+    color: #ffffff;
+    font-weight: 500;
+    font-size: 0.75rem;
+    padding: 2px 6px;
+    cursor: pointer;
+    transition: none;
+    position: relative;
+    z-index: 3;
+
+    &:hover {
+        background: linear-gradient(135deg, rgba(16, 185, 129, 0.8) 0%, rgba(6, 95, 70, 0.9) 100%);
+    }
+
+    &.rbc-selected {
+        background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+        border-color: #f59e0b;
+        box-shadow: 0 2px 8px 0 rgba(245, 158, 11, 0.5);
+    }
+}
+
+/* Date cell styling */
+.rbc-date-cell {
+    padding: 8px;
+    text-align: right;
+    position: relative;
+    z-index: 3;
+
+    a {
+        color: #f8fafc;
+        text-decoration: none;
+        font-weight: 500;
+        transition: none;
+        position: relative;
+        z-index: 3;
 
         &:hover {
-            color: #fff;
-            /* white color for links */
-            background-color: #1976D2;
-            /* blue background color for today's date */
-            border-color: #555;
-            /* dark grey border color */
+            color: #f8fafc;
         }
     }
 }
 
-.rbc-event {
-    background-color: #00c0a669;
-    border: 2px solid #333;
-    
-    &.rbc-selected {
-        background-color: #144444;
-      }
+/* Current date styling */
+.rbc-current {
+    color: #3b82f6;
+    font-weight: 600;
+}
+
+/* Month date styling */
+.rbc-button-link {
+    color: #f8fafc;
+    text-decoration: none;
+    transition: none;
+
+    &:hover {
+        color: #f8fafc;
+    }
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .rbc-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+
+        .rbc-toolbar-label {
+            order: -1;
+            margin: 0 0 8px 0;
+            font-size: 1.1rem;
+        }
+
+        .rbc-btn-group {
+            justify-content: center;
+        }
+
+        button {
+            padding: 10px 12px;
+            font-size: 0.8rem;
+        }
+    }
+
+    .rbc-header {
+        padding: 8px 4px;
+        font-size: 0.75rem;
+    }
+
+    .rbc-event {
+        font-size: 0.7rem;
+        padding: 1px 4px;
+    }
 }

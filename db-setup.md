@@ -113,7 +113,7 @@ Now, run your custom Docker image. You need to provide two passwords as environm
 *   `DB_PASSWORD`: The password for your new `sqladmin`.
 
 ```bash
-docker run -e "ACCEPT_EULA=Y" -e "SA_PASSWORD=YourSAPassword" -e "DB_PASSWORD=YourAppUserPassword" -p 1433:1433 --name custom-sql1 -d custom-sql-server
+docker run -e "ACCEPT_EULA=Y" -e "SA_PASSWORD=Pswrd123" -e "DB_PASSWORD=Pswrd123" -p 1433:1433 --name custom-sql1 -d custom-sql-server
 ```
 
 Replace `YourSAPassword` and `YourAppUserPassword` with strong passwords.

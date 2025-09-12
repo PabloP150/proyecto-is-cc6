@@ -1,6 +1,7 @@
 // src/components/Dialogos.jsx
-import { Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, TextField } from '@mui/material';
-import { blue } from '@mui/material/colors';
+import { Box, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem } from '@mui/material';
+import TextField from './ui/TextField';
+import Button from './ui/Button';
 
 export default function Dialogos({
   openRecordatorio,
@@ -38,11 +39,23 @@ export default function Dialogos({
         onClose={handleCloseLista}
         PaperProps={{
           style: {
-            backgroundColor: '#333333', // Color gris oscuro
+            background: 'linear-gradient(135deg, rgba(30, 58, 138, 0.95) 0%, rgba(55, 65, 81, 0.98) 100%)',
+            backdropFilter: 'blur(20px)',
+            border: '1px solid rgba(59, 130, 246, 0.2)',
+            borderRadius: '14px',
           },
         }}
       >
-        <DialogTitle sx={{ color: 'white' }}>Add New List</DialogTitle>
+        <DialogTitle sx={{ 
+          color: 'white', 
+          fontWeight: 600,
+          background: 'linear-gradient(90deg, #3b82f6 0%, #f59e0b 100%)',
+          backgroundClip: 'text',
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent',
+        }}>
+          Add New List
+        </DialogTitle>
         <DialogContent>
           <TextField
             autoFocus
@@ -53,12 +66,16 @@ export default function Dialogos({
             fullWidth
             value={nombreLista}
             onChange={(e) => setNombreLista(e.target.value)}
-            sx={textFieldStyle}
+            sx={{ mt: 2 }}
           />
         </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseLista} sx={{ color: 'white' }}>CANCEL</Button>
-          <Button onClick={handleCreateList} sx={{ color: 'white' }}>ADD</Button>
+        <DialogActions sx={{ p: 3, gap: 2 }}>
+          <Button variant="ghost" onClick={handleCloseLista}>
+            CANCEL
+          </Button>
+          <Button variant="primary" onClick={handleCreateList}>
+            ADD
+          </Button>
         </DialogActions>
       </Dialog>
 
@@ -68,13 +85,25 @@ export default function Dialogos({
         onClose={handleCloseRecordatorio}
         PaperProps={{
           style: {
-            backgroundColor: '#333333', // Color gris oscuro
+            background: 'linear-gradient(135deg, rgba(30, 58, 138, 0.95) 0%, rgba(55, 65, 81, 0.98) 100%)',
+            backdropFilter: 'blur(20px)',
+            border: '1px solid rgba(59, 130, 246, 0.2)',
+            borderRadius: '14px',
           },
         }}
       >
-        <DialogTitle sx={{ color: 'white' }}>Add Task</DialogTitle>
+        <DialogTitle sx={{ 
+          color: 'white', 
+          fontWeight: 600,
+          background: 'linear-gradient(90deg, #3b82f6 0%, #f59e0b 100%)',
+          backgroundClip: 'text',
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent',
+        }}>
+          Add Task
+        </DialogTitle>
         <DialogContent>
-          <Box component="form" onSubmit={handleSubmitRecordatorio} noValidate>
+          <Box component="form" onSubmit={handleSubmitRecordatorio} noValidate sx={{ pt: 2 }}>
             <TextField
               margin="normal"
               required
@@ -85,7 +114,6 @@ export default function Dialogos({
               value={nombre}
               onChange={(e) => setNombre(e.target.value)}
               InputLabelProps={{ shrink: true }}
-              sx={textFieldStyle}
             />
             <TextField
               margin="normal"
@@ -97,7 +125,6 @@ export default function Dialogos({
               value={descripcion}
               onChange={(e) => setDescripcion(e.target.value)}
               InputLabelProps={{ shrink: true }}
-              sx={textFieldStyle}
             />
             <TextField
               margin="normal"
@@ -111,7 +138,6 @@ export default function Dialogos({
               }}
               value={fecha}
               onChange={(e) => setFecha(e.target.value)}
-              sx={textFieldStyle}
             />
             <TextField
               margin="normal"
@@ -124,7 +150,6 @@ export default function Dialogos({
               }}
               value={hora}
               onChange={(e) => setHora(e.target.value)}
-              sx={textFieldStyle}
             />
             <TextField
               margin="normal"
@@ -135,19 +160,25 @@ export default function Dialogos({
               select
               value={listaSeleccionada}
               onChange={(e) => setListaSeleccionada(e.target.value)}
-              sx={textFieldStyle}
             >
               {listas.map((lista, index) => (
-                <MenuItem key={index} value={lista.nombre}>
+                <MenuItem key={index} value={lista.nombre} sx={{ color: 'white' }}>
                   {lista.nombre}
                 </MenuItem>
               ))}
             </TextField>
           </Box>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseRecordatorio} sx={{ color: 'white' }}>CANCEL</Button>
-          <Button type="submit" onClick={handleSubmitRecordatorio} variant="contained" sx={{ backgroundColor: blue[600] }} disabled={isAddDisabled}>
+        <DialogActions sx={{ p: 3, gap: 2 }}>
+          <Button variant="ghost" onClick={handleCloseRecordatorio}>
+            CANCEL
+          </Button>
+          <Button 
+            variant="primary" 
+            type="submit" 
+            onClick={handleSubmitRecordatorio} 
+            disabled={isAddDisabled}
+          >
             ADD
           </Button>
         </DialogActions>
@@ -156,11 +187,23 @@ export default function Dialogos({
       {/* Diálogo para editar un recordatorio */}
       <Dialog open={openEditar} onClose={handleCloseEditar} PaperProps={{
           style: {
-            backgroundColor: '#333333', // Color gris oscuro
+            background: 'linear-gradient(135deg, rgba(30, 58, 138, 0.95) 0%, rgba(55, 65, 81, 0.98) 100%)',
+            backdropFilter: 'blur(20px)',
+            border: '1px solid rgba(59, 130, 246, 0.2)',
+            borderRadius: '14px',
           },
         }}>
-        <DialogTitle sx={{ color: 'white' }}>Edit Task</DialogTitle>
-        <DialogContent>
+        <DialogTitle sx={{ 
+          color: 'white', 
+          fontWeight: 600,
+          background: 'linear-gradient(90deg, #3b82f6 0%, #f59e0b 100%)',
+          backgroundClip: 'text',
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent',
+        }}>
+          Edit Task
+        </DialogTitle>
+        <DialogContent sx={{ pt: 2 }}>
           <TextField
             margin="normal"
             required
@@ -171,7 +214,6 @@ export default function Dialogos({
             value={recordatorioEditar?.name || ''}
             onChange={(e) => setRecordatorioEditar({ ...recordatorioEditar, name: e.target.value })}
             InputLabelProps={{ shrink: true }}
-            sx={{ color: 'white' }}
           />
           <TextField
             margin="normal"
@@ -183,7 +225,6 @@ export default function Dialogos({
             value={recordatorioEditar?.description || ''}
             onChange={(e) => setRecordatorioEditar({ ...recordatorioEditar, description: e.target.value })}
             InputLabelProps={{ shrink: true }}
-            sx={{ color: 'white' }}
           />
           <TextField
             margin="normal"
@@ -252,10 +293,9 @@ export default function Dialogos({
               const selectedPercentage = Number(e.target.value);
                 setRecordatorioEditar({ ...recordatorioEditar, percentage: selectedPercentage });
             }}
-            sx={textFieldStyle}
           >
             {[0,10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((value) => (
-              <MenuItem key={value} value={value}>
+              <MenuItem key={value} value={value} sx={{ color: 'white' }}>
                 {value}%
               </MenuItem>
             ))}
@@ -272,43 +312,25 @@ export default function Dialogos({
               const selectedList = e.target.value;
               setRecordatorioEditar({ ...recordatorioEditar, list: selectedList });
             }}
-            sx={textFieldStyle}
           >
             {listas.map((lista, index) => (
-              <MenuItem key={index} value={lista.nombre}>
+              <MenuItem key={index} value={lista.nombre} sx={{ color: 'white' }}>
                 {lista.nombre}
               </MenuItem>
             ))}
           </TextField>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseEditar} sx={{ color: 'white' }}>CANCEL</Button>
-          <Button onClick={handleSubmitEditar} sx={{ color: 'white' }}>UPDATE</Button>
+        <DialogActions sx={{ p: 3, gap: 2 }}>
+          <Button variant="ghost" onClick={handleCloseEditar}>
+            CANCEL
+          </Button>
+          <Button variant="primary" onClick={handleSubmitEditar}>
+            UPDATE
+          </Button>
         </DialogActions>
       </Dialog>
     </>
   );
 }
 
-const textFieldStyle = {
-  '& .MuiOutlinedInput-root': {
-    '& fieldset': {
-      borderColor: 'white',
-    },
-    '&:hover fieldset': {
-      borderColor: 'white',
-    },
-    '&.Mui-focused fieldset': {
-      borderColor: 'white',
-    },
-  },
-  '& .MuiInputLabel-root': {
-    color: 'white',
-  },
-  '& .MuiInputBase-input': {
-    color: 'white',
-  },
-  '& .MuiSelect-icon': {
-    color: 'white',
-  },
-};
+
