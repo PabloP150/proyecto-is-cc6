@@ -21,14 +21,30 @@ function App() {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    // Forzar siempre inicio en pantalla de Login al (re)cargar la aplicación.
-    // Se limpia cualquier rastro de sesión previa.
-    localStorage.removeItem('user');
-    localStorage.removeItem('userId');
-    localStorage.removeItem('token');
-    localStorage.removeItem('selectedGroupId');
-    localStorage.removeItem('selectedGroupName');
-    setUser(null);
+    // Queremos: mostrar login al abrir la app desde cero (nuevo proceso),
+    // pero SI el usuario ya inició sesión y solo recarga (F5 / navegación interna), conservarla.
+    // Usamos sessionStorage como bandera de proceso vivo.
+
+    const sessionFlag = sessionStorage.getItem('sessionStarted');
+
+    if (!sessionFlag) {
+      // Nuevo arranque del proceso: no conservar sesión previa.
+      localStorage.removeItem('user');
+      localStorage.removeItem('selectedGroupId');
+      sessionStorage.setItem('sessionStarted', 'true');
+      setUser(null);
+      return;
+    }
+
+    // En recarga (sessionFlag ya existe) intentamos restaurar usuario.
+    try {
+      const storedUser = localStorage.getItem('user');
+      if (storedUser) {
+        setUser(JSON.parse(storedUser));
+      }
+    } catch (e) {
+      console.warn('No se pudo restaurar la sesión:', e);
+    }
   }, []);
 
   const handleLogin = (userData) => {
@@ -41,6 +57,7 @@ function App() {
     setUser(null);
     localStorage.removeItem('user');
     localStorage.removeItem('selectedGroupId');
+    // Al hacer logout dejamos la bandera para que el usuario pueda volver a loguearse sin reiniciar el proceso.
   };
 
   return (

@@ -308,12 +308,10 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
       });
 
       if (response1.ok) {
-        const response2 = await fetch(`http://localhost:9000/api/nodes/${event[0].id}`, {
+        await fetch(`http://localhost:9000/api/nodes/${event[0].id}`, {
           method: 'DELETE',
         });
-        if (response2.ok) {
-          console.log('Node deleted successfully');
-        }
+        // Node deleted successfully (log eliminado)
       }
     } catch (error) {
       console.error('Error deleting node:', error);
@@ -327,7 +325,7 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
       });
 
       if (response.ok) {
-        console.log('Edge deleted successfully');
+        // Edge deleted successfully (log eliminado)
       } else {
         console.error('Error deleting edge:', response.status);
       }
