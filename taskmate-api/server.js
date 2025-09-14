@@ -19,6 +19,8 @@ const edgesController = require('./controllers/edges.controller');
 const completeController = require('./controllers/complete.controller');
 const deleteController = require('./controllers/delete.controller');
 const userTaskController = require('./controllers/usertask.controller');
+const groupRolesRoutes = require('./controllers/groupRoles.controller');
+const userGroupRolesRoutes = require('./controllers/userGroupRoles.controller');
 
 const {
     API_PORT = 9000,
@@ -42,6 +44,8 @@ app.use('/api/edges', edgesController);
 app.use('/api/completados', completeController);
 app.use('/api/delete', deleteController);
 app.use('/api/usertask', userTaskController);
+app.use('/api/grouproles', groupRolesRoutes);
+app.use('/api/usergrouproles', userGroupRolesRoutes);
 
 // Create HTTP server
 const server = http.createServer(app);

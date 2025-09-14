@@ -1,10 +1,14 @@
 import { Box, Container, CssBaseline, Dialog, DialogActions, DialogContent, DialogTitle, List, ListItem, styled, TextField, Typography } from '@mui/material';
 import { ThemeProvider } from '@mui/material/styles';
 import { useCallback, useContext, useEffect, useState } from 'react';
-import { GroupContext } from './GroupContext';
-import Card from './ui/Card';
-import Button from './ui/Button';
 import theme from '../theme/theme';
+import AssignRolesDialog from './AssignRolesDialog';
+import { GroupContext } from './GroupContext';
+import GroupRolesPanel from './GroupRolesPanel';
+import useGroupRoles from './hooks/useGroupRoles';
+import Button from './ui/Button';
+import Card from './ui/Card';
+import UserRolesChips from './UserRolesChips';
 
 const UseButton = styled(Button)(({ theme, selected }) => ({
   marginLeft: theme.spacing(1),
@@ -41,7 +45,26 @@ function GroupsView() {
   const [newUsername, setNewUsername] = useState('');
   const [openDeleteUser, setOpenDeleteUser] = useState(false);
   const [usernameToDelete, setUsernameToDelete] = useState('');
+  // Estado para diálogos de roles (solo una vez, al inicio)
+  const [openRoleForm, setOpenRoleForm] = useState(false);
+  const [editingRole, setEditingRole] = useState(null);
+  const [openAssignDialog, setOpenAssignDialog] = useState(false);
   const { selectedGroupId, setSelectedGroupId, setSelectedGroupName } = useContext(GroupContext);
+
+  const groupId = selectedGroup?.gid;
+  const {
+    roles,
+    userRolesMap,
+    fetchRoles,
+    fetchUserRoles,
+    createRole,
+    updateRole,
+    deleteRole,
+    assignRole,
+    removeRole,
+    loading: rolesLoading,
+    error: rolesError,
+  } = useGroupRoles(groupId);
 
   const cargarGrupos = useCallback(async () => {
     const userId = localStorage.getItem('userId');
@@ -298,7 +321,33 @@ function GroupsView() {
     }
   };
 
+  // Estado para diálogos de roles
+  // Eliminadas declaraciones duplicadas aquí
 
+  // Callbacks para roles
+  const handleCreateRole = () => {
+    setEditingRole(null);
+    setOpenRoleForm(true);
+  };
+  const handleEditRole = (role) => {
+    setEditingRole(role);
+    setOpenRoleForm(true);
+  };
+  const handleSubmitRole = async (data) => {
+    if (editingRole) {
+      await updateRole(editingRole.gr_id, data);
+    } else {
+      await createRole(data);
+    }
+    setOpenRoleForm(false);
+  };
+  const handleDeleteRole = async (role) => {
+    await deleteRole(role.gr_id);
+  };
+
+  // Para AssignRolesDialog
+  const handleOpenAssignDialog = () => setOpenAssignDialog(true);
+  const handleCloseAssignDialog = () => setOpenAssignDialog(false);
 
   return (
     <ThemeProvider theme={theme}>
@@ -385,7 +434,6 @@ function GroupsView() {
                   groups.map(group => (
                     <ListItem 
                       key={group.gid} 
-                      button 
                       onClick={() => handleGroupClick(group)} 
                       sx={{ 
                         display: 'flex', 
@@ -536,9 +584,35 @@ function GroupsView() {
                             </Typography>
                           )}
                         </Typography>
+                        <UserRolesChips roles={(userRolesMap[member.uid] || []).map(rid => roles.find(r => r.gr_id === rid)).filter(Boolean)} />
                       </ListItem>
                     ))}
                   </List>
+
+                  {/* Group Roles Panel - Nueva sección añadida */}
+                  <Box mb={3}>
+                    <GroupRolesPanel
+                      groupId={selectedGroup.gid}
+                      isLeader={selectedGroup.adminId === localStorage.getItem('userId')}
+                      roles={roles}
+                      onCreateRole={handleCreateRole}
+                      onEditRole={handleEditRole}
+                      onDeleteRole={handleDeleteRole}
+                      loading={rolesLoading}
+                      error={rolesError}
+                      onAssignRoles={handleOpenAssignDialog}
+                    />
+                    <AssignRolesDialog
+                      open={openAssignDialog}
+                      onClose={handleCloseAssignDialog}
+                      groupId={selectedGroup.gid}
+                      users={members.map(m => ({ id: m.uid, name: m.username }))}
+                      roles={roles}
+                      getUserRoles={userId => fetchUserRoles(userId)}
+                      onAssign={assignRole}
+                      onRemove={removeRole}
+                    />
+                  </Box>
                 </>
               ) : (
                 <Box sx={{ 

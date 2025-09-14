@@ -33,7 +33,6 @@ function CalendarView() {
             start: new Date(task.date),
             end: new Date(task.date),
           }));
-          console.log(data.data);
           setEvents(tasks);
         }
       } catch (error) {
