@@ -1,15 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
-  Box,
-  Button,
-  Container,
-  CssBaseline,
-  Paper,
-  TextField,
-  Typography,
+    Box,
+    Button,
+    Container,
+    CssBaseline,
+    Paper,
+    TextField,
+    Typography,
 } from '@mui/material';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 const theme = createTheme({
   palette: {
@@ -27,14 +27,7 @@ const theme = createTheme({
 function CreateGroup() {
   const [groupName, setGroupName] = useState('');
   const navigate = useNavigate();
-  const [userId, setUserId] = useState('');
-
-  useEffect(() => {
-    const storedUserId = localStorage.getItem('userId');
-    if (storedUserId) {
-      setUserId(storedUserId);
-    }
-  }, []);
+  // userId local eliminado (se lee directamente de localStorage en el submit)
 
   const handleCreateGroup = async (e) => {
     e.preventDefault();
@@ -53,8 +46,7 @@ function CreateGroup() {
       });
 
       if (response.ok) {
-        const data = await response.json();
-        console.log(data.message);
+        await response.json(); // consumir respuesta (no usada)
         navigate('/recordatorios');
       } else {
         const errorData = await response.json();

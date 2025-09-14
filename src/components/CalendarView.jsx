@@ -1,20 +1,20 @@
-import React, { useState, useEffect, useContext } from 'react';
 import {
-  Typography,
-  Container,
-  Box,
-  CssBaseline,
+    Box,
+    Container,
+    CssBaseline,
+    Typography,
 } from '@mui/material';
 import { ThemeProvider } from '@mui/material/styles';
-import { Calendar, momentLocalizer } from 'react-big-calendar';
 import moment from 'moment';
+import { useContext, useEffect, useState } from 'react';
+import { Calendar, momentLocalizer } from 'react-big-calendar';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
-import { GroupContext } from './GroupContext';
 import './CalendarView.css';
+import { GroupContext } from './GroupContext';
 
 // Import the design system components
-import { Card } from './ui';
 import { theme } from '../theme';
+import { Card } from './ui';
 
 const localizer = momentLocalizer(moment);
 
@@ -23,6 +23,10 @@ function CalendarView() {
   const [events, setEvents] = useState([]);
 
   useEffect(() => {
+    if (!selectedGroupId) {
+      setEvents([]);
+      return;
+    }
     const fetchTasks = async () => {
       try {
         const response = await fetch(`http://localhost:9000/api/nodes/tasks/${selectedGroupId}`);
@@ -149,14 +153,21 @@ function CalendarView() {
                 },
               }}
             >
-              <Calendar
-                localizer={localizer}
-                events={events}
-                startAccessor="start"
-                endAccessor="end"
-                style={{ height: '100%' }}
-                views={['month']}
-              />
+              {!selectedGroupId && (
+                <div style={{color: 'white', textAlign:'center', marginTop:'2rem'}}>
+                  Selecciona un grupo para ver el calendario.
+                </div>
+              )}
+              {selectedGroupId && (
+                <Calendar
+                  localizer={localizer}
+                  events={events}
+                  startAccessor="start"
+                  endAccessor="end"
+                  style={{ height: '100%' }}
+                  views={['month']}
+                />
+              )}
             </Box>
           </Card>
         </Container>

@@ -154,8 +154,7 @@ function GroupsView() {
       });
 
       if (response.ok) {
-        const data = await response.json();
-        console.log(data.message);
+        await response.json(); // consumir respuesta sin almacenar
         setOpenCreateGroup(false);
         cargarGrupos();
       } else {
@@ -174,7 +173,6 @@ function GroupsView() {
       return;
     }
     try {
-      console.log('Username:', newUsername);
       const userResponse = await fetch(`http://localhost:9000/api/users/getuid?username=${newUsername}`);
       if (!userResponse.ok) {
         const errorData = await userResponse.json();
@@ -198,7 +196,6 @@ function GroupsView() {
       });
 
       if (response.ok) {
-        console.log('User added successfully');
         setOpenAddUser(false);
         handleGroupClick(selectedGroup); // Refresh members
         setNewUsername('');
@@ -233,7 +230,6 @@ function GroupsView() {
     }
 
     try {
-      console.log('Username to delete:', usernameToDelete);
 
       const userResponse = await fetch(`http://localhost:9000/api/users/getuid?username=${usernameToDelete}`);
       if (!userResponse.ok) {
@@ -245,7 +241,6 @@ function GroupsView() {
       const userData = await userResponse.json();
       const uid = userData.uid;
 
-      console.log('UID obtained for user:', uid, selectedGroup.gid);
 
       const response = await fetch(`http://localhost:9000/api/groups/remove-member`, {
         method: 'DELETE',
@@ -256,7 +251,6 @@ function GroupsView() {
       });
 
       if (response.ok) {
-        console.log(`User ${usernameToDelete} deleted successfully`);
         // Actualiza la lista de miembros
         fetch(`http://localhost:9000/api/groups/${selectedGroup.gid}/members`)
           .then(response => response.json())
@@ -276,7 +270,6 @@ function GroupsView() {
 
   const handleLeaveGroup = async () => {
     const userId = localStorage.getItem('userId');
-    console.log(userId);
     if (!userId) {
       console.error('User ID is not available');
       return;
@@ -292,7 +285,6 @@ function GroupsView() {
       });
 
       if (response.ok) {
-        console.log('User left group successfully');
         fetch(`http://localhost:9000/api/groups/${selectedGroup.gid}/members`)
           .then(response => response.json())
           .then(data => setMembers(data.members))
@@ -321,7 +313,6 @@ function GroupsView() {
       });
 
       if (groupResponse.ok) {
-        console.log('Group deleted successfully');
         // Limpieza inmediata de estado local para mejor UX
         setGroups(prev => prev.filter(g => g.gid !== selectedGroup.gid));
         setSelectedGroup(null);

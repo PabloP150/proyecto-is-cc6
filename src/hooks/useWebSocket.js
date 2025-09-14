@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 /**
  * Custom hook for WebSocket connection management with automatic reconnection
@@ -60,7 +60,7 @@ const useWebSocket = (url, token, options = {}) => {
     }
 
     if (ws.current?.readyState === WebSocket.OPEN || isConnecting.current) {
-      console.log('WebSocket already connected or connecting, skipping connection attempt');
+  // debug: ya conectado o conectándose
       return;
     }
 
@@ -72,12 +72,12 @@ const useWebSocket = (url, token, options = {}) => {
 
       // Create WebSocket connection with authentication
       const wsUrl = `${connectUrl}?token=${encodeURIComponent(connectToken)}`;
-      console.log('Attempting WebSocket connection to:', wsUrl);
+  // debug: intentando conexión
 
       ws.current = new WebSocket(wsUrl);
 
       ws.current.onopen = (event) => {
-        console.log('WebSocket connected successfully');
+  // debug: conectado
         isConnecting.current = false;
         setConnectionStatus('Connected');
         reconnectAttempts.current = 0;
@@ -98,7 +98,7 @@ const useWebSocket = (url, token, options = {}) => {
       };
 
       ws.current.onclose = (event) => {
-        console.log('WebSocket connection closed, code:', event.code, 'reason:', event.reason);
+  // debug: conexión cerrada
         isConnecting.current = false;
         setConnectionStatus('Disconnected');
         callbacksRef.current.onClose(event);
@@ -112,7 +112,7 @@ const useWebSocket = (url, token, options = {}) => {
 
           reconnectAttempts.current += 1;
 
-          console.log(`Attempting reconnection ${reconnectAttempts.current}/${maxReconnectAttempts} in ${delay}ms`);
+          // debug: reintentando reconexión
           setConnectionStatus(`Reconnecting (${reconnectAttempts.current}/${maxReconnectAttempts})`);
 
           reconnectTimeoutId.current = setTimeout(() => {
@@ -144,7 +144,7 @@ const useWebSocket = (url, token, options = {}) => {
 
   // Disconnect from WebSocket server
   const disconnect = useCallback(() => {
-    console.log('Disconnecting WebSocket...');
+  // debug: desconectando
     shouldReconnect.current = false;
     isConnecting.current = false;
     clearReconnectTimeout();
@@ -179,7 +179,7 @@ const useWebSocket = (url, token, options = {}) => {
 
   // Manually trigger reconnection
   const reconnect = useCallback(() => {
-    console.log('Manual reconnection triggered');
+  // debug: reconexión manual
     disconnect();
     shouldReconnect.current = true;
     reconnectAttempts.current = 0;
@@ -197,7 +197,7 @@ const useWebSocket = (url, token, options = {}) => {
   // Auto-connect effect - runs when autoConnect, url, or token changes
   useEffect(() => {
     if (autoConnect && url && token) {
-      console.log('Auto-connecting WebSocket...');
+  // debug: auto-conectar
       shouldReconnect.current = true;
 
       // If there's an existing connection, close it first
@@ -210,12 +210,12 @@ const useWebSocket = (url, token, options = {}) => {
         connect();
       }, 100);
     }
-  }, [autoConnect, url, token]); // Removed connect from dependencies
+  }, [autoConnect, url, token, connect]);
 
   // Cleanup effect - runs only on unmount
   useEffect(() => {
     return () => {
-      console.log('Cleaning up WebSocket on component unmount');
+  // debug: cleanup unmount
       shouldReconnect.current = false;
       isConnecting.current = false;
       if (reconnectTimeoutId.current) {

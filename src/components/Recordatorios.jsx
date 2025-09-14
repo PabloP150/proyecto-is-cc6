@@ -42,6 +42,7 @@ export default function Recordatorios() {
 
   const cargarTareas = useCallback(async () => {
     if (!selectedGroupId) {
+      setListas([]);
       return;
     }
     try {
@@ -76,7 +77,7 @@ export default function Recordatorios() {
   }, [selectedGroupId]);
 
   const cargarCompletados = useCallback(async () => {
-    if (!selectedGroupId) return;
+    if (!selectedGroupId) { setCompletados([]); return; }
 
     try {
       const response = await fetch(`http://localhost:9000/api/completados/${selectedGroupId}`);
@@ -92,7 +93,7 @@ export default function Recordatorios() {
   }, [selectedGroupId]);
 
   const cargarEliminados = useCallback(async () => {
-    if (!selectedGroupId) return;
+    if (!selectedGroupId) { setEliminados([]); return; }
 
     try {
       const response = await fetch(`http://localhost:9000/api/delete/${selectedGroupId}`);
@@ -181,6 +182,7 @@ export default function Recordatorios() {
 
   const handleSubmitRecordatorio = async (e) => {
     e.preventDefault();
+    if (!selectedGroupId) return; // protección
   // Combina fecha y hora; si no hay hora seleccionada, default a 00:00 para evitar fechas inválidas
   const safeTime = (typeof hora === 'string' && /^\d{2}:\d{2}$/.test(hora)) ? hora : '00:00';
   const fechaCompleta = `${fecha}T${safeTime}`;
@@ -251,7 +253,7 @@ export default function Recordatorios() {
   };
 
   const handleEliminar = async (listaNombre, idx) => {
-    const listaActual = listas.find(lista => lista.nombre === listaNombre);
+  const listaActual = listas.find(lista => lista.nombre === listaNombre);
     const task = listaActual?.recordatorios[idx];
     if (!task) return;
 
@@ -286,7 +288,7 @@ export default function Recordatorios() {
   };
 
   const handleCompletar = async (listaNombre, idx) => {
-    const listaActual = listas.find(lista => lista.nombre === listaNombre);
+  const listaActual = listas.find(lista => lista.nombre === listaNombre);
     const task = listaActual?.recordatorios[idx];
     if (!task) return;
 
@@ -434,10 +436,11 @@ export default function Recordatorios() {
   };
 
   const handleSubmitEditar = async () => {
-    if (!recordatorioEditar?.tid) {
+  if (!recordatorioEditar?.tid) {
         console.error('El TID es undefined. Asegúrate de que el recordatorio se haya seleccionado correctamente.');
         return; 
     }
+  if (!selectedGroupId) return;
     try {
       const response = await fetch(`http://localhost:9000/api/tasks/${recordatorioEditar.tid}`, {
         method: 'PUT',
@@ -711,6 +714,7 @@ export default function Recordatorios() {
                   alignItems: 'center',
                   gap: 1,
                 }}
+                disabled={!selectedGroupId}
               >
                 <AddIcon />
                 Add List
@@ -735,6 +739,7 @@ export default function Recordatorios() {
                   alignItems: 'center',
                   gap: 1,
                 }}
+                disabled={!selectedGroupId}
               >
                 <AddIcon />
                 Add Task
@@ -743,7 +748,12 @@ export default function Recordatorios() {
           </Box>
 
           <Box sx={{ flexGrow: 1, overflow: 'auto', position: 'relative' }}>
-            <ListaRecordatorios
+            {!selectedGroupId && (
+              <Box sx={{color:'white', textAlign:'center', mt:4, opacity:0.85}}>
+                Selecciona un grupo para gestionar tareas.
+              </Box>
+            )}
+            {selectedGroupId && <ListaRecordatorios
               listas={filtrarRecordatorios()}
               handleEliminar={handleEliminar}
               handleCompletar={handleCompletar}
@@ -755,7 +765,7 @@ export default function Recordatorios() {
               sx={{ color: 'white' }}
               handleVaciarCompletados={handleVaciarCompletados}
               handleVaciarEliminados={handleVaciarEliminados}
-            />
+            />}
             {(deleteListSuccess || deleteListError) && (
               <Box
                 sx={{

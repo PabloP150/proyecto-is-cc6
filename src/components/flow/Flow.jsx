@@ -1,20 +1,20 @@
-import React, { useState, useCallback, useEffect, useContext } from "react";
-import './Flow.css'
 import {
-  ReactFlow,
-  Controls,
-  Background,
-  applyNodeChanges,
   addEdge,
   applyEdgeChanges,
+  applyNodeChanges,
+  Background,
+  ConnectionMode,
+  Controls,
   MarkerType,
-  ConnectionMode
+  ReactFlow
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import CustomNode from './CustomNode';
-import CustomConnectionLine from './CustomConnectionLine';
-import FloatingEdge from './FloatingEdge';
+import { useCallback, useContext, useEffect, useState } from "react";
 import { GroupContext } from '../GroupContext';
+import CustomConnectionLine from './CustomConnectionLine';
+import CustomNode from './CustomNode';
+import FloatingEdge from './FloatingEdge';
+import './Flow.css';
 
 const Flow = ({ handleNodeEdit, setSelectedNode }) => {
   const { selectedGroupId } = useContext(GroupContext);
@@ -42,7 +42,32 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
     return `${year}-${month}-${day}`;
   }
 
+  // Declarar toggleCompletion antes de los efectos que lo referencian
+  const toggleCompletion = useCallback((nodeId) => {
+    setNodes((prevNodes) =>
+      prevNodes.map((node) => {
+        if (node.id === nodeId) {
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              completed: !node.data.completed,
+              toggleCompletion
+            }
+          };
+        }
+        return node;
+      })
+    );
+  }, []); // setNodes es estable
+
   useEffect(() => {
+    if (!selectedGroupId) {
+      // limpiar si se des-selecciona
+      setNodes([]);
+      setEdges([]);
+      return;
+    }
     const loadNodesAndEdges = async () => {
       try {
         const nodesResponse = await fetch(`http://localhost:9000/api/nodes/group/${selectedGroupId}`);
@@ -59,7 +84,7 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
               name: node.name,
               description: node.description,
               date: node.date,
-              completed: node.completed == 1,
+              completed: node.completed === 1,
               percentage: node.percentage,
               toggleCompletion,
               onClick: () => handleNodeEdit(node),
@@ -83,9 +108,13 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
       }
     };
     loadNodesAndEdges();
-  }, [refresh]);
+  }, [refresh, selectedGroupId, handleNodeEdit, setSelectedNode, toggleCompletion]);
 
   useEffect(() => {
+    if (!selectedGroupId) {
+      setTasks([]);
+      return;
+    }
     const getTasks = async () => {
       try {
         const response = await fetch(`http://localhost:9000/api/tasks?gid=${selectedGroupId}`);
@@ -98,7 +127,7 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
       }
     };
     getTasks();
-  }, []);
+  }, [selectedGroupId]);
 
   const handleImportTask = async (task) => {
     try {
@@ -260,7 +289,7 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
     } catch (error) {
       console.error('Error saving edge:', error);
     }
-  }, []);
+  }, [selectedGroupId]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -270,25 +299,7 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
     }));
   };
 
-  const toggleCompletion = useCallback((nodeId) => {
-    setNodes((prevNodes) =>
-      prevNodes.map((node) => {
-        if (node.id === nodeId) {
-          //toggleCompletionDB(node);
-          const updatedNode = {
-            ...node,
-            data: {
-              ...node.data,
-              completed: !node.data.completed,
-              toggleCompletion
-            }
-          };
-          return updatedNode;
-        }
-        return node;
-      })
-    );
-  }, []);
+  // toggleCompletion ya declarado arriba
 
   const onNodesDelete = async (event) => {
     try {
@@ -403,8 +414,9 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
         <button
           className="add-milestone-button"
           onClick={addNode}
+          disabled={!selectedGroupId}
         >
-          Add Milestone
+          {selectedGroupId ? 'Add Milestone' : 'Select a group first'}
         </button>
         <div className="dropdown">
           <button
@@ -432,7 +444,10 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
           )}
         </div>
       </div>
-      <ReactFlow
+      {!selectedGroupId && (
+        <div style={{color: 'white', padding: '1rem'}}>Selecciona un grupo para ver y crear milestones.</div>
+      )}
+      {selectedGroupId && <ReactFlow
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
@@ -450,7 +465,7 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
       >
         <Background />
         <Controls />
-      </ReactFlow>
+      </ReactFlow>}
     </div>
   );
 };
