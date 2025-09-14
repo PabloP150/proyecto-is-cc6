@@ -1,7 +1,7 @@
 // src/components/Dialogos.jsx
-import { Box, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem } from '@mui/material';
-import TextField from './ui/TextField';
+import { Box, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, Slider, Typography } from '@mui/material';
 import Button from './ui/Button';
+import TextField from './ui/TextField';
 
 export default function Dialogos({
   openRecordatorio,
@@ -281,25 +281,82 @@ export default function Dialogos({
             }}
             InputLabelProps={{ shrink: true }}
           />
-          <TextField
-            margin="normal"
-            required
-            fullWidth
-            id="porcentajeEditar"
-            label="Percentage"
-            select
-            value={recordatorioEditar?.percentage || 0}
-            onChange={(e) => {
-              const selectedPercentage = Number(e.target.value);
-                setRecordatorioEditar({ ...recordatorioEditar, percentage: selectedPercentage });
-            }}
-          >
-            {[0,10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((value) => (
-              <MenuItem key={value} value={value} sx={{ color: 'white' }}>
-                {value}%
-              </MenuItem>
-            ))}
-          </TextField>
+          {/* Percentage / Progress slider */}
+          <Box sx={{ mt: 2, mb: 1.5, display: 'flex', justifyContent: 'center' }}>
+            <Box sx={{ width: '100%', maxWidth: 520 }}>
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.65)', fontWeight: 500, letterSpacing: '.5px' }}>
+              PERCENTAGE
+            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 1 }}>
+              <Slider
+                value={recordatorioEditar?.percentage ?? 0}
+                onChange={(_, val) => {
+                  const v = Array.isArray(val) ? val[0] : val;
+                  setRecordatorioEditar({ ...recordatorioEditar, percentage: v });
+                }}
+                step={5}
+                marks={[0,25,50,75,100].map(v => ({ value: v, label: `${v}%` }))}
+                min={0}
+                max={100}
+                sx={{
+                  flex: 1,
+                  color: '#3b82f6',
+                  height: 8,
+                  '& .MuiSlider-track': {
+                    border: 'none',
+                    background: (theme) => `linear-gradient(90deg, #3b82f6 0%, #f59e0b ${(recordatorioEditar?.percentage ?? 0)}%)`,
+                  },
+                  '& .MuiSlider-rail': {
+                    opacity: 0.25,
+                    background: 'linear-gradient(90deg, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0.05) 100%)',
+                  },
+                  '& .MuiSlider-thumb': {
+                    width: 20,
+                    height: 20,
+                    backgroundColor: '#fff',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.45)',
+                    border: '2px solid #2563eb',
+                    '&:hover': {
+                      boxShadow: '0 0 0 6px rgba(37,99,235,0.3)'
+                    },
+                    '&.Mui-active': {
+                      boxShadow: '0 0 0 10px rgba(37,99,235,0.35)'
+                    }
+                  },
+                  '& .MuiSlider-mark': {
+                    backgroundColor: 'rgba(255,255,255,0.5)',
+                    width: 4,
+                    height: 4,
+                    borderRadius: '50%'
+                  },
+                  '& .MuiSlider-markLabel': {
+                    color: 'rgba(255,255,255,0.55)',
+                    fontSize: '0.65rem',
+                    fontWeight: 500,
+                    mt: 0.5
+                  }
+                }}
+              />
+              <Box
+                sx={{
+                  minWidth: 60,
+                  textAlign: 'center',
+                  px: 1,
+                  py: 0.65,
+                  borderRadius: '10px',
+                  fontSize: '0.85rem',
+                  fontWeight: 700,
+                  background: 'linear-gradient(135deg, #3b82f6 0%, #f59e0b 90%)',
+                  color: '#fff',
+                  letterSpacing: '.5px',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.08)'
+                }}
+              >
+                {(recordatorioEditar?.percentage ?? 0)}%
+              </Box>
+            </Box>
+            </Box>
+          </Box>
           <TextField
             margin="normal"
             required

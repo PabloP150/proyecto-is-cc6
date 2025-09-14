@@ -1,3 +1,4 @@
+import CancelIcon from '@mui/icons-material/Cancel';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
@@ -11,18 +12,18 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
   // Snackbar state
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
 
-  // Envoltorios para handlers que muestran el snackbar
+  // Wrapper handlers to show snackbar feedback
   const handleCompletarConFeedback = (...args) => {
     handleCompletar(...args);
-    setSnackbar({ open: true, message: '¡Tarea completada!', severity: 'success' });
+    setSnackbar({ open: true, message: 'Task completed', severity: 'success' });
   };
   const handleEliminarConFeedback = (...args) => {
     handleEliminar(...args);
-    setSnackbar({ open: true, message: 'Tarea eliminada', severity: 'info' });
+    setSnackbar({ open: true, message: 'Task deleted', severity: 'info' });
   };
   const handleEditarConFeedback = (...args) => {
     handleEditar(...args);
-    setSnackbar({ open: true, message: 'Tarea editada', severity: 'success' });
+    setSnackbar({ open: true, message: 'Task updated', severity: 'success' });
   };
   const handleCloseSnackbar = (event, reason) => {
     if (reason === 'clickaway') return;
@@ -297,14 +298,14 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
                 {lista.recordatorios && lista.recordatorios.length > 0 ? (
                   ordenarRecordatorios(lista.recordatorios).map((recordatorio, idx) => (
                     <Box
-                      key={recordatorio.id || recordatorio.tid || idx}
+                      key={recordatorio.tid || recordatorio.id || idx}
                       sx={{
                         flex: '1 1 calc(33.333% - 16px)',
                         maxWidth: 'calc(33.333% - 16px)',
                         minWidth: '220px',
                         background: 'linear-gradient(135deg, rgba(30, 58, 138, 0.2) 0%, rgba(55, 65, 81, 0.95) 100%)',
                         borderRadius: '14px',
-                        boxShadow: '0 2px 12px 0 rgba(0,0,0,0.18)',
+                        // boxShadow base eliminado para evitar duplicado; se controla abajo según estado
                         padding: '16px',
                         display: 'flex',
                         flexDirection: 'column',
@@ -313,9 +314,30 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
                         border: '1px solid rgba(59, 130, 246, 0.1)',
                         transition: 'all 0.35s cubic-bezier(.4,2,.3,1)',
                         opacity: nuevosIds.includes(recordatorio.tid || recordatorio.id) ? 0 : 1,
-                        animation: nuevosIds.includes(recordatorio.tid || recordatorio.id)
-                          ? 'fadeInTask 1.7s forwards'
-                          : 'none',
+                        animation: recordatorio.__justCompleted
+                          ? 'justCompletedHold 1.4s forwards'
+                          : recordatorio.__justDeleted
+                            ? 'justDeletedHold 1.4s forwards'
+                            : (nuevosIds.includes(recordatorio.tid || recordatorio.id) ? 'fadeInTask 1.7s forwards' : 'none'),
+                        boxShadow: recordatorio.__justCompleted
+                          ? '0 0 0 2px rgba(16,185,129,0.35), 0 4px 18px rgba(16,185,129,0.25)'
+                          : recordatorio.__justDeleted
+                            ? '0 0 0 2px rgba(239,68,68,0.35), 0 4px 18px rgba(239,68,68,0.25)'
+                            : '0 2px 12px 0 rgba(0,0,0,0.18)',
+                        pointerEvents: (recordatorio.__justCompleted || recordatorio.__justDeleted) ? 'none' : 'auto',
+                        '@keyframes justCompletedHold': {
+                          '0%': { opacity: 1, transform: 'scale(1)' },
+                          '55%': { opacity: 1, transform: 'scale(1.015)' },
+                          '75%': { opacity: 0.95, transform: 'scale(1)' },
+                          '100%': { opacity: 0, transform: 'scale(.94) translateY(4px)' }
+                        },
+                        '@keyframes justDeletedHold': {
+                          '0%': { opacity: 1, transform: 'scale(1)' },
+                          '45%': { opacity: 1, transform: 'scale(1.03) rotate(0deg)' },
+                          '60%': { opacity: 1, transform: 'scale(1.02) rotate(-2deg)' },
+                          '75%': { opacity: 0.9, transform: 'scale(.98) rotate(1deg)' },
+                          '100%': { opacity: 0, transform: 'scale(.9) translateY(6px) rotate(-3deg)' }
+                        },
                         '@keyframes fadeInTask': {
                           from: { opacity: 0 },
                           to: { opacity: 1 },
@@ -345,8 +367,8 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
                         },
                       }}
                     >
-                      {/* Animación de check al completar */}
-                      {Number(recordatorio.percentage) >= 100 && (
+                      {/* Animaciones de estado: check (completado) y X (eliminado) */}
+                      {Number(recordatorio.percentage) >= 100 && !recordatorio.__justDeleted && (
                         <Box
                           sx={{
                             position: 'absolute',
@@ -363,6 +385,25 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
                           }}
                         >
                           <CheckCircleIcon sx={{ color: '#10b981', fontSize: 38, filter: 'drop-shadow(0 2px 8px #10b98177)' }} />
+                        </Box>
+                      )}
+                      {recordatorio.__justDeleted && (
+                        <Box
+                          sx={{
+                            position: 'absolute',
+                            top: 10,
+                            right: 10,
+                            zIndex: 2,
+                            animation: 'popDelete 0.7s cubic-bezier(.4,2,.3,1)',
+                            '@keyframes popDelete': {
+                              '0%': { transform: 'scale(0.2) rotate(-15deg)', opacity: 0 },
+                              '55%': { transform: 'scale(1.25) rotate(8deg)', opacity: 1 },
+                              '75%': { transform: 'scale(0.95) rotate(-4deg)', opacity: 1 },
+                              '100%': { transform: 'scale(1) rotate(0deg)', opacity: 1 },
+                            },
+                          }}
+                        >
+                          <CancelIcon sx={{ color: '#ef4444', fontSize: 40, filter: 'drop-shadow(0 2px 8px #ef444477)' }} />
                         </Box>
                       )}
                       <Typography sx={{ color: 'white', fontWeight: 'bold', textAlign: 'left', width: '100%' }}>
@@ -393,12 +434,12 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
                       />
                        {filtro === 'deleted' || filtro === 'completed' ? null : (
                          <Box sx={{ display: 'flex', flexDirection: 'row', gap: 1, mt: 2 }}>
-                           <Tooltip title="Asignar usuario" arrow>
+                           <Tooltip title="Assign user" arrow>
                              <span>
                                <SeleccionarPersona tid={recordatorio.tid} />
                              </span>
                            </Tooltip>
-                           <Tooltip title="Editar tarea" arrow>
+                           <Tooltip title="Edit task" arrow>
                              <IconButton 
                                edge="end" 
                                aria-label="edit" 
@@ -420,7 +461,7 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
                                <EditIcon fontSize="small" />
                              </IconButton>
                            </Tooltip>
-                           <Tooltip title="Completar tarea" arrow>
+                           <Tooltip title="Mark as complete" arrow>
                              <IconButton 
                                edge="end" 
                                aria-label="complete" 
@@ -442,7 +483,7 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
                                <CheckCircleIcon fontSize="small" />
                              </IconButton>
                            </Tooltip>
-                           <Tooltip title="Eliminar tarea" arrow>
+                           <Tooltip title="Delete task" arrow>
                              <IconButton 
                                edge="end" 
                                aria-label="delete" 

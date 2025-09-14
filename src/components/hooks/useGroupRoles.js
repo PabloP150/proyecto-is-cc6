@@ -83,6 +83,14 @@ export default function useGroupRoles(groupId) {
   const updateRole = async (roleId, roleData) => {
     if (!groupId || !roleId) return;
     setLoading(true);
+    // Guardar snapshot para posible rollback
+    const prevRoles = roles;
+    // Actualización optimista local inmediata
+    setRoles(r => {
+      const updated = r.map(role => role.gr_id === roleId ? { ...role, ...roleData, gr_id: roleId } : role);
+      console.debug('[updateRole optimistic] roleId', roleId, 'data', roleData);
+      return updated;
+    });
     try {
       const res = await fetch(`http://localhost:9000/api/grouproles/groups/${groupId}/roles/${roleId}`, {
         method: 'PUT',
@@ -90,9 +98,20 @@ export default function useGroupRoles(groupId) {
         body: JSON.stringify(roleData),
       });
       if (!res.ok) throw new Error('Error al editar rol');
-      await fetchRoles();
+      // Intentar usar payload actualizado si el backend lo envía
+      try {
+        const payload = await res.json();
+        if (payload && payload.role) {
+          setRoles(r => {
+            console.debug('[updateRole server payload]', payload.role);
+            return r.map(role => role.gr_id === roleId ? { ...role, ...payload.role } : role);
+          });
+        }
+      } catch { /* ignorar si no hay json */ }
     } catch (err) {
       setError(err.message);
+      // Rollback si falla
+      setRoles(prevRoles);
     } finally {
       setLoading(false);
     }

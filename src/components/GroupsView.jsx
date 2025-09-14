@@ -1,3 +1,6 @@
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+import PersonIcon from '@mui/icons-material/Person';
 import { Box, Container, CssBaseline, Dialog, DialogActions, DialogContent, DialogTitle, List, ListItem, styled, TextField, Typography } from '@mui/material';
 import { ThemeProvider } from '@mui/material/styles';
 import { useCallback, useContext, useEffect, useState } from 'react';
@@ -47,9 +50,11 @@ function GroupsView() {
   const [openDeleteUser, setOpenDeleteUser] = useState(false);
   const [usernameToDelete, setUsernameToDelete] = useState('');
   // Estado para diálogos de roles (solo una vez, al inicio)
-  const [openRoleForm, setOpenRoleForm] = useState(false);
-  const [editingRole, setEditingRole] = useState(null);
+  // Eliminados estados openRoleForm / editingRole (no usados tras refactor de roles controlados)
   const [openAssignDialog, setOpenAssignDialog] = useState(false);
+  // Feedback visual (iconos) para eliminación de grupo
+  const [deleteSuccess, setDeleteSuccess] = useState(false);
+  const [deleteError, setDeleteError] = useState(false);
   // Controla si mostramos los detalles (miembros/roles) dentro de esta vista. Persistimos en localStorage.
   const [showDetails, setShowDetails] = useState(() => localStorage.getItem('showGroupDetails') === '1');
   const { selectedGroupId, setSelectedGroupId, setSelectedGroupName } = useContext(GroupContext);
@@ -303,46 +308,42 @@ function GroupsView() {
 
   const handleDeleteGroup = async () => {
     const userId = localStorage.getItem('userId');
-    if (!userId) {
-      console.error('User ID is not available');
+    if (!userId || !selectedGroup) {
+      console.error('Cannot delete: missing userId or selectedGroup');
       return;
     }
 
     try {
-      // Primero, elimina al grupo de la tabla UserGroup
-      const userGroupResponse = await fetch(`http://localhost:9000/api/groups/leave`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ uid: userId, gid: selectedGroup.gid }), // Enviar el GID del grupo
-      });
-
-      if (!userGroupResponse.ok) {
-        const errorData = await userGroupResponse.json();
-        console.error('Error removing group from UserGroup:', errorData.error);
-        return;
-      }
-
-      // Luego, elimina el grupo de la tabla principal
       const groupResponse = await fetch(`http://localhost:9000/api/groups/delete`, {
         method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ gid: selectedGroup.gid, adminId: userId }), // Enviar el GID del grupo y el ID del administrador 
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gid: selectedGroup.gid, adminId: userId }),
       });
 
       if (groupResponse.ok) {
         console.log('Group deleted successfully');
-        await cargarGrupos(); // Actualiza la lista de grupos
-        setSelectedGroup(null); // Restablece el grupo seleccionado
+        // Limpieza inmediata de estado local para mejor UX
+        setGroups(prev => prev.filter(g => g.gid !== selectedGroup.gid));
+        setSelectedGroup(null);
+        setSelectedGroupId(null);
+  setMembers([]); // roles y userRolesMap se limpian implícitamente al no tener groupId
+        setShowDetails(false);
+        setOpenAssignDialog(false);
+        setDeleteError(false);
+        setDeleteSuccess(true);
+        setTimeout(() => setDeleteSuccess(false), 3000);
       } else {
         const errorData = await groupResponse.json();
         console.error('Error deleting group:', errorData.error);
+        setDeleteSuccess(false);
+        setDeleteError(true);
+        setTimeout(() => setDeleteError(false), 4000);
       }
     } catch (error) {
       console.error('Error in request:', error);
+      setDeleteSuccess(false);
+      setDeleteError(true);
+      setTimeout(() => setDeleteError(false), 4000);
     }
   };
 
@@ -350,29 +351,7 @@ function GroupsView() {
   // Eliminadas declaraciones duplicadas aquí
 
   // Callbacks para roles
-  const handleCreateRole = () => {
-    setEditingRole(null);
-    setOpenRoleForm(true);
-  };
-  const handleEditRole = (role) => {
-    setEditingRole(role);
-    setOpenRoleForm(true);
-  };
-  const handleSubmitRole = async (data) => {
-    if (editingRole) {
-      await updateRole(editingRole.gr_id, data);
-    } else {
-      await createRole(data);
-    }
-    setOpenRoleForm(false);
-  };
-  const handleDeleteRole = async (role) => {
-    await deleteRole(role.gr_id);
-  };
-
-  // Para AssignRolesDialog
-  const handleOpenAssignDialog = () => setOpenAssignDialog(true);
-  const handleCloseAssignDialog = () => setOpenAssignDialog(false);
+  // Se removieron handlers de roles y assign dialog sin uso directo (warnings ESLint)
 
   return (
     <ThemeProvider theme={theme}>
@@ -595,22 +574,66 @@ function GroupsView() {
                         }}
                       >
                         <Box display="flex" alignItems="center" gap={1}>
-                          <Typography sx={{ fontWeight: 500 }}>
+                          <Typography sx={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: 0.5 }}>
                             {member.username}
-                            {selectedGroup.adminId === member.uid && (
+                            {selectedGroup.adminId === member.uid ? (
                               <Typography 
                                 component="span" 
                                 sx={{ 
                                   ml: 1, 
-                                  fontSize: '0.75rem',
+                                  fontSize: '0.7rem',
+                                  lineHeight: 1,
                                   background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
                                   color: 'white',
                                   padding: '2px 8px',
                                   borderRadius: 1,
                                   fontWeight: 600,
+                                  letterSpacing: 0.3,
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
                                 }}
                               >
+                                {/* Corona inline (CrownIcon) */}
+                                <svg
+                                  width="16"
+                                  height="16"
+                                  viewBox="0 0 24 24"
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  style={{ filter: 'drop-shadow(0 0 2px rgba(255,255,255,0.4))', transform: 'translateY(-1px)' }}
+                                >
+                                  {/* Corona estilo flat: tres puntas con círculos y base */}
+                                  <path
+                                    fill="#ffffff"
+                                    d="M4 9.5 7.2 12 10 7l2 3.5L14 7l2.8 5 3.2-2.5-.8 6.5H4.8L4 9.5Z"
+                                  />
+                                  <circle cx="10" cy="6" r="1.1" fill="#ffffff" />
+                                  <circle cx="14" cy="6" r="1.1" fill="#ffffff" />
+                                  <circle cx="12" cy="5" r="1.1" fill="#ffffff" />
+                                  <rect x="6" y="17" width="12" height="3" rx="1.2" fill="#ffffff" />
+                                </svg>
                                 Admin
+                              </Typography>
+                            ) : (
+                              <Typography
+                                component="span"
+                                sx={{
+                                  ml: 1,
+                                  fontSize: '0.7rem',
+                                  lineHeight: 1,
+                                  background: 'linear-gradient(135deg, #3b82f6 0%, #1e3a8a 100%)',
+                                  color: 'white',
+                                  padding: '2px 8px',
+                                  borderRadius: 1,
+                                  fontWeight: 600,
+                                  letterSpacing: 0.3,
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  opacity: 0.85
+                                }}
+                              >
+                                <PersonIcon sx={{ fontSize: '0.9rem' }} /> Member
                               </Typography>
                             )}
                           </Typography>
@@ -637,22 +660,23 @@ function GroupsView() {
 
                   {/* Group Roles Panel - igual que Members */}
                   <Box mb={3}>
-                    {roles && roles.length > 0 ? (
+                    {(roles && roles.length > 0) || (selectedGroup.adminId === localStorage.getItem('userId')) ? (
+                      // Si hay roles o el usuario es líder, mostramos el panel completo (maneja su propio estado vacío y botón New Role)
                       <GroupRolesPanel
                         groupId={selectedGroup.gid}
                         isLeader={selectedGroup.adminId === localStorage.getItem('userId')}
                         roles={roles}
-                        onCreateRole={handleCreateRole}
-                        onEditRole={handleEditRole}
-                        onDeleteRole={handleDeleteRole}
+                        createRole={createRole}
+                        updateRole={updateRole}
+                        deleteRole={deleteRole}
                         loading={rolesLoading}
                         error={rolesError}
-                        onAssignRoles={handleOpenAssignDialog}
                       />
                     ) : (
+                      // Usuario no es líder y no existen roles: solo mensaje informativo
                       <>
                         <Typography variant="h5" gutterBottom sx={{ fontWeight: 600, mb: 2 }}>Group Roles</Typography>
-                        <Typography color="text.secondary" sx={{ mb: 2 }}>No hay roles definidos.</Typography>
+                        <Typography color="text.secondary" sx={{ mb: 2 }}>No roles defined.</Typography>
                       </>
                     )}
                     <AssignRolesDialog
@@ -692,7 +716,7 @@ function GroupsView() {
                     {selectedGroup.name}
                   </Typography>
                   <Typography color="text.secondary" sx={{ mb: 1 }}>
-                    Presiona el botón USE del grupo para ver miembros y roles.
+                    Press the group's USE button to view members and roles.
                   </Typography>
                 </Box>
               ) : (
@@ -720,6 +744,40 @@ function GroupsView() {
           </Box>
         </Container>
       </Box>
+
+      {/* Feedback icon (sin diálogo) para eliminación de grupo */}
+      {(deleteSuccess || deleteError) && (
+        <Box
+          sx={{
+            position: 'fixed',
+            bottom: 24,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1,
+            px: 2.5,
+            py: 1.25,
+            borderRadius: '999px',
+            background: deleteSuccess
+              ? 'linear-gradient(135deg, rgba(16,185,129,0.15) 0%, rgba(5,150,105,0.4) 100%)'
+              : 'linear-gradient(135deg, rgba(239,68,68,0.15) 0%, rgba(220,38,38,0.4) 100%)',
+            border: `1px solid ${deleteSuccess ? 'rgba(16,185,129,0.5)' : 'rgba(239,68,68,0.5)'}`,
+            boxShadow: deleteSuccess
+              ? '0 4px 18px -2px rgba(16,185,129,0.4)'
+              : '0 4px 18px -2px rgba(239,68,68,0.4)',
+            backdropFilter: 'blur(12px)',
+            zIndex: 1200,
+            color: '#fff',
+            fontWeight: 500,
+            fontSize: '0.9rem'
+          }}
+        >
+          {deleteSuccess && <CheckCircleIcon sx={{ color: '#10b981' }} />}
+          {deleteError && <ErrorOutlineIcon sx={{ color: '#f87171' }} />}
+          <span>{deleteSuccess ? 'Group deleted' : 'Delete failed'}</span>
+        </Box>
+      )}
 
       <Dialog 
         open={openAddUser} 

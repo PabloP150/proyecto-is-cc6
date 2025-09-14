@@ -72,11 +72,9 @@ const AssignRolesDialog = ({
       if (hasRole) {
         await onRemove(selectedUser.uid, roleId);
         setUserRoles(userRoles.filter(r => r !== roleId));
-        console.log(`Rol ${roleId} removido para usuario ${selectedUser.uid}`);
       } else {
         await onAssign(selectedUser.uid, roleId);
         setUserRoles([...userRoles, roleId]);
-        console.log(`Rol ${roleId} asignado a usuario ${selectedUser.uid}`);
       }
     } catch (err) {
       alert('Error al asignar/quitar rol: ' + (err?.message || err));
@@ -86,11 +84,7 @@ const AssignRolesDialog = ({
     }
   };
 
-  const handleUserClick = (user) => {
-    if (!selectedUser || selectedUser.id !== user.uid) {
-      if (typeof setSelectedUser === 'function') setSelectedUser(user);
-    }
-  };
+  // handleUserClick eliminado (no se estaba usando)
 
   // Limpiar estado solo cuando el diálogo esté completamente cerrado
   const handleClose = () => {

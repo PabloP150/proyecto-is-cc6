@@ -25,8 +25,43 @@ const getGroupsByUserId = async (uid) => {
     return execReadCommand(query, params);
 };
 
+// Eliminación en cascada con una sola consulta transaccional (consistencia de estilo)
 const deleteGroup = async (gid, adminId) => {
-    const query = `DELETE FROM dbo.Groups WHERE gid = @gid AND adminId = @adminId`;
+    const query = `
+        BEGIN TRY
+            BEGIN TRANSACTION;
+
+            -- Verificar autorización
+            IF NOT EXISTS (SELECT 1 FROM dbo.Groups WHERE gid=@gid AND adminId=@adminId)
+            BEGIN
+                RAISERROR('Not authorized to delete this group', 16, 1);
+            END
+
+            -- Eliminar dependencias en orden
+            DELETE FROM dbo.UserGroupRoles WHERE gid=@gid;      -- asignaciones de roles
+            DELETE FROM dbo.GroupRoles WHERE gid=@gid;          -- roles del grupo
+            DELETE FROM dbo.Edges WHERE gid=@gid;               -- edges
+            DELETE FROM dbo.Nodes WHERE gid=@gid;               -- nodes
+            DELETE FROM dbo.Tasks WHERE gid=@gid;               -- tasks
+            DELETE FROM dbo.UserGroups WHERE gid=@gid;          -- membresías
+
+            -- Por si hay registros de historial (opcional, ignora si no existe la tabla)
+            IF OBJECT_ID('dbo.DeleteTask','U') IS NOT NULL
+                DELETE FROM dbo.DeleteTask WHERE gid=@gid;
+
+            -- Finalmente el grupo
+            DELETE FROM dbo.Groups WHERE gid=@gid AND adminId=@adminId;
+
+            COMMIT TRANSACTION;
+        END TRY
+        BEGIN CATCH
+            IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+            DECLARE @ErrMsg NVARCHAR(4000) = ERROR_MESSAGE();
+            DECLARE @ErrSeverity INT = ERROR_SEVERITY();
+            RAISERROR(@ErrMsg, @ErrSeverity, 1);
+        END CATCH;
+    `;
+
     const params = [
         { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
         { name: 'adminId', type: TYPES.UniqueIdentifier, value: adminId },
