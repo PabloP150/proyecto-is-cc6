@@ -19,6 +19,25 @@ export default function useGroupRoles(groupId) {
       if (!res.ok) throw new Error('Error al obtener roles');
       const data = await res.json();
       setRoles(data.roles || []);
+      // Después de cargar roles, intentar cargar matriz completa de asignaciones para poblar userRolesMap
+      try {
+        const matrixRes = await fetch(`http://localhost:9000/api/usergrouproles/groups/${groupId}/rolesmatrix`);
+        if (matrixRes.ok) {
+          const matrixData = await matrixRes.json();
+          if (Array.isArray(matrixData.matrix)) {
+            // Construir mapa: uid -> [gr_id]
+            const builtMap = matrixData.matrix.reduce((acc, row) => {
+              if (!acc[row.uid]) acc[row.uid] = [];
+              if (row.gr_id && !acc[row.uid].includes(row.gr_id)) acc[row.uid].push(row.gr_id);
+              return acc;
+            }, {});
+            setUserRolesMap(prev => ({ ...prev, ...builtMap }));
+          }
+        }
+      } catch (e) {
+        // Silencioso: no bloquear por error de matriz
+        console.debug('No se pudo cargar rolesmatrix:', e.message);
+      }
     } catch (err) {
   setError(err.message);
     } finally {

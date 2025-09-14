@@ -50,9 +50,12 @@ function GroupsView() {
   const [openRoleForm, setOpenRoleForm] = useState(false);
   const [editingRole, setEditingRole] = useState(null);
   const [openAssignDialog, setOpenAssignDialog] = useState(false);
+  // Controla si mostramos los detalles (miembros/roles) dentro de esta vista. Persistimos en localStorage.
+  const [showDetails, setShowDetails] = useState(() => localStorage.getItem('showGroupDetails') === '1');
   const { selectedGroupId, setSelectedGroupId, setSelectedGroupName } = useContext(GroupContext);
 
-  const groupId = selectedGroup?.gid;
+  // Solo cargamos roles cuando el grupo está realmente "en uso" (selectedGroupId coincide)
+  const groupId = (selectedGroup && selectedGroupId === selectedGroup.gid && showDetails) ? selectedGroup.gid : null;
   const {
     roles,
     userRolesMap,
@@ -67,6 +70,17 @@ function GroupsView() {
     error: rolesError,
   } = useGroupRoles(groupId);
 
+  // Cargar roles de cada miembro automáticamente cuando se usan los detalles del grupo
+  useEffect(() => {
+    if (!groupId || !showDetails) return;
+    if (!members || members.length === 0) return;
+    members.forEach(m => {
+      if (!userRolesMap[m.uid]) {
+        fetchUserRoles(m.uid);
+      }
+    });
+  }, [groupId, members, showDetails, userRolesMap, fetchUserRoles]);
+
   const cargarGrupos = useCallback(async () => {
     const userId = localStorage.getItem('userId');
     if (!userId) {
@@ -79,20 +93,22 @@ function GroupsView() {
         const data = await response.json();
         setGroups(data.groups);
         const storedGroupId = localStorage.getItem('selectedGroupId');
+        const storedShow = localStorage.getItem('showGroupDetails') === '1';
         if (storedGroupId) {
-          const groupToSelect = data.groups.find(group => group.gid === storedGroupId);
+          const groupToSelect = data.groups.find(g => g.gid === storedGroupId);
           if (groupToSelect) {
             setSelectedGroupId(groupToSelect.gid);
             setSelectedGroupName(groupToSelect.name);
             setSelectedGroup(groupToSelect);
+            if (storedShow) {
+              setShowDetails(true);
+              // Cargar miembros inmediatamente
+              fetch(`http://localhost:9000/api/groups/${groupToSelect.gid}/members`)
+                .then(r => r.json())
+                .then(d => setMembers(d.members))
+                .catch(err => console.error('Error loading members:', err));
+            }
           }
-        } else if (data.groups.length > 0) {
-          const firstGroup = data.groups[0];
-          setSelectedGroupId(firstGroup.gid);
-          setSelectedGroupName(firstGroup.name);
-          setSelectedGroup(firstGroup);
-          localStorage.setItem('selectedGroupId', firstGroup.gid);
-          localStorage.setItem('selectedGroupName', firstGroup.name);
         }
       } else {
         console.error('Error al cargar los grupos');
@@ -106,17 +122,16 @@ function GroupsView() {
     cargarGrupos();
   }, [cargarGrupos]);
 
+  // Solo resalta el grupo al hacer clic en el nombre, pero no lo selecciona como "en uso"
   const handleGroupClick = (group) => {
-    setSelectedGroupId(group.gid);
-    setSelectedGroupName(group.name);
-    setSelectedGroup(group);
-    localStorage.setItem('selectedGroupId', group.gid);
-    localStorage.setItem('selectedGroupName', group.name);
-    fetch(`http://localhost:9000/api/groups/${group.gid}/members`)
-      .then(response => response.json())
-      .then(data => setMembers(data.members))
-      .catch(error => console.error('Error loading members:', error));
+    setSelectedGroup(group);      // Mostrar nombre
+    // Si este grupo ya está en uso y showDetails persistido, mantener detalles.
+    const persistShow = localStorage.getItem('showGroupDetails') === '1' && localStorage.getItem('selectedGroupId') === String(group.gid);
+    setShowDetails(persistShow);
+    if (!persistShow) setMembers([]);
   };
+
+  // Solo el botón USE activa el grupo y carga miembros
 
   const handleCreateGroup = async () => {
     const userId = localStorage.getItem('userId');
@@ -193,7 +208,16 @@ function GroupsView() {
 
   const handleUseGroup = (group) => {
     setSelectedGroupId(group.gid);
-    console.log(`Using group: ${group.name} with gid: ${group.gid}`);
+    setSelectedGroupName(group.name);
+    setSelectedGroup(group);
+    setShowDetails(true); // Mostrar detalles inmediatamente
+    localStorage.setItem('selectedGroupId', group.gid);
+    localStorage.setItem('selectedGroupName', group.name);
+    localStorage.setItem('showGroupDetails', '1');
+    fetch(`http://localhost:9000/api/groups/${group.gid}/members`)
+      .then(r => r.json())
+      .then(data => setMembers(data.members))
+      .catch(err => console.error('Error loading members:', err));
   };
 
   const handleDeleteUser = async () => {
@@ -435,6 +459,7 @@ function GroupsView() {
                   groups.map(group => (
                     <ListItem 
                       key={group.gid} 
+                      // onClick solo resalta, no activa el grupo
                       onClick={() => handleGroupClick(group)} 
                       sx={{ 
                         display: 'flex', 
@@ -486,7 +511,7 @@ function GroupsView() {
                 }
               }}
             >
-              {selectedGroup ? (
+              {selectedGroup && showDetails && selectedGroupId === selectedGroup.gid ? (
                 <>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, flexWrap: { xs: 'wrap', sm: 'nowrap' }, mb: 3 }}>
                     <Typography
@@ -610,19 +635,26 @@ function GroupsView() {
                     ))}
                   </List>
 
-                  {/* Group Roles Panel - Nueva sección añadida */}
+                  {/* Group Roles Panel - igual que Members */}
                   <Box mb={3}>
-                    <GroupRolesPanel
-                      groupId={selectedGroup.gid}
-                      isLeader={selectedGroup.adminId === localStorage.getItem('userId')}
-                      roles={roles}
-                      onCreateRole={handleCreateRole}
-                      onEditRole={handleEditRole}
-                      onDeleteRole={handleDeleteRole}
-                      loading={rolesLoading}
-                      error={rolesError}
-                      onAssignRoles={handleOpenAssignDialog}
-                    />
+                    {roles && roles.length > 0 ? (
+                      <GroupRolesPanel
+                        groupId={selectedGroup.gid}
+                        isLeader={selectedGroup.adminId === localStorage.getItem('userId')}
+                        roles={roles}
+                        onCreateRole={handleCreateRole}
+                        onEditRole={handleEditRole}
+                        onDeleteRole={handleDeleteRole}
+                        loading={rolesLoading}
+                        error={rolesError}
+                        onAssignRoles={handleOpenAssignDialog}
+                      />
+                    ) : (
+                      <>
+                        <Typography variant="h5" gutterBottom sx={{ fontWeight: 600, mb: 2 }}>Group Roles</Typography>
+                        <Typography color="text.secondary" sx={{ mb: 2 }}>No hay roles definidos.</Typography>
+                      </>
+                    )}
                     <AssignRolesDialog
                       open={openAssignDialog}
                       onClose={() => {
@@ -640,6 +672,29 @@ function GroupsView() {
                     />
                   </Box>
                 </>
+              ) : selectedGroup ? (
+                // Caso: se dio clic a un grupo pero aún no se ha presionado USE
+                <Box>
+                  <Typography
+                    variant="h4"
+                    component="h2"
+                    sx={{
+                      mb: 2,
+                      fontSize: 'clamp(1.25rem, 2.2vw, 1.75rem)',
+                      fontWeight: 600,
+                      lineHeight: 1.3,
+                      background: 'linear-gradient(90deg, #3b82f6 0%, #f59e0b 100%)',
+                      backgroundClip: 'text',
+                      WebkitBackgroundClip: 'text',
+                      WebkitTextFillColor: 'transparent',
+                    }}
+                  >
+                    {selectedGroup.name}
+                  </Typography>
+                  <Typography color="text.secondary" sx={{ mb: 1 }}>
+                    Presiona el botón USE del grupo para ver miembros y roles.
+                  </Typography>
+                </Box>
               ) : (
                 <Box sx={{ 
                   display: 'flex', 

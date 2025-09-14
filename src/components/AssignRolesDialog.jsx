@@ -1,16 +1,15 @@
 import {
-    Box,
-    Button,
-    Checkbox, CircularProgress,
-    Dialog,
-    DialogActions,
-    DialogContent,
-    DialogTitle,
-    Grid,
-    ListItem, ListItemText,
-    Typography
+  Box,
+  Button,
+  Checkbox, CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Grid,
+  ListItem, ListItemText,
+  Typography
 } from '@mui/material';
-import Fade from '@mui/material/Fade';
 import { useEffect, useRef, useState } from 'react';
 
 /**
@@ -31,20 +30,39 @@ const AssignRolesDialog = ({
   const [userRoles, setUserRoles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [assigning, setAssigning] = useState(false);
+  const [lastLoadedUser, setLastLoadedUser] = useState(null);
+  const [localUser, setLocalUser] = useState(null);
+  const [localRoles, setLocalRoles] = useState([]);
+  const loaderTimeout = useRef();
 
-  const prevUserId = useRef(null);
+  // Mantener copia local de usuario y roles mientras el diálogo está abierto
   useEffect(() => {
-    if (open && selectedUser && selectedUser.uid && getUserRoles) {
-      setLoading(true);
-      getUserRoles(selectedUser.uid)
-        .then(setUserRoles)
-        .finally(() => setLoading(false));
-      prevUserId.current = selectedUser.uid;
-    } else if (!open) {
-      setUserRoles([]);
-      setLoading(false);
+    if (open && selectedUser) {
+      setLocalUser(selectedUser);
+      setLocalRoles(roles);
     }
-  }, [open, selectedUser, getUserRoles]);
+  }, [open, selectedUser, roles]);
+
+  useEffect(() => {
+    // Solo cargar si el usuario cambió realmente
+    if (open && selectedUser && selectedUser.uid && getUserRoles && selectedUser.uid !== lastLoadedUser) {
+      setLoading(true);
+      loaderTimeout.current = setTimeout(() => {
+        getUserRoles(selectedUser.uid)
+          .then(setUserRoles)
+          .finally(() => {
+            setLoading(false);
+            setLastLoadedUser(selectedUser.uid);
+          });
+      }, 150);
+    } else if (!open) {
+      // No limpiar aquí, solo en onExited
+      if (loaderTimeout.current) clearTimeout(loaderTimeout.current);
+    }
+    return () => {
+      if (loaderTimeout.current) clearTimeout(loaderTimeout.current);
+    };
+  }, [open, selectedUser, getUserRoles, lastLoadedUser]);
 
   const handleToggleRole = async (roleId) => {
     if (!selectedUser || !selectedUser.uid) return;
@@ -74,17 +92,25 @@ const AssignRolesDialog = ({
     }
   };
 
+  // Limpiar estado solo cuando el diálogo esté completamente cerrado
   const handleClose = () => {
+    onClose();
+  };
+
+  const handleExited = () => {
     setUserRoles([]);
     setLoading(false);
+    setLastLoadedUser(null);
+    setLocalUser(null);
+    setLocalRoles([]);
     if (typeof setSelectedUser === 'function') setSelectedUser(null);
-    onClose();
   };
 
   return (
     <Dialog
       open={open}
       onClose={handleClose}
+      onExited={handleExited}
       maxWidth="md"
       fullWidth
       PaperProps={{
@@ -102,7 +128,7 @@ const AssignRolesDialog = ({
       </DialogTitle>
       <DialogContent sx={{ px: 4, pb: 2, pt: 0 }}>
         <Typography variant="subtitle1" sx={{ color: '#90a7e6', fontWeight: 500, mb: 2 }}>
-          {selectedUser && selectedUser.username ? (
+          {localUser && localUser.username ? (
             <>
               Editing roles for
               <span style={{
@@ -112,23 +138,22 @@ const AssignRolesDialog = ({
                 marginLeft: 8,
                 letterSpacing: 0.5
               }}>
-                {selectedUser.username}
+                {localUser.username}
               </span>
             </>
           ) : (
             <span style={{ color: '#f87171' }}>Select a user to assign roles</span>
           )}
         </Typography>
-        <Fade in={loading} unmountOnExit>
+        {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 60 }}>
             <CircularProgress size={28} thickness={4} />
           </Box>
-        </Fade>
-        <Fade in={!loading} unmountOnExit>
+        ) : (
           <Grid container spacing={2} columns={12}>
-            {Array.from({ length: Math.ceil(roles.length / 4) }).map((_, colIdx) => (
+            {Array.from({ length: Math.ceil(localRoles.length / 4) }).map((_, colIdx) => (
               <Grid item xs={12} sm={6} md={3} key={colIdx}>
-                {roles.slice(colIdx * 4, colIdx * 4 + 4).map(role => (
+                {localRoles.slice(colIdx * 4, colIdx * 4 + 4).map(role => (
                   <ListItem key={role.gr_id} sx={{ borderRadius: 2, mb: 1, pl: 0 }} disableGutters>
                     <Checkbox
                       checked={userRoles.includes(role.gr_id)}
@@ -142,10 +167,10 @@ const AssignRolesDialog = ({
               </Grid>
             ))}
           </Grid>
-        </Fade>
+        )}
       </DialogContent>
       <DialogActions sx={{ px: 4, pb: 2 }}>
-  <Button onClick={handleClose} variant="outlined" sx={{ color: '#90a7e6', borderColor: '#90a7e6"' }}>Close</Button>
+        <Button onClick={handleClose} variant="outlined" sx={{ color: '#90a7e6', borderColor: '#90a7e6' }}>Close</Button>
       </DialogActions>
     </Dialog>
   );
