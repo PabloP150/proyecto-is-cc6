@@ -14,17 +14,13 @@ export default function useGroupRoles(groupId) {
   const fetchRoles = useCallback(async () => {
     if (!groupId) return;
     setLoading(true);
-    console.log('[fetchRoles] Cargando roles para', groupId);
     try {
       const res = await fetch(`http://localhost:9000/api/grouproles/groups/${groupId}/roles`);
-      console.log('[fetchRoles] Respuesta status:', res.status);
       if (!res.ok) throw new Error('Error al obtener roles');
       const data = await res.json();
-      console.log('[fetchRoles] Data recibida:', data);
       setRoles(data.roles || []);
     } catch (err) {
-      setError(err.message);
-      console.error('[fetchRoles] Error:', err);
+  setError(err.message);
     } finally {
       setLoading(false);
     }
@@ -49,21 +45,16 @@ export default function useGroupRoles(groupId) {
   const createRole = async (roleData) => {
     if (!groupId) return;
     setLoading(true);
-    console.log('[createRole] Creando rol en grupo', groupId, 'con datos:', roleData);
     try {
       const res = await fetch(`http://localhost:9000/api/grouproles/groups/${groupId}/roles`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(roleData),
       });
-      console.log('[createRole] Respuesta status:', res.status);
       if (!res.ok) throw new Error('Error al crear rol');
-      const data = await res.json();
-      console.log('[createRole] Data recibida:', data);
       await fetchRoles();
     } catch (err) {
       setError(err.message);
-      console.error('[createRole] Error:', err);
     } finally {
       setLoading(false);
     }

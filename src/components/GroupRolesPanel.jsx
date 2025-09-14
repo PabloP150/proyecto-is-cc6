@@ -9,21 +9,46 @@ import useGroupRoles from './hooks/useGroupRoles';
 // Componente principal para gestión de roles en un grupo
 
 const GroupRolesPanel = ({ groupId, isLeader }) => {
-  const { roles, loading, error, createRole } = useGroupRoles(groupId);
+  const { roles, loading, error, createRole, updateRole, deleteRole } = useGroupRoles(groupId);
   const [openForm, setOpenForm] = useState(false);
+  const [editingRole, setEditingRole] = useState(null);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   const [formLoading, setFormLoading] = useState(false);
+
+  // Abrir formulario para crear o editar
+  const handleOpenForm = (role = null) => {
+    setEditingRole(role);
+    setOpenForm(true);
+  };
+
+  // Eliminar rol
+  const handleDeleteRole = async (role) => {
+    if (!window.confirm(`¿Eliminar el rol "${role.gr_name}"?`)) return;
+    try {
+      await deleteRole(role.gr_id);
+      setSnackbar({ open: true, message: 'Rol eliminado', severity: 'success' });
+    } catch (e) {
+      setSnackbar({ open: true, message: 'Error al eliminar rol', severity: 'error' });
+    }
+  };
 
   if (loading) return <Box p={2}><CircularProgress size={28} /></Box>;
   if (error) return <Box p={2}><Typography color="error">{error}</Typography></Box>;
 
   return (
-    <Box p={2}>
-      <Stack direction="row" alignItems="center" justifyContent="space-between" mb={2}>
-        <Typography variant="h6">Roles del grupo</Typography>
+    <Box p={0}>
+      <Box sx={{ mt: 5 }} />
+      <Stack direction="row" alignItems="center" justifyContent="space-between" mb={2} sx={{ mt: 0, ml: 0 }}>
+        <Typography variant="h5" gutterBottom sx={{ fontWeight: 600, mb: 2, ml: 0 }}>Group Roles</Typography>
         {isLeader && (
-          <Button variant="contained" startIcon={<AddIcon />} size="small" onClick={() => setOpenForm(true)}>
-            Nuevo rol
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            size="small"
+            onClick={() => handleOpenForm()}
+            sx={{ ml: 2 }}
+          >
+            New Role
           </Button>
         )}
       </Stack>
@@ -39,15 +64,23 @@ const GroupRolesPanel = ({ groupId, isLeader }) => {
             <Typography variant="body2" color="text.secondary">{role.gr_desc}</Typography>
             {isLeader && (
               <>
-                <Tooltip title="Editar rol"><IconButton size="small"><EditIcon fontSize="small" /></IconButton></Tooltip>
-                <Tooltip title="Eliminar rol"><IconButton size="small"><DeleteIcon fontSize="small" /></IconButton></Tooltip>
+                <Tooltip title="Editar rol">
+                  <IconButton size="small" onClick={() => handleOpenForm(role)}>
+                    <EditIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Eliminar rol">
+                  <IconButton size="small" onClick={() => handleDeleteRole(role)}>
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
               </>
             )}
           </Box>
         ))}
       </Stack>
 
-      {/* Modal para crear nuevo rol */}
+      {/* Modal para crear/editar rol */}
       <Dialog
         open={openForm}
         onClose={() => setOpenForm(false)}
@@ -62,7 +95,7 @@ const GroupRolesPanel = ({ groupId, isLeader }) => {
         }}
       >
         <Box sx={{
-          bgcolor: '#19223a', // color principal del fondo de la app
+          bgcolor: '#19223a',
           borderRadius: 3,
           boxShadow: 6,
           p: 3,
@@ -71,19 +104,26 @@ const GroupRolesPanel = ({ groupId, isLeader }) => {
           mx: 'auto',
         }}>
           <RoleForm
+            initialData={editingRole || {}}
             onSubmit={async (data) => {
               setFormLoading(true);
               try {
-                await createRole(data);
-                setSnackbar({ open: true, message: 'Rol creado exitosamente', severity: 'success' });
+                if (editingRole) {
+                  await updateRole(editingRole.gr_id, data);
+                  setSnackbar({ open: true, message: 'Rol editado exitosamente', severity: 'success' });
+                } else {
+                  await createRole(data);
+                  setSnackbar({ open: true, message: 'Rol creado exitosamente', severity: 'success' });
+                }
                 setOpenForm(false);
               } catch (e) {
-                setSnackbar({ open: true, message: 'Error al crear rol', severity: 'error' });
+                setSnackbar({ open: true, message: 'Error al guardar rol', severity: 'error' });
               } finally {
                 setFormLoading(false);
+                setEditingRole(null);
               }
             }}
-            onCancel={() => setOpenForm(false)}
+            onCancel={() => { setOpenForm(false); setEditingRole(null); }}
             loading={formLoading}
           />
         </Box>
