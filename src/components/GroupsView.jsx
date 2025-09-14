@@ -36,6 +36,7 @@ const UseButton = styled(Button)(({ theme, selected }) => ({
 }));
 
 function GroupsView() {
+  const [selectedAssignUser, setSelectedAssignUser] = useState(null);
   const [groups, setGroups] = useState([]);
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [members, setMembers] = useState([]);
@@ -562,29 +563,49 @@ function GroupsView() {
                             background: 'rgba(59, 130, 246, 0.1)',
                             borderColor: 'rgba(59, 130, 246, 0.2)',
                             transform: 'translateX(4px)',
-                          }
+                          },
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
                         }}
                       >
-                        <Typography sx={{ fontWeight: 500 }}>
-                          {member.username}
-                          {selectedGroup.adminId === member.uid && (
-                            <Typography 
-                              component="span" 
-                              sx={{ 
-                                ml: 1, 
-                                fontSize: '0.75rem',
-                                background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
-                                color: 'white',
-                                padding: '2px 8px',
-                                borderRadius: 1,
-                                fontWeight: 600,
-                              }}
-                            >
-                              Admin
-                            </Typography>
-                          )}
-                        </Typography>
-                        <UserRolesChips roles={(userRolesMap[member.uid] || []).map(rid => roles.find(r => r.gr_id === rid)).filter(Boolean)} />
+                        <Box display="flex" alignItems="center" gap={1}>
+                          <Typography sx={{ fontWeight: 500 }}>
+                            {member.username}
+                            {selectedGroup.adminId === member.uid && (
+                              <Typography 
+                                component="span" 
+                                sx={{ 
+                                  ml: 1, 
+                                  fontSize: '0.75rem',
+                                  background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                                  color: 'white',
+                                  padding: '2px 8px',
+                                  borderRadius: 1,
+                                  fontWeight: 600,
+                                }}
+                              >
+                                Admin
+                              </Typography>
+                            )}
+                          </Typography>
+                          <UserRolesChips roles={(userRolesMap[member.uid] || []).map(rid => roles.find(r => r.gr_id === rid)).filter(Boolean)} />
+                        </Box>
+                        {/* Botón para asignar/editar roles, visible para todos si el usuario es admin del grupo */}
+                        {selectedGroup.adminId === localStorage.getItem('userId') && (
+                          <Button
+                            variant="outlined"
+                            size="small"
+                            sx={{ ml: 2, minWidth: 110 }}
+                            onClick={async () => {
+                              if (typeof fetchRoles === 'function') await fetchRoles();
+                              setSelectedAssignUser(member);
+                              setTimeout(() => setOpenAssignDialog(true), 0);
+                            }}
+                          >
+                            Assign/Edit Rol
+                          </Button>
+                        )}
                       </ListItem>
                     ))}
                   </List>
@@ -604,13 +625,18 @@ function GroupsView() {
                     />
                     <AssignRolesDialog
                       open={openAssignDialog}
-                      onClose={handleCloseAssignDialog}
+                      onClose={() => {
+                        setOpenAssignDialog(false);
+                        setSelectedAssignUser(null);
+                      }}
                       groupId={selectedGroup.gid}
                       users={members.map(m => ({ id: m.uid, name: m.username }))}
                       roles={roles}
                       getUserRoles={userId => fetchUserRoles(userId)}
                       onAssign={assignRole}
                       onRemove={removeRole}
+                      selectedUser={selectedAssignUser}
+                      setSelectedUser={setSelectedAssignUser}
                     />
                   </Box>
                 </>

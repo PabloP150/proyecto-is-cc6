@@ -59,7 +59,8 @@ router.get('/groups/:gid/users/:uid/roles', async (req, res) => {
   const { gid, uid } = req.params;
   try {
     const roles = await UserGroupRolesModel.getRolesOfUserInGroup(uid, gid);
-    res.status(200).json({ roles });
+    // Devolver solo los IDs de roles asignados
+    res.status(200).json({ roleIds: Array.isArray(roles) ? roles.map(r => r.gr_id) : [] });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

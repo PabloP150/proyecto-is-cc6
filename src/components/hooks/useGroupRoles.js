@@ -30,7 +30,7 @@ export default function useGroupRoles(groupId) {
   const fetchUserRoles = useCallback(async (userId) => {
     if (!groupId || !userId) return [];
     try {
-      const res = await fetch(`http://localhost:9000/api/user-group-roles/${groupId}/${userId}`);
+  const res = await fetch(`http://localhost:9000/api/usergrouproles/groups/${groupId}/users/${userId}/roles`);
       if (!res.ok) throw new Error('Error al obtener roles de usuario');
       const data = await res.json();
       setUserRolesMap(prev => ({ ...prev, [userId]: data.roleIds || [] }));
@@ -101,10 +101,10 @@ export default function useGroupRoles(groupId) {
     if (!groupId || !userId) return;
     setLoading(true);
     try {
-      const res = await fetch(`http://localhost:9000/api/user-group-roles/${groupId}/assign`, {
+      const res = await fetch(`http://localhost:9000/api/usergrouproles/groups/${groupId}/userroles`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, roleId }),
+        body: JSON.stringify({ uid: userId, gr_id: roleId }),
       });
       if (!res.ok) throw new Error('Error al asignar rol');
       await fetchUserRoles(userId);
@@ -120,10 +120,10 @@ export default function useGroupRoles(groupId) {
     if (!groupId || !userId) return;
     setLoading(true);
     try {
-      const res = await fetch(`http://localhost:9000/api/user-group-roles/${groupId}/remove`, {
-        method: 'POST',
+      const res = await fetch(`http://localhost:9000/api/usergrouproles/groups/${groupId}/userroles`, {
+        method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, roleId }),
+        body: JSON.stringify({ uid: userId, gr_id: roleId }),
       });
       if (!res.ok) throw new Error('Error al quitar rol');
       await fetchUserRoles(userId);
