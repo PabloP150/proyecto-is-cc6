@@ -26,13 +26,14 @@ const toLocalDate = (dt) => {
 
 const addTask = async (taskData) => {
     const { tid, gid, name, description, list, datetime, percentage } = taskData;
+    const safeDescription = (description === undefined || description === null) ? '' : description;
     const query = `INSERT INTO dbo.Tasks (tid, gid, name, description, list, datetime, percentage)
                    VALUES (@tid, @gid, @name, @description, @list, @datetime, @percentage)`;
     const params = [
         { name: 'tid', type: TYPES.UniqueIdentifier, value: tid },
         { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
         { name: 'name', type: TYPES.VarChar, value: name },
-        { name: 'description', type: TYPES.VarChar, value: description },
+    { name: 'description', type: TYPES.VarChar, value: safeDescription },
         { name: 'list', type: TYPES.VarChar, value: list },
         { name: 'datetime', type: TYPES.SmallDateTime, value: toLocalDate(datetime) },
         { name: 'percentage', type: TYPES.Int, value: percentage ?? 0 },
@@ -42,6 +43,7 @@ const addTask = async (taskData) => {
 
 const updateTask = async (taskData) => {
     const { tid, gid, name, description, list, datetime, percentage } = taskData;
+    const safeDescription = (description === undefined || description === null) ? '' : description;
     const query = `UPDATE dbo.Tasks
                    SET gid=@gid, name=@name, description=@description, list=@list,
                        datetime=@datetime, percentage=@percentage
@@ -50,7 +52,7 @@ const updateTask = async (taskData) => {
         { name: 'tid', type: TYPES.UniqueIdentifier, value: tid },
         { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
         { name: 'name', type: TYPES.VarChar, value: name },
-        { name: 'description', type: TYPES.VarChar, value: description },
+    { name: 'description', type: TYPES.VarChar, value: safeDescription },
         { name: 'list', type: TYPES.VarChar, value: list },
         { name: 'datetime', type: TYPES.SmallDateTime, value: toLocalDate(datetime) },
         { name: 'percentage', type: TYPES.Int, value: percentage ?? 0 },
@@ -60,6 +62,7 @@ const updateTask = async (taskData) => {
 
 const updateTaskFromNode = async (taskData) => {
     const { tid, name, description, date, percentage } = taskData;
+    const safeDescription = (description === undefined || description === null) ? '' : description;
     const query = `UPDATE dbo.Tasks
                    SET name=@name, description=@description, datetime=@datetime,
                        percentage = COALESCE(@percentage, percentage)
@@ -67,7 +70,7 @@ const updateTaskFromNode = async (taskData) => {
     const params = [
         { name: 'tid', type: TYPES.UniqueIdentifier, value: tid },
         { name: 'name', type: TYPES.VarChar, value: name },
-        { name: 'description', type: TYPES.VarChar, value: description },
+    { name: 'description', type: TYPES.VarChar, value: safeDescription },
         { name: 'datetime', type: TYPES.SmallDateTime, value: toLocalDate(date) },
         { name: 'percentage', type: TYPES.Int, value: percentage ?? null },
     ];

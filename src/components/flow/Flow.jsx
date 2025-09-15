@@ -1,12 +1,12 @@
 import {
-  addEdge,
-  applyEdgeChanges,
-  applyNodeChanges,
-  Background,
-  ConnectionMode,
-  Controls,
-  MarkerType,
-  ReactFlow
+    addEdge,
+    applyEdgeChanges,
+    applyNodeChanges,
+    Background,
+    ConnectionMode,
+    Controls,
+    MarkerType,
+    ReactFlow
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useCallback, useContext, useEffect, useState } from "react";
@@ -409,13 +409,32 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
             color: 'white'
           }}
         />
-        <button
-          className="add-milestone-button"
-          onClick={addNode}
-          disabled={!selectedGroupId}
-        >
-          {selectedGroupId ? 'Add Milestone' : 'Select a group first'}
-        </button>
+        {(() => {
+          const missingGroup = !selectedGroupId;
+          const missingName = !nodeData.name?.trim();
+          const missingDate = !nodeData.date;
+          const disabled = missingGroup || missingName || missingDate;
+          let label = 'Add Milestone';
+          if (missingGroup) label = 'Select a group first';
+          else if (missingName) label = 'Name required';
+          else if (missingDate) label = 'Date required';
+          return (
+            <button
+              className="add-milestone-button"
+              onClick={addNode}
+              disabled={disabled}
+              title={disabled ? 'Complete group, name and date to enable' : 'Create milestone'}
+              style={disabled ? {
+                opacity: 0.45,
+                cursor: 'not-allowed',
+                filter: 'grayscale(40%)',
+                transition: 'opacity .2s'
+              } : { transition: 'opacity .2s' }}
+            >
+              {label}
+            </button>
+          );
+        })()}
         <div className="dropdown">
           <button
             className="dropdown-button"

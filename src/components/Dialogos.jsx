@@ -30,7 +30,13 @@ export default function Dialogos({
   handleSubmitEditar,
   handleCloseEditar,
 }) {
-  const isAddDisabled = !nombre?.trim() || !descripcion?.trim() || !fecha || !listaSeleccionada;
+  // Campos requeridos para crear la tarea
+  const missingFields = [];
+  if (!nombre?.trim()) missingFields.push('Task Name');
+  if (!fecha) missingFields.push('Deadline');
+  if (!listaSeleccionada) missingFields.push('List');
+  const isAddDisabled = missingFields.length > 0;
+  const firstMissing = isAddDisabled ? missingFields[0] : null;
   return (
     <>
       {/* Diálogo para agregar una nueva lista */}
@@ -117,13 +123,13 @@ export default function Dialogos({
             />
             <TextField
               margin="normal"
-              required
               fullWidth
               id="descripcion"
-              label="Description"
+              label="Description (optional)"
               name="descripcion"
               value={descripcion}
               onChange={(e) => setDescripcion(e.target.value)}
+              placeholder="You can leave this empty"
               InputLabelProps={{ shrink: true }}
             />
             <TextField
@@ -178,8 +184,11 @@ export default function Dialogos({
             type="submit" 
             onClick={handleSubmitRecordatorio} 
             disabled={isAddDisabled}
+            title={isAddDisabled ? `Missing: ${firstMissing}` : 'Add Task'}
+            aria-label={isAddDisabled ? `Missing required field: ${firstMissing}` : 'Add Task'}
+            sx={isAddDisabled ? { opacity: 0.75 } : undefined}
           >
-            ADD
+            {isAddDisabled ? `Missing: ${firstMissing}` : 'ADD'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -217,13 +226,13 @@ export default function Dialogos({
           />
           <TextField
             margin="normal"
-            required
             fullWidth
             id="descripcionEditar"
-            label="Description"
+            label="Description (optional)"
             type="text"
             value={recordatorioEditar?.description || ''}
             onChange={(e) => setRecordatorioEditar({ ...recordatorioEditar, description: e.target.value })}
+            placeholder="Leave blank if not needed"
             InputLabelProps={{ shrink: true }}
           />
           <TextField

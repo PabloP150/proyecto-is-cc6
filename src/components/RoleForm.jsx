@@ -48,14 +48,13 @@ const ICON_OPTIONS = [
 
 const RoleForm = ({ initialData = {}, onSubmit, onCancel, loading }) => {
   const [name, setName] = useState(initialData.gr_name || '');
-  const [desc, setDesc] = useState(initialData.gr_desc || '');
   const [color, setColor] = useState(initialData.gr_color || '#1976d2');
   const [icon, setIcon] = useState(initialData.gr_icon || 'star');
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!name.trim()) return;
-    onSubmit({ gr_name: name, gr_desc: desc, gr_color: color, gr_icon: icon });
+  onSubmit({ gr_name: name, gr_color: color, gr_icon: icon });
   };
 
   return (
@@ -69,13 +68,7 @@ const RoleForm = ({ initialData = {}, onSubmit, onCancel, loading }) => {
           required
           autoFocus
         />
-        <TextField
-          label="Description"
-          value={desc}
-          onChange={e => setDesc(e.target.value)}
-          multiline
-          minRows={2}
-        />
+        {/* Description removed */}
         <TextField
           label="Color"
           type="color"

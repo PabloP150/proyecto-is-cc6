@@ -18,24 +18,23 @@ router.get('/groups/:gid/roles', async (req, res) => {
 
 // Crear un nuevo rol en un grupo
 router.post('/groups/:gid/roles', async (req, res) => {
-	const { gid } = req.params;
-	const { gr_name, gr_desc, gr_color, gr_icon } = req.body;
-	const gr_id = uuidv4();
-	try {
-		await GroupRolesModel.addGroupRole({ gr_id, gid, gr_name, gr_desc, gr_color, gr_icon });
-		// Importante: devolver el gr_id creado
-		res.status(201).json({ message: 'Role created successfully', gr_id });
-	} catch (error) {
-		res.status(500).json({ error: error.message });
-	}
+  const { gid } = req.params;
+  const { gr_name, gr_color, gr_icon } = req.body;
+  const gr_id = uuidv4();
+  try {
+    await GroupRolesModel.addGroupRole({ gr_id, gid, gr_name, gr_color, gr_icon });
+    res.status(201).json({ message: 'Role created successfully', gr_id });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // Editar un rol existente
 router.put('/groups/:gid/roles/:gr_id', async (req, res) => {
     const { gid, gr_id } = req.params;
-    const { gr_name, gr_desc, gr_color, gr_icon } = req.body;
+    const { gr_name, gr_color, gr_icon } = req.body;
     try {
-        await GroupRolesModel.updateGroupRole({ gr_id, gid, gr_name, gr_desc, gr_color, gr_icon });
+        await GroupRolesModel.updateGroupRole({ gr_id, gid, gr_name, gr_color, gr_icon });
         res.status(200).json({ message: 'Role updated successfully' });
     } catch (error) {
         res.status(500).json({ error: error.message });

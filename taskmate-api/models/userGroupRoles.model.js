@@ -29,7 +29,7 @@ const countUsersWithRoleInGroup = async (gr_id, gid) => {
 
 // Matriz completa de roles de todos los usuarios de un grupo
 const getRolesMatrixForGroup = async (gid) => {
-  const query = `SELECT ugr.uid, ugr.gr_id, gr.gr_name, gr.gr_desc, gr.gr_color, gr.gr_icon
+  const query = `SELECT ugr.uid, ugr.gr_id, gr.gr_name, gr.gr_color, gr.gr_icon
     FROM dbo.UserGroupRoles ugr
     JOIN dbo.GroupRoles gr ON ugr.gr_id = gr.gr_id AND ugr.gid = gr.gid
     WHERE ugr.gid = @gid`;
@@ -40,7 +40,7 @@ const getRolesMatrixForGroup = async (gid) => {
 };
 
 const getUserGroupRoles = async (gid) => {
-  const query = `SELECT ugr.ugr_id, ugr.uid, ugr.gr_id, ugr.gid, gr.gr_name, gr.gr_desc, gr.gr_color, gr.gr_icon
+  const query = `SELECT ugr.ugr_id, ugr.uid, ugr.gr_id, ugr.gid, gr.gr_name, gr.gr_color, gr.gr_icon
     FROM dbo.UserGroupRoles ugr
     JOIN dbo.GroupRoles gr ON ugr.gr_id = gr.gr_id AND ugr.gid = gr.gid
     WHERE ugr.gid = @gid`;
@@ -81,7 +81,7 @@ const removeRoleFromUser = async ({ ugr_id, uid, gr_id, gid }) => {
 
 // Obtener los roles de un usuario en un grupo
 const getRolesOfUserInGroup = async (uid, gid) => {
-  const query = `SELECT ugr.ugr_id, ugr.uid, ugr.gr_id, ugr.gid, gr.gr_name, gr.gr_desc, gr.gr_color, gr.gr_icon
+  const query = `SELECT ugr.ugr_id, ugr.uid, ugr.gr_id, ugr.gid, gr.gr_name, gr.gr_color, gr.gr_icon
     FROM dbo.UserGroupRoles ugr
     JOIN dbo.GroupRoles gr ON ugr.gr_id = gr.gr_id AND ugr.gid = gr.gid
     WHERE ugr.uid = @uid AND ugr.gid = @gid`;

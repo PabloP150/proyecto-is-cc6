@@ -1,4 +1,4 @@
-import { Chip, Stack, Tooltip, styled } from '@mui/material';
+import { Chip, Stack, styled } from '@mui/material';
 
 // ---- Estilos y utilidades integradas (antes en RoleChip) ----
 function hexToRgb(hex) {
@@ -52,26 +52,22 @@ const InlineRoleChip = ({ role, size = 'small', withTooltip }) => {
       icon={role.gr_icon ? <span className="material-icons">{role.gr_icon}</span> : null}
     />
   );
-  return withTooltip && role.gr_desc ? (
-    <Tooltip arrow title={<span style={{ fontSize: 12 }}>{role.gr_desc}</span>}>
-      <span style={{ display: 'inline-flex' }}>{chip}</span>
-    </Tooltip>
-  ) : chip;
+  return chip;
 };
 
 /**
  * Muestra los roles de un usuario como chips de colores.
  * Props:
- * - roles: [{ gr_id, gr_name, gr_color, gr_icon, gr_desc }]
+ * - roles: [{ gr_id, gr_name, gr_color, gr_icon }]
  * - size: 'small' | 'medium' (opcional)
  * - showDesc: bool (opcional, muestra descripción en tooltip)
  */
-const UserRolesChips = ({ roles = [], size = 'small', showDesc = true }) => {
+const UserRolesChips = ({ roles = [], size = 'small' }) => {
   if (!roles.length) return null;
   return (
     <Stack direction="row" spacing={0.5}>
       {roles.map(role => (
-        <InlineRoleChip key={role.gr_id} role={role} size={size} withTooltip={showDesc} />
+        <InlineRoleChip key={role.gr_id} role={role} size={size} />
       ))}
     </Stack>
   );

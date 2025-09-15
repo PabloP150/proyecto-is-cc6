@@ -121,21 +121,14 @@ const GroupRolesPanel = ({ groupId, isLeader, roles: externalRoles, createRole: 
                     }}
                   >
                     <Box flexGrow={1} minWidth={0} display="flex" flexDirection="column" gap={0.25}>
-                      <Tooltip arrow title={role.gr_desc || ''} disableHoverListener={!role.gr_desc}>
-                        <span style={{ display: 'inline-flex' }}>
-                          <GRChip
-                            label={role.gr_name}
-                            ownerState={{ baseColor: role.gr_color }}
-                            icon={role.gr_icon ? <span className="material-icons">{role.gr_icon}</span> : null}
-                            size="small"
-                          />
-                        </span>
-                      </Tooltip>
-                      {role.gr_desc && (
-                        <Typography variant="caption" color="text.secondary" sx={{ pl: 0.5 }}>
-                          {role.gr_desc}
-                        </Typography>
-                      )}
+                      <span style={{ display: 'inline-flex' }}>
+                        <GRChip
+                          label={role.gr_name}
+                          ownerState={{ baseColor: role.gr_color }}
+                          icon={role.gr_icon ? <span className="material-icons">{role.gr_icon}</span> : null}
+                          size="small"
+                        />
+                      </span>
                     </Box>
                     {isLeader && (
                       <Stack direction="row" spacing={0.8} sx={{ ml: 0.1 }}> {/* más reducción */}

@@ -114,13 +114,12 @@ CREATE TABLE dbo.DeleteTask(
 -- =====================================
 
 CREATE TABLE dbo.GroupRoles (
-    gr_id       UNIQUEIDENTIFIER    NOT NULL PRIMARY KEY, -- ID único del rol
-    gid         UNIQUEIDENTIFIER    NOT NULL,             -- Grupo al que pertenece el rol
-    gr_name     VARCHAR(40)         NOT NULL,             -- Nombre del rol (ej: Moderador)
-    gr_desc     VARCHAR(255),                              -- Descripción del rol (opcional)
-    gr_color    VARCHAR(20),                               -- Color para UI (opcional)
-    gr_icon     VARCHAR(20),                               -- Icono para UI (opcional)
-    FOREIGN KEY (gid) REFERENCES dbo.Groups(gid)
+	gr_id       UNIQUEIDENTIFIER    NOT NULL PRIMARY KEY,
+	gid         UNIQUEIDENTIFIER    NOT NULL,
+	gr_name     VARCHAR(40)         NOT NULL,
+	gr_color    VARCHAR(20),
+	gr_icon     VARCHAR(20),
+	FOREIGN KEY (gid) REFERENCES dbo.Groups(gid)
 );
 
 CREATE TABLE dbo.UserGroupRoles (

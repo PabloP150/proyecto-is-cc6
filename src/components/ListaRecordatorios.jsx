@@ -9,6 +9,25 @@ import { useEffect, useRef, useState } from 'react';
 import SeleccionarPersona from './SeleccionarPersona';
 import Button from './ui/Button';
 export default function ListaRecordatorios({ listas, handleEliminar, handleCompletar, handleEditar, filtro, handleEliminarLista, orden, setOrden, handleVaciarCompletados, handleVaciarEliminados }) {
+  // Paleta de gradientes para barras de título (determinista por tarea)
+  const gradientPalette = [
+    ['#3b82f6', '#f59e0b'],
+    ['#6366f1', '#8b5cf6'],
+    ['#06b6d4', '#3b82f6'],
+    ['#ef4444', '#f59e0b'],
+    ['#10b981', '#3b82f6'],
+    ['#ec4899', '#8b5cf6'],
+    ['#f59e0b', '#ef4444'],
+  ];
+  const pickGradient = (seed) => {
+    if (!seed) return gradientPalette[0];
+    let h = 0;
+    for (let i = 0; i < seed.length; i++) {
+      h = (h * 31 + seed.charCodeAt(i)) >>> 0; // hash simple
+    }
+    const idx = h % gradientPalette.length;
+    return gradientPalette[idx];
+  };
   // Snackbar state
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
 
@@ -258,9 +277,10 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
           listas.map((lista, index) => (
             <Box key={index} sx={{ mb: 2 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                <Typography variant="h6" sx={{ 
+                <Typography variant="h5" sx={{ 
                   color: 'primary.light',
-                  fontWeight: 600,
+                  fontWeight: 700,
+                  letterSpacing: '.6px',
                   background: 'linear-gradient(90deg, #3b82f6 0%, #f59e0b 100%)',
                   backgroundClip: 'text',
                   WebkitBackgroundClip: 'text',
@@ -406,9 +426,29 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
                           <CancelIcon sx={{ color: '#ef4444', fontSize: 40, filter: 'drop-shadow(0 2px 8px #ef444477)' }} />
                         </Box>
                       )}
-                      <Typography sx={{ color: 'white', fontWeight: 'bold', textAlign: 'left', width: '100%' }}>
-                        {recordatorio.name || 'No name'}
-                      </Typography>
+                      {(() => {
+                        const seed = (recordatorio.tid || recordatorio.id || recordatorio.name || 'x').toString();
+                        const [c1, c2] = pickGradient(seed);
+                        return (
+                          <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', gap: 1 }}> 
+                            <Box sx={{ width: 7, height: 26, borderRadius: '4px', background: `linear-gradient(180deg,${c1},${c2})` }} />
+                            <Typography 
+                              variant="h6" 
+                              sx={{ 
+                                color: 'white', 
+                                fontWeight: 600, 
+                                letterSpacing: '.25px', 
+                                flex: 1,
+                                lineHeight: 1.15,
+                                mb: 0.4,
+                                // No uppercase para respetar el texto original
+                              }}
+                            >
+                              {recordatorio.name || 'No name'}
+                            </Typography>
+                          </Box>
+                        );
+                      })()}
                       <Typography sx={{ color: 'rgba(255, 255, 255, 0.7)', textAlign: 'left', width: '100%' }}>
                         {`${recordatorio.description || 'No description'} - ${formatearFecha(recordatorio.datetime)}`}
                       </Typography>
