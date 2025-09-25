@@ -82,6 +82,8 @@ class LLMService {
         maxOutputTokens: this.maxTokens,
       }
     };
+    console.log(`[LLMService] Gemini API Request URL: ${this.baseUrl}/models/${this.model}:generateContent?key=${this.apiKey}`);
+    console.log(`[LLMService] Gemini API Request Payload: ${JSON.stringify(payload, null, 2)}`);
 
     const url = `/models/${this.model}:generateContent?key=${this.apiKey}`;
     const response = await this.httpClient.post(url, payload);
@@ -104,6 +106,8 @@ class LLMService {
    */
   async _generateOpenAIResponse(systemPrompt, userMessage) {
     const payload = this._buildOpenAIPayload(systemPrompt, userMessage);
+    console.log(`[LLMService] OpenAI API Request URL: ${this.baseUrl}/chat/completions`);
+    console.log(`[LLMService] OpenAI API Request Payload: ${JSON.stringify(payload, null, 2)}`);
     const response = await this.httpClient.post('/chat/completions', payload);
 
     if (response.data && response.data.choices && response.data.choices.length > 0) {
@@ -120,12 +124,12 @@ class LLMService {
    */
   _buildSystemPrompt(context) {
     let prompt = `You are a helpful AI assistant for TaskMate, a task management application. 
-You help users with task planning, organization, and productivity advice.
+    You help users with task planning, organization, and productivity advice.
 
-Current user context:`;
+    Current user context:`
 
     if (context.tasks && context.tasks.length > 0) {
-      prompt += `\n\nUser's current tasks:`;
+      prompt += `\n\nUser's current tasks:`
       context.tasks.forEach((task, index) => {
         prompt += `\n${index + 1}. ${task.title}${task.completed ? ' (completed)' : ''}`;
         if (task.description) {
@@ -135,7 +139,7 @@ Current user context:`;
     }
 
     if (context.groups && context.groups.length > 0) {
-      prompt += `\n\nUser's groups:`;
+      prompt += `\n\nUser's groups:`
       context.groups.forEach((group, index) => {
         prompt += `\n${index + 1}. ${group.name}`;
         if (group.description) {
@@ -145,7 +149,7 @@ Current user context:`;
     }
 
     prompt += `\n\nProvide helpful, concise responses focused on task management and productivity. 
-If the user asks about their specific tasks or groups, reference the context provided above.`;
+    If the user asks about their specific tasks or groups, reference the context provided above.`
 
     return prompt;
   }
@@ -187,6 +191,7 @@ If the user asks about their specific tasks or groups, reference the context pro
     }
 
     if (error.response) {
+      console.error('[LLMService] API Error Response:', JSON.stringify(error.response.data, null, 2));
       const status = error.response.status;
 
       if (status === 401) {
@@ -227,6 +232,58 @@ If the user asks about their specific tasks or groups, reference the context pro
     }
 
     return "I apologize, but I'm currently unable to process your request. Please try again later, or use the TaskMate interface to manage your tasks and groups directly.";
+  }
+
+  async classifyIntent(message) {
+    try {
+      if (!this.apiKey) {
+        throw new Error('LLM_API_KEY not configured.');
+      }
+
+      const systemPrompt = `You are an intent classifier for a task management chatbot. Classify the user's message into one of the following categories:
+- create_new_project: The user wants to create a new project, plan, or a set of tasks from an idea. Examples: "I want to build a new website", "Plan a trip to Europe", "Help me organize a party", "I need a project plan for my new app", "Create a task list for my summer vacation".
+- answer_question: The user is asking a question. Examples: "What is TaskMate?", "How do I create a task?", "Can you tell me about groups?".
+- general_conversation: The user is making a general statement or greeting. Examples: "Hello", "How are you?", "Thanks", "Good morning".
+
+Your response MUST be a single word, exactly one of the category names provided (e.g., "create_new_project"). Do NOT include any other text, punctuation, or explanation.`;
+
+      const payload = this._buildOpenAIPayload(systemPrompt, message);
+      const response = await this.httpClient.post('/chat/completions', payload);
+
+      if (response.data && response.data.choices && response.data.choices.length > 0) {
+        const rawIntent = response.data.choices[0].message.content.trim();
+        const intent = rawIntent.split(' ')[0]; // Take only the first word
+        if (['create_new_project', 'answer_question', 'general_conversation'].includes(intent)) {
+          return intent;
+        }
+      }
+      return 'answer_question'; // Default fallback
+    } catch (error) {
+      console.error('LLM Intent Classification Error:', error.message);
+      return 'answer_question'; // Default fallback on error
+    }
+  }
+
+  async isAffirmative(message) {
+    try {
+      if (!this.apiKey) {
+        throw new Error('LLM_API_KEY not configured.');
+      }
+
+      const systemPrompt = `You are a response classifier. The user was asked a yes/no question. Classify their response as "affirmative" or "negative". Respond with only the category name and nothing else.`;
+
+      const payload = this._buildOpenAIPayload(systemPrompt, message);
+      const response = await this.httpClient.post('/chat/completions', payload);
+
+      if (response.data && response.data.choices && response.data.choices.length > 0) {
+        const classification = response.data.choices[0].message.content.trim();
+        return classification === 'affirmative';
+      }
+      return false; // Default fallback
+    } catch (error) {
+      console.error('LLM Affirmative Classification Error:', error.message);
+      return false; // Default fallback on error
+    }
   }
 
   /**

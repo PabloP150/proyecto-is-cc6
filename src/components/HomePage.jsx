@@ -54,52 +54,8 @@ function HomePage() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      {/* Animated Background Layer */}
-      <Box
-        sx={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          zIndex: -2,
-          background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%)',
-        }}
-      />
-
-      {/* Simple Radial Gradient Overlays */}
-      <Box
-        sx={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          zIndex: -1,
-          background: `
-            radial-gradient(circle at 20% 80%, rgba(59, 130, 246, 0.2) 0%, transparent 50%),
-            radial-gradient(circle at 80% 20%, rgba(245, 158, 11, 0.15) 0%, transparent 50%)
-          `,
-        }}
-      />
-      <Box
-        sx={{
-          minHeight: '100vh',
-          width: '100%',
-          position: 'relative',
-          '&::before': {
-            content: '""',
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'radial-gradient(ellipse at top, rgba(59, 130, 246, 0.15) 0%, transparent 50%), radial-gradient(ellipse at bottom, rgba(245, 158, 11, 0.1) 0%, transparent 50%)',
-            zIndex: 1,
-          },
-        }}
-      >
-        <Container
+      
+      <Container
           component="main"
           maxWidth="xl"
           sx={{
@@ -314,7 +270,6 @@ function HomePage() {
             </Grid>
           </Grid>
         </Container>
-      </Box>
     </ThemeProvider>
   );
 }

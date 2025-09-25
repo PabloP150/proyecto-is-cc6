@@ -1,0 +1,96 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Multi-Agent Communication Protocol (MCP) Server",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/mcp": {
+      "post": {
+        "summary": "Route a message to an agent",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/McpMessage"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Message successfully routed"
+          }
+        }
+      }
+    },
+    "/mcp/tasks": {
+      "post": {
+        "summary": "Save tasks to the database",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveTasksMessage"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tasks successfully saved"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "McpMessage": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["request", "response"]
+          },
+          "sender": {
+            "type": "string"
+          },
+          "receiver": {
+            "type": "string"
+          },
+          "payload": {
+            "type": "object"
+          }
+        },
+        "required": ["type", "sender", "receiver", "payload"]
+      },
+      "SaveTasksMessage": {
+        "type": "object",
+        "properties": {
+          "project_name": {
+            "type": "string"
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                }
+              },
+              "required": ["name", "description"]
+            }
+          }
+        },
+        "required": ["project_name", "tasks"]
+      }
+    }
+  }
+}

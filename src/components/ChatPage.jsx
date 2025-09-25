@@ -12,25 +12,12 @@ import {
     IconButton,
     CircularProgress
 } from '@mui/material';
-import { createTheme, ThemeProvider } from '@mui/material/styles';
 import SendIcon from '@mui/icons-material/Send';
 import PersonIcon from '@mui/icons-material/Person';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import useWebSocket from '../hooks/useWebSocket';
+import ThemeProvider from '../theme/ThemeProvider';
 import './ChatPage.css';
-
-const theme = createTheme({
-    palette: {
-        mode: 'dark',
-        primary: {
-            main: '#4a90e2',
-        },
-        background: {
-            default: 'transparent',
-            paper: 'rgba(0, 0, 0, 0.6)',
-        },
-    },
-});
 
 function ChatPage() {
     const [messages, setMessages] = useState([]);
@@ -162,7 +149,6 @@ function ChatPage() {
         setInputMessage('');
         setIsTyping(true);
 
-        // Send message through WebSocket
         const success = sendWebSocketMessage({
             type: 'user',
             content: userMessage.content,
@@ -196,259 +182,246 @@ function ChatPage() {
     };
 
     return (
-        <ThemeProvider theme={theme}>
+        <ThemeProvider>
             <CssBaseline />
-            <Box
+            <Container
+                component="main"
+                maxWidth="md"
+                className="chat-container"
                 sx={{
-                    position: 'fixed',
-                    top: 0,
-                    left: 0,
-                    width: '100%',
-                    height: '100%',
-                    backgroundImage: 'url(/1.jpeg)',
-                    backgroundSize: 'cover',
-                    backgroundPosition: 'center',
-                    backgroundRepeat: 'no-repeat',
-                    zIndex: -1,
+                    height: '100vh',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    pt: { xs: 10, sm: 10, md: 10 }, // Account for navbar
+                    pb: 2,
+                    px: { xs: 1, sm: 2, md: 3 },
+                    zIndex: 1, // Ensure chat content is above background
+                    position: 'relative', // Needed for z-index to work
                 }}
             >
-                <Container
-                    component="main"
-                    maxWidth="md"
-                    className="chat-container"
+                <Paper
+                    elevation={6}
+                    className="chat-paper"
                     sx={{
-                        height: '100vh',
+                        backgroundColor: 'background.paper',
+                        borderRadius: { xs: 1, sm: 2 },
                         display: 'flex',
                         flexDirection: 'column',
-                        pt: { xs: 10, sm: 10, md: 10 }, // Account for navbar
-                        pb: 2,
-                        px: { xs: 1, sm: 2, md: 3 }
+                        height: '100%',
+                        overflow: 'hidden'
                     }}
                 >
-                    <Paper
-                        elevation={6}
-                        className="chat-paper"
+                    {/* Chat Header */}
+                    <Box sx={{ p: 2, borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}>
+                        <Typography variant="h5" component="h1" sx={{ mb: 1 }}>
+                            AI Assistant
+                        </Typography>
+                        <Typography
+                            variant="body2"
+                            color={isConnected ? 'success.main' : 'error.main'}
+                        >
+                            Status: {connectionStatus}
+                            {wsError && ` - ${wsError}`}
+                        </Typography>
+                        {!token && (
+                            <Typography variant="body2" color="warning.main">
+                                No authentication token found. Please log in again.
+                            </Typography>
+                        )}
+                        {token && !isConnected && (
+                            <Box sx={{ mt: 1 }}>
+                                <IconButton 
+                                    onClick={connectWebSocket}
+                                    size="small"
+                                    sx={{ bgcolor: 'primary.main', color: 'white' }}
+                                >
+                                    🔌 Connect
+                                </IconButton>
+                            </Box>
+                        )}
+                        <Typography variant="caption" sx={{ mt: 1, opacity: 0.7 }}>
+                            Debug: Token exists: {!!token ? 'Yes' : 'No'}
+                            {token && ` (${token.substring(0, 20)}...)`}
+                        </Typography>
+                    </Box>
+
+                    {/* Messages Container */}
+                    <Box
+                        className="chat-messages-container"
                         sx={{
-                            backgroundColor: 'background.paper',
-                            borderRadius: { xs: 1, sm: 2 },
+                            flexGrow: 1,
+                            overflow: 'auto',
+                            p: { xs: 0.5, sm: 1 },
                             display: 'flex',
-                            flexDirection: 'column',
-                            height: '100%',
-                            overflow: 'hidden'
+                            flexDirection: 'column'
                         }}
                     >
-                        {/* Chat Header */}
-                        <Box sx={{ p: 2, borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}>
-                            <Typography variant="h5" component="h1" sx={{ mb: 1 }}>
-                                AI Assistant
-                            </Typography>
-                            <Typography
-                                variant="body2"
-                                color={isConnected ? 'success.main' : 'error.main'}
-                            >
-                                Status: {connectionStatus}
-                                {wsError && ` - ${wsError}`}
-                            </Typography>
-                            {!token && (
-                                <Typography variant="body2" color="warning.main">
-                                    No authentication token found. Please log in again.
-                                </Typography>
-                            )}
-                            {token && !isConnected && (
-                                <Box sx={{ mt: 1 }}>
-                                    <IconButton 
-                                        onClick={connectWebSocket}
-                                        size="small"
-                                        sx={{ bgcolor: 'primary.main', color: 'white' }}
-                                    >
-                                        🔌 Connect
-                                    </IconButton>
-                                </Box>
-                            )}
-                            <Typography variant="caption" sx={{ mt: 1, opacity: 0.7 }}>
-                                Debug: Token exists: {!!token ? 'Yes' : 'No'}
-                                {token && ` (${token.substring(0, 20)}...)`}
-                            </Typography>
-                        </Box>
-
-                        {/* Messages Container */}
-                        <Box
-                            className="chat-messages-container"
-                            sx={{
-                                flexGrow: 1,
-                                overflow: 'auto',
-                                p: { xs: 0.5, sm: 1 },
-                                display: 'flex',
-                                flexDirection: 'column'
-                            }}
-                        >
-                            <List sx={{ flexGrow: 1, py: 0 }}>
-                                {messages.map((message) => (
-                                    <ListItem
-                                        key={message.id}
+                        <List sx={{ flexGrow: 1, py: 0 }}>
+                            {messages.map((message) => (
+                                <ListItem
+                                    key={message.id}
+                                    sx={{
+                                        display: 'flex',
+                                        justifyContent: message.type === 'user' ? 'flex-end' : 'flex-start',
+                                        alignItems: 'flex-start',
+                                        py: 1,
+                                        px: 2
+                                    }}
+                                >
+                                    <Box
+                                        className="chat-message-container"
                                         sx={{
                                             display: 'flex',
-                                            justifyContent: message.type === 'user' ? 'flex-end' : 'flex-start',
+                                            flexDirection: message.type === 'user' ? 'row-reverse' : 'row',
                                             alignItems: 'flex-start',
-                                            py: 1,
-                                            px: 2
+                                            maxWidth: { xs: '90%', sm: '85%', md: '80%' },
+                                            gap: { xs: 0.5, sm: 1 }
                                         }}
                                     >
-                                        <Box
-                                            className="chat-message-container"
+                                        <Avatar
+                                            className="chat-avatar"
                                             sx={{
-                                                display: 'flex',
-                                                flexDirection: message.type === 'user' ? 'row-reverse' : 'row',
-                                                alignItems: 'flex-start',
-                                                maxWidth: { xs: '90%', sm: '85%', md: '80%' },
-                                                gap: { xs: 0.5, sm: 1 }
+                                                bgcolor: message.type === 'user' ? 'primary.main' : 'grey.600',
+                                                width: { xs: 28, sm: 32 },
+                                                height: { xs: 28, sm: 32 }
                                             }}
                                         >
-                                            <Avatar
-                                                className="chat-avatar"
-                                                sx={{
-                                                    bgcolor: message.type === 'user' ? 'primary.main' : 'grey.600',
-                                                    width: { xs: 28, sm: 32 },
-                                                    height: { xs: 28, sm: 32 }
-                                                }}
-                                            >
-                                                {message.type === 'user' ? <PersonIcon /> : <SmartToyIcon />}
-                                            </Avatar>
+                                            {message.type === 'user' ? <PersonIcon /> : <SmartToyIcon />}
+                                        </Avatar>
 
-                                            <Box
-                                                className="chat-message-bubble"
+                                        <Box
+                                            className="chat-message-bubble"
+                                            sx={{
+                                                backgroundColor: message.type === 'user'
+                                                    ? 'primary.main'
+                                                    : 'rgba(255, 255, 255, 0.1)',
+                                                color: 'white',
+                                                borderRadius: { xs: 1.5, sm: 2 },
+                                                p: { xs: 1.5, sm: 2 },
+                                                maxWidth: '100%',
+                                                wordWrap: 'break-word',
+                                                wordBreak: 'break-word'
+                                            }}
+                                        >
+                                            <Typography variant="body1" sx={{ mb: 0.5 }}>
+                                                {message.content}
+                                            </Typography>
+                                            <Typography
+                                                variant="caption"
                                                 sx={{
-                                                    backgroundColor: message.type === 'user'
-                                                        ? 'primary.main'
-                                                        : 'rgba(255, 255, 255, 0.1)',
-                                                    color: 'white',
-                                                    borderRadius: { xs: 1.5, sm: 2 },
-                                                    p: { xs: 1.5, sm: 2 },
-                                                    maxWidth: '100%',
-                                                    wordWrap: 'break-word',
-                                                    wordBreak: 'break-word'
+                                                    opacity: 0.7,
+                                                    fontSize: '0.75rem'
                                                 }}
                                             >
-                                                <Typography variant="body1" sx={{ mb: 0.5 }}>
-                                                    {message.content}
-                                                </Typography>
-                                                <Typography
-                                                    variant="caption"
-                                                    sx={{
-                                                        opacity: 0.7,
-                                                        fontSize: '0.75rem'
-                                                    }}
-                                                >
-                                                    {formatTime(message.timestamp)}
-                                                </Typography>
-                                            </Box>
+                                                {formatTime(message.timestamp)}
+                                            </Typography>
                                         </Box>
-                                    </ListItem>
-                                ))}
+                                    </Box>
+                                </ListItem>
+                            ))}
 
-                                {/* Typing Indicator */}
-                                {isTyping && (
-                                    <ListItem
+                            {/* Typing Indicator */}
+                            {isTyping && (
+                                <ListItem
+                                    sx={{
+                                        display: 'flex',
+                                        justifyContent: 'flex-start',
+                                        alignItems: 'flex-start',
+                                        py: 1,
+                                        px: 2
+                                    }}
+                                >
+                                    <Box
                                         sx={{
                                             display: 'flex',
-                                            justifyContent: 'flex-start',
                                             alignItems: 'flex-start',
-                                            py: 1,
-                                            px: 2
+                                            gap: 1
                                         }}
                                     >
+                                        <Avatar
+                                            sx={{
+                                                bgcolor: 'grey.600',
+                                                width: 32,
+                                                height: 32
+                                            }}
+                                        >
+                                            <SmartToyIcon />
+                                        </Avatar>
+
                                         <Box
                                             sx={{
+                                                backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                                                borderRadius: 2,
+                                                p: 2,
                                                 display: 'flex',
-                                                alignItems: 'flex-start',
+                                                alignItems: 'center',
                                                 gap: 1
                                             }}
                                         >
-                                            <Avatar
-                                                sx={{
-                                                    bgcolor: 'grey.600',
-                                                    width: 32,
-                                                    height: 32
-                                                }}
-                                            >
-                                                <SmartToyIcon />
-                                            </Avatar>
-
-                                            <Box
-                                                sx={{
-                                                    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                                                    borderRadius: 2,
-                                                    p: 2,
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    gap: 1
-                                                }}
-                                            >
-                                                <CircularProgress size={16} />
-                                                <Typography variant="body2" sx={{ fontStyle: 'italic' }}>
-                                                    AI is typing...
-                                                </Typography>
-                                            </Box>
+                                            <CircularProgress size={16} />
+                                            <Typography variant="body2" sx={{ fontStyle: 'italic' }}>
+                                                AI is typing...
+                                            </Typography>
                                         </Box>
-                                    </ListItem>
-                                )}
-                            </List>
+                                    </Box>
+                                </ListItem>
+                            )}
+                        </List>
 
-                            {/* Auto-scroll anchor */}
-                            <div ref={messagesEndRef} />
-                        </Box>
+                        {/* Auto-scroll anchor */}
+                        <div ref={messagesEndRef} />
+                    </Box>
 
-                        {/* Message Input */}
-                        <Box
-                            component="form"
-                            onSubmit={handleSendMessage}
-                            className="chat-input-container"
+                    {/* Message Input */}
+                    <Box
+                        component="form"
+                        onSubmit={handleSendMessage}
+                        className="chat-input-container"
+                        sx={{
+                            p: { xs: 1.5, sm: 2 },
+                            borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+                            display: 'flex',
+                            gap: { xs: 0.5, sm: 1 }
+                        }}
+                    >
+                        <TextField
+                            ref={inputRef}
+                            fullWidth
+                            multiline
+                            maxRows={4}
+                            value={inputMessage}
+                            onChange={(e) => setInputMessage(e.target.value)}
+                            onKeyDown={handleKeyDown}
+                            placeholder="Type your message here..."
+                            variant="outlined"
+                            className="chat-input"
                             sx={{
-                                p: { xs: 1.5, sm: 2 },
-                                borderTop: '1px solid rgba(255, 255, 255, 0.1)',
-                                display: 'flex',
-                                gap: { xs: 0.5, sm: 1 }
+                                '& .MuiOutlinedInput-root': {
+                                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                                    fontSize: { xs: '0.9rem', sm: '1rem' }
+                                }
+                            }}
+                        />
+                        <IconButton
+                            type="submit"
+                            disabled={!inputMessage.trim() || isTyping}
+                            sx={{
+                                bgcolor: 'primary.main',
+                                color: 'white',
+                                '&:hover': {
+                                    bgcolor: 'primary.dark',
+                                },
+                                '&:disabled': {
+                                    bgcolor: 'grey.600',
+                                    color: 'grey.400'
+                                }
                             }}
                         >
-                            <TextField
-                                ref={inputRef}
-                                fullWidth
-                                multiline
-                                maxRows={4}
-                                value={inputMessage}
-                                onChange={(e) => setInputMessage(e.target.value)}
-                                onKeyDown={handleKeyDown}
-                                placeholder="Type your message here..."
-                                variant="outlined"
-                                className="chat-input"
-                                sx={{
-                                    '& .MuiOutlinedInput-root': {
-                                        backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                                        fontSize: { xs: '0.9rem', sm: '1rem' }
-                                    }
-                                }}
-                            />
-                            <IconButton
-                                type="submit"
-                                disabled={!inputMessage.trim() || isTyping}
-                                sx={{
-                                    bgcolor: 'primary.main',
-                                    color: 'white',
-                                    '&:hover': {
-                                        bgcolor: 'primary.dark',
-                                    },
-                                    '&:disabled': {
-                                        bgcolor: 'grey.600',
-                                        color: 'grey.400'
-                                    }
-                                }}
-                            >
-                                <SendIcon />
-                            </IconButton>
-                        </Box>
-                    </Paper>
-                </Container>
-            </Box>
+                            <SendIcon />
+                        </IconButton>
+                    </Box>
+                </Paper>
+            </Container>
         </ThemeProvider>
     );
 }

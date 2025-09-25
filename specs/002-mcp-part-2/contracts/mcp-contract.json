@@ -1,0 +1,131 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Multi-Agent Communication Protocol (MCP) Server",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/mcp": {
+      "post": {
+        "summary": "Route a message to an agent",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/McpMessage"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Message successfully routed"
+          }
+        }
+      }
+    },
+    "/mcp/tasks": {
+      "post": {
+        "summary": "Save project, tasks, and milestones to the database",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectData"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Project, tasks, and milestones successfully saved"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "McpMessage": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["request", "response"]
+          },
+          "sender": {
+            "type": "string"
+          },
+          "receiver": {
+            "type": "string"
+          },
+          "payload": {
+            "type": "object"
+          }
+        },
+        "required": ["type", "sender", "receiver", "payload"]
+      },
+      "Task": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "due_date": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": ["name", "description", "due_date", "status"]
+      },
+      "Milestone": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "date": {
+            "type": "string",
+            "format": "date"
+          }
+        },
+        "required": ["name", "description", "date"]
+      },
+      "ProjectData": {
+        "type": "object",
+        "properties": {
+          "project_name": {
+            "type": "string"
+          },
+          "project_description": {
+            "type": "string"
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Task"
+            }
+          },
+          "milestones": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Milestone"
+            }
+          }
+        },
+        "required": ["project_name", "tasks", "milestones"]
+      }
+    }
+  }
+}
