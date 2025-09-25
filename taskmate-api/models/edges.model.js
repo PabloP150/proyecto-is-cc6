@@ -47,11 +47,19 @@ const deleteEdgeBySource = async (nid) => {
     return execWriteCommand(query, params);
 };
 
+// Borra todas las edges donde el nodo participa como source o target
+const deleteEdgesByNode = async (nid) => {
+    const query = `DELETE FROM dbo.Edges WHERE sourceId=@nid OR targetId=@nid`;
+    const params = [{ name: 'nid', type: TYPES.UniqueIdentifier, value: nid }];
+    return execWriteCommand(query, params);
+};
+
 module.exports = {
     addEdge,
     getEdgesById,
     getEdgesByGroupId,
     updatePrerequisite,
     deleteEdge,
-    deleteEdgeBySource
+    deleteEdgeBySource,
+    deleteEdgesByNode
 };

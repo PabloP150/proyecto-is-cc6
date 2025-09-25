@@ -1,3 +1,5 @@
+--DROP TABLE dbo.UserGroupRoles;
+--DROP TABLE dbo.GroupRoles;
 --DROP TABLE dbo.UserGroups;
 --DROP TABLE dbo.UserTask;
 --DROP TABLE dbo.DeleteTask
@@ -11,12 +13,14 @@
 
 --DROP TRIGGER dbo.UpdateTargetNodePercentage
 
---TRUNCATE TABLE dbo.Groups;	--NO TRUNCAR!!!
+--TRUNCATE TABLE dbo.UserGroupRoles; 
 --TRUNCATE TABLE dbo.UserGroups;
 --TRUNCATE TABLE dbo.Users;
 --TRUNCATE TABLE dbo.Tasks;
 --TRUNCATE TABLE dbo.Edges;
 --TRUNCATE TABLE dbo.Nodes;
+--TRUNCATE TABLE dbo.GroupRoles;
+--TRUNCATE TABLE dbo.Groups;		-- NO TRUNCATE!!
 
 CREATE TABLE dbo.Users (
     uid 		UNIQUEIDENTIFIER 	NOT NULL PRIMARY KEY,
@@ -105,6 +109,30 @@ CREATE TABLE dbo.DeleteTask(
 	FOREIGN KEY (gid) REFERENCES dbo.Groups(gid)
 );
 
+-- =====================================
+-- TABLAS PARA ROLES PERSONALIZADOS POR GRUPO
+-- =====================================
+
+CREATE TABLE dbo.GroupRoles (
+	gr_id       UNIQUEIDENTIFIER    NOT NULL PRIMARY KEY,
+	gid         UNIQUEIDENTIFIER    NOT NULL,
+	gr_name     VARCHAR(40)         NOT NULL,
+	gr_color    VARCHAR(20),
+	gr_icon     VARCHAR(20),
+	FOREIGN KEY (gid) REFERENCES dbo.Groups(gid)
+);
+
+CREATE TABLE dbo.UserGroupRoles (
+    ugr_id      UNIQUEIDENTIFIER    NOT NULL PRIMARY KEY, -- ID único de la asignación
+    uid         UNIQUEIDENTIFIER    NOT NULL,             -- Usuario
+    gid         UNIQUEIDENTIFIER    NOT NULL,             -- Grupo
+    gr_id       UNIQUEIDENTIFIER    NOT NULL,             -- Rol asignado
+    ugr_assigned_at SMALLDATETIME   NOT NULL DEFAULT GETDATE(), -- Fecha de asignación
+    FOREIGN KEY (uid) REFERENCES dbo.Users(uid),
+    FOREIGN KEY (gid) REFERENCES dbo.Groups(gid),
+    FOREIGN KEY (gr_id) REFERENCES dbo.GroupRoles(gr_id)
+);
+
 --INSERT INTO dbo.Groups (gid, adminId, name)
 --VALUES ('00000000-0000-0000-0000-000000000001', 
 --        'DAD8127A-10FF-4A21-AC73-5E83F5CE0F61', 
@@ -122,6 +150,8 @@ CREATE TABLE dbo.DeleteTask(
 --select * from dbo.Tasks;
 --select * from dbo.Nodes;
 --select * from dbo.Edges;
+--select * from dbo.GroupRoles;
+--select * from dbo.UserGroupRoles;
 
 
 --delete from dbo.Users where uid='F3DB0B3A-23A8-451E-9566-0A018410112C'

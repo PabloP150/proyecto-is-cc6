@@ -1,20 +1,21 @@
-import React, { useState, useEffect, useRef } from 'react';
 import {
-    Box,
-    Container,
-    TextField,
-    Typography,
-    Paper,
-    List,
-    ListItem,
     Avatar,
+    Box,
+    CircularProgress,
+    Container,
     CssBaseline,
     IconButton,
-    CircularProgress
+    List,
+    ListItem,
+    Paper,
+    TextField,
+    Typography
 } from '@mui/material';
-import SendIcon from '@mui/icons-material/Send';
 import PersonIcon from '@mui/icons-material/Person';
+import SendIcon from '@mui/icons-material/Send';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
+//import { createTheme, ThemeProvider } from '@mui/material/styles';
+import { useEffect, useRef, useState } from 'react';
 import useWebSocket from '../hooks/useWebSocket';
 import ThemeProvider from '../theme/ThemeProvider';
 import './ChatPage.css';
@@ -53,13 +54,7 @@ function ChatPage() {
 
     // Debug logging (run only once)
     useEffect(() => {
-        console.log('ChatPage Debug Info:');
-        console.log('User from localStorage:', user);
-        console.log('Token from localStorage:', token);
-        console.log('Token exists:', !!token);
-        console.log('All localStorage keys:', Object.keys(localStorage));
-        console.log('localStorage.token:', localStorage.getItem('token'));
-        console.log('localStorage.user:', localStorage.getItem('user'));
+    // debug: info inicial (removido logs)
     }, []); // Empty dependency array to run only once
 
     // WebSocket connection
@@ -91,10 +86,10 @@ function ChatPage() {
                 setIsTyping(false);
             },
             onOpen: () => {
-                console.log('WebSocket connected successfully');
+                // debug ws: conectado
             },
             onClose: () => {
-                console.log('WebSocket connection closed');
+                // debug ws: cerrado
                 setIsTyping(false);
             }
         }

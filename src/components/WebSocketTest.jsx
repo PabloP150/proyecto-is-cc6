@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import useWebSocket from '../hooks/useWebSocket';
 
 const WebSocketTest = () => {
@@ -8,7 +8,6 @@ const WebSocketTest = () => {
 
   const {
     connectionStatus,
-    lastMessage,
     error,
     sendMessage,
     connect,
@@ -16,14 +15,14 @@ const WebSocketTest = () => {
     isConnected
   } = useWebSocket('ws://localhost:9000/chat', testToken, {
     onMessage: (message) => {
-      console.log('Received message:', message);
+  // debug: mensaje recibido
       setMessages(prev => [...prev, { ...message, direction: 'received' }]);
     },
     onOpen: () => {
-      console.log('WebSocket opened');
+  // debug: ws abierto
     },
     onClose: () => {
-      console.log('WebSocket closed');
+  // debug: ws cerrado
     },
     onError: (error) => {
       console.error('WebSocket error:', error);

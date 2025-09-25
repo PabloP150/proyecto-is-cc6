@@ -1,4 +1,6 @@
 import AddIcon from '@mui/icons-material/Add';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import {
   Box,
   Container,
@@ -34,13 +36,13 @@ export default function Recordatorios() {
   const [eliminados, setEliminados] = useState([]);
   const [completados, setCompletados] = useState([]);
   const [filtro, setFiltro] = useState('todos');
-  const [editando, setEditando] = useState(null);
   const [recordatorioEditar, setRecordatorioEditar] = useState(null);
   const [openEditar, setOpenEditar] = useState(false); // Estado para el diálogo de edición
   const { selectedGroupId, selectedGroupName, setSelectedGroupId, setSelectedGroupName } = useContext(GroupContext); // Usa el contexto para obtener el gid y el nombre
 
   const cargarTareas = useCallback(async () => {
     if (!selectedGroupId) {
+      setListas([]);
       return;
     }
     try {
@@ -48,6 +50,23 @@ export default function Recordatorios() {
       if (response.ok) {
         const data = await response.json();
         const listasOrganizadas = organizarTareasEnListas(data.data);
+        // Persistencia de listas sin tareas: recuperamos listas guardadas localmente para este grupo
+        try {
+          const stored = localStorage.getItem('customLists');
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            const groupLists = parsed[selectedGroupId] || [];
+            // Agregar las listas que no estén ya incluidas por las tareas existentes
+            const nombresExistentes = new Set(listasOrganizadas.map(l => l.nombre));
+            groupLists.forEach(nombre => {
+              if (!nombresExistentes.has(nombre)) {
+                listasOrganizadas.push({ nombre, recordatorios: [] });
+              }
+            });
+          }
+        } catch (e) {
+          console.error('Error leyendo customLists de localStorage', e);
+        }
         setListas(listasOrganizadas);
       } else {
         console.error('Error al cargar las tareas');
@@ -58,7 +77,7 @@ export default function Recordatorios() {
   }, [selectedGroupId]);
 
   const cargarCompletados = useCallback(async () => {
-    if (!selectedGroupId) return;
+    if (!selectedGroupId) { setCompletados([]); return; }
 
     try {
       const response = await fetch(`http://localhost:9000/api/completados/${selectedGroupId}`);
@@ -74,7 +93,7 @@ export default function Recordatorios() {
   }, [selectedGroupId]);
 
   const cargarEliminados = useCallback(async () => {
-    if (!selectedGroupId) return;
+    if (!selectedGroupId) { setEliminados([]); return; }
 
     try {
       const response = await fetch(`http://localhost:9000/api/delete/${selectedGroupId}`);
@@ -128,7 +147,6 @@ export default function Recordatorios() {
 
   const handleCloseRecordatorio = () => {
     setOpenRecordatorio(false);
-    setEditando(null);
   };
 
   const handleOpenLista = () => {
@@ -145,13 +163,26 @@ export default function Recordatorios() {
       return;
     }
     const nuevaLista = { nombre: nombreLista, recordatorios: [] };
-    setListas([...listas, nuevaLista]);
+    // Evitar duplicados en estado
+    setListas(prev => (prev.some(l => l.nombre === nombreLista) ? prev : [...prev, nuevaLista]));
+    // Guardar en localStorage bajo la clave customLists por grupo
+    try {
+      const stored = localStorage.getItem('customLists');
+      const parsed = stored ? JSON.parse(stored) : {};
+      const groupLists = new Set(parsed[selectedGroupId] || []);
+      groupLists.add(nombreLista);
+      parsed[selectedGroupId] = Array.from(groupLists);
+      localStorage.setItem('customLists', JSON.stringify(parsed));
+    } catch (e) {
+      console.error('Error guardando lista en localStorage', e);
+    }
     setNombreLista('');
     setOpenLista(false);
   };
 
   const handleSubmitRecordatorio = async (e) => {
     e.preventDefault();
+    if (!selectedGroupId) return; // protección
   // Combina fecha y hora; si no hay hora seleccionada, default a 00:00 para evitar fechas inválidas
   const safeTime = (typeof hora === 'string' && /^\d{2}:\d{2}$/.test(hora)) ? hora : '00:00';
   const fechaCompleta = `${fecha}T${safeTime}`;
@@ -213,7 +244,6 @@ export default function Recordatorios() {
         setDescripcion('');
         setFecha('');
         setHora('');
-        setEditando(null);
       } else {
         console.error('Error al agregar la tarea');
       }
@@ -223,72 +253,72 @@ export default function Recordatorios() {
   };
 
   const handleEliminar = async (listaNombre, idx) => {
-    const listaActual = listas.find(lista => lista.nombre === listaNombre);
-    const recordatorioEliminado = listaActual.recordatorios[idx];
+  const listaActual = listas.find(lista => lista.nombre === listaNombre);
+    const task = listaActual?.recordatorios[idx];
+    if (!task) return;
 
-    try {
-      // Llamar a la API para eliminar la tarea
-      const response = await fetch(`http://localhost:9000/api/tasks/${recordatorioEliminado.tid}`, {
-        method: 'DELETE',
-      });
+    // Marcar visualmente para animación (optimista)
+    setListas(prev => prev.map(l => l.nombre === listaNombre ? {
+      ...l,
+      recordatorios: l.recordatorios.map((r,i) => i===idx ? { ...r, __justDeleted: true } : r)
+    } : l));
 
-      if (response.ok) {
-        // Llamar a la API para agregar a la lista de eliminados
-        const eliminarResponse = await fetch('http://localhost:9000/api/delete', {
+    // Backend en paralelo (DELETE + POST a eliminados)
+    (async () => {
+      try {
+        await fetch(`http://localhost:9000/api/tasks/${task.tid}`, { method: 'DELETE' });
+      } catch (e) { console.error('Delete task error', e); }
+      try {
+        await fetch('http://localhost:9000/api/delete', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(recordatorioEliminado),
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(task),
         });
+      } catch (e) { console.error('Add to deleted error', e); }
+    })();
 
-        if (eliminarResponse.ok) {
-          listaActual.recordatorios.splice(idx, 1);
-          setListas([...listas]);
-          cargarCompletados(); // Opcional: cargar completados si es necesario
-        } else {
-          console.error('Error al agregar a eliminados');
-        }
-      } else {
-        console.error('Error al eliminar la tarea');
-      }
-    } catch (error) {
-      console.error('Error en la solicitud:', error);
-    }
+    // Remover tras animación (3s similar a completados)
+    setTimeout(() => {
+      setListas(prev => prev.map(l => l.nombre === listaNombre ? {
+        ...l,
+        recordatorios: l.recordatorios.filter((_,i) => i!==idx)
+      } : l));
+      // Opcional: recargar eliminados si existe lógica (no implementado aquí)
+    }, 3000);
   };
 
   const handleCompletar = async (listaNombre, idx) => {
-    const listaActual = listas.find(lista => lista.nombre === listaNombre);
-    const recordatorioCompletado = listaActual.recordatorios[idx];
+  const listaActual = listas.find(lista => lista.nombre === listaNombre);
+    const task = listaActual?.recordatorios[idx];
+    if (!task) return;
 
-    try {
-      const response = await fetch(`http://localhost:9000/api/tasks/${recordatorioCompletado.tid}`, {
-        method: 'DELETE',
-      });
+    // Marcar porcentaje 100 y bandera de completado para animación
+    setListas(prev => prev.map(l => l.nombre === listaNombre ? {
+      ...l,
+      recordatorios: l.recordatorios.map((r,i) => i===idx ? { ...r, percentage: 100, __justCompleted: true } : r)
+    } : l));
 
-      if (response.ok) {
-        const completarResponse = await fetch('http://localhost:9000/api/completados', {
+    // Backend paralelo
+    (async () => {
+      try { await fetch(`http://localhost:9000/api/tasks/${task.tid}`, { method: 'DELETE' }); } catch(e){ console.error('Delete task error', e); }
+      try {
+        await fetch('http://localhost:9000/api/completados', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(recordatorioCompletado),
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...task, percentage: 100 }),
         });
+        setCompletados(prev => [...prev, { ...task, percentage: 100 }]);
+      } catch(e){ console.error('Add to completed error', e); }
+      cargarCompletados();
+    })();
 
-        if (completarResponse.ok) {
-          setCompletados(prevCompletados => [...prevCompletados, recordatorioCompletado]);
-          listaActual.recordatorios.splice(idx, 1);
-          setListas([...listas]);
-          cargarCompletados();
-        } else {
-          console.error('Error al agregar a completados');
-        }
-      } else {
-        console.error('Error al eliminar la tarea');
-      }
-    } catch (error) {
-      console.error('Error en la solicitud:', error);
-    }
+    // Remover tras animación (3s)
+    setTimeout(() => {
+      setListas(prev => prev.map(l => l.nombre === listaNombre ? {
+        ...l,
+        recordatorios: l.recordatorios.filter((_,i) => i!==idx)
+      } : l));
+    }, 3000);
   };
 
   const handleEditar = (nombre, idx) => {
@@ -359,36 +389,58 @@ export default function Recordatorios() {
     }
   };
 
+  const [deleteListSuccess, setDeleteListSuccess] = useState(false);
+  const [deleteListError, setDeleteListError] = useState(false);
+
   const handleEliminarLista = async (nombreLista) => {
     const gid = localStorage.getItem('selectedGroupId');
     if (!gid) {
       console.error('No hay grupo seleccionado');
       return;
     }
-
-    if (window.confirm(`¿Estás seguro de que deseas eliminar la lista "${nombreLista}" y todas sus tareas?`)) {
-      try {
-        const response = await fetch(`http://localhost:9000/api/tasks/list/${gid}/${encodeURIComponent(nombreLista)}`, {
-          method: 'DELETE',
-        });
-
-        if (response.ok) {
-          setListas(prevListas => prevListas.filter(lista => lista.nombre !== nombreLista));
-          cargarTareas();
-        } else {
-          console.error('Error al eliminar la lista');
+    try {
+      const response = await fetch(`http://localhost:9000/api/tasks/list/${gid}/${encodeURIComponent(nombreLista)}`, {
+        method: 'DELETE',
+      });
+      if (response.ok) {
+        setListas(prevListas => prevListas.filter(lista => lista.nombre !== nombreLista));
+        // Actualizar localStorage quitando la lista
+        try {
+          const stored = localStorage.getItem('customLists');
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            if (parsed[gid]) {
+              parsed[gid] = parsed[gid].filter(n => n !== nombreLista);
+              localStorage.setItem('customLists', JSON.stringify(parsed));
+            }
+          }
+        } catch (e) {
+          console.error('Error actualizando customLists tras eliminar lista', e);
         }
-      } catch (error) {
-        console.error('Error en la solicitud:', error);
+        cargarTareas();
+        setDeleteListError(false);
+        setDeleteListSuccess(true);
+        setTimeout(() => setDeleteListSuccess(false), 3000);
+      } else {
+        console.error('Error al eliminar la lista');
+        setDeleteListSuccess(false);
+        setDeleteListError(true);
+        setTimeout(() => setDeleteListError(false), 4000);
       }
+    } catch (error) {
+      console.error('Error en la solicitud:', error);
+      setDeleteListSuccess(false);
+      setDeleteListError(true);
+      setTimeout(() => setDeleteListError(false), 4000);
     }
   };
 
   const handleSubmitEditar = async () => {
-    if (!recordatorioEditar?.tid) {
+  if (!recordatorioEditar?.tid) {
         console.error('El TID es undefined. Asegúrate de que el recordatorio se haya seleccionado correctamente.');
         return; 
     }
+  if (!selectedGroupId) return;
     try {
       const response = await fetch(`http://localhost:9000/api/tasks/${recordatorioEditar.tid}`, {
         method: 'PUT',
@@ -406,25 +458,98 @@ export default function Recordatorios() {
       });
 
       if (response.ok) {
-        const updatedRecordatorio = await response.json();
+        // El PUT solo devuelve rowCount, no la tarea; usamos el estado editado como fuente confiable
+        const updatedRecordatorio = { ...recordatorioEditar };
+        const goingToCompleted = Number(updatedRecordatorio.percentage) >= 100;
+        const unifiedId = updatedRecordatorio.tid;
 
-        // Actualizar el estado local
-        setListas(prevListas => {
-            return prevListas.map(lista => {
-                if (lista.nombre === updatedRecordatorio.list) {
-                    return {
-                        ...lista,
-                        recordatorios: lista.recordatorios.map(recordatorio => 
-                            recordatorio.tid === updatedRecordatorio.tid ? updatedRecordatorio : recordatorio
-                        ),
-                    };
-                }
-                return lista;
+        // Actualizar estado en listas (si no se completa aún quedará en su lista actual)
+        setListas(prevListas => prevListas.map(lista => {
+          if (lista.nombre === updatedRecordatorio.list) {
+            return {
+              ...lista,
+              recordatorios: lista.recordatorios.map(r => {
+                const rId = r.tid || r.id;
+                return String(rId) === String(unifiedId) ? { ...updatedRecordatorio } : r;
+              })
+            };
+          }
+          return lista;
+        }));
+
+  // Si llega a 100%, mostrar animación check rápida y luego mover a completados
+        if (goingToCompleted) {
+          // Añadir flag temporal local para animación sin recargar todo
+          setListas(prevListas => prevListas.map(lista => {
+            if (lista.nombre === updatedRecordatorio.list) {
+              return {
+                ...lista,
+                recordatorios: lista.recordatorios.map(r => {
+                  const rId = r.tid || r.id;
+                  return String(rId) === String(unifiedId) ? { ...r, __justCompleted: true } : r;
+                })
+              };
+            }
+            return lista;
+          }));
+
+          // Enviar a endpoint de completados (no elimina de Tasks, así que haremos delete explícito luego)
+          try {
+            const completarResponse = await fetch('http://localhost:9000/api/completados', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                gid: selectedGroupId,
+                tid: updatedRecordatorio.tid,
+                name: updatedRecordatorio.name,
+                description: updatedRecordatorio.description,
+                list: updatedRecordatorio.list,
+                datetime: updatedRecordatorio.datetime,
+                percentage: updatedRecordatorio.percentage,
+              }),
             });
-        });
-        cargarTareas();
+            if (completarResponse.ok) {
+              const data = await completarResponse.json();
+              const recordatorioCompletado = data.recordatorio || data.data || updatedRecordatorio;
+              // Evitar duplicados por id/tid
+              setCompletados(prev => {
+                const exists = prev.some(r => (r.tid || r.id) === unifiedId);
+                return exists ? prev : [...prev, recordatorioCompletado];
+              });
+            }
+          } catch (e) {
+            console.error('Error enviando a completados tras edición', e);
+          }
 
-        handleCloseEditar();
+          // Eliminar de Tasks explícitamente y luego quitar de la UI con delay para animación
+          try {
+            await fetch(`http://localhost:9000/api/tasks/${updatedRecordatorio.tid}`, {
+              method: 'DELETE'
+            });
+          } catch (e) {
+            console.error('Error eliminando task original tras completar', e);
+          }
+
+          setTimeout(() => {
+            setListas(prevListas => prevListas.map(lista => {
+              if (lista.nombre === updatedRecordatorio.list) {
+                return {
+                  ...lista,
+                  recordatorios: lista.recordatorios.filter(r => {
+                    const rId = r.tid || r.id;
+                    return String(rId) !== String(unifiedId);
+                  })
+                };
+              }
+              return lista;
+            }));
+            cargarCompletados();
+          }, 3000); // tiempo para animación (ajustado de 1.6s a 3s)
+        } else {
+          cargarTareas();
+        }
+
+        handleCloseEditar(); // cerramos inmediatamente; animación ocurre en la lista (si visible)
         setOpenEditar(false);
       } else {
         console.error('Error al actualizar el recordatorio');
@@ -447,6 +572,8 @@ export default function Recordatorios() {
         return 'This Month';
       case 'all':
         return 'All Tasks';
+      default:
+        return 'Tasks';
     }
   };
 
@@ -587,6 +714,7 @@ export default function Recordatorios() {
                   alignItems: 'center',
                   gap: 1,
                 }}
+                disabled={!selectedGroupId}
               >
                 <AddIcon />
                 Add List
@@ -611,6 +739,7 @@ export default function Recordatorios() {
                   alignItems: 'center',
                   gap: 1,
                 }}
+                disabled={!selectedGroupId}
               >
                 <AddIcon />
                 Add Task
@@ -618,8 +747,13 @@ export default function Recordatorios() {
             )}
           </Box>
 
-          <Box sx={{ flexGrow: 1, overflow: 'auto' }}>
-            <ListaRecordatorios
+          <Box sx={{ flexGrow: 1, overflow: 'auto', position: 'relative' }}>
+            {!selectedGroupId && (
+              <Box sx={{color:'white', textAlign:'center', mt:4, opacity:0.85}}>
+                Selecciona un grupo para gestionar tareas.
+              </Box>
+            )}
+            {selectedGroupId && <ListaRecordatorios
               listas={filtrarRecordatorios()}
               handleEliminar={handleEliminar}
               handleCompletar={handleCompletar}
@@ -631,7 +765,39 @@ export default function Recordatorios() {
               sx={{ color: 'white' }}
               handleVaciarCompletados={handleVaciarCompletados}
               handleVaciarEliminados={handleVaciarEliminados}
-            />
+            />}
+            {(deleteListSuccess || deleteListError) && (
+              <Box
+                sx={{
+                  position: 'fixed',
+                  bottom: 24,
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1,
+                  px: 2.5,
+                  py: 1.25,
+                  borderRadius: '999px',
+                  background: deleteListSuccess
+                    ? 'linear-gradient(135deg, rgba(16,185,129,0.15) 0%, rgba(5,150,105,0.4) 100%)'
+                    : 'linear-gradient(135deg, rgba(239,68,68,0.15) 0%, rgba(220,38,38,0.4) 100%)',
+                  border: `1px solid ${deleteListSuccess ? 'rgba(16,185,129,0.5)' : 'rgba(239,68,68,0.5)'}`,
+                  boxShadow: deleteListSuccess
+                    ? '0 4px 18px -2px rgba(16,185,129,0.4)'
+                    : '0 4px 18px -2px rgba(239,68,68,0.4)',
+                  backdropFilter: 'blur(12px)',
+                  zIndex: 1500,
+                  color: '#fff',
+                  fontWeight: 500,
+                  fontSize: '0.9rem'
+                }}
+              >
+                {deleteListSuccess && <CheckCircleIcon sx={{ color: '#10b981' }} />}
+                {deleteListError && <ErrorOutlineIcon sx={{ color: '#f87171' }} />}
+                <span>{deleteListSuccess ? 'List deleted' : 'Delete failed'}</span>
+              </Box>
+            )}
           </Box>
 
           <BarraLateral

@@ -1,5 +1,4 @@
-import React from 'react';
-import { Box, Typography, Grid, Stack } from '@mui/material';
+import { Box, Grid, Stack, Typography } from '@mui/material';
 import { Button } from './ui';
 
 /**
@@ -36,7 +35,7 @@ const ButtonDemo = () => {
               <Stack spacing={2} alignItems="center">
                 <Button 
                   variant={variant}
-                  onClick={() => console.log(`${name} button clicked`)}
+                  // onClick demo eliminado
                 >
                   {name}
                 </Button>
@@ -63,7 +62,7 @@ const ButtonDemo = () => {
               key={size}
               variant="primary"
               size={size}
-              onClick={() => console.log(`${size} button clicked`)}
+              // onClick demo eliminado
             >
               {size.charAt(0).toUpperCase() + size.slice(1)}
             </Button>

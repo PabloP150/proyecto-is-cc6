@@ -1,6 +1,7 @@
 const nodesRoute = require('express').Router();
 const { v4: uuidv4 } = require('uuid');
 const NodesModel = require('./../models/nodes.model');
+const { deleteEdgesByNode } = require('./../models/edges.model');
 
 // Get all nodes
 nodesRoute.get('/', async (req, res) => {
@@ -15,6 +16,9 @@ nodesRoute.get('/', async (req, res) => {
 
 nodesRoute.get('/tasks/:gid', async (req, res) => {
     const { gid } = req.params;
+    if (!gid || gid === 'undefined' || gid === 'null') {
+        return res.status(400).json({ error: 'Group ID is required' });
+    }
     try {
         const data = await NodesModel.getNodesAndTasks(gid);
         res.status(200).json({ data });
@@ -43,6 +47,9 @@ nodesRoute.get('/:id', async (req, res) => {
 // Get nodes by group ID
 nodesRoute.get('/group/:gid', async (req, res) => {
     const { gid } = req.params;
+    if (!gid || gid === 'undefined' || gid === 'null') {
+        return res.status(400).json({ error: 'Group ID is required' });
+    }
     try {
         const data = await NodesModel.getNodesByGroupId(gid);
         res.status(200).json({ data });
@@ -177,11 +184,17 @@ nodesRoute.put('/:id/toggleComplete', async (req, res) => {
 nodesRoute.delete('/:id', async (req, res) => {
     const { id: nid } = req.params;
     try {
-        await NodesModel.deleteNode(nid);
+        console.log('[DELETE /nodes/:id] start', { nid });
+        // Eliminar edges relacionadas (source o target)
+        const edgesResult = await deleteEdgesByNode(nid);
+        console.log('[DELETE /nodes/:id] edges deleted (source or target)', { nid, edgesResult });
+        // Luego eliminar el nodo
+        const nodeResult = await NodesModel.deleteNode(nid);
+        console.log('[DELETE /nodes/:id] node deleted', { nid, nodeResult });
         res.status(200).json({ message: 'Node deleted successfully' });
     } catch (error) {
-        console.error("Error deleting node:", error);
-        res.status(500).json({ error: error.message });
+        console.error('[DELETE /nodes/:id] Error deleting node', { nid, error });
+        res.status(500).json({ error: error.message, nid });
     }
 });
 

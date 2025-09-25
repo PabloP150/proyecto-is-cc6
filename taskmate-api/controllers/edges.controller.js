@@ -31,6 +31,9 @@ edgesRoute.post('/', async (req, res) => {
 // Nota: declarar primero rutas más específicas
 edgesRoute.get('/group/:gid', async (req, res) => {
     const { gid } = req.params;
+    if (!gid || gid === 'undefined' || gid === 'null') {
+        return res.status(400).json({ error: 'Group ID is required' });
+    }
     try {
         const data = await EdgesModel.getEdgesByGroupId(gid);
         res.status(200).json({ data });

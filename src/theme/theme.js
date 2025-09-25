@@ -110,6 +110,7 @@ const theme = createTheme({
     borderRadius: 14,
   },
   spacing: 8, // Base spacing unit (8px)
+  // Extiende shadows para soportar elevation={8} y más
   shadows: [
     'none',
     '0 2px 12px 0 rgba(0,0,0,0.18)',
@@ -117,6 +118,13 @@ const theme = createTheme({
     '0 8px 24px 0 rgba(0,0,0,0.32)',
     '0 12px 36px 0 rgba(40,60,110,0.45), 0 4px 24px 0 rgba(0,0,0,0.28)',
     '0 16px 48px 0 rgba(40,60,110,0.5), 0 8px 32px 0 rgba(0,0,0,0.32)',
+    '0 2px 8px 0 rgba(0,0,0,0.18)',
+    '0 4px 12px 0 rgba(0,0,0,0.22)',
+    '0 8px 16px 0 rgba(0,0,0,0.24)', // 8
+    '0 12px 24px 0 rgba(40,60,110,0.25), 0 4px 16px 0 rgba(0,0,0,0.18)',
+    '0 16px 32px 0 rgba(40,60,110,0.28), 0 8px 24px 0 rgba(0,0,0,0.22)',
+    // Rellena hasta 25 para evitar warnings de MUI
+    ...Array(25 - 11).fill('none')
   ],
   transitions: {
     // Custom transition configurations

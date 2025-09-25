@@ -1,21 +1,20 @@
-import React, { useState } from 'react';
+import { PersonAdd as RegisterIcon } from '@mui/icons-material';
 import {
-  Container,
-  Typography,
-  Box,
-  CssBaseline,
   Alert,
+  Box,
+  Container,
+  CssBaseline,
   Fade,
   Grow,
   Link,
+  Typography,
 } from '@mui/material';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PersonAdd as RegisterIcon } from '@mui/icons-material';
-import bcrypt from 'bcryptjs';
 import { ThemeProvider } from '../theme';
+import Button from './ui/Button';
 import Card from './ui/Card';
 import TextField from './ui/TextField';
-import Button from './ui/Button';
 
 function Register() {
   const [username, setUsername] = useState('');
@@ -72,17 +71,16 @@ function Register() {
     setIsLoading(true);
 
     try {
-      const hashedPassword = await bcrypt.hash(password, 10);
       const response = await fetch('http://localhost:9000/api/users', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ username, password: hashedPassword }),
+        body: JSON.stringify({ username, password }),
       });
 
       if (response.ok) {
-        const data = await response.json();
+        await response.json(); // respuesta consumida, no se usa el contenido
         setSuccess('Account created successfully! Redirecting to login...');
         
         // Redirect to login after a short delay

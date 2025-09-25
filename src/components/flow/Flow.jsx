@@ -1,20 +1,20 @@
-import React, { useState, useCallback, useEffect, useContext } from "react";
-import './Flow.css'
 import {
-  ReactFlow,
-  Controls,
-  Background,
-  applyNodeChanges,
-  addEdge,
-  applyEdgeChanges,
-  MarkerType,
-  ConnectionMode
+    addEdge,
+    applyEdgeChanges,
+    applyNodeChanges,
+    Background,
+    ConnectionMode,
+    Controls,
+    MarkerType,
+    ReactFlow
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import CustomNode from './CustomNode';
-import CustomConnectionLine from './CustomConnectionLine';
-import FloatingEdge from './FloatingEdge';
+import { useCallback, useContext, useEffect, useState } from "react";
 import { GroupContext } from '../GroupContext';
+import CustomConnectionLine from './CustomConnectionLine';
+import CustomNode from './CustomNode';
+import FloatingEdge from './FloatingEdge';
+import './Flow.css';
 
 const Flow = ({ handleNodeEdit, setSelectedNode }) => {
   const { selectedGroupId } = useContext(GroupContext);
@@ -42,7 +42,32 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
     return `${year}-${month}-${day}`;
   }
 
+  // Declarar toggleCompletion antes de los efectos que lo referencian
+  const toggleCompletion = useCallback((nodeId) => {
+    setNodes((prevNodes) =>
+      prevNodes.map((node) => {
+        if (node.id === nodeId) {
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              completed: !node.data.completed,
+              toggleCompletion
+            }
+          };
+        }
+        return node;
+      })
+    );
+  }, []); // setNodes es estable
+
   useEffect(() => {
+    if (!selectedGroupId) {
+      // limpiar si se des-selecciona
+      setNodes([]);
+      setEdges([]);
+      return;
+    }
     const loadNodesAndEdges = async () => {
       try {
         const nodesResponse = await fetch(`http://localhost:9000/api/nodes/group/${selectedGroupId}`);
@@ -59,7 +84,7 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
               name: node.name,
               description: node.description,
               date: node.date,
-              completed: node.completed == 1,
+              completed: node.completed === 1,
               percentage: node.percentage,
               toggleCompletion,
               onClick: () => handleNodeEdit(node),
@@ -83,9 +108,13 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
       }
     };
     loadNodesAndEdges();
-  }, [refresh]);
+  }, [refresh, selectedGroupId, handleNodeEdit, setSelectedNode, toggleCompletion]);
 
   useEffect(() => {
+    if (!selectedGroupId) {
+      setTasks([]);
+      return;
+    }
     const getTasks = async () => {
       try {
         const response = await fetch(`http://localhost:9000/api/tasks?gid=${selectedGroupId}`);
@@ -98,7 +127,7 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
       }
     };
     getTasks();
-  }, []);
+  }, [selectedGroupId]);
 
   const handleImportTask = async (task) => {
     try {
@@ -260,7 +289,7 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
     } catch (error) {
       console.error('Error saving edge:', error);
     }
-  }, []);
+  }, [selectedGroupId]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -270,25 +299,7 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
     }));
   };
 
-  const toggleCompletion = useCallback((nodeId) => {
-    setNodes((prevNodes) =>
-      prevNodes.map((node) => {
-        if (node.id === nodeId) {
-          //toggleCompletionDB(node);
-          const updatedNode = {
-            ...node,
-            data: {
-              ...node.data,
-              completed: !node.data.completed,
-              toggleCompletion
-            }
-          };
-          return updatedNode;
-        }
-        return node;
-      })
-    );
-  }, []);
+  // toggleCompletion ya declarado arriba
 
   const onNodesDelete = async (event) => {
     try {
@@ -297,12 +308,10 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
       });
 
       if (response1.ok) {
-        const response2 = await fetch(`http://localhost:9000/api/nodes/${event[0].id}`, {
+        await fetch(`http://localhost:9000/api/nodes/${event[0].id}`, {
           method: 'DELETE',
         });
-        if (response2.ok) {
-          console.log('Node deleted successfully');
-        }
+        // Node deleted successfully (log eliminado)
       }
     } catch (error) {
       console.error('Error deleting node:', error);
@@ -316,7 +325,7 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
       });
 
       if (response.ok) {
-        console.log('Edge deleted successfully');
+        // Edge deleted successfully (log eliminado)
       } else {
         console.error('Error deleting edge:', response.status);
       }
@@ -400,12 +409,32 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
             color: 'white'
           }}
         />
-        <button
-          className="add-milestone-button"
-          onClick={addNode}
-        >
-          Add Milestone
-        </button>
+        {(() => {
+          const missingGroup = !selectedGroupId;
+          const missingName = !nodeData.name?.trim();
+          const missingDate = !nodeData.date;
+          const disabled = missingGroup || missingName || missingDate;
+          let label = 'Add Milestone';
+          if (missingGroup) label = 'Select a group first';
+          else if (missingName) label = 'Name required';
+          else if (missingDate) label = 'Date required';
+          return (
+            <button
+              className="add-milestone-button"
+              onClick={addNode}
+              disabled={disabled}
+              title={disabled ? 'Complete group, name and date to enable' : 'Create milestone'}
+              style={disabled ? {
+                opacity: 0.45,
+                cursor: 'not-allowed',
+                filter: 'grayscale(40%)',
+                transition: 'opacity .2s'
+              } : { transition: 'opacity .2s' }}
+            >
+              {label}
+            </button>
+          );
+        })()}
         <div className="dropdown">
           <button
             className="dropdown-button"
@@ -432,7 +461,10 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
           )}
         </div>
       </div>
-      <ReactFlow
+      {!selectedGroupId && (
+        <div style={{color: 'white', padding: '1rem'}}>Selecciona un grupo para ver y crear milestones.</div>
+      )}
+      {selectedGroupId && <ReactFlow
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
@@ -450,7 +482,7 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
       >
         <Background />
         <Controls />
-      </ReactFlow>
+      </ReactFlow>}
     </div>
   );
 };

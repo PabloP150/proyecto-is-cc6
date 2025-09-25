@@ -1,10 +1,17 @@
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+import PersonIcon from '@mui/icons-material/Person';
 import { Box, Container, CssBaseline, Dialog, DialogActions, DialogContent, DialogTitle, List, ListItem, styled, TextField, Typography } from '@mui/material';
 import { ThemeProvider } from '@mui/material/styles';
 import { useCallback, useContext, useEffect, useState } from 'react';
-import { GroupContext } from './GroupContext';
-import Card from './ui/Card';
-import Button from './ui/Button';
 import theme from '../theme/theme';
+import AssignRolesDialog from './AssignRolesDialog';
+import { GroupContext } from './GroupContext';
+import GroupRolesPanel from './GroupRolesPanel';
+import useGroupRoles from './hooks/useGroupRoles';
+import Button from './ui/Button';
+import Card from './ui/Card';
+import UserRolesChips from './UserRolesChips';
 
 const UseButton = styled(Button)(({ theme, selected }) => ({
   marginLeft: theme.spacing(1),
@@ -32,6 +39,7 @@ const UseButton = styled(Button)(({ theme, selected }) => ({
 }));
 
 function GroupsView() {
+  const [selectedAssignUser, setSelectedAssignUser] = useState(null);
   const [groups, setGroups] = useState([]);
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [members, setMembers] = useState([]);
@@ -41,7 +49,42 @@ function GroupsView() {
   const [newUsername, setNewUsername] = useState('');
   const [openDeleteUser, setOpenDeleteUser] = useState(false);
   const [usernameToDelete, setUsernameToDelete] = useState('');
+  // Estado para diálogos de roles (solo una vez, al inicio)
+  // Eliminados estados openRoleForm / editingRole (no usados tras refactor de roles controlados)
+  const [openAssignDialog, setOpenAssignDialog] = useState(false);
+  // Feedback visual (iconos) para eliminación de grupo
+  const [deleteSuccess, setDeleteSuccess] = useState(false);
+  const [deleteError, setDeleteError] = useState(false);
+  // Controla si mostramos los detalles (miembros/roles) dentro de esta vista. Persistimos en localStorage.
+  const [showDetails, setShowDetails] = useState(() => localStorage.getItem('showGroupDetails') === '1');
   const { selectedGroupId, setSelectedGroupId, setSelectedGroupName } = useContext(GroupContext);
+
+  // Solo cargamos roles cuando el grupo está realmente "en uso" (selectedGroupId coincide)
+  const groupId = (selectedGroup && selectedGroupId === selectedGroup.gid && showDetails) ? selectedGroup.gid : null;
+  const {
+    roles,
+    userRolesMap,
+    fetchRoles,
+    fetchUserRoles,
+    createRole,
+    updateRole,
+    deleteRole,
+    assignRole,
+    removeRole,
+    loading: rolesLoading,
+    error: rolesError,
+  } = useGroupRoles(groupId);
+
+  // Cargar roles de cada miembro automáticamente cuando se usan los detalles del grupo
+  useEffect(() => {
+    if (!groupId || !showDetails) return;
+    if (!members || members.length === 0) return;
+    members.forEach(m => {
+      if (!userRolesMap[m.uid]) {
+        fetchUserRoles(m.uid);
+      }
+    });
+  }, [groupId, members, showDetails, userRolesMap, fetchUserRoles]);
 
   const cargarGrupos = useCallback(async () => {
     const userId = localStorage.getItem('userId');
@@ -55,20 +98,22 @@ function GroupsView() {
         const data = await response.json();
         setGroups(data.groups);
         const storedGroupId = localStorage.getItem('selectedGroupId');
+        const storedShow = localStorage.getItem('showGroupDetails') === '1';
         if (storedGroupId) {
-          const groupToSelect = data.groups.find(group => group.gid === storedGroupId);
+          const groupToSelect = data.groups.find(g => g.gid === storedGroupId);
           if (groupToSelect) {
             setSelectedGroupId(groupToSelect.gid);
             setSelectedGroupName(groupToSelect.name);
             setSelectedGroup(groupToSelect);
+            if (storedShow) {
+              setShowDetails(true);
+              // Cargar miembros inmediatamente
+              fetch(`http://localhost:9000/api/groups/${groupToSelect.gid}/members`)
+                .then(r => r.json())
+                .then(d => setMembers(d.members))
+                .catch(err => console.error('Error loading members:', err));
+            }
           }
-        } else if (data.groups.length > 0) {
-          const firstGroup = data.groups[0];
-          setSelectedGroupId(firstGroup.gid);
-          setSelectedGroupName(firstGroup.name);
-          setSelectedGroup(firstGroup);
-          localStorage.setItem('selectedGroupId', firstGroup.gid);
-          localStorage.setItem('selectedGroupName', firstGroup.name);
         }
       } else {
         console.error('Error al cargar los grupos');
@@ -82,17 +127,16 @@ function GroupsView() {
     cargarGrupos();
   }, [cargarGrupos]);
 
+  // Solo resalta el grupo al hacer clic en el nombre, pero no lo selecciona como "en uso"
   const handleGroupClick = (group) => {
-    setSelectedGroupId(group.gid);
-    setSelectedGroupName(group.name);
-    setSelectedGroup(group);
-    localStorage.setItem('selectedGroupId', group.gid);
-    localStorage.setItem('selectedGroupName', group.name);
-    fetch(`http://localhost:9000/api/groups/${group.gid}/members`)
-      .then(response => response.json())
-      .then(data => setMembers(data.members))
-      .catch(error => console.error('Error loading members:', error));
+    setSelectedGroup(group);      // Mostrar nombre
+    // Si este grupo ya está en uso y showDetails persistido, mantener detalles.
+    const persistShow = localStorage.getItem('showGroupDetails') === '1' && localStorage.getItem('selectedGroupId') === String(group.gid);
+    setShowDetails(persistShow);
+    if (!persistShow) setMembers([]);
   };
+
+  // Solo el botón USE activa el grupo y carga miembros
 
   const handleCreateGroup = async () => {
     const userId = localStorage.getItem('userId');
@@ -110,8 +154,7 @@ function GroupsView() {
       });
 
       if (response.ok) {
-        const data = await response.json();
-        console.log(data.message);
+        await response.json(); // consumir respuesta sin almacenar
         setOpenCreateGroup(false);
         cargarGrupos();
       } else {
@@ -130,7 +173,6 @@ function GroupsView() {
       return;
     }
     try {
-      console.log('Username:', newUsername);
       const userResponse = await fetch(`http://localhost:9000/api/users/getuid?username=${newUsername}`);
       if (!userResponse.ok) {
         const errorData = await userResponse.json();
@@ -154,7 +196,6 @@ function GroupsView() {
       });
 
       if (response.ok) {
-        console.log('User added successfully');
         setOpenAddUser(false);
         handleGroupClick(selectedGroup); // Refresh members
         setNewUsername('');
@@ -169,7 +210,16 @@ function GroupsView() {
 
   const handleUseGroup = (group) => {
     setSelectedGroupId(group.gid);
-    console.log(`Using group: ${group.name} with gid: ${group.gid}`);
+    setSelectedGroupName(group.name);
+    setSelectedGroup(group);
+    setShowDetails(true); // Mostrar detalles inmediatamente
+    localStorage.setItem('selectedGroupId', group.gid);
+    localStorage.setItem('selectedGroupName', group.name);
+    localStorage.setItem('showGroupDetails', '1');
+    fetch(`http://localhost:9000/api/groups/${group.gid}/members`)
+      .then(r => r.json())
+      .then(data => setMembers(data.members))
+      .catch(err => console.error('Error loading members:', err));
   };
 
   const handleDeleteUser = async () => {
@@ -180,7 +230,6 @@ function GroupsView() {
     }
 
     try {
-      console.log('Username to delete:', usernameToDelete);
 
       const userResponse = await fetch(`http://localhost:9000/api/users/getuid?username=${usernameToDelete}`);
       if (!userResponse.ok) {
@@ -192,7 +241,6 @@ function GroupsView() {
       const userData = await userResponse.json();
       const uid = userData.uid;
 
-      console.log('UID obtained for user:', uid, selectedGroup.gid);
 
       const response = await fetch(`http://localhost:9000/api/groups/remove-member`, {
         method: 'DELETE',
@@ -203,7 +251,6 @@ function GroupsView() {
       });
 
       if (response.ok) {
-        console.log(`User ${usernameToDelete} deleted successfully`);
         // Actualiza la lista de miembros
         fetch(`http://localhost:9000/api/groups/${selectedGroup.gid}/members`)
           .then(response => response.json())
@@ -223,7 +270,6 @@ function GroupsView() {
 
   const handleLeaveGroup = async () => {
     const userId = localStorage.getItem('userId');
-    console.log(userId);
     if (!userId) {
       console.error('User ID is not available');
       return;
@@ -239,7 +285,6 @@ function GroupsView() {
       });
 
       if (response.ok) {
-        console.log('User left group successfully');
         fetch(`http://localhost:9000/api/groups/${selectedGroup.gid}/members`)
           .then(response => response.json())
           .then(data => setMembers(data.members))
@@ -255,50 +300,49 @@ function GroupsView() {
 
   const handleDeleteGroup = async () => {
     const userId = localStorage.getItem('userId');
-    if (!userId) {
-      console.error('User ID is not available');
+    if (!userId || !selectedGroup) {
+      console.error('Cannot delete: missing userId or selectedGroup');
       return;
     }
 
     try {
-      // Primero, elimina al grupo de la tabla UserGroup
-      const userGroupResponse = await fetch(`http://localhost:9000/api/groups/leave`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ uid: userId, gid: selectedGroup.gid }), // Enviar el GID del grupo
-      });
-
-      if (!userGroupResponse.ok) {
-        const errorData = await userGroupResponse.json();
-        console.error('Error removing group from UserGroup:', errorData.error);
-        return;
-      }
-
-      // Luego, elimina el grupo de la tabla principal
       const groupResponse = await fetch(`http://localhost:9000/api/groups/delete`, {
         method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ gid: selectedGroup.gid, adminId: userId }), // Enviar el GID del grupo y el ID del administrador 
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gid: selectedGroup.gid, adminId: userId }),
       });
 
       if (groupResponse.ok) {
-        console.log('Group deleted successfully');
-        await cargarGrupos(); // Actualiza la lista de grupos
-        setSelectedGroup(null); // Restablece el grupo seleccionado
+        // Limpieza inmediata de estado local para mejor UX
+        setGroups(prev => prev.filter(g => g.gid !== selectedGroup.gid));
+        setSelectedGroup(null);
+        setSelectedGroupId(null);
+  setMembers([]); // roles y userRolesMap se limpian implícitamente al no tener groupId
+        setShowDetails(false);
+        setOpenAssignDialog(false);
+        setDeleteError(false);
+        setDeleteSuccess(true);
+        setTimeout(() => setDeleteSuccess(false), 3000);
       } else {
         const errorData = await groupResponse.json();
         console.error('Error deleting group:', errorData.error);
+        setDeleteSuccess(false);
+        setDeleteError(true);
+        setTimeout(() => setDeleteError(false), 4000);
       }
     } catch (error) {
       console.error('Error in request:', error);
+      setDeleteSuccess(false);
+      setDeleteError(true);
+      setTimeout(() => setDeleteError(false), 4000);
     }
   };
 
+  // Estado para diálogos de roles
+  // Eliminadas declaraciones duplicadas aquí
 
+  // Callbacks para roles
+  // Se removieron handlers de roles y assign dialog sin uso directo (warnings ESLint)
 
   return (
     <ThemeProvider theme={theme}>
@@ -385,7 +429,7 @@ function GroupsView() {
                   groups.map(group => (
                     <ListItem 
                       key={group.gid} 
-                      button 
+                      // onClick solo resalta, no activa el grupo
                       onClick={() => handleGroupClick(group)} 
                       sx={{ 
                         display: 'flex', 
@@ -437,7 +481,7 @@ function GroupsView() {
                 }
               }}
             >
-              {selectedGroup ? (
+              {selectedGroup && showDetails && selectedGroupId === selectedGroup.gid ? (
                 <>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, flexWrap: { xs: 'wrap', sm: 'nowrap' }, mb: 3 }}>
                     <Typography
@@ -514,32 +558,158 @@ function GroupsView() {
                             background: 'rgba(59, 130, 246, 0.1)',
                             borderColor: 'rgba(59, 130, 246, 0.2)',
                             transform: 'translateX(4px)',
-                          }
+                          },
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
                         }}
                       >
-                        <Typography sx={{ fontWeight: 500 }}>
-                          {member.username}
-                          {selectedGroup.adminId === member.uid && (
-                            <Typography 
-                              component="span" 
-                              sx={{ 
-                                ml: 1, 
-                                fontSize: '0.75rem',
-                                background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
-                                color: 'white',
-                                padding: '2px 8px',
-                                borderRadius: 1,
-                                fontWeight: 600,
-                              }}
-                            >
-                              Admin
-                            </Typography>
-                          )}
-                        </Typography>
+                        <Box display="flex" alignItems="center" gap={1}>
+                          <Typography sx={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            {member.username}
+                            {selectedGroup.adminId === member.uid ? (
+                              <Typography 
+                                component="span" 
+                                sx={{ 
+                                  ml: 1, 
+                                  fontSize: '0.7rem',
+                                  lineHeight: 1,
+                                  background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                                  color: 'white',
+                                  padding: '2px 8px',
+                                  borderRadius: 1,
+                                  fontWeight: 600,
+                                  letterSpacing: 0.3,
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
+                                }}
+                              >
+                                {/* Corona inline (CrownIcon) */}
+                                <svg
+                                  width="16"
+                                  height="16"
+                                  viewBox="0 0 24 24"
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  style={{ filter: 'drop-shadow(0 0 2px rgba(255,255,255,0.4))', transform: 'translateY(-1px)' }}
+                                >
+                                  {/* Corona estilo flat: tres puntas con círculos y base */}
+                                  <path
+                                    fill="#ffffff"
+                                    d="M4 9.5 7.2 12 10 7l2 3.5L14 7l2.8 5 3.2-2.5-.8 6.5H4.8L4 9.5Z"
+                                  />
+                                  <circle cx="10" cy="6" r="1.1" fill="#ffffff" />
+                                  <circle cx="14" cy="6" r="1.1" fill="#ffffff" />
+                                  <circle cx="12" cy="5" r="1.1" fill="#ffffff" />
+                                  <rect x="6" y="17" width="12" height="3" rx="1.2" fill="#ffffff" />
+                                </svg>
+                                Admin
+                              </Typography>
+                            ) : (
+                              <Typography
+                                component="span"
+                                sx={{
+                                  ml: 1,
+                                  fontSize: '0.7rem',
+                                  lineHeight: 1,
+                                  background: 'linear-gradient(135deg, #3b82f6 0%, #1e3a8a 100%)',
+                                  color: 'white',
+                                  padding: '2px 8px',
+                                  borderRadius: 1,
+                                  fontWeight: 600,
+                                  letterSpacing: 0.3,
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  opacity: 0.85
+                                }}
+                              >
+                                <PersonIcon sx={{ fontSize: '0.9rem' }} /> Member
+                              </Typography>
+                            )}
+                          </Typography>
+                          <UserRolesChips roles={(userRolesMap[member.uid] || []).map(rid => roles.find(r => r.gr_id === rid)).filter(Boolean)} />
+                        </Box>
+                        {/* Botón para asignar/editar roles, visible para todos si el usuario es admin del grupo */}
+                        {selectedGroup.adminId === localStorage.getItem('userId') && (
+                          <Button
+                            variant="outlined"
+                            size="small"
+                            sx={{ ml: 2, minWidth: 110 }}
+                            onClick={async () => {
+                              if (typeof fetchRoles === 'function') await fetchRoles();
+                              setSelectedAssignUser(member);
+                              setTimeout(() => setOpenAssignDialog(true), 0);
+                            }}
+                          >
+                            Assign/Edit Rol
+                          </Button>
+                        )}
                       </ListItem>
                     ))}
                   </List>
+
+                  {/* Group Roles Panel - igual que Members */}
+                  <Box mb={3}>
+                    {(roles && roles.length > 0) || (selectedGroup.adminId === localStorage.getItem('userId')) ? (
+                      // Si hay roles o el usuario es líder, mostramos el panel completo (maneja su propio estado vacío y botón New Role)
+                      <GroupRolesPanel
+                        groupId={selectedGroup.gid}
+                        isLeader={selectedGroup.adminId === localStorage.getItem('userId')}
+                        roles={roles}
+                        createRole={createRole}
+                        updateRole={updateRole}
+                        deleteRole={deleteRole}
+                        loading={rolesLoading}
+                        error={rolesError}
+                      />
+                    ) : (
+                      // Usuario no es líder y no existen roles: solo mensaje informativo
+                      <>
+                        <Typography variant="h5" gutterBottom sx={{ fontWeight: 600, mb: 2 }}>Group Roles</Typography>
+                        <Typography color="text.secondary" sx={{ mb: 2 }}>No roles defined.</Typography>
+                      </>
+                    )}
+                    <AssignRolesDialog
+                      open={openAssignDialog}
+                      onClose={() => {
+                        setOpenAssignDialog(false);
+                        setSelectedAssignUser(null);
+                      }}
+                      groupId={selectedGroup.gid}
+                      users={members.map(m => ({ id: m.uid, name: m.username }))}
+                      roles={roles}
+                      getUserRoles={userId => fetchUserRoles(userId)}
+                      onAssign={assignRole}
+                      onRemove={removeRole}
+                      selectedUser={selectedAssignUser}
+                      setSelectedUser={setSelectedAssignUser}
+                    />
+                  </Box>
                 </>
+              ) : selectedGroup ? (
+                // Caso: se dio clic a un grupo pero aún no se ha presionado USE
+                <Box>
+                  <Typography
+                    variant="h4"
+                    component="h2"
+                    sx={{
+                      mb: 2,
+                      fontSize: 'clamp(1.25rem, 2.2vw, 1.75rem)',
+                      fontWeight: 600,
+                      lineHeight: 1.3,
+                      background: 'linear-gradient(90deg, #3b82f6 0%, #f59e0b 100%)',
+                      backgroundClip: 'text',
+                      WebkitBackgroundClip: 'text',
+                      WebkitTextFillColor: 'transparent',
+                    }}
+                  >
+                    {selectedGroup.name}
+                  </Typography>
+                  <Typography color="text.secondary" sx={{ mb: 1 }}>
+                    Press the group's USE button to view members and roles.
+                  </Typography>
+                </Box>
               ) : (
                 <Box sx={{ 
                   display: 'flex', 
@@ -565,6 +735,40 @@ function GroupsView() {
           </Box>
         </Container>
       </Box>
+
+      {/* Feedback icon (sin diálogo) para eliminación de grupo */}
+      {(deleteSuccess || deleteError) && (
+        <Box
+          sx={{
+            position: 'fixed',
+            bottom: 24,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1,
+            px: 2.5,
+            py: 1.25,
+            borderRadius: '999px',
+            background: deleteSuccess
+              ? 'linear-gradient(135deg, rgba(16,185,129,0.15) 0%, rgba(5,150,105,0.4) 100%)'
+              : 'linear-gradient(135deg, rgba(239,68,68,0.15) 0%, rgba(220,38,38,0.4) 100%)',
+            border: `1px solid ${deleteSuccess ? 'rgba(16,185,129,0.5)' : 'rgba(239,68,68,0.5)'}`,
+            boxShadow: deleteSuccess
+              ? '0 4px 18px -2px rgba(16,185,129,0.4)'
+              : '0 4px 18px -2px rgba(239,68,68,0.4)',
+            backdropFilter: 'blur(12px)',
+            zIndex: 1200,
+            color: '#fff',
+            fontWeight: 500,
+            fontSize: '0.9rem'
+          }}
+        >
+          {deleteSuccess && <CheckCircleIcon sx={{ color: '#10b981' }} />}
+          {deleteError && <ErrorOutlineIcon sx={{ color: '#f87171' }} />}
+          <span>{deleteSuccess ? 'Group deleted' : 'Delete failed'}</span>
+        </Box>
+      )}
 
       <Dialog 
         open={openAddUser} 

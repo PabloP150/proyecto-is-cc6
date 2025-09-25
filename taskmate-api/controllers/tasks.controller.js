@@ -47,6 +47,9 @@ tasksRoute.post('/', async (req, res) => {
         datetime,
         percentage
     } = req.body;
+    if (!gid) {
+        return res.status(400).json({ error: 'Group ID is required' });
+    }
     TasksModel.addTask({
         tid,
         gid,
@@ -80,6 +83,9 @@ tasksRoute.put('/:id', async (req, res) => {
         datetime,
         percentage
     } = req.body;
+    if (!gid) {
+        return res.status(400).json({ error: 'Group ID is required' });
+    }
     TasksModel.updateTask({
         tid,
         gid,
