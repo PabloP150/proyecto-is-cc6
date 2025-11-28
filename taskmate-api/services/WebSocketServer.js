@@ -14,6 +14,7 @@ class WebSocketServer {
         });
 
         this.setupEventHandlers();
+        this.setupHeartbeat();
         console.log('WebSocket server initialized on /chat path');
     }
 
@@ -57,7 +58,7 @@ class WebSocketServer {
                 ws.on('message', async (data) => {
                     try {
                         const message = JSON.parse(data.toString());
-                        await session.handleMessage(message);
+                    session.handleMessage(message);
                     } catch (error) {
                         console.error('Error parsing message:', error);
                         session.sendMessage({
@@ -78,13 +79,6 @@ class WebSocketServer {
                 ws.on('error', (error) => {
                     console.error(`WebSocket error for user ${userId}:`, error);
                     this.sessionManager.disconnect(ws);
-                });
-
-                // Send connection confirmation
-                session.sendMessage({
-                    type: 'system',
-                    content: 'WebSocket connection established successfully',
-                    timestamp: new Date()
                 });
 
             } catch (error) {
@@ -119,7 +113,39 @@ class WebSocketServer {
         return false;
     }
 
+    setupHeartbeat() {
+        // Send ping to all connected clients every 30 seconds
+        this.heartbeatInterval = setInterval(() => {
+            this.wss.clients.forEach((ws) => {
+                if (ws.readyState === WebSocket.OPEN) {
+                    ws.ping();
+                }
+            });
+        }, 30000); // 30 seconds
+    }
+
+    // Method to disconnect a specific user (for logout)
+    disconnectUser(userId) {
+        return this.sessionManager.disconnectUser(userId);
+    }
+
+    // Get session information for debugging
+    getSessionInfo() {
+        const sessions = [];
+        for (const [userId, session] of this.sessionManager.userSessions) {
+            sessions.push(session.getSessionInfo());
+        }
+        return {
+            activeWebSocketConnections: this.wss.clients.size,
+            totalSessions: sessions.length,
+            sessions: sessions
+        };
+    }
+
     close() {
+        if (this.heartbeatInterval) {
+            clearInterval(this.heartbeatInterval);
+        }
         this.sessionManager.cleanup();
         this.wss.close();
     }

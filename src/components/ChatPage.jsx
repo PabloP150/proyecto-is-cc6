@@ -38,11 +38,14 @@ function ChatPage() {
             const newToken = localStorage.getItem('token') || newUser.token;
             setUser(newUser);
             setToken(newToken);
+            // Reset history flags when token changes (new login)
+            setHasReceivedHistory(false);
+            setInitialMessageShown(false);
         };
 
         // Listen for storage changes
         window.addEventListener('storage', handleStorageChange);
-        
+
         // Also check on component mount/focus
         window.addEventListener('focus', handleStorageChange);
 
@@ -54,7 +57,7 @@ function ChatPage() {
 
     // Debug logging (run only once)
     useEffect(() => {
-    // debug: info inicial (removido logs)
+        // debug: info inicial (removido logs)
     }, []); // Empty dependency array to run only once
 
     // WebSocket connection
@@ -71,7 +74,19 @@ function ChatPage() {
             autoConnect: !!token, // Only auto-connect if we have a token
             onMessage: (data) => {
                 // Handle incoming messages from WebSocket
-                if (data.type === 'assistant' || data.type === 'system') {
+                if (data.type === 'history_restore') {
+                    // Restore chat history from server
+                    console.log('Restoring chat history:', data.messages.length, 'messages');
+                    const restoredMessages = data.messages.map((msg, index) => ({
+                        id: `restored-${index}-${Date.now()}`,
+                        type: msg.type,
+                        content: msg.content,
+                        timestamp: new Date(msg.timestamp)
+                    }));
+                    setMessages(restoredMessages);
+                    setHasReceivedHistory(true);
+                    setIsTyping(false);
+                } else if (data.type === 'assistant' || data.type === 'system') {
                     setMessages(prev => [...prev, {
                         id: Date.now().toString(),
                         type: data.type,
@@ -104,28 +119,39 @@ function ChatPage() {
         scrollToBottom();
     }, [messages]);
 
-    // Initialize with a welcome message
+    // Initialize with a welcome message (only if no history is restored)
+    const [hasReceivedHistory, setHasReceivedHistory] = useState(false);
+    const [initialMessageShown, setInitialMessageShown] = useState(false);
+
     useEffect(() => {
-        if (token) {
-            setMessages([
-                {
-                    id: '1',
-                    type: 'assistant',
-                    content: 'Hello! I\'m your AI assistant. I can help you with task management, planning, and productivity advice. How can I assist you today?',
-                    timestamp: new Date()
+        // Wait a bit to see if we receive history restoration
+        const timer = setTimeout(() => {
+            if (!hasReceivedHistory && !initialMessageShown) {
+                if (token) {
+                    setMessages([
+                        {
+                            id: '1',
+                            type: 'assistant',
+                            content: 'Hello! I\'m your AI assistant. I can help you with task management, planning, and productivity advice. How can I assist you today?',
+                            timestamp: new Date()
+                        }
+                    ]);
+                } else {
+                    setMessages([
+                        {
+                            id: '1',
+                            type: 'system',
+                            content: 'Please log in to start chatting with the AI assistant.',
+                            timestamp: new Date()
+                        }
+                    ]);
                 }
-            ]);
-        } else {
-            setMessages([
-                {
-                    id: '1',
-                    type: 'system',
-                    content: 'Please log in to start chatting with the AI assistant.',
-                    timestamp: new Date()
-                }
-            ]);
-        }
-    }, [token]);
+                setInitialMessageShown(true);
+            }
+        }, 1000); // Wait 1 second for potential history restoration
+
+        return () => clearTimeout(timer);
+    }, [token, hasReceivedHistory, initialMessageShown]);
 
     const handleSendMessage = async (e) => {
         e.preventDefault();
@@ -225,7 +251,7 @@ function ChatPage() {
                         )}
                         {token && !isConnected && (
                             <Box sx={{ mt: 1 }}>
-                                <IconButton 
+                                <IconButton
                                     onClick={connectWebSocket}
                                     size="small"
                                     sx={{ bgcolor: 'primary.main', color: 'white' }}
@@ -237,6 +263,7 @@ function ChatPage() {
                         <Typography variant="caption" sx={{ mt: 1, opacity: 0.7 }}>
                             Debug: Token exists: {!!token ? 'Yes' : 'No'}
                             {token && ` (${token.substring(0, 20)}...)`}
+                            {hasReceivedHistory && ' | History restored'}
                         </Typography>
                     </Box>
 

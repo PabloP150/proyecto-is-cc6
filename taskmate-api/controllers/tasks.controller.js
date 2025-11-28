@@ -1,6 +1,7 @@
 const tasksRoute = require('express').Router();
 const { v4: uuidv4 } = require('uuid');
 const TasksModel = require('./../models/tasks.model');
+const AnalyticsIntegration = require('../services/AnalyticsIntegration');
 
 tasksRoute.get('/', async (req, res) => {
     const { gid } = req.query;
@@ -139,13 +140,21 @@ tasksRoute.put('/nodes/:id', async (req, res) => {
 
 tasksRoute.delete('/:id', async (req, res) => {
     const { id: tid } = req.params;
-    TasksModel.deleteTask(tid)
-    .then((rowCount, more) => {
-        res.status(200).json({ rowCount, more });
-    })
-    .catch(error => {
+    
+    try {
+        // Delete the task
+        const result = await TasksModel.deleteTask(tid);
+
+        // Record task deletion in analytics (non-blocking)
+        AnalyticsIntegration.onTaskDeletion(tid).catch(error => {
+            console.error('Analytics tracking failed for task deletion:', error);
+            // Don't fail the main operation
+        });
+
+        res.status(200).json({ rowCount: result });
+    } catch (error) {
         res.status(500).json({ error });
-    });
+    }
 });
 
 tasksRoute.delete('/list/:gid/:list', async (req, res) => {

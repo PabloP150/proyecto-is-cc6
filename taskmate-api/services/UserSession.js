@@ -1,218 +1,227 @@
-const fetch = require('node-fetch');
+const { v4: uuidv4 } = require('uuid');
+const llmService = require('./LLMService');
 
-const PYTHON_LLM_SERVICE_BASE_URL = 'http://localhost:8001';
+const projectService = require('./ProjectService');
 
 class UserSession {
     constructor(userId, websocket) {
         this.userId = userId;
         this.websocket = websocket;
-        this.context = null;
+        this.sessionId = uuidv4(); // Unique ID for this user's session with the backend
+        this.llmService = llmService;
+        this.connected = true;
         this.createdAt = new Date();
         this.lastActivity = new Date();
-        this.state = { pending_action: null, data: null };
+        this.chatHistory = []; // Store chat messages
+        this.maxHistorySize = 100; // Limit history to prevent memory issues
+
+        this.initialize();
     }
 
-    async initialize() {
-        try {
-            // Initialize user context (will be implemented in later tasks)
-            this.context = {
-                userId: this.userId,
-                tasks: [],
-                groups: [],
-                preferences: {},
-                lastUpdated: new Date()
-            };
+    initialize() {
+        // Remove any existing listeners for this session to avoid duplicates
+        this.llmService.removeAllListeners(this.sessionId);
 
-            // Send welcome message
-            this.sendMessage({
-                type: 'system',
-                content: 'Connected to TaskMate AI Assistant',
-                timestamp: new Date()
-            });
+        // Listen for messages from the Python service intended for this session
+        this.llmService.on(this.sessionId, (response) => {
+            this.forwardResponseToClient(response);
+        });
 
-        } catch (error) {
-            console.error('Error initializing user session:', error);
-            throw error;
+        console.log(`Initialized session ${this.sessionId} for user ${this.userId}`);
+    }
+
+    handleMessage(message) {
+        this.lastActivity = new Date();
+
+        // Handle analytics requests
+        if (message.type === 'analytics') {
+            this.handleAnalyticsMessage(message);
+            return;
         }
+
+        // Handle regular chat messages
+        if (message.type !== 'user' || !message.content) {
+            return;
+        }
+
+        // Store user message in history
+        this.addToHistory({
+            type: 'user',
+            content: message.content,
+            timestamp: new Date()
+        });
+
+        const request = {
+            requestId: uuidv4(),
+            sessionId: this.sessionId,
+            method: 'handle_user_message', // All user messages from the client go to this single method
+            params: {
+                message: message.content,
+                context: { userId: this.userId }
+            }
+        };
+
+        this.llmService.send(request);
     }
 
-    async handleMessage(message) {
-        try {
-            this.lastActivity = new Date();
-            
-            console.log(`Message from user ${this.userId}:`, message);
-            
-            if (message.type !== 'user' || !message.content) {
-                console.log(`Received non-user message type: ${message.type}`);
-                return;
-            }
+    handleAnalyticsMessage(message) {
+        console.log(`[UserSession] Handling analytics request for user ${this.userId}:`, message.action);
 
-            const userContent = message.content;
+        const request = {
+            requestId: message.requestId || uuidv4(),
+            sessionId: this.sessionId,
+            type: 'analytics',
+            action: message.action,
+            data: message.data || {}
+        };
 
-            console.log(`UserSession State: ${JSON.stringify(this.state)}`);
+        // Send analytics request to MCP server via LLMService
+        this.llmService.send(request);
+    }
 
-            if (this.state.pending_action) {
-                console.log(`Pending action detected: ${this.state.pending_action}`);
-                const response = await fetch(`${PYTHON_LLM_SERVICE_BASE_URL}/is_affirmative`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: userContent }),
-                });
-                const data = await response.json();
-                const isAffirmative = data.is_affirmative;
-                console.log(`User response is affirmative: ${isAffirmative}`);
+    async forwardResponseToClient(response) {
+        const { event, data } = response;
+        let messageType = 'assistant'; // Default type
 
-                if (isAffirmative) {
-                    await this.handleAffirmativeResponse();
-                } else {
-                    this.resetState();
-                    this.sendMessage({
-                        type: 'assistant',
-                        content: 'Okay, what would you like to do instead?',
-                        timestamp: new Date(),
-                    });
-                }
+        if (event === 'response') {
+            messageType = 'assistant';
+            this.sendMessage({ type: messageType, content: data.content, timestamp: new Date() });
+        } else if (event === 'response_chunk') {
+            messageType = 'assistant_chunk';
+            this.sendMessage({ type: messageType, content: data, timestamp: new Date() });
+        } else if (event === 'response_stream_end') {
+            // The stream end event can be used to signify the end of a stream on the client.
+        } else if (event === 'save_plan') {
+            console.log('Received save_plan event:', JSON.stringify(data, null, 2));
+            const result = await projectService.createProjectFromPlan(data.plan, data.original_message, this.userId);
+            if (result.success) {
+                this.sendMessage({ type: 'system', content: `Project "${result.groupId}" created successfully!`, timestamp: new Date() });
             } else {
-                const response = await fetch(`${PYTHON_LLM_SERVICE_BASE_URL}/classify_intent`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: userContent }),
-                });
-                const data = await response.json();
-                const intent = data.intent;
-                console.log(`Classified Intent: ${intent}`);
-
-                if (intent === 'create_new_project') {
-                    this.state.pending_action = 'confirm_new_project';
-                    this.state.data = { original_message: userContent };
-                    console.log(`Updated UserSession State: ${JSON.stringify(this.state)}`);
-                    this.sendMessage({
-                        type: 'assistant',
-                        content: 'It seems you want to start a new project. Shall I help you plan it?',
-                        timestamp: new Date(),
-                    });
-                } else {
-                    const response = await fetch(`${PYTHON_LLM_SERVICE_BASE_URL}/generate_response`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ message: userContent, context: this.context }),
-                    });
-                    const data = await response.json();
-                    const llmResponse = data.response;
-                    this.sendMessage({
-                        type: 'assistant',
-                        content: llmResponse,
-                        timestamp: new Date(),
-                    });
-                }
+                console.error('Failed to create project:', result.error);
+                this.sendMessage({ type: 'system', content: `Failed to create the project: ${result.error}`, timestamp: new Date() });
             }
-        } catch (error) {
-            console.error('Error handling message:', error);
-            this.sendMessage({
-                type: 'system',
-                content: 'Sorry, there was an error processing your message. Please try again.',
-                timestamp: new Date(),
+        } else if (event === 'analytics_response') {
+            // Forward analytics responses to the client
+            console.log(`[UserSession] Forwarding analytics response to user ${this.userId}`);
+            this.sendMessage({ 
+                type: 'analytics_response', 
+                data: data,
+                requestId: response.requestId,
+                timestamp: new Date() 
             });
+        } else if (event === 'analytics_error') {
+            // Forward analytics errors to the client
+            console.log(`[UserSession] Forwarding analytics error to user ${this.userId}:`, response.error);
+            this.sendMessage({ 
+                type: 'analytics_error', 
+                error: response.error,
+                requestId: response.requestId,
+                timestamp: new Date() 
+            });
+        } else if (response.error) {
+            messageType = 'system';
+            this.sendMessage({ type: messageType, content: response.error, timestamp: new Date() });
         }
-    }
-
-    async handleAffirmativeResponse() {
-        if (this.state.pending_action === 'confirm_new_project') {
-            console.log(`Handling affirmative response for 'confirm_new_project'. Fetching recommendations...`);
-            this.state.pending_action = 'confirm_save_tasks';
-            const response = await fetch('http://localhost:9000/api/mcp', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    type: 'request',
-                    sender: 'OrchestratorAgent',
-                    receiver: 'RecommendationsAgent',
-                    payload: { idea: this.state.data.original_message },
-                }),
-            });
-            const data = await response.json();
-            const recommendations = data.payload.recommendations;
-            this.state.data.project_name = recommendations.project_name;
-            this.state.data.project_description = recommendations.project_description;
-            this.state.data.tasks = recommendations.tasks;
-            this.state.data.milestones = recommendations.milestones;
-            console.log(`Received recommendations: ${JSON.stringify(this.state.data)}`);
-
-            let planDetails = `Here is a plan for your project: ${recommendations.project_name}\n\n`;
-            if (recommendations.project_description) {
-                planDetails += `Description: ${recommendations.project_description}\n\n`;
-            }
-            planDetails += 'Tasks:\n';
-            recommendations.tasks.forEach(t => {
-                planDetails += `- ${t.name}: ${t.description} (Due: ${t.due_date}, Status: ${t.status})\n`;
-            });
-            if (recommendations.milestones && recommendations.milestones.length > 0) {
-                planDetails += '\nMilestones:\n';
-                recommendations.milestones.forEach(m => {
-                    planDetails += `- ${m.name}: ${m.description} (Date: ${m.date})\n`;
-                });
-            }
-            planDetails += '\nDo you want to save this plan?';
-
-            this.sendMessage({
-                type: 'assistant',
-                content: planDetails,
-                timestamp: new Date(),
-            });
-        } else if (this.state.pending_action === 'confirm_save_tasks') {
-            console.log(`Handling affirmative response for 'confirm_save_tasks'. Saving project, tasks, and milestones...`);
-            console.log(`Saving data: ${JSON.stringify(this.state.data)}`);
-            await fetch('http://localhost:9000/api/mcp/tasks', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    user_id: this.userId,
-                    project_name: this.state.data.project_name,
-                    project_description: this.state.data.project_description,
-                    tasks: this.state.data.tasks,
-                    milestones: this.state.data.milestones,
-                }),
-            });
-            this.sendMessage({
-                type: 'assistant',
-                content: 'I have saved the project, tasks, and milestones for you.',
-                timestamp: new Date(),
-            });
-            this.resetState();
-        }
-    }
-
-    resetState() {
-        this.state.pending_action = null;
-        this.state.data = null;
     }
 
     sendMessage(message) {
         try {
+            this.lastActivity = new Date();
+
+            // Store non-system messages in history (except welcome messages)
+            if (message.type !== 'system' || !message.content.includes('Connected to TaskMate')) {
+                this.addToHistory(message);
+            }
+
             if (this.websocket && this.websocket.readyState === 1) { // WebSocket.OPEN
                 this.websocket.send(JSON.stringify(message));
+            } else if (this.connected) {
+                console.warn(`Cannot send message to user ${this.userId}: WebSocket not open`);
             }
         } catch (error) {
-            console.error('Error sending message:', error);
+            console.error(`Error sending message to user ${this.userId}:`, error);
         }
     }
 
-    cleanup() {
-        // Clean up any resources
-        this.context = null;
-        
-        // Close WebSocket if still open
-        if (this.websocket && this.websocket.readyState === 1) {
-            this.websocket.close();
-        }
+    reconnect() {
+        console.log(`Reconnecting session ${this.sessionId} for user ${this.userId}`);
+        this.connected = true;
+        this.lastActivity = new Date();
+
+        // Send chat history first
+        this.sendChatHistory();
+    }
+
+    markDisconnected() {
+        console.log(`Marking session ${this.sessionId} as disconnected for user ${this.userId}`);
+        this.connected = false;
+        this.websocket = null;
+    }
+
+    isDisconnected() {
+        return !this.connected;
     }
 
     isActive() {
-        return this.websocket && this.websocket.readyState === 1;
+        return this.connected && this.websocket && this.websocket.readyState === 1;
     }
 
-    updateActivity() {
-        this.lastActivity = new Date();
+    addToHistory(message) {
+        // Add timestamp if not present
+        if (!message.timestamp) {
+            message.timestamp = new Date();
+        }
+
+        this.chatHistory.push(message);
+
+        // Limit history size to prevent memory issues
+        if (this.chatHistory.length > this.maxHistorySize) {
+            this.chatHistory = this.chatHistory.slice(-this.maxHistorySize);
+        }
+    }
+
+    sendChatHistory() {
+        if (this.chatHistory.length > 0) {
+            console.log(`Sending ${this.chatHistory.length} messages from chat history to user ${this.userId}`);
+
+            // Send a special message type to indicate history restoration
+            this.websocket.send(JSON.stringify({
+                type: 'history_restore',
+                messages: this.chatHistory,
+                timestamp: new Date()
+            }));
+        }
+    }
+
+    getChatHistory() {
+        return this.chatHistory;
+    }
+
+    clearHistory() {
+        this.chatHistory = [];
+    }
+
+    getSessionInfo() {
+        return {
+            userId: this.userId,
+            sessionId: this.sessionId,
+            connected: this.connected,
+            createdAt: this.createdAt,
+            lastActivity: this.lastActivity,
+            isActive: this.isActive(),
+            messageCount: this.chatHistory.length
+        };
+    }
+
+    cleanup() {
+        console.log(`Cleaning up session ${this.sessionId} for user ${this.userId}`);
+        this.connected = false;
+        this.llmService.removeAllListeners(this.sessionId);
+
+        if (this.websocket && this.websocket.readyState === 1) {
+            this.websocket.close(1000, 'Session cleanup');
+        }
+        this.websocket = null;
     }
 }
 

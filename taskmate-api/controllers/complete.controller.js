@@ -1,6 +1,7 @@
-// controllers/user.controller.js
+// controllers/complete.controller.js
 const completeRoute = require('express').Router();
 const CompleteModel = require('./../models/complete.model');
+const AnalyticsIntegration = require('../services/AnalyticsIntegration');
 
 
 completeRoute.post('/', async (req, res) => {
@@ -12,26 +13,37 @@ completeRoute.post('/', async (req, res) => {
         percentage,
         datetime
     } = req.body;
-    CompleteModel.addComplete({ 
-        tid,
-        gid,
-        name,
-        description,
-        percentage,
-        datetime
-    })
-    .then((rowCount, more) => {
+    
+    try {
+        // Add to completed tasks
+        const result = await CompleteModel.addComplete({ 
+            tid,
+            gid,
+            name,
+            description,
+            percentage,
+            datetime
+        });
+
+        // Record task completion in analytics (non-blocking)
+        // Assume successful completion if it's moved to Complete table
+        AnalyticsIntegration.onTaskCompletion(tid, true, {
+            percentage,
+            completedAt: datetime
+        }).catch(error => {
+            console.error('Analytics tracking failed for task completion:', error);
+            // Don't fail the main operation
+        });
+
         res.status(200).json({
             data: {
-                rowCount,
-                more,
+                rowCount: result,
                 tid
             },
         });
-    })
-    .catch(error => {
+    } catch (error) {
         res.status(500).json({ error });
-    });
+    }
 });
 
 completeRoute.get('/:gid', async (req, res) => {

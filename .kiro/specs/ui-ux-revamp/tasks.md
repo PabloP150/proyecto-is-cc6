@@ -45,7 +45,7 @@
   - Implement consistent button and input styling
   - _Requirements: 8.1, 8.2, 8.3_
 
-- [ ] 5. Transform main application pages
+- [x] 5. Transform main application pages
 - [x] 5.1 Redesign HomePage with card layout
   - Update HomePage to use Card components for feature sections
   - Implement new color scheme and gradient backgrounds
@@ -65,7 +65,7 @@
   - Update background to match the homepage
   - _Requirements: 1.1, 1.2, 4.2_
 
-- [ ] 6. Upgrade task management interface
+- [x] 6. Upgrade task management interface
 - [x] 6.1 Update Recordatorios component with new theme
   - Apply new color scheme to task management interface
   - Update form inputs and buttons to use new component system

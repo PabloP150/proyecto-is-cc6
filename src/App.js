@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Navigate, Route, BrowserRouter as Router, Routes } from 'react-router-dom';
 import { ReactFlowProvider } from 'reactflow';
+import AnalyticsDashboard from './components/AnalyticsDashboard';
 import BlockDiagram from './components/BlockDiagram';
 import CalendarView from './components/CalendarView';
 import { Box } from '@mui/material';
@@ -123,6 +124,10 @@ function App() {
               <Route
                 path="/chat"
                 element={user ? <ChatPage /> : <Navigate to="/" />}
+              />
+              <Route
+                path="/analytics"
+                element={user ? <AnalyticsDashboard /> : <Navigate to="/" />}
               />
               <Route
                 path="/websocket-test"

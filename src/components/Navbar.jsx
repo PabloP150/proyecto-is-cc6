@@ -83,6 +83,7 @@ const Navbar = ({ user, onLogout }) => {
             { path: '/calendar', label: 'Calendar' },
             { path: '/block-diagram', label: 'Milestones' },
             { path: '/groups', label: 'Groups' },
+            { path: '/analytics', label: 'Analytics' },
             { path: '/chat', label: 'AI Bot' }
           ].map(({ path, label }) => (
             <Button

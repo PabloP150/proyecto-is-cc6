@@ -154,6 +154,6 @@ CREATE TABLE dbo.UserGroupRoles (
 --select * from dbo.UserGroupRoles;
 
 
---delete from dbo.Users where uid='F3DB0B3A-23A8-451E-9566-0A018410112C'
-
---SELECT * FROM dbo.Users WHERE username='admin' AND password=HASHBYTES('SHA2_256','hola')
+-- Analytics tables are now created via migration script
+-- See: migrations/001_add_analytics_tables.sql
+-- Run: ./run-analytics-migration.sh to apply analytics schema
