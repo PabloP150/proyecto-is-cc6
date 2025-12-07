@@ -101,6 +101,7 @@ function BlockDiagram() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
+      {/* Main Background Layer */}
       <Box
         sx={{
           position: 'fixed',
@@ -108,10 +109,23 @@ function BlockDiagram() {
           left: 0,
           width: '100%',
           height: '100%',
-          backgroundImage: 'url(/1.jpeg)',
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          backgroundRepeat: 'no-repeat',
+          background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%)',
+          zIndex: -2,
+        }}
+      />
+
+      {/* Radial Gradient Overlays */}
+      <Box
+        sx={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          background: `
+            radial-gradient(circle at 20% 80%, rgba(59, 130, 246, 0.2) 0%, transparent 50%),
+            radial-gradient(circle at 80% 20%, rgba(245, 158, 11, 0.15) 0%, transparent 50%)
+          `,
           zIndex: -1,
         }}
       />

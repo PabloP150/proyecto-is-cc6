@@ -16,7 +16,9 @@ class LLMService extends EventEmitter {
     }
 
     console.log(`[LLMService] Connecting to ${this.url}...`);
-    this.ws = new WebSocket(this.url);
+    this.ws = new WebSocket(this.url, [], {
+      perMessageDeflate: false // Disable compression to avoid RSV1 issues
+    });
 
     this.ws.on('open', () => {
       console.log('[LLMService] WebSocket connection established.');

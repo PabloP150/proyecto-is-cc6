@@ -521,9 +521,9 @@ class AnalyticsController {
     static async _checkTeamAccess(requesterId, groupId) {
         try {
             const query = `
-                SELECT ugr.role_id, gr.role_name
+                SELECT ugr.gr_id, gr.gr_name
                 FROM dbo.UserGroupRoles ugr
-                JOIN dbo.GroupRoles gr ON ugr.role_id = gr.role_id
+                JOIN dbo.GroupRoles gr ON ugr.gr_id = gr.gr_id
                 WHERE ugr.uid = @requesterId AND ugr.gid = @groupId
             `;
             
@@ -536,7 +536,7 @@ class AnalyticsController {
             
             // Check if user has team leader role
             return result && result.length > 0 && 
-                   result.some(role => role.role_name && role.role_name.toLowerCase().includes('leader'));
+                   result.some(role => role.gr_name && role.gr_name.toLowerCase().includes('leader'));
             
         } catch (error) {
             console.error('Error checking team access:', error);
@@ -558,11 +558,11 @@ class AnalyticsController {
             const query = `
                 SELECT DISTINCT ugr1.gid
                 FROM dbo.UserGroupRoles ugr1
-                JOIN dbo.GroupRoles gr ON ugr1.role_id = gr.role_id
+                JOIN dbo.GroupRoles gr ON ugr1.gr_id = gr.gr_id
                 JOIN dbo.UserGroupRoles ugr2 ON ugr1.gid = ugr2.gid
                 WHERE ugr1.uid = @requesterId 
                   AND ugr2.uid = @targetUserId
-                  AND gr.role_name LIKE '%leader%'
+                  AND gr.gr_name LIKE '%leader%'
             `;
             
             const params = [

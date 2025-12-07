@@ -1,0 +1,46 @@
+nohup: ignoring input
+
+> taskmate-api@1.0.0 start
+> node server.js
+
+Loaded .env from taskmate-api: {
+  LLM_PROVIDER: 'gemini',
+  LLM_API_KEY: 'AIzaSyDMtu-LO1Zo8KARMAsOI-j7Em-sGC8cZik',
+  LLM_TEMPERATURE: '0.7'
+}
+Loaded root-level .env (if present): {
+  LLM_PROVIDER: 'gemini',
+  LLM_API_KEY: 'AIzaSyDMtu-LO1Zo8KARMAsOI-j7Em-sGC8cZik',
+  LLM_TEMPERATURE: '0.7'
+}
+[LLMService] Connection to ws://localhost:8001/ws temporarily disabled for debugging
+WebSocket server initialized on /chat path
+API running on PORT 9000
+WebSocket server available at ws://localhost:9000/chat
+WebSocket connection verified for user: 6324F5E8-ED7D-4F5E-B4D3-ACC8A80D8381
+WebSocket connection established for user: 6324F5E8-ED7D-4F5E-B4D3-ACC8A80D8381
+Initialized session 59d3c8fc-2e18-4a2b-b788-d6cdb7e1051c for user 6324F5E8-ED7D-4F5E-B4D3-ACC8A80D8381
+User 6324F5E8-ED7D-4F5E-B4D3-ACC8A80D8381 connected. Creating new session.
+Active sessions: 1, User sessions: 1
+Request client URL: localhost:9000/ >>>> API SERVER LOCAL
+WebSocket connection verified for user: 6324F5E8-ED7D-4F5E-B4D3-ACC8A80D8381
+WebSocket connection established for user: 6324F5E8-ED7D-4F5E-B4D3-ACC8A80D8381
+User 6324F5E8-ED7D-4F5E-B4D3-ACC8A80D8381 reconnected. Reusing existing session.
+Reconnecting session 59d3c8fc-2e18-4a2b-b788-d6cdb7e1051c for user 6324F5E8-ED7D-4F5E-B4D3-ACC8A80D8381
+Active sessions: 1, User sessions: 1
+WebSocket connection closed for user: 6324F5E8-ED7D-4F5E-B4D3-ACC8A80D8381
+WebSocket disconnected for user 6324F5E8-ED7D-4F5E-B4D3-ACC8A80D8381 (session preserved)
+Marking session 59d3c8fc-2e18-4a2b-b788-d6cdb7e1051c as disconnected for user 6324F5E8-ED7D-4F5E-B4D3-ACC8A80D8381
+Active WebSocket sessions: 0, Preserved user sessions: 1
+Request client URL: localhost:9000/ >>>> API SERVER LOCAL
+WebSocket connection verified for user: 6324F5E8-ED7D-4F5E-B4D3-ACC8A80D8381
+WebSocket connection established for user: 6324F5E8-ED7D-4F5E-B4D3-ACC8A80D8381
+User 6324F5E8-ED7D-4F5E-B4D3-ACC8A80D8381 reconnected. Reusing existing session.
+Reconnecting session 59d3c8fc-2e18-4a2b-b788-d6cdb7e1051c for user 6324F5E8-ED7D-4F5E-B4D3-ACC8A80D8381
+Sending 1 messages from chat history to user 6324F5E8-ED7D-4F5E-B4D3-ACC8A80D8381
+Active sessions: 1, User sessions: 1
+WebSocket connection closed for user: 6324F5E8-ED7D-4F5E-B4D3-ACC8A80D8381
+WebSocket disconnected for user 6324F5E8-ED7D-4F5E-B4D3-ACC8A80D8381 (session preserved)
+Marking session 59d3c8fc-2e18-4a2b-b788-d6cdb7e1051c as disconnected for user 6324F5E8-ED7D-4F5E-B4D3-ACC8A80D8381
+Active WebSocket sessions: 0, Preserved user sessions: 1
+WebSocket connection closed for user: 6324F5E8-ED7D-4F5E-B4D3-ACC8A80D8381

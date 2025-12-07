@@ -1,8 +1,8 @@
 import {
-    Box,
-    Container,
-    CssBaseline,
-    Typography,
+  Box,
+  Container,
+  CssBaseline,
+  Typography,
 } from '@mui/material';
 import { ThemeProvider } from '@mui/material/styles';
 import moment from 'moment';
@@ -77,7 +77,7 @@ function CalendarView() {
           `,
         }}
       />
-      
+
       <Box
         sx={{
           minHeight: '100vh',
@@ -95,8 +95,8 @@ function CalendarView() {
           },
         }}
       >
-        <Container 
-          component="main" 
+        <Container
+          component="main"
           maxWidth="xl"
           sx={{
             position: 'relative',
@@ -129,14 +129,14 @@ function CalendarView() {
               },
             }}
           >
-            <Typography 
-              component="h1" 
-              variant="h3" 
-              align="center" 
+            <Typography
+              component="h1"
+              variant="h3"
+              align="center"
               sx={{
                 mb: 4,
                 fontWeight: 700,
-                background: 'linear-gradient(90deg, #3b82f6 0%, #f59e0b 100%)',
+                background: 'seashell',
                 backgroundClip: 'text',
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
@@ -144,8 +144,8 @@ function CalendarView() {
             >
               Your Calendar
             </Typography>
-            <Box 
-              sx={{ 
+            <Box
+              sx={{
                 height: 'calc(85vh - 120px)',
                 minHeight: '600px',
                 '& .rbc-calendar': {
@@ -154,7 +154,7 @@ function CalendarView() {
               }}
             >
               {!selectedGroupId && (
-                <div style={{color: 'white', textAlign:'center', marginTop:'2rem'}}>
+                <div style={{ color: 'white', textAlign: 'center', marginTop: '2rem' }}>
                   Selecciona un grupo para ver el calendario.
                 </div>
               )}

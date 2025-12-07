@@ -48,6 +48,17 @@ groupRoute.get('/user-groups', async (req, res) => {
     }
 });
 
+//obtener los roles disponibles para un grupo
+groupRoute.get('/:gid/roles', async (req, res) => {
+    const { gid } = req.params;
+    try {
+        const roles = await GroupModel.getRolesByGroupId(gid);
+        res.status(200).json(roles);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Unirse a un grupo existente
 groupRoute.post('/join', async (req, res) => {
     const { uid, gid } = req.body;

@@ -61,7 +61,7 @@ class SessionManager {
                         this.userSessions.delete(session.userId);
                         session.cleanup();
                     }
-                }, 5 * 60 * 1000); // 5 minutes timeout
+                }, 60 * 60 * 1000); // 1 hour timeout
                 
                 console.log(`Active WebSocket sessions: ${this.activeSessions.size}, Preserved user sessions: ${this.userSessions.size}`);
             }

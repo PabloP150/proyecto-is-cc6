@@ -4,21 +4,19 @@ import { Button } from '@mui/material';
 import { getEdgeParams } from './utils.js';
 import { useEffect, useState } from 'react';
 
-function FloatingEdge({ id, source, target, markerEnd, style }) {
+function FloatingEdge({ id, source, target, markerEnd, style, data }) {
   const sourceNode = useInternalNode(source);
   const targetNode = useInternalNode(target);
-  const [prerequisite, setPrerequisite] = useState(true);
-  const [label, setLabel] = useState('Loading...');
+  const [prerequisite, setPrerequisite] = useState(data?.prerequisite ?? true);
+  const [label, setLabel] = useState(data?.prerequisite ? 'Prerequisite' : 'Progressor');
 
+  // Update state when data changes (prevents blinking)
   useEffect(() => {
-    const fetchData = async () => {
-      const response = await fetch(`http://localhost:9000/api/edges/${id}`);
-      const data = await response.json();
-      setPrerequisite(data.data[0].prerequisite ? 1 : 0);
-      setLabel(data.data[0].prerequisite == 1 ? 'Prerequisite' : 'Progressor');
+    if (data?.prerequisite !== undefined) {
+      setPrerequisite(data.prerequisite);
+      setLabel(data.prerequisite ? 'Prerequisite' : 'Progressor');
     }
-    fetchData()
-  }, []);
+  }, [data?.prerequisite]);
 
   if (!sourceNode || !targetNode) {
     return null;
@@ -39,18 +37,31 @@ function FloatingEdge({ id, source, target, markerEnd, style }) {
   });
 
   const onEdgeClick = async () => {
-    setLabel(prerequisite ? 'Progressor' : 'Prerequisite');
-    setPrerequisite(!prerequisite);
+    const newPrerequisite = !prerequisite;
+    setLabel(newPrerequisite ? 'Prerequisite' : 'Progressor');
+    setPrerequisite(newPrerequisite);
+    
     try {
       await fetch(`http://localhost:9000/api/edges/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ prerequisite: prerequisite ? 0 : 1 }),
+        body: JSON.stringify({ prerequisite: newPrerequisite ? 1 : 0 }),
       });
+      
+      // Refresh nodes to show updated percentages from database trigger
+      if (data?.refreshNodes) {
+        // Small delay to ensure database trigger has completed
+        setTimeout(() => {
+          data.refreshNodes();
+        }, 100);
+      }
     } catch (error) {
       console.error('Error updating edge:', error);
+      // Revert on error
+      setLabel(prerequisite ? 'Prerequisite' : 'Progressor');
+      setPrerequisite(prerequisite);
     }
   };
 

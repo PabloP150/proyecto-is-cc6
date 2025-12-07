@@ -101,21 +101,48 @@ function Login({ onLogin }) {
   return (
     <ThemeProvider>
       <CssBaseline />
-      <Box
-        sx={{
-          minHeight: '100vh',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundImage: 'url(/1.jpeg)',
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          backgroundRepeat: 'no-repeat',
-          backgroundAttachment: 'fixed',
-          padding: 2,
-        }}
-      >
+      <>
+        {/* Main Background Layer */}
+        <Box
+          sx={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: -2,
+            background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%)',
+          }}
+        />
+
+        {/* Radial Gradient Overlays */}
+        <Box
+          sx={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: -1,
+            background: `
+              radial-gradient(circle at 20% 80%, rgba(59, 130, 246, 0.2) 0%, transparent 50%),
+              radial-gradient(circle at 80% 20%, rgba(245, 158, 11, 0.15) 0%, transparent 50%)
+            `,
+          }}
+        />
+
+        <Box
+          sx={{
+            minHeight: '100vh',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 2,
+            position: 'relative',
+            zIndex: 1,
+          }}
+        >
         <Container component="main" maxWidth="sm">
           <Grow in={true} timeout={800}>
             <Card
@@ -256,7 +283,8 @@ function Login({ onLogin }) {
             </Card>
           </Grow>
         </Container>
-      </Box>
+        </Box>
+      </>
     </ThemeProvider>
   );
 }

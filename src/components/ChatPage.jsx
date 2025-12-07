@@ -24,6 +24,8 @@ function ChatPage() {
     const [messages, setMessages] = useState([]);
     const [inputMessage, setInputMessage] = useState('');
     const [isTyping, setIsTyping] = useState(false);
+    const [hasReceivedHistory, setHasReceivedHistory] = useState(false);
+    const [initialMessageShown, setInitialMessageShown] = useState(false);
     const messagesEndRef = useRef(null);
     const inputRef = useRef(null);
 
@@ -36,11 +38,21 @@ function ChatPage() {
         const handleStorageChange = () => {
             const newUser = JSON.parse(localStorage.getItem('user') || '{}');
             const newToken = localStorage.getItem('token') || newUser.token;
+
+            // Only reset history if the user actually changed (different userId)
+            const currentUserId = user?.userId || user?.id;
+            const newUserId = newUser?.userId || newUser?.id;
+
             setUser(newUser);
             setToken(newToken);
-            // Reset history flags when token changes (new login)
-            setHasReceivedHistory(false);
-            setInitialMessageShown(false);
+
+            // Only reset history flags if it's a different user (not just token refresh)
+            if (currentUserId && newUserId && currentUserId !== newUserId) {
+                console.log('Different user detected, resetting chat history');
+                setHasReceivedHistory(false);
+                setInitialMessageShown(false);
+                setMessages([]); // Clear messages for different user
+            }
         };
 
         // Listen for storage changes
@@ -73,6 +85,8 @@ function ChatPage() {
         {
             autoConnect: !!token, // Only auto-connect if we have a token
             onMessage: (data) => {
+                console.log('ChatPage received WebSocket message:', data);
+                
                 // Handle incoming messages from WebSocket
                 if (data.type === 'history_restore') {
                     // Restore chat history from server
@@ -87,6 +101,7 @@ function ChatPage() {
                     setHasReceivedHistory(true);
                     setIsTyping(false);
                 } else if (data.type === 'assistant' || data.type === 'system') {
+                    console.log('Received assistant/system message:', data);
                     setMessages(prev => [...prev, {
                         id: Date.now().toString(),
                         type: data.type,
@@ -94,6 +109,8 @@ function ChatPage() {
                         timestamp: new Date(data.timestamp)
                     }]);
                     setIsTyping(false);
+                } else {
+                    console.log('Received unknown message type:', data.type, data);
                 }
             },
             onError: (error) => {
@@ -120,14 +137,14 @@ function ChatPage() {
     }, [messages]);
 
     // Initialize with a welcome message (only if no history is restored)
-    const [hasReceivedHistory, setHasReceivedHistory] = useState(false);
-    const [initialMessageShown, setInitialMessageShown] = useState(false);
 
     useEffect(() => {
-        // Wait a bit to see if we receive history restoration
-        const timer = setTimeout(() => {
-            if (!hasReceivedHistory && !initialMessageShown) {
-                if (token) {
+        // Only show initial message if we have a token but no existing messages and no history received
+        if (token && !hasReceivedHistory && !initialMessageShown && messages.length === 0) {
+            // Wait a bit to see if we receive history restoration
+            const timer = setTimeout(() => {
+                // Double-check conditions before showing initial message
+                if (!hasReceivedHistory && messages.length === 0) {
                     setMessages([
                         {
                             id: '1',
@@ -136,22 +153,23 @@ function ChatPage() {
                             timestamp: new Date()
                         }
                     ]);
-                } else {
-                    setMessages([
-                        {
-                            id: '1',
-                            type: 'system',
-                            content: 'Please log in to start chatting with the AI assistant.',
-                            timestamp: new Date()
-                        }
-                    ]);
+                    setInitialMessageShown(true);
                 }
-                setInitialMessageShown(true);
-            }
-        }, 1000); // Wait 1 second for potential history restoration
+            }, 1500); // Wait 1.5 seconds for potential history restoration
 
-        return () => clearTimeout(timer);
-    }, [token, hasReceivedHistory, initialMessageShown]);
+            return () => clearTimeout(timer);
+        } else if (!token && messages.length === 0) {
+            // Show login message if no token
+            setMessages([
+                {
+                    id: '1',
+                    type: 'system',
+                    content: 'Please log in to start chatting with the AI assistant.',
+                    timestamp: new Date()
+                }
+            ]);
+        }
+    }, [token, hasReceivedHistory, initialMessageShown, messages.length]);
 
     const handleSendMessage = async (e) => {
         e.preventDefault();
@@ -170,13 +188,22 @@ function ChatPage() {
         setInputMessage('');
         setIsTyping(true);
 
+        console.log('Sending message via WebSocket:', {
+            type: 'user',
+            content: userMessage.content,
+            timestamp: userMessage.timestamp
+        });
+
         const success = sendWebSocketMessage({
             type: 'user',
             content: userMessage.content,
             timestamp: userMessage.timestamp
         });
 
+        console.log('Message send result:', success);
+
         if (!success) {
+            console.error('Failed to send message via WebSocket');
             setIsTyping(false);
             // Add error message if send failed
             setMessages(prev => [...prev, {
@@ -237,13 +264,7 @@ function ChatPage() {
                         <Typography variant="h5" component="h1" sx={{ mb: 1 }}>
                             AI Assistant
                         </Typography>
-                        <Typography
-                            variant="body2"
-                            color={isConnected ? 'success.main' : 'error.main'}
-                        >
-                            Status: {connectionStatus}
-                            {wsError && ` - ${wsError}`}
-                        </Typography>
+
                         {!token && (
                             <Typography variant="body2" color="warning.main">
                                 No authentication token found. Please log in again.
@@ -260,11 +281,7 @@ function ChatPage() {
                                 </IconButton>
                             </Box>
                         )}
-                        <Typography variant="caption" sx={{ mt: 1, opacity: 0.7 }}>
-                            Debug: Token exists: {!!token ? 'Yes' : 'No'}
-                            {token && ` (${token.substring(0, 20)}...)`}
-                            {hasReceivedHistory && ' | History restored'}
-                        </Typography>
+
                     </Box>
 
                     {/* Messages Container */}

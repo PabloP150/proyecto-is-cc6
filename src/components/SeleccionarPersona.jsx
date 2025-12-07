@@ -121,14 +121,54 @@ const SeleccionarPersona = ({ tid }) => {
 
   return (
     <>
-      <IconButton onClick={handleClick}>
-        <PersonIcon />
+      <IconButton
+        onClick={handleClick}
+        sx={{
+          color: 'white',
+          background: 'rgba(139, 92, 246, 0.1)',
+          border: '1px solid rgba(139, 92, 246, 0.3)',
+          borderRadius: 1,
+          transition: 'all 0.3s cubic-bezier(.4, 2, .3, 1)',
+          '&:hover': {
+            background: 'rgba(139, 92, 246, 0.2)',
+            transform: 'scale(1.1)',
+            boxShadow: '0 4px 12px 0 rgba(139, 92, 246, 0.3)',
+          },
+        }}
+      >
+        <PersonIcon fontSize="small" />
       </IconButton>
-      <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleClose}>
+      <Menu
+        anchorEl={anchorEl}
+        open={Boolean(anchorEl)}
+        onClose={handleClose}
+        slotProps={{
+          paper: {
+            sx: {
+              background: 'linear-gradient(135deg, rgba(30, 58, 138, 0.95) 0%, rgba(55, 65, 81, 0.98) 100%)',
+              backdropFilter: 'blur(20px)',
+              border: '1px solid rgba(59, 130, 246, 0.2)',
+              borderRadius: '14px',
+              color: 'white',
+              boxShadow: '0 8px 32px 0 rgba(30, 58, 138, 0.3)',
+            },
+          },
+        }}
+      >
         {members.length > 0 ? (
           <MemberSwitchList members={members} selectedMembers={selectedMembers} onToggle={handleSelect} />
         ) : (
-          <MenuItem disabled>No hay miembros disponibles</MenuItem>
+          <MenuItem
+            disabled
+            sx={{
+              color: 'rgba(255, 255, 255, 0.7)',
+              '&.Mui-disabled': {
+                color: 'rgba(255, 255, 255, 0.5)',
+              },
+            }}
+          >
+            No hay miembros disponibles
+          </MenuItem>
         )}
       </Menu>
     </>
@@ -136,16 +176,56 @@ const SeleccionarPersona = ({ tid }) => {
 };
 
 const MemberSwitchList = ({ members, selectedMembers, onToggle }) => (
-  <div style={{ padding: '10px', borderRadius: '5px' }}>
+  <div style={{
+    padding: '16px',
+    borderRadius: '12px',
+    minWidth: '200px',
+  }}>
     {members.map((member) => (
-      <div key={member.uid} style={{ display: 'flex', alignItems: 'center', marginRight: '10px' }}>
+      <div
+        key={member.uid}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          marginBottom: '12px',
+          padding: '8px 12px',
+          borderRadius: '8px',
+          transition: 'all 0.2s ease',
+          cursor: 'pointer',
+        }}
+        onMouseEnter={(e) => {
+          e.target.style.background = 'rgba(59, 130, 246, 0.2)';
+        }}
+        onMouseLeave={(e) => {
+          e.target.style.background = 'transparent';
+        }}
+        onClick={() => onToggle(member)}
+      >
         <Switch
           checked={selectedMembers.includes(member.uid)}
           onChange={() => onToggle(member)}
           name={member.username}
           color="primary"
+          sx={{
+            '& .MuiSwitch-switchBase.Mui-checked': {
+              color: '#3b82f6',
+            },
+            '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+              backgroundColor: '#3b82f6',
+            },
+            '& .MuiSwitch-track': {
+              backgroundColor: 'rgba(255, 255, 255, 0.3)',
+            },
+          }}
         />
-        <span style={{ marginLeft: '10px' }}>{member.username}</span>
+        <span style={{
+          marginLeft: '12px',
+          color: 'white',
+          fontWeight: '500',
+          fontSize: '14px',
+        }}>
+          {member.username}
+        </span>
       </div>
     ))}
   </div>

@@ -197,18 +197,25 @@ const useWebSocket = (url, token, options = {}) => {
   // Auto-connect effect - runs when autoConnect, url, or token changes
   useEffect(() => {
     if (autoConnect && url && token) {
-  // debug: auto-conectar
       shouldReconnect.current = true;
 
-      // If there's an existing connection, close it first
-      if (ws.current) {
-        ws.current.close(1000, 'Reconnecting with new parameters');
-      }
+      // Only reconnect if we don't have an active connection or if URL changed
+      const needsNewConnection = !ws.current || 
+                                ws.current.readyState === WebSocket.CLOSED || 
+                                ws.current.readyState === WebSocket.CLOSING ||
+                                currentUrl.current !== url;
 
-      // Connect after a short delay to allow cleanup
-      setTimeout(() => {
-        connect();
-      }, 100);
+      if (needsNewConnection) {
+        // If there's an existing connection, close it first
+        if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+          ws.current.close(1000, 'Reconnecting with new parameters');
+        }
+
+        // Connect after a short delay to allow cleanup
+        setTimeout(() => {
+          connect();
+        }, 100);
+      }
     }
   }, [autoConnect, url, token, connect]);
 

@@ -3,91 +3,70 @@
 ```mermaid
 graph TB
     %% Frontend Layer
-    subgraph "Frontend Layer"
-        UI[React 18 SPA]
-        MUI[Material-UI Components]
-        RF[ReactFlow Visualization]
-        CAL[React Big Calendar]
+    subgraph "Frontend"
         WS_CLIENT[WebSocket Client]
+        MUI[Material-UI]
+        RF[ReactFlow]
+        UI[React SPA]
     end
 
-    %% API Gateway Layer
-    subgraph "API Gateway"
+    %% Backend Layer
+    subgraph "Backend (Node.js)"
         EXPRESS[Express.js Server]
-        CORS[CORS Middleware]
-        JWT[JWT Authentication]
-        ROUTES[REST API Routes]
-    end
-
-    %% Business Logic Layer
-    subgraph "Business Logic Layer"
-        CONTROLLERS[Controllers Layer]
-        MODELS[Data Models]
-        SERVICES[Business Services]
-        ANALYTICS[Analytics Engine]
-        WEBSOCKET[WebSocket Server]
+        ANALYTICS_API[Analytics API]
+        CONTROLLERS[Controllers]
+        WS_SERVER[WebSocket Handler]
     end
 
     %% AI/ML Layer
-    subgraph "AI/ML Services"
-        MCP[Model Context Protocol]
+    subgraph "AI Services (Python)"
+        MCP_ORCHESTRATOR[MCP Orchestrator]
+        RECS_AGENT[Recommendations Agent]
+        ANALYTICS_AGENT[Analytics Agent]
         GEMINI[Google Gemini API]
-        PYTHON[Python MCP Server]
-        LLM[LLM Service]
     end
 
     %% Data Layer
-    subgraph "Data Persistence"
-        MSSQL[(Microsoft SQL Server)]
-        ANALYTICS_DB[(Analytics Tables)]
-        TRIGGERS[Database Triggers]
+    subgraph "Database (SQL Server)"
+        DB_SCHEMA[(Tables & Triggers)]
     end
 
     %% External Services
-    subgraph "External Services"
+    subgraph "External"
         GOOGLE_AI[Google AI Platform]
-        ENV[Environment Config]
     end
 
     %% Frontend Connections
     UI --> MUI
     UI --> RF
-    UI --> CAL
     UI --> WS_CLIENT
 
     %% Frontend to Backend
     UI --> EXPRESS
-    WS_CLIENT --> WEBSOCKET
+    WS_CLIENT --> WS_SERVER
 
-    %% API Gateway
-    EXPRESS --> CORS
-    EXPRESS --> JWT
-    EXPRESS --> ROUTES
+    %% Backend Internal
+    EXPRESS --> ANALYTICS_API
+    EXPRESS --> CONTROLLERS
+    EXPRESS --> WS_SERVER
 
-    %% Business Logic Connections
-    ROUTES --> CONTROLLERS
-    CONTROLLERS --> MODELS
-    CONTROLLERS --> SERVICES
-    CONTROLLERS --> ANALYTICS
-    EXPRESS --> WEBSOCKET
+    %% Backend to AI
+    WS_SERVER --> MCP_ORCHESTRATOR
 
-    %% AI/ML Connections
-    SERVICES --> MCP
-    MCP --> PYTHON
-    PYTHON --> GEMINI
-    ANALYTICS --> LLM
-    LLM --> GOOGLE_AI
+    %% AI TO DB
+    ANALYTICS_AGENT --> DB_SCHEMA
+
+    %% AI Internal Connections
+    MCP_ORCHESTRATOR --> ANALYTICS_AGENT
+    MCP_ORCHESTRATOR --> RECS_AGENT
+    RECS_AGENT --> GEMINI
+    ANALYTICS_AGENT --> GEMINI
+    GEMINI --> GOOGLE_AI
 
     %% Data Connections
-    MODELS --> MSSQL
-    ANALYTICS --> ANALYTICS_DB
-    MSSQL --> TRIGGERS
-    ANALYTICS_DB --> TRIGGERS
-
-    %% External Connections
-    GEMINI --> GOOGLE_AIi
-    PYTHON --> ENV
-    EXPRESS --> ENV
+    ANALYTICS_API --> DB_SCHEMA
+    CONTROLLERS --> DB_SCHEMA
+    
 
     %% Styling
     classDef frontend fill:#1e3a8a,stroke:#3b82f6,stroke-width:2px,color:#ffffff
@@ -97,8 +76,35 @@ graph TB
     classDef external fill:#7f1d1d,stroke:#ef4444,stroke-width:2px,color:#ffffff
 
     class UI,MUI,RF,CAL,WS_CLIENT frontend
-    class EXPRESS,CORS,JWT,ROUTES,CONTROLLERS,MODELS,SERVICES,ANALYTICS,WEBSOCKET backend
-    class MCP,GEMINI,PYTHON,LLM ai
-    class MSSQL,ANALYTICS_DB,TRIGGERS data
-    class GOOGLE_AI,ENV external
+    class EXPRESS,WS_SERVER,CONTROLLERS,ANALYTICS_API backend
+    class MCP_ORCHESTRATOR,RECS_AGENT,ANALYTICS_AGENT,GEMINI ai
+    class DB_SCHEMA data
+    class GOOGLE_AI external
 ```
+
+## Architecture Components
+
+### Frontend Layer (React 18)
+- **React SPA**: Main application with routing and state management
+- **Material-UI**: Component library for consistent UI design
+- **ReactFlow**: Interactive flowchart and diagram visualization
+- **React Big Calendar**: Calendar view for task scheduling
+- **WebSocket Client**: Real-time communication with backend
+
+### Backend Layer (Node.js)
+- **Express.js Server**: REST API server with CORS and middleware
+- **WebSocket Handler**: Integrated WebSocket server for real-time features
+- **Controllers**: Business logic for tasks, users, groups, analytics
+- **Analytics API**: Dedicated endpoints for analytics and recommendations
+
+### AI Services (Python)
+- **MCP Orchestrator**: Multi-agent coordinator managing WebSocket sessions and routing messages between specialized agents
+- **Recommendations Agent**: Generates comprehensive project plans with tasks, milestones, and technology recommendations
+- **Analytics Agent**: Provides intelligent task assignment recommendations based on team member expertise, workload, and success rates
+- **Google Gemini API**: AI model integration for natural language processing and intelligent decision making
+
+### Database (SQL Server)
+- **Tables & Triggers**: Core tables (Users, Groups, Tasks, Nodes, Edges), Analytics tables (TaskAnalytics, performance metrics), and automated triggers for data updates
+
+### External Services
+- **Google AI Platform**: Cloud-based AI services and Gemini API access

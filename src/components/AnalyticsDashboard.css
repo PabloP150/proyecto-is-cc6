@@ -37,7 +37,7 @@
     align-items: center;
 }
 
-.group-selector {
+.group-selector, .role-selector {
     padding: 10px 15px;
     background: rgba(30, 58, 138, 0.2);
     backdrop-filter: blur(10px);
@@ -46,17 +46,28 @@
     font-size: 14px;
     color: #e2e8f0;
     transition: all 0.3s ease;
+    min-width: 150px;
 }
 
-.group-selector:focus {
+.group-selector:focus, .role-selector:focus {
     outline: none;
     border-color: rgba(59, 130, 246, 0.6);
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
-.group-selector option {
+.group-selector option, .role-selector option {
     background: #1e293b;
     color: #e2e8f0;
+}
+
+.role-selector {
+    background: rgba(139, 92, 246, 0.2);
+    border-color: rgba(139, 92, 246, 0.3);
+}
+
+.role-selector:focus {
+    border-color: rgba(139, 92, 246, 0.6);
+    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
 }
 
 .refresh-btn {
@@ -77,6 +88,26 @@
     border-color: rgba(59, 130, 246, 0.5);
     transform: translateY(-1px);
     box-shadow: 0 4px 12px 0 rgba(59, 130, 246, 0.4);
+}
+
+.populate-btn {
+    padding: 10px 18px;
+    background: rgba(16, 185, 129, 0.2);
+    backdrop-filter: blur(10px);
+    color: #e2e8f0;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+.populate-btn:hover {
+    background: rgba(16, 185, 129, 0.3);
+    border-color: rgba(16, 185, 129, 0.5);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px 0 rgba(16, 185, 129, 0.4);
 }
 
 .loading {
@@ -177,6 +208,30 @@
     margin-bottom: 30px;
 }
 
+/* Dashboard Content with Sidebar Layout */
+.dashboard-content-with-sidebar {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 30px;
+    margin-bottom: 30px;
+    align-items: start;
+}
+
+.main-content {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 30px;
+}
+
+/* Three Column Layout */
+.dashboard-three-columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 25px;
+    margin-bottom: 30px;
+    align-items: start;
+}
+
 .chart-section, .expertise-section {
     background: rgba(30, 58, 138, 0.1);
     backdrop-filter: blur(20px);
@@ -217,11 +272,38 @@
     padding: 8px 0;
 }
 
+.member-info {
+    min-width: 140px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
 .member-name {
-    min-width: 90px;
     font-weight: 600;
     color: #f1f5f9;
     font-size: 15px;
+}
+
+.member-role {
+    font-size: 12px;
+    color: #94a3b8;
+    background: rgba(139, 92, 246, 0.2);
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    padding: 2px 8px;
+    border-radius: 12px;
+    text-align: center;
+    font-weight: 500;
+}
+
+.no-data-message {
+    text-align: center;
+    color: #94a3b8;
+    font-style: italic;
+    padding: 40px 20px;
+    background: rgba(15, 23, 42, 0.4);
+    border: 1px solid rgba(59, 130, 246, 0.2);
+    border-radius: 12px;
 }
 
 .bar-container {
@@ -320,6 +402,45 @@
     box-shadow: 0 12px 40px 0 rgba(30, 58, 138, 0.4);
 }
 
+/* Recommendations Sidebar */
+.recommendations-sidebar {
+    background: rgba(30, 58, 138, 0.1);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(59, 130, 246, 0.2);
+    border-radius: 16px;
+    padding: 25px;
+    box-shadow: 0 8px 32px 0 rgba(30, 58, 138, 0.3);
+    transition: all 0.3s ease;
+    position: sticky;
+    top: 20px;
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
+}
+
+.recommendations-sidebar:hover {
+    border-color: rgba(59, 130, 246, 0.3);
+    box-shadow: 0 12px 40px 0 rgba(30, 58, 138, 0.4);
+}
+
+/* Custom scrollbar for sidebar */
+.recommendations-sidebar::-webkit-scrollbar {
+    width: 6px;
+}
+
+.recommendations-sidebar::-webkit-scrollbar-track {
+    background: rgba(15, 23, 42, 0.4);
+    border-radius: 3px;
+}
+
+.recommendations-sidebar::-webkit-scrollbar-thumb {
+    background: rgba(59, 130, 246, 0.4);
+    border-radius: 3px;
+}
+
+.recommendations-sidebar::-webkit-scrollbar-thumb:hover {
+    background: rgba(59, 130, 246, 0.6);
+}
+
 .recommendations-panel h2 {
     margin: 0 0 25px 0;
     color: #f1f5f9;
@@ -329,6 +450,76 @@
     background-clip: text;
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
+}
+
+/* Three-column layout styling */
+.dashboard-three-columns .recommendations-panel h2 {
+    font-size: 1.3em;
+    margin-bottom: 20px;
+}
+
+.dashboard-three-columns .recommendation-card {
+    padding: 15px;
+    margin-bottom: 12px;
+}
+
+.dashboard-three-columns .rec-header {
+    gap: 12px;
+    margin-bottom: 10px;
+}
+
+.dashboard-three-columns .rec-name {
+    font-size: 14px;
+}
+
+.dashboard-three-columns .rec-reasoning {
+    font-size: 13px;
+    margin-left: 0;
+    margin-top: 8px;
+}
+
+.dashboard-three-columns .plan-card {
+    padding: 15px;
+}
+
+.dashboard-three-columns .plan-header {
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+/* Sidebar-specific styling */
+.recommendations-sidebar .recommendations-panel h2 {
+    font-size: 1.3em;
+    margin-bottom: 20px;
+}
+
+.recommendations-sidebar .recommendation-card {
+    padding: 15px;
+    margin-bottom: 12px;
+}
+
+.recommendations-sidebar .rec-header {
+    gap: 12px;
+    margin-bottom: 10px;
+}
+
+.recommendations-sidebar .rec-name {
+    font-size: 14px;
+}
+
+.recommendations-sidebar .rec-reasoning {
+    font-size: 13px;
+    margin-left: 0;
+    margin-top: 8px;
+}
+
+.recommendations-sidebar .plan-card {
+    padding: 15px;
+}
+
+.recommendations-sidebar .plan-header {
+    gap: 10px;
+    margin-bottom: 12px;
 }
 
 .task-input {
@@ -342,6 +533,25 @@
     backdrop-filter: blur(10px);
     border: 1px solid rgba(59, 130, 246, 0.2);
     border-radius: 12px;
+}
+
+/* Sidebar-specific task input layout */
+.recommendations-sidebar .task-input {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    padding: 20px;
+    margin-bottom: 25px;
+}
+
+.recommendations-sidebar .input-group {
+    width: 100%;
+}
+
+.recommendations-sidebar .get-recommendations-btn {
+    width: 100%;
+    padding: 12px 20px;
+    font-size: 13px;
 }
 
 .input-group {
@@ -566,6 +776,50 @@
     z-index: 1;
 }
 
+.rec-expertise {
+    margin-top: 10px;
+    margin-left: 46px;
+    color: #60a5fa;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.skill-alignment {
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.skill-alignment.high {
+    background: rgba(16, 185, 129, 0.2);
+    color: #10b981;
+}
+
+.skill-alignment.medium {
+    background: rgba(245, 158, 11, 0.2);
+    color: #f59e0b;
+}
+
+.skill-alignment.low {
+    background: rgba(239, 68, 68, 0.2);
+    color: #ef4444;
+}
+
+.rec-availability {
+    margin-top: 8px;
+    margin-left: 46px;
+    color: #34d399;
+    font-size: 13px;
+}
+
+.workload-impact {
+    color: #94a3b8;
+    font-style: italic;
+}
+
 /* Suggested Plan */
 .suggested-plan {
     margin-top: 30px;
@@ -624,7 +878,9 @@
 
 .plan-rationale,
 .plan-alternative,
-.plan-strategic {
+.plan-strategic,
+.plan-effort,
+.plan-risks {
     color: #94a3b8;
     font-size: 14px;
     line-height: 1.5;
@@ -633,7 +889,9 @@
 
 .plan-rationale strong,
 .plan-alternative strong,
-.plan-strategic strong {
+.plan-strategic strong,
+.plan-effort strong,
+.plan-risks strong {
     color: #f1f5f9;
     font-weight: 600;
 }
@@ -653,6 +911,22 @@
     border-radius: 8px;
     margin-top: 10px;
     margin-bottom: 0;
+}
+
+.plan-effort {
+    padding: 10px 15px;
+    background: rgba(245, 158, 11, 0.1);
+    border: 1px solid rgba(245, 158, 11, 0.2);
+    border-radius: 8px;
+    margin-top: 10px;
+}
+
+.plan-risks {
+    padding: 10px 15px;
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    border-radius: 8px;
+    margin-top: 10px;
 }
 
 /* Responsive Design */
@@ -685,6 +959,22 @@
     .dashboard-content {
         grid-template-columns: 1fr;
         gap: 20px;
+    }
+    
+    .dashboard-content-with-sidebar {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+    
+    .dashboard-three-columns {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+    
+    .recommendations-sidebar {
+        position: static;
+        max-height: none;
+        order: -1; /* Show recommendations at top on mobile */
     }
     
     .task-input {

@@ -97,7 +97,11 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
           const formattedEdges = edgesData.data.map(edge => ({
             id: edge.eid,
             source: edge.sourceId,
-            target: edge.targetId
+            target: edge.targetId,
+            data: {
+              prerequisite: edge.prerequisite,
+              refreshNodes: () => setRefresh(prev => !prev) // Add refresh function
+            }
           }));
 
           setNodes(formattedNodes);

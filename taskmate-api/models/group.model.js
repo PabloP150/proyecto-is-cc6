@@ -25,6 +25,17 @@ const getGroupsByUserId = async (uid) => {
     return execReadCommand(query, params);
 };
 
+const getRolesByGroupId = async (gid) => {
+    const query = `
+        SELECT gr_id, gr_name, gr_color, gr_icon
+        FROM dbo.GroupRoles
+        WHERE gid = @gid
+        ORDER BY gr_name
+    `;
+    const params = [{ name: 'gid', type: TYPES.UniqueIdentifier, value: gid }];
+    return execReadCommand(query, params);
+};
+
 // Eliminación en cascada con una sola consulta transaccional (consistencia de estilo)
 const deleteGroup = async (gid, adminId) => {
     const query = `
@@ -73,5 +84,6 @@ const deleteGroup = async (gid, adminId) => {
 module.exports = {
     addGroup,
     getGroupsByUserId,
+    getRolesByGroupId,
     deleteGroup,
 };

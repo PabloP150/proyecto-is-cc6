@@ -139,21 +139,73 @@ CREATE TABLE dbo.UserGroupRoles (
 --        'Test Group'
 --		);
 
---select * from dbo.Complete;
---select * from dbo.Users;
---select * from dbo.DeleteTask;
---select * from dbo.UserTask;
---select * from dbo.UserGroups;
---select * from dbo.Groups;
---select * from dbo.DeleteTask;
+-- =====================================
+-- ANALYTICS TABLES FOR TASK ASSIGNMENT RECOMMENDATIONS
+-- =====================================
+
+-- Track task assignments and completions for analytics
+CREATE TABLE dbo.TaskAnalytics (
+    id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    tid UNIQUEIDENTIFIER NOT NULL,
+    uid UNIQUEIDENTIFIER NOT NULL,
+    gid UNIQUEIDENTIFIER NOT NULL,
+    task_category VARCHAR(50) DEFAULT 'general',
+    assigned_at DATETIME2 NOT NULL DEFAULT GETDATE(),
+    completed_at DATETIME2 NULL,
+    success_status VARCHAR(20) DEFAULT 'pending', -- 'completed', 'failed', 'reassigned', 'pending'
+    completion_time_hours DECIMAL(10,2) NULL,
+    created_at DATETIME2 DEFAULT GETDATE(),
+    FOREIGN KEY (tid) REFERENCES dbo.Tasks(tid),
+    FOREIGN KEY (uid) REFERENCES dbo.Users(uid),
+    FOREIGN KEY (gid) REFERENCES dbo.Groups(gid),
+    CONSTRAINT CK_TaskAnalytics_SuccessStatus CHECK (success_status IN ('pending', 'completed', 'failed', 'reassigned')),
+    CONSTRAINT CK_TaskAnalytics_CompletionTime CHECK (completion_time_hours >= 0),
+    CONSTRAINT CK_TaskAnalytics_CompletedAt CHECK (completed_at IS NULL OR completed_at >= assigned_at)
+);
+
+-- Track user workload and capacity metrics (daily aggregates)
+CREATE TABLE dbo.UserMetrics (
+    id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    uid UNIQUEIDENTIFIER NOT NULL,
+    metric_date DATE NOT NULL,
+    active_tasks_count INT DEFAULT 0,
+    max_concurrent_tasks INT DEFAULT 0,
+    avg_completion_time_hours DECIMAL(10,2) DEFAULT 0,
+    success_rate_percentage DECIMAL(5,2) DEFAULT 0,
+    updated_at DATETIME2 DEFAULT GETDATE(),
+    FOREIGN KEY (uid) REFERENCES dbo.Users(uid),
+    CONSTRAINT UQ_UserMetrics_UID_Date UNIQUE(uid, metric_date),
+    CONSTRAINT CK_UserMetrics_ActiveTasks CHECK (active_tasks_count >= 0),
+    CONSTRAINT CK_UserMetrics_MaxConcurrent CHECK (max_concurrent_tasks >= 0),
+    CONSTRAINT CK_UserMetrics_AvgTime CHECK (avg_completion_time_hours >= 0),
+    CONSTRAINT CK_UserMetrics_SuccessRate CHECK (success_rate_percentage >= 0 AND success_rate_percentage <= 100)
+);
+
+-- Track expertise scores by category for each user
+CREATE TABLE dbo.UserExpertise (
+    id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    uid UNIQUEIDENTIFIER NOT NULL,
+    task_category VARCHAR(50) NOT NULL,
+    expertise_score DECIMAL(5,2) DEFAULT 0, -- 0-100 score
+    tasks_completed INT DEFAULT 0,
+    avg_completion_time_hours DECIMAL(10,2) DEFAULT 0,
+    success_rate_percentage DECIMAL(5,2) DEFAULT 0,
+    last_updated DATETIME2 DEFAULT GETDATE(),
+    FOREIGN KEY (uid) REFERENCES dbo.Users(uid),
+    CONSTRAINT UQ_UserExpertise_UID_Category UNIQUE(uid, task_category),
+    CONSTRAINT CK_UserExpertise_Score CHECK (expertise_score >= 0 AND expertise_score <= 100),
+    CONSTRAINT CK_UserExpertise_TasksCompleted CHECK (tasks_completed >= 0),
+    CONSTRAINT CK_UserExpertise_AvgTime CHECK (avg_completion_time_hours >= 0),
+    CONSTRAINT CK_UserExpertise_SuccessRate CHECK (success_rate_percentage >= 0 AND success_rate_percentage <= 100),
+    CONSTRAINT CK_UserExpertise_Category CHECK (task_category IN ('frontend', 'backend', 'database', 'testing', 'general'))
+);
+
 --select * from dbo.Users;
 --select * from dbo.Tasks;
 --select * from dbo.Nodes;
 --select * from dbo.Edges;
 --select * from dbo.GroupRoles;
 --select * from dbo.UserGroupRoles;
-
-
--- Analytics tables are now created via migration script
--- See: migrations/001_add_analytics_tables.sql
--- Run: ./run-analytics-migration.sh to apply analytics schema
+--select * from dbo.TaskAnalytics;
+--select * from dbo.UserMetrics;
+--select * from dbo.UserExpertise;
