@@ -33,6 +33,12 @@ class UserSession {
     handleMessage(message) {
         this.lastActivity = new Date();
 
+        // Handle heartbeat
+        if (message.type === 'ping') {
+            this.sendMessage({ type: 'pong' });
+            return;
+        }
+
         // Handle analytics requests
         if (message.type === 'analytics') {
             this.handleAnalyticsMessage(message);

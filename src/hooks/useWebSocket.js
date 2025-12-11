@@ -17,7 +17,8 @@ const useWebSocket = (url, token, options = {}) => {
     onError = () => { },
     onOpen = () => { },
     onClose = () => { },
-    autoConnect = true
+    autoConnect = true,
+    heartbeatInterval = 30000 // 30 seconds
   } = options;
 
   const [connectionStatus, setConnectionStatus] = useState('Disconnected');
@@ -32,12 +33,21 @@ const useWebSocket = (url, token, options = {}) => {
   const isConnecting = useRef(false);
   const currentUrl = useRef(null);
   const currentToken = useRef(null);
+  const heartbeatIntervalId = useRef(null); // Ref for heartbeat interval
 
   // Clear any existing reconnection timeout
   const clearReconnectTimeout = useCallback(() => {
     if (reconnectTimeoutId.current) {
       clearTimeout(reconnectTimeoutId.current);
       reconnectTimeoutId.current = null;
+    }
+  }, []);
+
+  // Clear heartbeat interval
+  const clearHeartbeat = useCallback(() => {
+    if (heartbeatIntervalId.current) {
+      clearInterval(heartbeatIntervalId.current);
+      heartbeatIntervalId.current = null;
     }
   }, []);
 
@@ -84,11 +94,25 @@ const useWebSocket = (url, token, options = {}) => {
         reconnectDelay.current = initialReconnectDelay;
         clearReconnectTimeout();
         callbacksRef.current.onOpen(event);
+
+        // Start heartbeat
+        if (heartbeatInterval > 0) {
+          clearHeartbeat();
+          heartbeatIntervalId.current = setInterval(() => {
+            if (ws.current?.readyState === WebSocket.OPEN) {
+              ws.current.send(JSON.stringify({ type: 'ping' }));
+            }
+          }, heartbeatInterval);
+        }
       };
 
       ws.current.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
+          // Ignore pong messages
+          if (data.type === 'pong') {
+            return;
+          }
           setLastMessage(data);
           callbacksRef.current.onMessage(data);
         } catch (parseError) {
@@ -102,6 +126,7 @@ const useWebSocket = (url, token, options = {}) => {
         isConnecting.current = false;
         setConnectionStatus('Disconnected');
         callbacksRef.current.onClose(event);
+        clearHeartbeat(); // Stop heartbeat on close
 
         // Attempt reconnection if enabled and not a clean close
         if (shouldReconnect.current && event.code !== 1000 && reconnectAttempts.current < maxReconnectAttempts) {
@@ -132,6 +157,7 @@ const useWebSocket = (url, token, options = {}) => {
         setError('WebSocket connection error');
         setConnectionStatus('Error');
         callbacksRef.current.onError(event);
+        clearHeartbeat(); // Stop heartbeat on error
       };
 
     } catch (connectionError) {
@@ -140,7 +166,7 @@ const useWebSocket = (url, token, options = {}) => {
       setError('Failed to create WebSocket connection');
       setConnectionStatus('Error');
     }
-  }, [maxReconnectAttempts, initialReconnectDelay, maxReconnectDelay, reconnectDecay, clearReconnectTimeout]);
+  }, [maxReconnectAttempts, initialReconnectDelay, maxReconnectDelay, reconnectDecay, clearReconnectTimeout, heartbeatInterval, clearHeartbeat]);
 
   // Disconnect from WebSocket server
   const disconnect = useCallback(() => {
@@ -148,6 +174,7 @@ const useWebSocket = (url, token, options = {}) => {
     shouldReconnect.current = false;
     isConnecting.current = false;
     clearReconnectTimeout();
+    clearHeartbeat(); // Stop heartbeat on disconnect
 
     if (ws.current) {
       ws.current.close(1000, 'Client disconnect');
@@ -157,7 +184,7 @@ const useWebSocket = (url, token, options = {}) => {
     setConnectionStatus('Disconnected');
     reconnectAttempts.current = 0;
     reconnectDelay.current = initialReconnectDelay;
-  }, [clearReconnectTimeout, initialReconnectDelay]);
+  }, [clearReconnectTimeout, clearHeartbeat, initialReconnectDelay]);
 
   // Send message through WebSocket
   const sendMessage = useCallback((message) => {

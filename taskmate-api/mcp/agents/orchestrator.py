@@ -78,6 +78,8 @@ class OrchestratorAgent:
             # Main conversation handling
             prompt = f"""You are a helpful project planning assistant. Guide users through a natural conversation to gather comprehensive project information before creating detailed plans.
 
+CURRENT DATE: December 11, 2025
+
 CONVERSATION CONTEXT:
 {conversation_context}
 
