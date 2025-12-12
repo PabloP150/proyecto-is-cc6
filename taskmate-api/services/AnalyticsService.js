@@ -532,24 +532,20 @@ class AnalyticsService {
      */
     async getWorkloadDistribution(groupId) {
         try {
+            // This query is based on the user's provided example for accuracy.
             const query = `
                 SELECT 
                     u.uid,
                     u.username,
-                    COUNT(CASE WHEN ta.success_status = 'pending' THEN 1 END) as current_workload,
-                    MAX(um.max_concurrent_tasks) as capacity,
-                    CASE 
-                        WHEN MAX(um.max_concurrent_tasks) > 0 
-                        THEN (COUNT(CASE WHEN ta.success_status = 'pending' THEN 1 END) * 100.0 / MAX(um.max_concurrent_tasks))
-                        ELSE 0 
-                    END as workload_percentage
+                    MIN(gr.gr_name) as role_name, -- Use MIN to get a single representative role
+                    (SELECT COUNT(*) FROM dbo.UserTask WHERE uid = u.uid AND completed = 0) as current_workload,
+                    (SELECT MAX(max_concurrent_tasks) FROM dbo.UserMetrics WHERE uid = u.uid) as capacity
                 FROM dbo.Users u
-                JOIN dbo.UserGroups ug ON u.uid = ug.uid
-                LEFT JOIN dbo.TaskAnalytics ta ON u.uid = ta.uid AND ta.gid = @gid
-                LEFT JOIN dbo.UserMetrics um ON u.uid = um.uid
-                WHERE ug.gid = @gid
+                INNER JOIN dbo.UserGroupRoles ugr ON u.uid = ugr.uid
+                INNER JOIN dbo.GroupRoles gr ON gr.gr_id = ugr.gr_id
+                WHERE ugr.gid = @gid
                 GROUP BY u.uid, u.username
-                ORDER BY workload_percentage DESC
+                ORDER BY u.username;
             `;
             const params = [
                 { name: 'gid', type: TYPES.UniqueIdentifier, value: groupId }
@@ -559,14 +555,21 @@ class AnalyticsService {
             
             return {
                 group_id: groupId,
-                workload_distribution: results.map(row => ({
-                    user_id: row.uid,
-                    username: row.username,
-                    current_workload: row.current_workload || 0,
-                    capacity: row.capacity || 3,
-                    workload_percentage: parseFloat((row.workload_percentage || 0).toFixed(2)),
-                    status: this._getWorkloadStatus(row.workload_percentage || 0)
-                })),
+                workload_distribution: results.map(row => {
+                    const capacity = row.capacity || 3; // Default capacity if null
+                    const workload = row.current_workload || 0;
+                    const workload_percentage = capacity > 0 ? (workload * 100.0) / capacity : 0;
+
+                    return {
+                        user_id: row.uid,
+                        username: row.username,
+                        current_workload: workload,
+                        capacity: capacity,
+                        utilization: parseFloat(workload_percentage.toFixed(2)),
+                        status: this._getWorkloadStatus(workload_percentage),
+                        role: row.role_name || 'N/A'
+                    };
+                }),
                 updated_at: new Date().toISOString()
             };
         } catch (error) {

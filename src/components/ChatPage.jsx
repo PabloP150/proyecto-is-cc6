@@ -16,6 +16,8 @@ import SendIcon from '@mui/icons-material/Send';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 //import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { useEffect, useRef, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import rehypeRaw from 'rehype-raw';
 import useWebSocket from '../hooks/useWebSocket';
 import ThemeProvider from '../theme/ThemeProvider';
 import './ChatPage.css';
@@ -86,22 +88,42 @@ function ChatPage() {
             autoConnect: !!token, // Only auto-connect if we have a token
             onMessage: (data) => {
                 console.log('ChatPage received WebSocket message:', data);
-                
-                // Handle incoming messages from WebSocket
+
+                // Filter out analytics messages and empty content messages
+                if (data.type === 'analytics_response' || data.type === 'analytics_error') {
+                    console.log('Ignoring analytics message:', data.type);
+                    return; // Do not process or display analytics messages in chat
+                }
+
+                // General filter for empty content before processing any message type
+                if (data.type !== 'history_restore' && !data.content && !data.data && !data.error) {
+                    console.log('Ignoring message with no content, data, or error:', data);
+                    return;
+                }
+
+                // Handle history restoration separately as it contains an array of messages
                 if (data.type === 'history_restore') {
-                    // Restore chat history from server
                     console.log('Restoring chat history:', data.messages.length, 'messages');
                     const restoredMessages = data.messages.map((msg, index) => ({
                         id: `restored-${index}-${Date.now()}`,
                         type: msg.type,
                         content: msg.content,
                         timestamp: new Date(msg.timestamp)
-                    }));
+                    })).filter(msg => msg.content && msg.content.trim()); // Filter empty content from history
+
                     setMessages(restoredMessages);
                     setHasReceivedHistory(true);
                     setIsTyping(false);
-                } else if (data.type === 'assistant' || data.type === 'system') {
+                    return;
+                }
+
+                // Handle regular assistant or system messages
+                if (data.type === 'assistant' || data.type === 'system') {
                     console.log('Received assistant/system message:', data);
+                    if (!data.content || !data.content.trim()) {
+                        console.log('Ignoring empty assistant/system message after specific type check:', data);
+                        return;
+                    }
                     setMessages(prev => [...prev, {
                         id: Date.now().toString(),
                         type: data.type,
@@ -109,9 +131,11 @@ function ChatPage() {
                         timestamp: new Date(data.timestamp)
                     }]);
                     setIsTyping(false);
-                } else {
-                    console.log('Received unknown message type:', data.type, data);
+                    return;
                 }
+
+                // Fallback for unknown message types
+                console.log('Received unknown message type:', data.type, data);
             },
             onError: (error) => {
                 console.error('WebSocket error:', error);
@@ -328,7 +352,7 @@ function ChatPage() {
                                             {message.type === 'user' ? <PersonIcon /> : <SmartToyIcon />}
                                         </Avatar>
 
-                                        <Box
+                                         <Box
                                             className="chat-message-bubble"
                                             sx={{
                                                 backgroundColor: message.type === 'user'
@@ -339,17 +363,32 @@ function ChatPage() {
                                                 p: { xs: 1.5, sm: 2 },
                                                 maxWidth: '100%',
                                                 wordWrap: 'break-word',
-                                                wordBreak: 'break-word'
+                                                wordBreak: 'break-word',
+                                                // Add styles for markdown content
+                                                '& .markdown-content': {
+                                                    '& p': { margin: 0 },
+                                                    '& a': { color: 'secondary.main' },
+                                                }
                                             }}
                                         >
-                                            <Typography variant="body1" sx={{ mb: 0.5 }}>
-                                                {message.content}
-                                            </Typography>
+                                            <Box className="markdown-content">
+                                                {message.type === 'user' ? (
+                                                    <Typography variant="body1" sx={{ mb: 0.5 }}>
+                                                        {message.content}
+                                                    </Typography>
+                                                ) : (
+                                                    <ReactMarkdown rehypePlugins={[rehypeRaw]}>
+                                                        {message.content}
+                                                    </ReactMarkdown>
+                                                )}
+                                            </Box>
                                             <Typography
                                                 variant="caption"
                                                 sx={{
                                                     opacity: 0.7,
-                                                    fontSize: '0.75rem'
+                                                    fontSize: '0.75rem',
+                                                    mt: 1, // Add margin top for spacing
+                                                    display: 'block' // Ensure it's on a new line
                                                 }}
                                             >
                                                 {formatTime(message.timestamp)}

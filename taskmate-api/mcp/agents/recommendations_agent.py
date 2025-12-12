@@ -25,6 +25,7 @@ class RecommendationsAgent:
         """Builds the enhanced prompt with milestone-focused structure."""
         return (
             f"You are an expert project manager and technical architect. Create a comprehensive project plan.\n\n"
+            f"CRITICAL DATE CONTEXT: Today's date is December 11, 2025. All generated dates (start dates, end dates, deadlines) MUST be in the future relative to this date.\n\n"
             f"ORIGINAL REQUEST: '{message}'\n"
             f"ADDITIONAL CONTEXT: {clarifications}\n\n"
             

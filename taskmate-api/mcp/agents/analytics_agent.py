@@ -13,7 +13,7 @@ import llm_service
 class AnalyticsAgent:
     def __init__(self):
         self.analytics_service = None
-        self.use_real_analytics = False  # Temporarily disabled to use diverse mock data
+        self.use_real_analytics = True  # Temporarily disabled to use diverse mock data
         self._initialize_analytics_service()
     
     def _initialize_analytics_service(self):

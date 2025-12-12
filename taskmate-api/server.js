@@ -165,10 +165,10 @@ app.post('/api/utils/populate-assignments/:groupId', async (req, res) => {
 // Create HTTP server
 const server = http.createServer(app);
 
-// Initialize WebSocket server
+// Initialize a single WebSocket server to handle all connections
 const wsServer = new WebSocketServer(server);
 
 server.listen(API_PORT, () => {
     console.log(`API running on PORT ${API_PORT}`);
-    console.log(`WebSocket server available at ws://localhost:${API_PORT}/chat`);
+    console.log(`WebSocket server available at ws://localhost:${API_PORT}/chat and /insights`);
 });

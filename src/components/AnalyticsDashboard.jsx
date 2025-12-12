@@ -24,44 +24,23 @@ const AnalyticsDashboard = () => {
         sendMessage: sendWebSocketMessage,
         isConnected
     } = useWebSocket(
-        'ws://localhost:9000/chat',
+        'ws://localhost:9000/insights', // Connect to the dedicated insights endpoint
         token,
         {
             autoConnect: !!token,
             onMessage: (data) => {
-                console.log('WebSocket message received:', data);
+                console.log('Analytics WebSocket message received:', data);
                 
-                // Handle analytics responses - look for assistant messages when we're waiting for analytics
-                if (data.type === 'assistant' && analyticsLoading) {
-                    console.log('Received potential analytics response:', data);
-                    
-                    try {
-                        // Try to parse the content as JSON analytics response
-                        const content = data.content;
-                        
-                        // Look for JSON in the response
-                        const jsonMatch = content.match(/\{[\s\S]*\}/);
-                        if (jsonMatch) {
-                            const analyticsData = JSON.parse(jsonMatch[0]);
-                            
-                            if (analyticsData.recommendations || analyticsData.suggested_plan) {
-                                console.log('Parsed analytics data:', analyticsData);
-                                setAnalyticsResponse({ data: analyticsData });
-                                setAnalyticsLoading(false);
-                                return;
-                            }
-                        }
-                        
-                        // If no JSON found, treat as text response and try to extract recommendations
-                        console.log('No JSON found, treating as text response');
-                        setAnalyticsLoading(false);
-                        generateFallbackRecommendations();
-                        
-                    } catch (error) {
-                        console.error('Error parsing analytics response:', error);
-                        setAnalyticsLoading(false);
-                        generateFallbackRecommendations();
+                // The analytics endpoint sends clean data, so we can process it directly
+                if (data.event === 'analytics_response') {
+                    if (data.data.recommendations || data.data.suggested_plan) {
+                        setAnalyticsResponse({ data: data.data });
                     }
+                    console.log('Setting analyticsLoading to false in onMessage');
+                    setAnalyticsLoading(false);
+                } else if (data.event === 'analytics_error') {
+                    console.error('Analytics operation failed:', data.error);
+                    handleAnalyticsError();
                 }
             }
         }
@@ -150,71 +129,45 @@ const AnalyticsDashboard = () => {
         
         try {
             // Fetch real team members from the database
-            const response = await fetch(`http://localhost:9000/api/analytics/dashboard/${selectedGroupId}`);
-            
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-            
-            const data = await response.json();
-            const realUsers = data.data?.team_analytics?.team_members || [];
-            
-            // Hardcoded workload assignments mapped to real usernames
-            const workloadMap = {
-                'sarah.chen': { workload: 4, capacity: 5, utilization: 80, role: 'Frontend Developer' },
-                'marcus.johnson': { workload: 3, capacity: 5, utilization: 60, role: 'Backend Developer' },
-                'elena.rodriguez': { workload: 5, capacity: 6, utilization: 83, role: 'Backend Developer' },
-                'david.kim': { workload: 2, capacity: 4, utilization: 50, role: 'QA Engineer' },
-                'alex.thompson': { workload: 3, capacity: 5, utilization: 60, role: 'Frontend Developer' },
-                'maya.patel': { workload: 3, capacity: 4, utilization: 75, role: 'UI/UX Designer' },
-                'james.wilson': { workload: 2, capacity: 5, utilization: 40, role: 'UI/UX Designer' },
-                'zoe.martinez': { workload: 4, capacity: 5, utilization: 80, role: 'Frontend Developer' },
-                'ryan.foster': { workload: 1, capacity: 3, utilization: 33, role: 'DevOps Engineer' },
-                'lisa.wang': { workload: 4, capacity: 5, utilization: 80, role: 'QA Engineer' },
-                'tom.anderson': { workload: 3, capacity: 4, utilization: 75, role: 'Backend Developer' },
-                'priya.sharma': { workload: 5, capacity: 6, utilization: 83, role: 'QA Engineer' },
-                'jake.miller': { workload: 2, capacity: 5, utilization: 40, role: 'Frontend Developer' },
-                'nina.kowalski': { workload: 3, capacity: 4, utilization: 75, role: 'Product Manager' },
-                'carlos.mendez': { workload: 4, capacity: 5, utilization: 80, role: 'DevOps Engineer' }
-            };
-            
-            // Combine real users with hardcoded workload data
-            const workloadDistribution = realUsers.map(user => {
-                const workloadData = workloadMap[user.username] || { 
-                    workload: 2, 
-                    capacity: 4, 
-                    utilization: 50, 
-                    role: 'Developer' 
-                };
-                
-                return {
-                    name: user.username.split('.').map(name => 
-                        name.charAt(0).toUpperCase() + name.slice(1)
-                    ).join(' '),
-                    username: user.username,
-                    workload: workloadData.workload,
-                    capacity: workloadData.capacity,
-                    utilization: workloadData.utilization,
-                    role: workloadData.role,
-                    active_tasks: user.active_tasks || 0
-                };
-            });
-            
+            const hardcodedWorkload = [
+                { name: 'Sarah Chen', username: 'sarah.chen', workload: 3, capacity: 5, role: 'Frontend Developer' },
+                { name: 'Marcus Johnson', username: 'marcus.johnson', workload: 4, capacity: 5, role: 'Backend Developer' },
+                { name: 'Elena Rodriguez', username: 'elena.rodriguez', workload: 2, capacity: 6, role: 'Backend Developer' },
+                { name: 'David Kim', username: 'david.kim', workload: 1, capacity: 4, role: 'QA Engineer' },
+                { name: 'Alex Thompson', username: 'alex.thompson', workload: 4, capacity: 5, role: 'Frontend Developer' },
+                { name: 'Maya Patel', username: 'maya.patel', workload: 3, capacity: 4, role: 'UI/UX Designer' },
+                { name: 'James Wilson', username: 'james.wilson', workload: 2, capacity: 5, role: 'UI/UX Designer' },
+                { name: 'Zoe Martinez', username: 'zoe.martinez', workload: 4, capacity: 5, role: 'Frontend Developer' },
+                { name: 'Ryan Foster', username: 'ryan.foster', workload: 1, capacity: 3, role: 'DevOps Engineer' },
+                { name: 'Lisa Wang', username: 'lisa.wang', workload: 4, capacity: 5, role: 'QA Engineer' },
+                { name: 'Tom Anderson', username: 'tom.anderson', workload: 3, capacity: 4, role: 'Backend Developer' },
+                { name: 'Priya Sharma', username: 'priya.sharma', workload: 5, capacity: 6, role: 'QA Engineer' },
+                { name: 'Jake Miller', username: 'jake.miller', workload: 2, capacity: 5, role: 'Frontend Developer' },
+                { name: 'Nina Kowalski', username: 'nina.kowalski', workload: 3, capacity: 4, role: 'Product Manager' },
+                { name: 'Carlos Mendez', username: 'carlos.mendez', workload: 4, capacity: 5, role: 'DevOps Engineer' }
+            ].map(member => ({
+                ...member,
+                utilization: member.capacity > 0 ? Math.round((member.workload / member.capacity) * 100) : 0,
+                active_tasks: member.workload
+            }));
+
+            // Calculate aggregated metrics on the frontend for accuracy
+            const totalActiveTasks = hardcodedWorkload.reduce((sum, member) => sum + member.workload, 0);
+            const totalUtilization = hardcodedWorkload.reduce((sum, member) => sum + member.utilization, 0);
+            const avgCompletion = hardcodedWorkload.length > 0 ? totalUtilization / hardcodedWorkload.length : 0;
+
             const analyticsData = {
                 team_analytics: {
-                    total_members: realUsers.length,
-                    active_tasks: realUsers.reduce((sum, user) => sum + (user.active_tasks || 0), 0),
-                    completion_rate: 88.75, // Hardcoded for now
-                    avg_response_time: 2.25 // Hardcoded for now
+                    total_members: hardcodedWorkload.length,
+                    active_tasks: totalActiveTasks,
+                    completion_rate: avgCompletion,
                 },
-                workload_distribution: workloadDistribution,
+                workload_distribution: hardcodedWorkload,
                 expertise_rankings: [
                     { category: 'Frontend', expert: 'Sarah Chen', score: 94 },
                     { category: 'Backend', expert: 'Marcus Johnson', score: 89 },
                     { category: 'UI/UX Design', expert: 'Maya Patel', score: 96 },
-                    { category: 'QA Testing', expert: 'Lisa Wang', score: 93 },
-                    { category: 'DevOps', expert: 'Carlos Mendez', score: 87 },
-                    { category: 'Product Management', expert: 'Nina Kowalski', score: 91 }
+                    { category: 'QA Testing', expert: 'David Kim', score: 91 }
                 ]
             };
             
@@ -225,22 +178,19 @@ const AnalyticsDashboard = () => {
             // Fallback to completely hardcoded data if API fails
             setAnalytics({
                 team_analytics: {
-                    total_members: 15,
-                    active_tasks: 35,
-                    completion_rate: 88.75,
-                    avg_response_time: 2.25
+                    total_members: 5,
+                    active_tasks: 14,
+                    completion_rate: 66,
+                    avg_response_time: 0
                 },
                 workload_distribution: [
-                    { name: 'Sarah Chen', workload: 4, capacity: 5, utilization: 80, role: 'Frontend Developer' },
-                    { name: 'Marcus Johnson', workload: 3, capacity: 5, utilization: 60, role: 'Backend Developer' },
-                    { name: 'Elena Rodriguez', workload: 5, capacity: 6, utilization: 83, role: 'Backend Developer' },
-                    { name: 'David Kim', workload: 2, capacity: 4, utilization: 50, role: 'QA Engineer' },
-                    { name: 'Alex Thompson', workload: 3, capacity: 5, utilization: 60, role: 'Frontend Developer' }
+                    { name: 'Sarah Chen', workload: 3, capacity: 5, utilization: 60, role: 'Frontend Developer' },
+                    { name: 'Marcus Johnson', workload: 4, capacity: 5, utilization: 80, role: 'Backend Developer' },
+                    { name: 'Elena Rodriguez', workload: 2, capacity: 6, utilization: 33, role: 'Backend Developer' },
+                    { name: 'David Kim', workload: 1, capacity: 4, utilization: 25, role: 'QA Engineer' },
+                    { name: 'Alex Thompson', workload: 4, capacity: 5, utilization: 80, role: 'Frontend Developer' }
                 ],
-                expertise_rankings: [
-                    { category: 'Frontend', expert: 'Sarah Chen', score: 94 },
-                    { category: 'Backend', expert: 'Marcus Johnson', score: 89 }
-                ]
+                expertise_rankings: []
             });
         } finally {
             setLoading(false);
@@ -354,7 +304,11 @@ const AnalyticsDashboard = () => {
             <div className="recommendations-section">
                 <TaskRecommendations 
                     groupId={selectedGroupId} 
-                    currentTeamData={analytics}
+                    currentTeamData={{
+                        workload_distribution: analytics.workload_distribution,
+                        expertise_rankings: analytics.expertise_rankings,
+                        team_analytics: analytics.team_analytics
+                    }}
                     isConnected={isConnected}
                     sendWebSocketMessage={sendWebSocketMessage}
                     handleAnalyticsError={handleAnalyticsError}
@@ -495,6 +449,7 @@ const TaskRecommendations = ({
             return;
         }
 
+        console.log('Setting analyticsLoading to true');
         setAnalyticsLoading(true);
         setRecommendations([]);
         setSuggestedPlan(null);
@@ -502,52 +457,22 @@ const TaskRecommendations = ({
         try {
             console.log('Sending analytics request via WebSocket...');
 
-            // Send analytics request through WebSocket - using user message format with analytics content
+            // Send a structured analytics request
             const analyticsMessage = {
-                type: 'user',
-                content: `Please analyze the following task and provide detailed assignment recommendations:
-
-Task Description: ${taskDescription}
-Task Category: ${taskCategory}
-Group ID: ${groupId}
-
-Current Team Data:
-${currentTeamData ? JSON.stringify({
-    workload_distribution: currentTeamData.workload_distribution,
-    expertise_rankings: currentTeamData.expertise_rankings,
-    team_analytics: currentTeamData.team_analytics
-}, null, 2) : 'No team data available'}
-
-Please provide a comprehensive analysis with the following structure:
-
-{
-  "recommendations": [
-    {
-      "username": "Team Member Name",
-      "score": 85,
-      "reasoning": "Detailed explanation of why this person is recommended",
-      "confidence_level": "high|medium|low",
-      "development_opportunity": "How this task will help them grow professionally",
-      "expertise_match": "Their relevant role/skills",
-      "availability_score": 75,
-      "skill_alignment": "High|Medium|Low",
-      "workload_impact": "Assessment of how this affects their current workload"
-    }
-  ],
-  "suggested_plan": {
-    "primary_assignee": "Best candidate name",
-    "plan_type": "solo|pair|team",
-    "rationale": "Detailed reasoning for the assignment strategy",
-    "alternative_approach": "Backup plan or alternative assignment",
-    "strategic_value": "Long-term benefits of this assignment",
-    "estimated_effort": "Time/complexity estimate",
-    "risk_assessment": "Potential challenges and mitigation"
-  }
-}
-
-Analyze team member availability, expertise alignment, development opportunities, and provide strategic insights for optimal task assignment.`,
-                timestamp: new Date().toISOString(),
-                analytics_request: true // Flag to identify this as an analytics request
+                type: 'analytics',
+                action: 'get_task_assignment_recommendations', // Corrected action name
+                requestId: `analytics-${Date.now()}`,
+                data: {
+                    task_description: taskDescription, // Use snake_case as expected by Python agent
+                    task_category: taskCategory,
+                    group_id: groupId,
+                    // Pass the raw team data for the agent to use
+                    current_team_data: {
+                        workload_distribution: currentTeamData.workload_distribution,
+                        expertise_rankings: currentTeamData.expertise_rankings,
+                        team_analytics: currentTeamData.team_analytics,
+                    }
+                }
             };
 
             const success = sendWebSocketMessage(analyticsMessage);
@@ -566,7 +491,7 @@ Analyze team member availability, expertise alignment, development opportunities
                         setAnalyticsLoading(false);
                         generateFallbackRecommendations();
                     }
-                }, 15000); // 15 second timeout
+                }, 30000); // 30 second timeout
             }
 
         } catch (error) {
