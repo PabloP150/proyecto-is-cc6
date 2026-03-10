@@ -3,6 +3,8 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const path = require('path');
 const http = require('http');
+const { TYPES } = require('tedious');
+const { v4: uuidv4 } = require('uuid');
 
 // IMPORTANT: Load environment variables BEFORE requiring modules that read process.env
 // Load .env from taskmate-api first (optional)
@@ -27,6 +29,7 @@ const userGroupRolesController = require('./controllers/userGroupRoles.controlle
 const groupRolesController = require('./controllers/groupRoles.controller');
 const analyticsController = require('./controllers/analytics.controller');
 const requireAuth = require('./middleware/auth.middleware');
+const { execReadCommand, execWriteCommand } = require('./helpers/execQuery');
 
 
 const {
@@ -68,9 +71,6 @@ app.post('/api/analytics/batch-update', requireAuth, analyticsController.batchUp
 app.post('/api/utils/populate-assignments/:groupId', async (req, res) => {
     try {
         const { groupId } = req.params;
-        const { execReadCommand, execWriteCommand } = require('./helpers/execQuery');
-        const { TYPES } = require('tedious');
-        const { v4: uuidv4 } = require('uuid');
 
         // Get group info
         const groups = await execReadCommand(
@@ -106,10 +106,10 @@ app.post('/api/utils/populate-assignments/:groupId', async (req, res) => {
         // Assign tasks to random members
         for (const task of unassignedTasks) {
             if (members.length === 0) break;
-            
+
             const randomMember = members[Math.floor(Math.random() * members.length)];
             const isCompleted = task.percentage >= 100;
-            
+
             // Create assignment
             const utid = uuidv4();
             await execWriteCommand(
@@ -126,7 +126,7 @@ app.post('/api/utils/populate-assignments/:groupId', async (req, res) => {
             const analyticsId = uuidv4();
             const assignedAt = new Date();
             const completedAt = isCompleted ? new Date(assignedAt.getTime() + Math.random() * 24 * 60 * 60 * 1000) : null;
-            
+
             await execWriteCommand(
                 `INSERT INTO dbo.TaskAnalytics 
                  (id, tid, uid, gid, task_category, assigned_at, completed_at, success_status, completion_time_hours) 
