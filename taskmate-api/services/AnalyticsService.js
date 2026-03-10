@@ -1,7 +1,5 @@
 const { execReadCommand, execWriteCommand } = require('../helpers/execQuery');
 const { TYPES } = require('tedious');
-const getConnection = require('../helpers/getConnection');
-const { Request, ISOLATION_LEVEL } = require('tedious');
 
 class AnalyticsService {
     /**
@@ -50,7 +48,6 @@ class AnalyticsService {
             
             const existing = await execReadCommand(existingQuery, existingParams);
             if (existing && existing.length > 0) {
-                console.log(`Analytics: Task assignment already exists - Task: ${taskId}, User: ${userId}`);
                 return { success: true, message: 'Assignment already recorded' };
             }
 
@@ -66,9 +63,7 @@ class AnalyticsService {
             ];
             
             await execWriteCommand(insertQuery, insertParams);
-            console.log(`Analytics: Recorded task assignment - Task: ${taskId}, User: ${userId}, Category: ${category}`);
-            
-            return { 
+            return {
                 success: true, 
                 task_id: taskId,
                 user_id: userId,
@@ -139,8 +134,7 @@ class AnalyticsService {
                 // Don't fail the main operation if metrics update fails
             }
             
-            console.log(`Analytics: Recorded task completion - Task: ${taskId}, Status: ${status}`);
-            return { 
+            return {
                 success: true, 
                 task_id: taskId,
                 status: status,

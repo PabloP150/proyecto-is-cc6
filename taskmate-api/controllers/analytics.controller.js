@@ -2,6 +2,7 @@ const AnalyticsService = require('../services/AnalyticsService');
 const { execReadCommand, execWriteCommand } = require('../helpers/execQuery');
 const { TYPES } = require('tedious');
 const { v4: uuidv4 } = require('uuid');
+const llmService = require('../services/LLMService');
 
 /**
  * Analytics Controller
@@ -736,8 +737,6 @@ class AnalyticsController {
      * Get recommendations from analytics agent via MCP WebSocket
      */
     static async _getRecommendationsFromAgent(groupId, taskCategory, taskDescription, context) {
-        const llmService = require('../services/LLMService');
-
         const requestData = {
             group_id: groupId,
             task_category: taskCategory,
