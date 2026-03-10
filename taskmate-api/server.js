@@ -7,10 +7,7 @@ const http = require('http');
 // IMPORTANT: Load environment variables BEFORE requiring modules that read process.env
 // Load .env from taskmate-api first (optional)
 dotenv.config();
-console.log('Loaded .env from taskmate-api:', { LLM_PROVIDER: process.env.LLM_PROVIDER, LLM_API_KEY: process.env.LLM_API_KEY, LLM_TEMPERATURE: process.env.LLM_TEMPERATURE });
-// Then load root-level env files if present
 dotenv.config({ path: path.resolve(__dirname, '../.env'), override: false });
-console.log('Loaded root-level .env (if present):', { LLM_PROVIDER: process.env.LLM_PROVIDER, LLM_API_KEY: process.env.LLM_API_KEY, LLM_TEMPERATURE: process.env.LLM_TEMPERATURE });
 
 if (!process.env.JWT_SECRET) {
   console.error('FATAL: JWT_SECRET is not defined in environment variables. Server will not start.');
