@@ -41,9 +41,6 @@ class OrchestratorAgent:
         user_message = request.get("params", {}).get("message")
         request_id = request.get("requestId")
 
-        print(f"\n--- Orchestrator ---")
-        print(f"[Session: {session_id}] Received message: '{user_message}'")
-        
         # Check if this is an analytics request
         if request.get("type") == "analytics":
             return await self._handle_analytics_request(session_id, websocket, request)
@@ -67,7 +64,6 @@ class OrchestratorAgent:
                     }
                 }
                 state["waiting_for_confirmation"] = False
-                print(f"[Session: {session_id}] Saving plan")
                 await websocket.send_json(response_data)
                 return
             else:
@@ -119,7 +115,6 @@ Be conversational, ask good questions, and help them develop their project idea 
                 else:
                     state["project_info"] = user_message
                 
-                print(f"[Session: {session_id}] Generating project plan...")
                 
                 # Generate the project plan
                 try:
@@ -152,13 +147,8 @@ Be conversational, ask good questions, and help them develop their project idea 
                 
                 response_content = response
 
-        # Add assistant response to conversation history
         self.add_to_conversation(session_id, response_content, is_user=False)
-        
-        # Send response
-        response_data = {"content": response_content}
-        print(f"[Session: {session_id}] Sending response")
-        await websocket.send_json({"event": "response", "data": response_data, "requestId": request_id, "sessionId": session_id})
+        await websocket.send_json({"event": "response", "data": {"content": response_content}, "requestId": request_id, "sessionId": session_id})
 
     async def _should_generate_plan(self, session_id: str, message: str, context: str) -> bool:
         """Determine if we have enough information to generate a project plan."""
@@ -214,25 +204,17 @@ Respond with ONLY: YES or NO"""
             data = request.get("data", {})
             request_id = request.get("requestId")
             
-            print(f"[Session: {session_id}] Analytics request - Action: {action}")
-            
-            # Route to analytics agent
             analytics_response = await self.analytics_agent.handle(action, data)
-            
-            # Send response back through WebSocket
-            response_data = {
+            await websocket.send_json({
                 "event": "analytics_response",
                 "sessionId": session_id,
                 "requestId": request_id,
                 "data": analytics_response
-            }
-            
-            print(f"[Session: {session_id}] Sending analytics response")
-            await websocket.send_json(response_data)
+            })
             
         except Exception as e:
             error_message = f"Analytics request failed: {str(e)}"
-            print(f"[Session: {session_id}] {error_message}")
+            print(f"[Orchestrator] Analytics error for session {session_id}: {error_message}")
             
             error_response = {
                 "event": "analytics_error",
