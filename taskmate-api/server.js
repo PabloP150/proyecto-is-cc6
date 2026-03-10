@@ -38,10 +38,6 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
-app.use((req, res, next) => {
-    console.log(`Request client URL: ${req.get('host')}${req.originalUrl} >>>> ${SERVER_TAG}`);
-    next();
-});
 
 app.use('/api/tasks', tasksController);
 app.use('/api/users', userController);

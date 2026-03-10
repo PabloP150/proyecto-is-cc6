@@ -429,52 +429,40 @@ class AnalyticsController {
      */
     static async getTaskRecommendations(req, res) {
         try {
-            console.log('📥 Analytics recommendations request received:', req.body);
-            
-            const { groupId, taskCategory, taskDescription, requesterId } = req.body;
-            
+            const { groupId, taskCategory, taskDescription } = req.body;
+            const requesterId = req.user.userId;
+
             if (!groupId || !taskCategory || !taskDescription) {
-                console.log('❌ Missing required fields:', { groupId, taskCategory, taskDescription });
                 return res.status(400).json({
                     success: false,
                     error: 'Group ID, task category, and task description are required'
                 });
             }
-            
-            // Access control check
-            if (requesterId) {
-                const hasAccess = await AnalyticsController._checkTeamAccess(requesterId, groupId);
-                if (!hasAccess) {
-                    return res.status(403).json({
-                        success: false,
-                        error: 'Access denied. You must be a team member to get recommendations.'
-                    });
-                }
+
+            const hasAccess = await AnalyticsController._checkMembership(requesterId, groupId);
+            if (!hasAccess) {
+                return res.status(403).json({
+                    success: false,
+                    error: 'Access denied. You must be a team member to get recommendations.'
+                });
             }
 
-            console.log('🤖 Calling analytics agent for recommendations...');
-            
-            // Call the analytics agent for recommendations
             const recommendations = await AnalyticsController._getRecommendationsFromAgent(
                 groupId, taskCategory, taskDescription, req.body
             );
-            
-            console.log('✅ Received recommendations from agent:', recommendations);
-            
+
             res.status(200).json({
                 success: true,
                 recommendations: recommendations.recommendations || [],
                 suggested_plan: recommendations.suggested_plan || null,
                 task_category: recommendations.task_category || taskCategory
             });
-            
+
         } catch (error) {
-            console.error('❌ Error getting task recommendations:', error);
-            console.error('❌ Error stack:', error.stack);
+            console.error('Error getting task recommendations:', error.message);
             res.status(500).json({
                 success: false,
-                error: 'Failed to get task recommendations',
-                debug: error.message
+                error: 'Failed to get task recommendations'
             });
         }
     }
@@ -749,82 +737,50 @@ class AnalyticsController {
      * Get recommendations from analytics agent via MCP WebSocket
      */
     static async _getRecommendationsFromAgent(groupId, taskCategory, taskDescription, context) {
-        try {
-            console.log('🔗 Connecting to MCP server for analytics...');
-            
-            const { v4: uuidv4 } = require('uuid');
-            const llmService = require('../services/LLMService');
-            
-            // Prepare the request data
-            const requestData = {
-                group_id: groupId,
-                task_category: taskCategory,
-                task_description: taskDescription,
-                priority: context.priority || 'normal',
-                deadline: context.deadline || 'flexible',
-                additional_context: context.additional_context || ''
-            };
-            
-            console.log('📋 Request data prepared:', requestData);
-            
-            return new Promise((resolve, reject) => {
-                const requestId = uuidv4();
-                const sessionId = `analytics_${requestId}`;
-                
-                console.log('🆔 Generated session ID:', sessionId);
-                
-                // Set up timeout
-                const timeout = setTimeout(() => {
-                    console.log('⏰ Analytics request timeout');
-                    llmService.removeAllListeners(sessionId);
-                    reject(new Error('Analytics agent request timeout'));
-                }, 30000); // 30 second timeout
-                
-                // Listen for the response
-                llmService.once(sessionId, (response) => {
-                    console.log('📨 Received response from MCP server:', response);
-                    clearTimeout(timeout);
-                    
-                    try {
-                        if (response.event === 'analytics_response') {
-                            console.log('✅ Analytics response successful');
-                            resolve(response.data);
-                        } else if (response.event === 'analytics_error') {
-                            console.log('❌ Analytics error response:', response.error);
-                            reject(new Error(response.error || 'Analytics agent error'));
-                        } else {
-                            console.log('⚠️ Unexpected response event:', response.event);
-                            reject(new Error('Unexpected response from analytics agent'));
-                        }
-                    } catch (error) {
-                        console.log('❌ Error processing response:', error);
-                        reject(new Error(`Failed to process analytics response: ${error.message}`));
-                    }
-                });
-                
-                // Send the analytics request in the format expected by MCP server
-                const request = {
-                    requestId: requestId,
-                    sessionId: sessionId,
-                    type: 'analytics',
-                    action: 'get_task_assignment_recommendations',
-                    data: requestData
-                };
-                
-                console.log('📤 Sending request to MCP server:', request);
-                
-                llmService.send(request).catch(error => {
-                    console.log('❌ Failed to send request to MCP server:', error);
-                    clearTimeout(timeout);
-                    llmService.removeAllListeners(sessionId);
-                    reject(new Error(`Failed to send analytics request: ${error.message}`));
-                });
+        const { v4: uuidv4 } = require('uuid');
+        const llmService = require('../services/LLMService');
+
+        const requestData = {
+            group_id: groupId,
+            task_category: taskCategory,
+            task_description: taskDescription,
+            priority: context.priority || 'normal',
+            deadline: context.deadline || 'flexible',
+            additional_context: context.additional_context || ''
+        };
+
+        return new Promise((resolve, reject) => {
+            const requestId = uuidv4();
+            const sessionId = `analytics_${requestId}`;
+
+            const timeout = setTimeout(() => {
+                llmService.removeAllListeners(sessionId);
+                reject(new Error('Analytics agent request timeout'));
+            }, 30000);
+
+            llmService.once(sessionId, (response) => {
+                clearTimeout(timeout);
+                if (response.event === 'analytics_response') {
+                    resolve(response.data);
+                } else if (response.event === 'analytics_error') {
+                    reject(new Error(response.error || 'Analytics agent error'));
+                } else {
+                    reject(new Error('Unexpected response from analytics agent'));
+                }
             });
-            
-        } catch (error) {
-            console.error('❌ Error in _getRecommendationsFromAgent:', error);
-            throw error;
-        }
+
+            llmService.send({
+                requestId,
+                sessionId,
+                type: 'analytics',
+                action: 'get_task_assignment_recommendations',
+                data: requestData
+            }).catch(error => {
+                clearTimeout(timeout);
+                llmService.removeAllListeners(sessionId);
+                reject(new Error(`Failed to send analytics request: ${error.message}`));
+            });
+        });
     }
 }
 
