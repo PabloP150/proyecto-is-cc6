@@ -4,6 +4,7 @@ import {
   CssBaseline,
   Typography,
 } from '@mui/material';
+import { API_BASE } from '../config';
 import { ThemeProvider } from '@mui/material/styles';
 import moment from 'moment';
 import { useContext, useEffect, useState } from 'react';
@@ -29,7 +30,7 @@ function CalendarView() {
     }
     const fetchTasks = async () => {
       try {
-        const response = await fetch(`http://localhost:9000/api/nodes/tasks/${selectedGroupId}`);
+        const response = await fetch(`${API_BASE}/api/nodes/tasks/${selectedGroupId}`);
         if (response.ok) {
           const data = await response.json();
           const tasks = data.data.map((task) => ({

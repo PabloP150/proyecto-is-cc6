@@ -2,6 +2,7 @@ import React, { useState, useEffect, useContext } from 'react';
 import { GroupContext } from './GroupContext';
 import useWebSocket from '../hooks/useWebSocket';
 import './AnalyticsDashboard.css';
+import { API_BASE, WS_BASE } from '../config';
 
 const AnalyticsDashboard = () => {
     const { selectedGroupId } = useContext(GroupContext);
@@ -24,7 +25,7 @@ const AnalyticsDashboard = () => {
         sendMessage: sendWebSocketMessage,
         isConnected
     } = useWebSocket(
-        'ws://localhost:9000/insights', // Connect to the dedicated insights endpoint
+        `${WS_BASE}/insights`, // Connect to the dedicated insights endpoint
         token,
         {
             autoConnect: !!token,
@@ -128,7 +129,7 @@ const AnalyticsDashboard = () => {
         setLoading(true);
 
         try {
-            const res = await fetch(`http://localhost:9000/api/analytics/dashboard/${selectedGroupId}`, {
+            const res = await fetch(`${API_BASE}/api/analytics/dashboard/${selectedGroupId}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
 

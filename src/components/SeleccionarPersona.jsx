@@ -3,6 +3,7 @@ import { Menu, MenuItem, IconButton } from '@mui/material';
 import PersonIcon from '@mui/icons-material/Person';
 import { GroupContext } from './GroupContext';
 import Switch from '@mui/material/Switch';
+import { API_BASE } from '../config';
 
 const SeleccionarPersona = ({ tid }) => {
   const { selectedGroupId } = useContext(GroupContext);
@@ -15,7 +16,7 @@ const SeleccionarPersona = ({ tid }) => {
       if (!selectedGroupId) return;
 
       try {
-        const response = await fetch(`http://localhost:9000/api/groups/${selectedGroupId}/members`);
+        const response = await fetch(`${API_BASE}/api/groups/${selectedGroupId}/members`);
         if (response.ok) {
           const data = await response.json();
           setMembers(data.members);
@@ -36,7 +37,7 @@ const SeleccionarPersona = ({ tid }) => {
       if (!selectedGroupId || members.length === 0 || !anchorEl) return;
 
       try {
-        const response = await fetch(`http://localhost:9000/api/usertask?tid=${tid}`);
+        const response = await fetch(`${API_BASE}/api/usertask?tid=${tid}`);
         if (response.ok) {
           const data = await response.json();
           if (!data.data || data.data.length === 0) {
@@ -87,7 +88,7 @@ const SeleccionarPersona = ({ tid }) => {
 
   const addUserToTask = async (uid, tid) => {
     try {
-      const response = await fetch('http://localhost:9000/api/usertask', {
+      const response = await fetch(`${API_BASE}/api/usertask`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -104,7 +105,7 @@ const SeleccionarPersona = ({ tid }) => {
 
   const removeUserFromTask = async (uid, tid) => {
     try {
-      const response = await fetch(`http://localhost:9000/api/usertask?uid=${uid}&tid=${tid}`, {
+      const response = await fetch(`${API_BASE}/api/usertask?uid=${uid}&tid=${tid}`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',

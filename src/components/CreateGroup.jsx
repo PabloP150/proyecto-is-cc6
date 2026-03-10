@@ -10,6 +10,7 @@ import {
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { API_BASE } from '../config';
 
 const theme = createTheme({
   palette: {
@@ -37,7 +38,7 @@ function CreateGroup() {
       return;
     }
     try {
-      const response = await fetch('http://localhost:9000/api/groups/group', {
+      const response = await fetch(`${API_BASE}/api/groups/group`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

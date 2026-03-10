@@ -1,4 +1,5 @@
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import { API_BASE } from '../config';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import PersonIcon from '@mui/icons-material/Person';
 import { Box, Container, CssBaseline, Dialog, DialogActions, DialogContent, DialogTitle, List, ListItem, styled, TextField, Typography } from '@mui/material';
@@ -93,7 +94,7 @@ function GroupsView() {
       return;
     }
     try {
-      const response = await fetch(`http://localhost:9000/api/groups/user-groups?uid=${userId}`);
+      const response = await fetch(`${API_BASE}/api/groups/user-groups?uid=${userId}`);
       if (response.ok) {
         const data = await response.json();
         setGroups(data.groups);
@@ -108,7 +109,7 @@ function GroupsView() {
             if (storedShow) {
               setShowDetails(true);
               // Cargar miembros inmediatamente
-              fetch(`http://localhost:9000/api/groups/${groupToSelect.gid}/members`)
+              fetch(`${API_BASE}/api/groups/${groupToSelect.gid}/members`)
                 .then(r => r.json())
                 .then(d => setMembers(d.members))
                 .catch(err => console.error('Error loading members:', err));
@@ -145,7 +146,7 @@ function GroupsView() {
       return;
     }
     try {
-      const response = await fetch('http://localhost:9000/api/groups/group', {
+      const response = await fetch(`${API_BASE}/api/groups/group`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -173,7 +174,7 @@ function GroupsView() {
       return;
     }
     try {
-      const userResponse = await fetch(`http://localhost:9000/api/users/getuid?username=${newUsername}`);
+      const userResponse = await fetch(`${API_BASE}/api/users/getuid?username=${newUsername}`);
       if (!userResponse.ok) {
         const errorData = await userResponse.json();
         console.error(errorData.error);
@@ -187,7 +188,7 @@ function GroupsView() {
         return;
       }
 
-      const response = await fetch('http://localhost:9000/api/groups/join', {
+      const response = await fetch(`${API_BASE}/api/groups/join`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -216,7 +217,7 @@ function GroupsView() {
     localStorage.setItem('selectedGroupId', group.gid);
     localStorage.setItem('selectedGroupName', group.name);
     localStorage.setItem('showGroupDetails', '1');
-    fetch(`http://localhost:9000/api/groups/${group.gid}/members`)
+    fetch(`${API_BASE}/api/groups/${group.gid}/members`)
       .then(r => r.json())
       .then(data => setMembers(data.members))
       .catch(err => console.error('Error loading members:', err));
@@ -231,7 +232,7 @@ function GroupsView() {
 
     try {
 
-      const userResponse = await fetch(`http://localhost:9000/api/users/getuid?username=${usernameToDelete}`);
+      const userResponse = await fetch(`${API_BASE}/api/users/getuid?username=${usernameToDelete}`);
       if (!userResponse.ok) {
         const errorData = await userResponse.json();
         console.error(errorData.error);
@@ -242,7 +243,7 @@ function GroupsView() {
       const uid = userData.uid;
 
 
-      const response = await fetch(`http://localhost:9000/api/groups/remove-member`, {
+      const response = await fetch(`${API_BASE}/api/groups/remove-member`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
@@ -252,7 +253,7 @@ function GroupsView() {
 
       if (response.ok) {
         // Actualiza la lista de miembros
-        fetch(`http://localhost:9000/api/groups/${selectedGroup.gid}/members`)
+        fetch(`${API_BASE}/api/groups/${selectedGroup.gid}/members`)
           .then(response => response.json())
           .then(data => setMembers(data.members))
           .catch(error => console.error('Error loading members:', error));
@@ -276,7 +277,7 @@ function GroupsView() {
     }
 
     try {
-      const response = await fetch(`http://localhost:9000/api/groups/leave`, {
+      const response = await fetch(`${API_BASE}/api/groups/leave`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
@@ -285,7 +286,7 @@ function GroupsView() {
       });
 
       if (response.ok) {
-        fetch(`http://localhost:9000/api/groups/${selectedGroup.gid}/members`)
+        fetch(`${API_BASE}/api/groups/${selectedGroup.gid}/members`)
           .then(response => response.json())
           .then(data => setMembers(data.members))
           .catch(error => console.error('Error loading members:', error));
@@ -306,7 +307,7 @@ function GroupsView() {
     }
 
     try {
-      const groupResponse = await fetch(`http://localhost:9000/api/groups/delete`, {
+      const groupResponse = await fetch(`${API_BASE}/api/groups/delete`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ gid: selectedGroup.gid, adminId: userId }),

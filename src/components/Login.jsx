@@ -1,4 +1,5 @@
 import React, { useState, useContext } from 'react';
+import { API_BASE } from '../config';
 import {
   Box,
   Container,
@@ -56,7 +57,7 @@ function Login({ onLogin }) {
     setIsLoading(true);
 
     try {
-      const response = await fetch('http://localhost:9000/api/users/login', {
+      const response = await fetch(`${API_BASE}/api/users/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -73,7 +74,7 @@ function Login({ onLogin }) {
         onLogin({ uid: userId, name: username, token: token });
 
         // Obtener los grupos del usuario
-        const groupsResponse = await fetch(`http://localhost:9000/api/groups/user-groups?uid=${userId}`);
+        const groupsResponse = await fetch(`${API_BASE}/api/groups/user-groups?uid=${userId}`);
         if (groupsResponse.ok) {
           const groupsData = await groupsResponse.json();
           if (groupsData.groups && groupsData.groups.length > 0) {

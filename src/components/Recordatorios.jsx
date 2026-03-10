@@ -1,4 +1,5 @@
 import AddIcon from '@mui/icons-material/Add';
+import { API_BASE } from '../config';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import {
@@ -46,7 +47,7 @@ export default function Recordatorios() {
       return;
     }
     try {
-      const response = await fetch(`http://localhost:9000/api/tasks?gid=${selectedGroupId}`);
+      const response = await fetch(`${API_BASE}/api/tasks?gid=${selectedGroupId}`);
       if (response.ok) {
         const data = await response.json();
         const listasOrganizadas = organizarTareasEnListas(data.data);
@@ -80,7 +81,7 @@ export default function Recordatorios() {
     if (!selectedGroupId) { setCompletados([]); return; }
 
     try {
-      const response = await fetch(`http://localhost:9000/api/completados/${selectedGroupId}`);
+      const response = await fetch(`${API_BASE}/api/completados/${selectedGroupId}`);
       if (response.ok) {
         const data = await response.json();
         setCompletados(data.data);
@@ -96,7 +97,7 @@ export default function Recordatorios() {
     if (!selectedGroupId) { setEliminados([]); return; }
 
     try {
-      const response = await fetch(`http://localhost:9000/api/delete/${selectedGroupId}`);
+      const response = await fetch(`${API_BASE}/api/delete/${selectedGroupId}`);
       if (response.ok) {
         const data = await response.json();
         setEliminados(data.data);
@@ -196,7 +197,7 @@ export default function Recordatorios() {
     };
 
     try {
-      const response = await fetch('http://localhost:9000/api/tasks', {
+      const response = await fetch(`${API_BASE}/api/tasks`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -266,10 +267,10 @@ export default function Recordatorios() {
     // Backend en paralelo (DELETE + POST a eliminados)
     (async () => {
       try {
-        await fetch(`http://localhost:9000/api/tasks/${task.tid}`, { method: 'DELETE' });
+        await fetch(`${API_BASE}/api/tasks/${task.tid}`, { method: 'DELETE' });
       } catch (e) { console.error('Delete task error', e); }
       try {
-        await fetch('http://localhost:9000/api/delete', {
+        await fetch(`${API_BASE}/api/delete`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(task),
@@ -300,9 +301,9 @@ export default function Recordatorios() {
 
     // Backend paralelo
     (async () => {
-      try { await fetch(`http://localhost:9000/api/tasks/${task.tid}`, { method: 'DELETE' }); } catch(e){ console.error('Delete task error', e); }
+      try { await fetch(`${API_BASE}/api/tasks/${task.tid}`, { method: 'DELETE' }); } catch(e){ console.error('Delete task error', e); }
       try {
-        await fetch('http://localhost:9000/api/completados', {
+        await fetch(`${API_BASE}/api/completados`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ...task, percentage: 100 }),
@@ -399,7 +400,7 @@ export default function Recordatorios() {
       return;
     }
     try {
-      const response = await fetch(`http://localhost:9000/api/tasks/list/${gid}/${encodeURIComponent(nombreLista)}`, {
+      const response = await fetch(`${API_BASE}/api/tasks/list/${gid}/${encodeURIComponent(nombreLista)}`, {
         method: 'DELETE',
       });
       if (response.ok) {
@@ -442,7 +443,7 @@ export default function Recordatorios() {
     }
   if (!selectedGroupId) return;
     try {
-      const response = await fetch(`http://localhost:9000/api/tasks/${recordatorioEditar.tid}`, {
+      const response = await fetch(`${API_BASE}/api/tasks/${recordatorioEditar.tid}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -495,7 +496,7 @@ export default function Recordatorios() {
 
           // Enviar a endpoint de completados (no elimina de Tasks, así que haremos delete explícito luego)
           try {
-            const completarResponse = await fetch('http://localhost:9000/api/completados', {
+            const completarResponse = await fetch(`${API_BASE}/api/completados`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -523,7 +524,7 @@ export default function Recordatorios() {
 
           // Eliminar de Tasks explícitamente y luego quitar de la UI con delay para animación
           try {
-            await fetch(`http://localhost:9000/api/tasks/${updatedRecordatorio.tid}`, {
+            await fetch(`${API_BASE}/api/tasks/${updatedRecordatorio.tid}`, {
               method: 'DELETE'
             });
           } catch (e) {
@@ -585,7 +586,7 @@ export default function Recordatorios() {
     }
 
     try {
-      await fetch(`http://localhost:9000/api/delete/${gid}`, {
+      await fetch(`${API_BASE}/api/delete/${gid}`, {
         method: 'DELETE',
       });
       setEliminados([]); // Vaciar el estado de eliminados
@@ -602,7 +603,7 @@ export default function Recordatorios() {
     }
 
     try {
-      await fetch(`http://localhost:9000/api/completados/${gid}`, {
+      await fetch(`${API_BASE}/api/completados/${gid}`, {
         method: 'DELETE',
       });
       setCompletados([]); // Vaciar el estado de completados

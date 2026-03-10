@@ -20,6 +20,7 @@ import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
 import useWebSocket from '../hooks/useWebSocket';
 import ThemeProvider from '../theme/ThemeProvider';
+import { WS_BASE } from '../config';
 import './ChatPage.css';
 
 function ChatPage() {
@@ -82,7 +83,7 @@ function ChatPage() {
         error: wsError,
         connect: connectWebSocket
     } = useWebSocket(
-        'ws://localhost:9000/chat',
+        `${WS_BASE}/chat`,
         token,
         {
             autoConnect: !!token, // Only auto-connect if we have a token

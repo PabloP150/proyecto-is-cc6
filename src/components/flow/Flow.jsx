@@ -10,6 +10,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useCallback, useContext, useEffect, useState } from "react";
+import { API_BASE } from '../../config';
 import { GroupContext } from '../GroupContext';
 import CustomConnectionLine from './CustomConnectionLine';
 import CustomNode from './CustomNode';
@@ -70,8 +71,8 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
     }
     const loadNodesAndEdges = async () => {
       try {
-        const nodesResponse = await fetch(`http://localhost:9000/api/nodes/group/${selectedGroupId}`);
-        const edgesResponse = await fetch(`http://localhost:9000/api/edges/group/${selectedGroupId}`);
+        const nodesResponse = await fetch(`${API_BASE}/api/nodes/group/${selectedGroupId}`);
+        const edgesResponse = await fetch(`${API_BASE}/api/edges/group/${selectedGroupId}`);
 
         if (nodesResponse.ok && edgesResponse.ok) {
           const nodesData = await nodesResponse.json();
@@ -121,7 +122,7 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
     }
     const getTasks = async () => {
       try {
-        const response = await fetch(`http://localhost:9000/api/tasks?gid=${selectedGroupId}`);
+        const response = await fetch(`${API_BASE}/api/tasks?gid=${selectedGroupId}`);
         if (response.ok) {
           const data = await response.json();
           setTasks(data.data);
@@ -135,7 +136,7 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
 
   const handleImportTask = async (task) => {
     try {
-      const response = await fetch('http://localhost:9000/api/nodes', {
+      const response = await fetch(`${API_BASE}/api/nodes`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -184,7 +185,7 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
   const addNode = async (e) => {
     e.preventDefault();
     try {
-      const response = await fetch('http://localhost:9000/api/nodes', {
+      const response = await fetch(`${API_BASE}/api/nodes`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -242,7 +243,7 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
   //node change in db
   const onNodeDragStop = async (event, node) => {
     try {
-      await fetch(`http://localhost:9000/api/nodes/${node.id}/coords`, {
+      await fetch(`${API_BASE}/api/nodes/${node.id}/coords`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -264,7 +265,7 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
 
   const onConnect = useCallback(async (params) => {
     try {
-      const response = await fetch('http://localhost:9000/api/edges', {
+      const response = await fetch(`${API_BASE}/api/edges`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -307,12 +308,12 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
 
   const onNodesDelete = async (event) => {
     try {
-      const response1 = await fetch(`http://localhost:9000/api/edges/source/${event[0].id}`, {
+      const response1 = await fetch(`${API_BASE}/api/edges/source/${event[0].id}`, {
         method: 'DELETE',
       });
 
       if (response1.ok) {
-        await fetch(`http://localhost:9000/api/nodes/${event[0].id}`, {
+        await fetch(`${API_BASE}/api/nodes/${event[0].id}`, {
           method: 'DELETE',
         });
         // Node deleted successfully (log eliminado)
@@ -324,7 +325,7 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
 
   const onEdgesDelete = async (event) => {
     try {
-      const response = await fetch(`http://localhost:9000/api/edges/${event[0].id}`, {
+      const response = await fetch(`${API_BASE}/api/edges/${event[0].id}`, {
         method: 'DELETE',
       });
 

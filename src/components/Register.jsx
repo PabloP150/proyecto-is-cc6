@@ -1,4 +1,5 @@
 import { PersonAdd as RegisterIcon } from '@mui/icons-material';
+import { API_BASE } from '../config';
 import {
   Alert,
   Box,
@@ -71,7 +72,7 @@ function Register() {
     setIsLoading(true);
 
     try {
-      const response = await fetch('http://localhost:9000/api/users', {
+      const response = await fetch(`${API_BASE}/api/users`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

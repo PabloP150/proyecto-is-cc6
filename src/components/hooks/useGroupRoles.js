@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { API_BASE } from '../../config';
 
 /**
  * Hook para gestionar roles de grupo y asignaciones de roles a usuarios.
@@ -15,13 +16,13 @@ export default function useGroupRoles(groupId) {
     if (!groupId) return;
     setLoading(true);
     try {
-      const res = await fetch(`http://localhost:9000/api/grouproles/groups/${groupId}/roles`);
+      const res = await fetch(`${API_BASE}/api/grouproles/groups/${groupId}/roles`);
       if (!res.ok) throw new Error('Error al obtener roles');
       const data = await res.json();
       setRoles(data.roles || []);
       // Después de cargar roles, intentar cargar matriz completa de asignaciones para poblar userRolesMap
       try {
-        const matrixRes = await fetch(`http://localhost:9000/api/usergrouproles/groups/${groupId}/rolesmatrix`);
+        const matrixRes = await fetch(`${API_BASE}/api/usergrouproles/groups/${groupId}/rolesmatrix`);
         if (matrixRes.ok) {
           const matrixData = await matrixRes.json();
           if (Array.isArray(matrixData.matrix)) {
@@ -49,7 +50,7 @@ export default function useGroupRoles(groupId) {
   const fetchUserRoles = useCallback(async (userId) => {
     if (!groupId || !userId) return [];
     try {
-  const res = await fetch(`http://localhost:9000/api/usergrouproles/groups/${groupId}/users/${userId}/roles`);
+  const res = await fetch(`${API_BASE}/api/usergrouproles/groups/${groupId}/users/${userId}/roles`);
       if (!res.ok) throw new Error('Error al obtener roles de usuario');
       const data = await res.json();
       setUserRolesMap(prev => ({ ...prev, [userId]: data.roleIds || [] }));
@@ -65,7 +66,7 @@ export default function useGroupRoles(groupId) {
     if (!groupId) return;
     setLoading(true);
     try {
-      const res = await fetch(`http://localhost:9000/api/grouproles/groups/${groupId}/roles`, {
+      const res = await fetch(`${API_BASE}/api/grouproles/groups/${groupId}/roles`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(roleData),
@@ -92,7 +93,7 @@ export default function useGroupRoles(groupId) {
       return updated;
     });
     try {
-      const res = await fetch(`http://localhost:9000/api/grouproles/groups/${groupId}/roles/${roleId}`, {
+      const res = await fetch(`${API_BASE}/api/grouproles/groups/${groupId}/roles/${roleId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(roleData),
@@ -122,7 +123,7 @@ export default function useGroupRoles(groupId) {
     if (!groupId || !roleId) return;
     setLoading(true);
     try {
-      const res = await fetch(`http://localhost:9000/api/grouproles/groups/${groupId}/roles/${roleId}`, {
+      const res = await fetch(`${API_BASE}/api/grouproles/groups/${groupId}/roles/${roleId}`, {
         method: 'DELETE',
       });
       if (!res.ok) throw new Error('Error al eliminar rol');
@@ -139,7 +140,7 @@ export default function useGroupRoles(groupId) {
     if (!groupId || !userId) return;
     setLoading(true);
     try {
-      const res = await fetch(`http://localhost:9000/api/usergrouproles/groups/${groupId}/userroles`, {
+      const res = await fetch(`${API_BASE}/api/usergrouproles/groups/${groupId}/userroles`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ uid: userId, gr_id: roleId }),
@@ -158,7 +159,7 @@ export default function useGroupRoles(groupId) {
     if (!groupId || !userId) return;
     setLoading(true);
     try {
-      const res = await fetch(`http://localhost:9000/api/usergrouproles/groups/${groupId}/userroles`, {
+      const res = await fetch(`${API_BASE}/api/usergrouproles/groups/${groupId}/userroles`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ uid: userId, gr_id: roleId }),
