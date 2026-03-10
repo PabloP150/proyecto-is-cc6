@@ -1,5 +1,5 @@
 const AnalyticsService = require('../services/AnalyticsService');
-const { execReadCommand } = require('../helpers/execQuery');
+const { execReadCommand, execWriteCommand } = require('../helpers/execQuery');
 const { TYPES } = require('tedious');
 
 /**
@@ -322,38 +322,29 @@ class AnalyticsController {
                 });
             }
             
-            // Skip access control check for debugging
-            console.log('🔓 Skipping access control for dashboard debugging');
-            
-            // Check if groupId is a valid GUID, if not use mock data
-            const isValidGuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(groupId);
-            
-            let dashboardData;
-            
-            if (isValidGuid) {
-                console.log('📊 Using real analytics service for valid GUID:', groupId);
-                try {
-                    // Aggregate multiple analytics data points for dashboard
-                    const [teamAnalytics, workloadDistribution, expertiseRankings] = await Promise.all([
-                        AnalyticsService.getTeamAnalyticsSummary(groupId),
-                        AnalyticsService.getWorkloadDistribution(groupId),
-                        AnalyticsService.getCategoryExpertiseRankings(groupId)
-                    ]);
-                    
-                    dashboardData = {
-                        team_analytics: teamAnalytics,
-                        workload_distribution: workloadDistribution,
-                        expertise_rankings: expertiseRankings,
-                        updated_at: new Date().toISOString()
-                    };
-                } catch (dbError) {
-                    console.log('📊 Database error, falling back to mock data:', dbError.message);
-                    dashboardData = AnalyticsController._getMockDashboardData(groupId);
+            // Access control check
+            if (requesterId) {
+                const hasAccess = await AnalyticsController._checkTeamAccess(requesterId, groupId);
+                if (!hasAccess) {
+                    return res.status(403).json({
+                        success: false,
+                        error: 'Access denied. You must be a team member to view this dashboard.'
+                    });
                 }
-            } else {
-                console.log('📊 Using mock data for non-GUID group ID:', groupId);
-                dashboardData = AnalyticsController._getMockDashboardData(groupId);
             }
+
+            const [teamAnalytics, workloadDistribution, expertiseRankings] = await Promise.all([
+                AnalyticsService.getTeamAnalyticsSummary(groupId),
+                AnalyticsService.getWorkloadDistribution(groupId),
+                AnalyticsService.getCategoryExpertiseRankings(groupId)
+            ]);
+
+            const dashboardData = {
+                team_analytics: teamAnalytics,
+                workload_distribution: workloadDistribution,
+                expertise_rankings: expertiseRankings,
+                updated_at: new Date().toISOString()
+            };
             
             res.status(200).json({
                 success: true,
@@ -459,9 +450,17 @@ class AnalyticsController {
                 });
             }
             
-            // Skip access control check for debugging
-            console.log('🔓 Skipping access control for debugging');
-            
+            // Access control check
+            if (requesterId) {
+                const hasAccess = await AnalyticsController._checkTeamAccess(requesterId, groupId);
+                if (!hasAccess) {
+                    return res.status(403).json({
+                        success: false,
+                        error: 'Access denied. You must be a team member to get recommendations.'
+                    });
+                }
+            }
+
             console.log('🤖 Calling analytics agent for recommendations...');
             
             // Call the analytics agent for recommendations
@@ -583,8 +582,28 @@ class AnalyticsController {
      * Get analytics configuration for a group
      */
     static async _getGroupAnalyticsConfig(groupId) {
-        // For now, return default configuration
-        // In a full implementation, this would be stored in a database table
+        const rows = await execReadCommand(
+            `SELECT * FROM dbo.AnalyticsConfig WHERE gid = @gid`,
+            [{ name: 'gid', type: TYPES.UniqueIdentifier, value: groupId }]
+        );
+
+        if (rows && rows.length > 0) {
+            const r = rows[0];
+            return {
+                group_id: groupId,
+                analytics_enabled: !!r.analytics_enabled,
+                track_completion_time: !!r.track_completion_time,
+                track_success_rate: !!r.track_success_rate,
+                track_workload: !!r.track_workload,
+                track_expertise: !!r.track_expertise,
+                track_capacity: !!r.track_capacity,
+                data_retention_days: r.data_retention_days,
+                privacy_mode: r.privacy_mode,
+                updated_at: r.updated_at
+            };
+        }
+
+        // Return defaults if no config exists yet
         return {
             group_id: groupId,
             analytics_enabled: true,
@@ -598,30 +617,47 @@ class AnalyticsController {
             updated_at: new Date().toISOString()
         };
     }
-    
+
     /**
      * Update analytics configuration for a group
      */
     static async _updateGroupAnalyticsConfig(groupId, config) {
-        // For now, just validate and return the config
-        // In a full implementation, this would update a database table
-        
-        const validatedConfig = {
-            group_id: groupId,
-            analytics_enabled: config.analytics_enabled !== undefined ? config.analytics_enabled : true,
-            track_completion_time: config.track_completion_time !== undefined ? config.track_completion_time : true,
-            track_success_rate: config.track_success_rate !== undefined ? config.track_success_rate : true,
-            track_workload: config.track_workload !== undefined ? config.track_workload : true,
-            track_expertise: config.track_expertise !== undefined ? config.track_expertise : true,
-            track_capacity: config.track_capacity !== undefined ? config.track_capacity : true,
-            data_retention_days: config.data_retention_days || 365,
-            privacy_mode: config.privacy_mode || 'team_leader_only',
-            updated_at: new Date().toISOString()
-        };
-        
-        console.log(`Analytics configuration updated for group ${groupId}:`, validatedConfig);
-        
-        return validatedConfig;
+        const b = (val, def) => (val !== undefined ? (val ? 1 : 0) : def);
+
+        const params = [
+            { name: 'gid',                  type: TYPES.UniqueIdentifier, value: groupId },
+            { name: 'analytics_enabled',    type: TYPES.Bit,     value: b(config.analytics_enabled, 1) },
+            { name: 'track_completion_time',type: TYPES.Bit,     value: b(config.track_completion_time, 1) },
+            { name: 'track_success_rate',   type: TYPES.Bit,     value: b(config.track_success_rate, 1) },
+            { name: 'track_workload',       type: TYPES.Bit,     value: b(config.track_workload, 1) },
+            { name: 'track_expertise',      type: TYPES.Bit,     value: b(config.track_expertise, 1) },
+            { name: 'track_capacity',       type: TYPES.Bit,     value: b(config.track_capacity, 1) },
+            { name: 'data_retention_days',  type: TYPES.Int,     value: config.data_retention_days || 365 },
+            { name: 'privacy_mode',         type: TYPES.VarChar, value: config.privacy_mode || 'team_leader_only' },
+        ];
+
+        await execWriteCommand(`
+            MERGE dbo.AnalyticsConfig AS target
+            USING (SELECT @gid AS gid) AS source ON target.gid = source.gid
+            WHEN MATCHED THEN UPDATE SET
+                analytics_enabled     = @analytics_enabled,
+                track_completion_time = @track_completion_time,
+                track_success_rate    = @track_success_rate,
+                track_workload        = @track_workload,
+                track_expertise       = @track_expertise,
+                track_capacity        = @track_capacity,
+                data_retention_days   = @data_retention_days,
+                privacy_mode          = @privacy_mode,
+                updated_at            = GETDATE()
+            WHEN NOT MATCHED THEN INSERT
+                (gid, analytics_enabled, track_completion_time, track_success_rate,
+                 track_workload, track_expertise, track_capacity, data_retention_days, privacy_mode)
+            VALUES
+                (@gid, @analytics_enabled, @track_completion_time, @track_success_rate,
+                 @track_workload, @track_expertise, @track_capacity, @data_retention_days, @privacy_mode);
+        `, params);
+
+        return await AnalyticsController._getGroupAnalyticsConfig(groupId);
     }
     
     /**

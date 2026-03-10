@@ -86,22 +86,29 @@ class AnalyticsAgent:
     
     async def _call_node_service(self, method, params):
         """Call Node.js AnalyticsService methods via subprocess"""
+        script_path = os.path.join(os.path.dirname(__file__), '../../analytics_bridge.js')
+        if not os.path.exists(script_path):
+            print(f"[AnalyticsAgent] analytics_bridge.js not found, skipping {method}")
+            return None
+
+        cmd = ['node', script_path, method, json.dumps(params)]
         try:
-            # Create a simple Node.js script call
-            script_path = os.path.join(os.path.dirname(__file__), '../../analytics_bridge.js')
-            if not os.path.exists(script_path):
-                return None
-                
-            cmd = ['node', script_path, method, json.dumps(params)]
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-            
             if result.returncode == 0:
                 return json.loads(result.stdout)
-            else:
-                print(f"Node service error: {result.stderr}")
-                return None
+            print(f"[AnalyticsAgent] {method} failed (exit {result.returncode}): {result.stderr.strip()}")
+            return None
+        except subprocess.TimeoutExpired:
+            print(f"[AnalyticsAgent] {method} timed out after 10s")
+            return None
+        except FileNotFoundError:
+            print(f"[AnalyticsAgent] 'node' not found in PATH, cannot call {method}")
+            return None
+        except json.JSONDecodeError as e:
+            print(f"[AnalyticsAgent] {method} returned invalid JSON: {e}")
+            return None
         except Exception as e:
-            print(f"Error calling Node service: {e}")
+            print(f"[AnalyticsAgent] Unexpected error calling {method}: {type(e).__name__}: {e}")
             return None
     
     async def _get_real_analytics_data(self, user_id):

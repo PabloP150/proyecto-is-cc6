@@ -12,6 +12,11 @@ console.log('Loaded .env from taskmate-api:', { LLM_PROVIDER: process.env.LLM_PR
 dotenv.config({ path: path.resolve(__dirname, '../.env'), override: false });
 console.log('Loaded root-level .env (if present):', { LLM_PROVIDER: process.env.LLM_PROVIDER, LLM_API_KEY: process.env.LLM_API_KEY, LLM_TEMPERATURE: process.env.LLM_TEMPERATURE });
 
+if (!process.env.JWT_SECRET) {
+  console.error('FATAL: JWT_SECRET is not defined in environment variables. Server will not start.');
+  process.exit(1);
+}
+
 const WebSocketServer = require('./services/WebSocketServer');
 const tasksController = require('./controllers/tasks.controller');
 const userController = require('./controllers/user.controller');
@@ -168,7 +173,16 @@ const server = http.createServer(app);
 // Initialize a single WebSocket server to handle all connections
 const wsServer = new WebSocketServer(server);
 
-server.listen(API_PORT, () => {
-    console.log(`API running on PORT ${API_PORT}`);
-    console.log(`WebSocket server available at ws://localhost:${API_PORT}/chat and /insights`);
-});
+const { initialize: initPool } = require('./helpers/pool');
+
+initPool()
+    .then(() => {
+        server.listen(API_PORT, () => {
+            console.log(`API running on PORT ${API_PORT}`);
+            console.log(`WebSocket server available at ws://localhost:${API_PORT}/chat and /insights`);
+        });
+    })
+    .catch(err => {
+        console.error('FATAL: Could not initialize DB connection pool:', err.message);
+        process.exit(1);
+    });

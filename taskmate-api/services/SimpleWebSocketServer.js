@@ -29,7 +29,7 @@ class SimpleWebSocketServer {
             }
 
             // Verify JWT token
-            const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+            const decoded = jwt.verify(token, process.env.JWT_SECRET);
             
             // Store user info in request for later use
             info.req.userId = decoded.userId || decoded.id;

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Navigate, Route, BrowserRouter as Router, Routes } from 'react-router-dom';
-import { ReactFlowProvider } from 'reactflow';
+import { ReactFlowProvider } from '@xyflow/react';
 import AnalyticsDashboard from './components/AnalyticsDashboard';
 import BlockDiagram from './components/BlockDiagram';
 import CalendarView from './components/CalendarView';

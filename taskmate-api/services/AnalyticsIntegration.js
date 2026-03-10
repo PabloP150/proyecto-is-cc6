@@ -84,9 +84,7 @@ class AnalyticsIntegration {
         try {
             console.log(`Analytics Integration: Handling task deletion - Task: ${taskId}`);
             
-            // Mark any pending analytics records as 'reassigned' or handle appropriately
-            // This could involve updating the success_status to 'reassigned' for pending tasks
-            const result = await this.analyticsService.recordTaskCompletion(taskId, false);
+            const result = await this.analyticsService.recordTaskCompletion(taskId, false, 'deleted');
             
             return result;
         } catch (error) {

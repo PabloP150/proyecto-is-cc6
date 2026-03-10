@@ -1,6 +1,6 @@
 import json
+from datetime import date
 from fastapi import WebSocket
-import google.generativeai as genai
 
 import llm_service
 from agents.recommendations_agent import RecommendationsAgent
@@ -78,7 +78,7 @@ class OrchestratorAgent:
             # Main conversation handling
             prompt = f"""You are a helpful project planning assistant. Guide users through a natural conversation to gather comprehensive project information before creating detailed plans.
 
-CURRENT DATE: December 11, 2025
+CURRENT DATE: {date.today().strftime("%B %d, %Y")}
 
 CONVERSATION CONTEXT:
 {conversation_context}

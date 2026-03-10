@@ -118,7 +118,7 @@ const AnalyticsDashboard = () => {
         'Product Manager'
     ];
 
-    // Fetch real users and combine with hardcoded workload data
+    // Fetch analytics data from the real API
     const fetchAnalyticsData = async () => {
         if (!selectedGroupId) {
             setLoading(false);
@@ -126,70 +126,62 @@ const AnalyticsDashboard = () => {
         }
 
         setLoading(true);
-        
+
         try {
-            // Fetch real team members from the database
-            const hardcodedWorkload = [
-                { name: 'Sarah Chen', username: 'sarah.chen', workload: 3, capacity: 5, role: 'Frontend Developer' },
-                { name: 'Marcus Johnson', username: 'marcus.johnson', workload: 4, capacity: 5, role: 'Backend Developer' },
-                { name: 'Elena Rodriguez', username: 'elena.rodriguez', workload: 2, capacity: 6, role: 'Backend Developer' },
-                { name: 'David Kim', username: 'david.kim', workload: 1, capacity: 4, role: 'QA Engineer' },
-                { name: 'Alex Thompson', username: 'alex.thompson', workload: 4, capacity: 5, role: 'Frontend Developer' },
-                { name: 'Maya Patel', username: 'maya.patel', workload: 3, capacity: 4, role: 'UI/UX Designer' },
-                { name: 'James Wilson', username: 'james.wilson', workload: 2, capacity: 5, role: 'UI/UX Designer' },
-                { name: 'Zoe Martinez', username: 'zoe.martinez', workload: 4, capacity: 5, role: 'Frontend Developer' },
-                { name: 'Ryan Foster', username: 'ryan.foster', workload: 1, capacity: 3, role: 'DevOps Engineer' },
-                { name: 'Lisa Wang', username: 'lisa.wang', workload: 4, capacity: 5, role: 'QA Engineer' },
-                { name: 'Tom Anderson', username: 'tom.anderson', workload: 3, capacity: 4, role: 'Backend Developer' },
-                { name: 'Priya Sharma', username: 'priya.sharma', workload: 5, capacity: 6, role: 'QA Engineer' },
-                { name: 'Jake Miller', username: 'jake.miller', workload: 2, capacity: 5, role: 'Frontend Developer' },
-                { name: 'Nina Kowalski', username: 'nina.kowalski', workload: 3, capacity: 4, role: 'Product Manager' },
-                { name: 'Carlos Mendez', username: 'carlos.mendez', workload: 4, capacity: 5, role: 'DevOps Engineer' }
-            ].map(member => ({
-                ...member,
-                utilization: member.capacity > 0 ? Math.round((member.workload / member.capacity) * 100) : 0,
-                active_tasks: member.workload
+            const res = await fetch(`http://localhost:9000/api/analytics/dashboard/${selectedGroupId}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const json = await res.json();
+            if (!json.success) throw new Error(json.error || 'API error');
+
+            const { team_analytics, workload_distribution, expertise_rankings } = json.data;
+
+            // Map team_analytics
+            const members = team_analytics?.team_members || [];
+            const totalActive = members.reduce((s, m) => s + (m.active_tasks || 0), 0);
+            const totalCompleted = members.reduce((s, m) => s + (m.completed_tasks || 0), 0);
+            const totalTasks = totalActive + totalCompleted;
+            const completionRate = totalTasks > 0 ? ((totalCompleted / totalTasks) * 100).toFixed(1) : 0;
+
+            // Map workload_distribution
+            const workload = (workload_distribution?.workload_distribution || []).map(m => ({
+                name: m.username,
+                username: m.username,
+                workload: m.current_workload || 0,
+                capacity: m.capacity || 3,
+                utilization: m.utilization || 0,
+                active_tasks: m.current_workload || 0,
+                role: m.role || 'Member',
+                status: m.status || 'available'
             }));
 
-            // Calculate aggregated metrics on the frontend for accuracy
-            const totalActiveTasks = hardcodedWorkload.reduce((sum, member) => sum + member.workload, 0);
-            const totalUtilization = hardcodedWorkload.reduce((sum, member) => sum + member.utilization, 0);
-            const avgCompletion = hardcodedWorkload.length > 0 ? totalUtilization / hardcodedWorkload.length : 0;
+            // Map expertise_rankings (object by category → flat array with top expert per category)
+            const expertiseObj = expertise_rankings?.expertise_rankings || {};
+            const expertiseFlat = Object.entries(expertiseObj)
+                .filter(([cat]) => cat !== 'no_expertise')
+                .map(([category, users]) => {
+                    const top = [...users].sort((a, b) => b.expertise_score - a.expertise_score)[0];
+                    return top ? { category, expert: top.username, score: Math.round(top.expertise_score) } : null;
+                })
+                .filter(Boolean);
 
-            const analyticsData = {
-                team_analytics: {
-                    total_members: hardcodedWorkload.length,
-                    active_tasks: totalActiveTasks,
-                    completion_rate: avgCompletion,
-                },
-                workload_distribution: hardcodedWorkload,
-                expertise_rankings: [
-                    { category: 'Frontend', expert: 'Sarah Chen', score: 94 },
-                    { category: 'Backend', expert: 'Marcus Johnson', score: 89 },
-                    { category: 'UI/UX Design', expert: 'Maya Patel', score: 96 },
-                    { category: 'QA Testing', expert: 'David Kim', score: 91 }
-                ]
-            };
-            
-            setAnalytics(analyticsData);
-            
-        } catch (error) {
-            console.error('Error fetching analytics:', error);
-            // Fallback to completely hardcoded data if API fails
             setAnalytics({
                 team_analytics: {
-                    total_members: 5,
-                    active_tasks: 14,
-                    completion_rate: 66,
-                    avg_response_time: 0
+                    total_members: members.length,
+                    active_tasks: totalActive,
+                    completion_rate: parseFloat(completionRate),
                 },
-                workload_distribution: [
-                    { name: 'Sarah Chen', workload: 3, capacity: 5, utilization: 60, role: 'Frontend Developer' },
-                    { name: 'Marcus Johnson', workload: 4, capacity: 5, utilization: 80, role: 'Backend Developer' },
-                    { name: 'Elena Rodriguez', workload: 2, capacity: 6, utilization: 33, role: 'Backend Developer' },
-                    { name: 'David Kim', workload: 1, capacity: 4, utilization: 25, role: 'QA Engineer' },
-                    { name: 'Alex Thompson', workload: 4, capacity: 5, utilization: 80, role: 'Frontend Developer' }
-                ],
+                workload_distribution: workload,
+                expertise_rankings: expertiseFlat
+            });
+
+        } catch (error) {
+            console.error('Error fetching analytics:', error);
+            setAnalytics({
+                team_analytics: { total_members: 0, active_tasks: 0, completion_rate: 0 },
+                workload_distribution: [],
                 expertise_rankings: []
             });
         } finally {

@@ -94,9 +94,9 @@ class AnalyticsService {
      * @param {string} taskId - Task UUID
      * @param {boolean} success - Whether task was completed successfully
      */
-    async recordTaskCompletion(taskId, success = true) {
+    async recordTaskCompletion(taskId, success = true, statusOverride = null) {
         return this.executeWithErrorHandling(async () => {
-            const status = success ? 'completed' : 'failed';
+            const status = statusOverride || (success ? 'completed' : 'failed');
             
             // First, verify the task exists and is pending
             const verifyQuery = `

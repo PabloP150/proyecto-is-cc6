@@ -33,7 +33,7 @@ class MinimalWebSocketServer {
 
                 let userId;
                 try {
-                    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+                    const decoded = jwt.verify(token, process.env.JWT_SECRET);
                     userId = decoded.userId || decoded.id;
                     console.log('WebSocket token verified for user:', userId);
                 } catch (error) {
