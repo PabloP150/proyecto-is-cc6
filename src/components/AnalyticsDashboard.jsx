@@ -239,7 +239,20 @@ const AnalyticsDashboard = () => {
         );
     }
 
-
+    if (!analytics) {
+        return (
+            <div className="analytics-dashboard">
+                <div className="dashboard-header">
+                    <h1>Team Analytics Dashboard</h1>
+                </div>
+                <div className="loading-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '400px' }}>
+                    <div className="loading-text" style={{ fontSize: '18px', color: 'white' }}>
+                        Select a group to view analytics.
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="analytics-dashboard">

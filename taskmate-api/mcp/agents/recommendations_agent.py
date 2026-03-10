@@ -142,14 +142,8 @@ class RecommendationsAgent:
         """Enhanced handler that supports multi-phase planning."""
         if phase == 'clarification':
             prompt = self._build_clarification_prompt(message)
-            generation_config = genai.types.GenerationConfig(temperature=0.3)
         else:
-            # Default to comprehensive planning
             clarifications = context.get('clarifications', '') if context else ''
             prompt = self._build_comprehensive_plan_prompt(message, clarifications)
-            generation_config = genai.types.GenerationConfig(
-                temperature=0.2,
-                response_mime_type='application/json'
-            )
 
-        return await llm_service.generate(prompt, generation_config_override=generation_config)
+        return await llm_service.generate(prompt)

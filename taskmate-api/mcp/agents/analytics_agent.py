@@ -1,9 +1,7 @@
 import json
 import sys
 import os
-import asyncio
 import subprocess
-import google.generativeai as genai
 
 # Add the parent directory to path to import services
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../'))
@@ -657,11 +655,7 @@ Respond with JSON in this exact format:
 }}"""
 
         # Generate LLM response
-        llm_response = await llm_service.generate(prompt, 
-            generation_config_override=genai.types.GenerationConfig(
-                temperature=0.3,
-                response_mime_type='application/json'
-            ))
+        llm_response = await llm_service.generate(prompt)
         
         # Parse LLM response
         try:
