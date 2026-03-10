@@ -4,6 +4,33 @@ const AnalyticsService = require('./AnalyticsService');
  * Analytics Integration Service
  * Provides hooks for integrating analytics tracking with existing task operations
  */
+const CATEGORY_KEYWORDS = {
+    frontend: [
+        'ui', 'ux', 'interface', 'frontend', 'front-end', 'react', 'vue', 'angular',
+        'css', 'html', 'javascript', 'responsive', 'design', 'component', 'layout',
+        'styling', 'theme', 'visual', 'user interface', 'dashboard', 'form', 'modal',
+        'button', 'navigation', 'menu', 'page', 'screen', 'view'
+    ],
+    backend: [
+        'api', 'backend', 'back-end', 'server', 'endpoint', 'service', 'microservice',
+        'database', 'sql', 'query', 'authentication', 'authorization', 'auth',
+        'middleware', 'controller', 'model', 'route', 'rest', 'graphql',
+        'integration', 'webhook', 'cron', 'job', 'worker', 'queue'
+    ],
+    database: [
+        'database', 'db', 'sql', 'query', 'table', 'schema', 'migration', 'index',
+        'optimization', 'performance', 'backup', 'restore', 'data', 'storage',
+        'mongodb', 'postgresql', 'mysql', 'redis', 'elasticsearch', 'aggregate',
+        'join', 'transaction', 'constraint', 'foreign key', 'primary key'
+    ],
+    testing: [
+        'test', 'testing', 'unit test', 'integration test', 'e2e', 'qa', 'quality',
+        'bug', 'fix', 'debug', 'validation', 'verification', 'coverage', 'mock',
+        'stub', 'jest', 'cypress', 'selenium', 'automation', 'regression',
+        'performance test', 'load test', 'stress test'
+    ]
+};
+
 class AnalyticsIntegration {
     constructor() {
         this.analyticsService = AnalyticsService;
@@ -100,41 +127,13 @@ class AnalyticsIntegration {
      */
     detectTaskCategory(taskData) {
         const { name = '', description = '', list = '' } = taskData;
-        
+
         // Combine all text for analysis
         const text = `${name} ${description} ${list}`.toLowerCase();
         
-        // Define category keywords
-        const categoryKeywords = {
-            frontend: [
-                'ui', 'ux', 'interface', 'frontend', 'front-end', 'react', 'vue', 'angular',
-                'css', 'html', 'javascript', 'responsive', 'design', 'component', 'layout',
-                'styling', 'theme', 'visual', 'user interface', 'dashboard', 'form', 'modal',
-                'button', 'navigation', 'menu', 'page', 'screen', 'view'
-            ],
-            backend: [
-                'api', 'backend', 'back-end', 'server', 'endpoint', 'service', 'microservice',
-                'database', 'sql', 'query', 'authentication', 'authorization', 'auth',
-                'middleware', 'controller', 'model', 'route', 'rest', 'graphql',
-                'integration', 'webhook', 'cron', 'job', 'worker', 'queue'
-            ],
-            database: [
-                'database', 'db', 'sql', 'query', 'table', 'schema', 'migration', 'index',
-                'optimization', 'performance', 'backup', 'restore', 'data', 'storage',
-                'mongodb', 'postgresql', 'mysql', 'redis', 'elasticsearch', 'aggregate',
-                'join', 'transaction', 'constraint', 'foreign key', 'primary key'
-            ],
-            testing: [
-                'test', 'testing', 'unit test', 'integration test', 'e2e', 'qa', 'quality',
-                'bug', 'fix', 'debug', 'validation', 'verification', 'coverage', 'mock',
-                'stub', 'jest', 'cypress', 'selenium', 'automation', 'regression',
-                'performance test', 'load test', 'stress test'
-            ]
-        };
-        
         // Score each category
         const scores = {};
-        for (const [category, keywords] of Object.entries(categoryKeywords)) {
+        for (const [category, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
             scores[category] = 0;
             for (const keyword of keywords) {
                 if (text.includes(keyword)) {

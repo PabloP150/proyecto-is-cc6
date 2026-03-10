@@ -1,6 +1,7 @@
 const AnalyticsService = require('../services/AnalyticsService');
 const { execReadCommand, execWriteCommand } = require('../helpers/execQuery');
 const { TYPES } = require('tedious');
+const { v4: uuidv4 } = require('uuid');
 
 /**
  * Analytics Controller
@@ -343,12 +344,10 @@ class AnalyticsController {
             });
             
         } catch (error) {
-            console.error('❌ Error getting dashboard data:', error);
-            console.error('❌ Error stack:', error.stack);
+            console.error('Error getting dashboard data:', error);
             res.status(500).json({
                 success: false,
-                error: 'Failed to retrieve dashboard data',
-                debug: error.message
+                error: 'Failed to retrieve dashboard data'
             });
         }
     }
@@ -737,7 +736,6 @@ class AnalyticsController {
      * Get recommendations from analytics agent via MCP WebSocket
      */
     static async _getRecommendationsFromAgent(groupId, taskCategory, taskDescription, context) {
-        const { v4: uuidv4 } = require('uuid');
         const llmService = require('../services/LLMService');
 
         const requestData = {

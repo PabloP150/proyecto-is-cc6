@@ -120,7 +120,7 @@ const AnalyticsDashboard = () => {
     ];
 
     // Fetch analytics data from the real API
-    const fetchAnalyticsData = async () => {
+    const fetchAnalyticsData = async (signal) => {
         if (!selectedGroupId) {
             setLoading(false);
             return;
@@ -130,7 +130,8 @@ const AnalyticsDashboard = () => {
 
         try {
             const res = await fetch(`${API_BASE}/api/analytics/dashboard/${selectedGroupId}`, {
-                headers: { Authorization: `Bearer ${token}` }
+                headers: { Authorization: `Bearer ${token}` },
+                signal
             });
 
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -179,6 +180,7 @@ const AnalyticsDashboard = () => {
             });
 
         } catch (error) {
+            if (error.name === 'AbortError') return;
             console.error('Error fetching analytics:', error);
             setAnalytics({
                 team_analytics: { total_members: 0, active_tasks: 0, completion_rate: 0 },
@@ -191,14 +193,15 @@ const AnalyticsDashboard = () => {
     };
 
     useEffect(() => {
-        if (selectedGroupId) {
-            fetchAnalyticsData();
-        }
+        if (!selectedGroupId) return;
+        const controller = new AbortController();
+        fetchAnalyticsData(controller.signal);
+        return () => controller.abort();
     }, [selectedGroupId]);
 
     // Refresh analytics data
     const refreshAnalytics = () => {
-        fetchAnalyticsData();
+        fetchAnalyticsData(new AbortController().signal);
     };
 
     if (loading) {

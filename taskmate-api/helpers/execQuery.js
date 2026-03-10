@@ -1,17 +1,11 @@
 const pool = require('./pool');
 const { Request } = require('tedious');
 
-const execQuery = (query, params, callbackEvent) => {
-    return new Promise(async (resolve, reject) => {
-        let conn;
-        try {
-            conn = await pool.acquire();
-        } catch (err) {
-            return reject(err);
-        }
+const execQuery = async (query, params, callbackEvent) => {
+    const conn = await pool.acquire();
+    const release = () => pool.release(conn);
 
-        const release = () => pool.release(conn);
-
+    return new Promise((resolve, reject) => {
         const request = new Request(query, err => {
             if (err) reject(err);
         });
@@ -32,9 +26,9 @@ const execQuery = (query, params, callbackEvent) => {
 
 const execWriteCommand = (query, params) => {
     const callbackEvent = (request, release, resolve) => {
-        request.on('requestCompleted', (rowCount, more) => {
+        request.on('requestCompleted', (rowCount) => {
             release();
-            resolve(rowCount, more);
+            resolve(rowCount);
         });
     };
     return execQuery(query, params, callbackEvent);
