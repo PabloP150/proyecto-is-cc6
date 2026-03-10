@@ -98,7 +98,6 @@ class UserSession {
         } else if (event === 'response_stream_end') {
             // The stream end event can be used to signify the end of a stream on the client.
         } else if (event === 'save_plan') {
-            console.log('Received save_plan event:', JSON.stringify(data, null, 2));
             const result = await projectService.createProjectFromPlan(data.plan, data.original_message, this.userId);
             if (result.success) {
                 this.sendMessage({ type: 'system', content: `Project "${result.groupId}" created successfully!`, timestamp: new Date() });
@@ -107,18 +106,14 @@ class UserSession {
                 this.sendMessage({ type: 'system', content: `Failed to create the project: ${result.error}`, timestamp: new Date() });
             }
         } else if (event === 'analytics_response') {
-            // Forward analytics responses to the client
-            console.log(`[UserSession] Forwarding analytics response to user ${this.userId}`);
-            this.sendMessage({ 
-                type: 'analytics_response', 
+            this.sendMessage({
+                type: 'analytics_response',
                 data: data,
                 requestId: response.requestId,
-                timestamp: new Date() 
+                timestamp: new Date()
             });
         } else if (event === 'analytics_error') {
-            // Forward analytics errors to the client
-            console.log(`[UserSession] Forwarding analytics error to user ${this.userId}:`, response.error);
-            this.sendMessage({ 
+            this.sendMessage({
                 type: 'analytics_error', 
                 error: response.error,
                 requestId: response.requestId,
