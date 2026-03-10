@@ -64,12 +64,20 @@ async function acquire() {
         }
     }
 
-    return new Promise((resolve, reject) => queue.push({ resolve, reject }));
+    return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+            const idx = queue.findIndex(w => w.timer === timer);
+            if (idx !== -1) queue.splice(idx, 1);
+            reject(new Error('[DB Pool] Timed out waiting for a connection'));
+        }, 10000);
+        queue.push({ resolve, reject, timer });
+    });
 }
 
 function release(conn) {
     if (queue.length > 0) {
         const waiter = queue.shift();
+        clearTimeout(waiter.timer);
         if (isAlive(conn)) {
             waiter.resolve(conn);
         } else {

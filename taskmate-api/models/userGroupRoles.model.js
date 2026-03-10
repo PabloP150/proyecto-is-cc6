@@ -62,18 +62,19 @@ const assignRoleToUser = async ({ ugr_id, uid, gr_id, gid }) => {
 
 
 const removeRoleFromUser = async ({ ugr_id, uid, gr_id, gid }) => {
-  // Permite borrar por ugr_id o por combinación de claves
   let query, params;
   if (ugr_id) {
     query = `DELETE FROM dbo.UserGroupRoles WHERE ugr_id = @ugr_id`;
     params = [{ name: 'ugr_id', type: TYPES.UniqueIdentifier, value: ugr_id }];
-  } else {
+  } else if (uid && gr_id && gid) {
     query = `DELETE FROM dbo.UserGroupRoles WHERE uid = @uid AND gr_id = @gr_id AND gid = @gid`;
     params = [
       { name: 'uid', type: TYPES.UniqueIdentifier, value: uid },
       { name: 'gr_id', type: TYPES.UniqueIdentifier, value: gr_id },
       { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
     ];
+  } else {
+    throw new Error('removeRoleFromUser requires either ugr_id or all of (uid, gr_id, gid)');
   }
   await execWriteCommand(query, params);
   return { success: true };
