@@ -29,6 +29,7 @@ const userTaskController = require('./controllers/usertask.controller');
 const userGroupRolesController = require('./controllers/userGroupRoles.controller');
 const groupRolesController = require('./controllers/groupRoles.controller');
 const analyticsController = require('./controllers/analytics.controller');
+const requireAuth = require('./middleware/auth.middleware');
 
 
 const {
@@ -56,19 +57,19 @@ app.use('/api/usertask', userTaskController);
 app.use('/api/usergrouproles', userGroupRolesController);
 app.use('/api/grouproles', groupRolesController);
 
-// Analytics routes
-app.get('/api/analytics/user/:userId', analyticsController.getUserAnalytics);
-app.get('/api/analytics/team/:groupId', analyticsController.getTeamAnalytics);
-app.get('/api/analytics/workload/:groupId', analyticsController.getWorkloadDistribution);
-app.get('/api/analytics/trends/:userId', analyticsController.getUserCompletionTrends);
-app.get('/api/analytics/expertise/:groupId', analyticsController.getCategoryExpertiseRankings);
-app.get('/api/analytics/config/:groupId', analyticsController.getAnalyticsConfig);
-app.put('/api/analytics/config/:groupId', analyticsController.updateAnalyticsConfig);
-app.get('/api/analytics/dashboard/:groupId', analyticsController.getDashboardData);
-app.post('/api/analytics/recommendations', analyticsController.getTaskRecommendations);
-app.post('/api/analytics/assignment', analyticsController.recordTaskAssignment);
-app.post('/api/analytics/completion', analyticsController.recordTaskCompletion);
-app.post('/api/analytics/batch-update', analyticsController.batchUpdateMetrics);
+// Analytics routes (all require JWT)
+app.get('/api/analytics/user/:userId', requireAuth, analyticsController.getUserAnalytics);
+app.get('/api/analytics/team/:groupId', requireAuth, analyticsController.getTeamAnalytics);
+app.get('/api/analytics/workload/:groupId', requireAuth, analyticsController.getWorkloadDistribution);
+app.get('/api/analytics/trends/:userId', requireAuth, analyticsController.getUserCompletionTrends);
+app.get('/api/analytics/expertise/:groupId', requireAuth, analyticsController.getCategoryExpertiseRankings);
+app.get('/api/analytics/config/:groupId', requireAuth, analyticsController.getAnalyticsConfig);
+app.put('/api/analytics/config/:groupId', requireAuth, analyticsController.updateAnalyticsConfig);
+app.get('/api/analytics/dashboard/:groupId', requireAuth, analyticsController.getDashboardData);
+app.post('/api/analytics/recommendations', requireAuth, analyticsController.getTaskRecommendations);
+app.post('/api/analytics/assignment', requireAuth, analyticsController.recordTaskAssignment);
+app.post('/api/analytics/completion', requireAuth, analyticsController.recordTaskCompletion);
+app.post('/api/analytics/batch-update', requireAuth, analyticsController.batchUpdateMetrics);
 
 // Utility endpoint to populate task assignments for analytics
 app.post('/api/utils/populate-assignments/:groupId', async (req, res) => {

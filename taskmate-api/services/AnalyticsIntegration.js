@@ -84,7 +84,7 @@ class AnalyticsIntegration {
         try {
             console.log(`Analytics Integration: Handling task deletion - Task: ${taskId}`);
             
-            const result = await this.analyticsService.recordTaskCompletion(taskId, false, 'deleted');
+            const result = await this.analyticsService.recordTaskCompletion(taskId, false, 'reassigned');
             
             return result;
         } catch (error) {

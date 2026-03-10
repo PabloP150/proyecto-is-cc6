@@ -49,24 +49,21 @@ class AnalyticsController {
     static async getTeamAnalytics(req, res) {
         try {
             const { groupId } = req.params;
-            const { requesterId } = req.query; // For access control
-            
+            const requesterId = req.user.userId;
+
             if (!groupId) {
                 return res.status(400).json({
                     success: false,
                     error: 'Group ID is required'
                 });
             }
-            
-            // Check if requester has access to team analytics (team leader check)
-            if (requesterId) {
-                const hasAccess = await AnalyticsController._checkTeamAccess(requesterId, groupId);
-                if (!hasAccess) {
-                    return res.status(403).json({
-                        success: false,
-                        error: 'Access denied. Only team leaders can view team analytics.'
-                    });
-                }
+
+            const hasAccess = await AnalyticsController._checkTeamAccess(requesterId, groupId);
+            if (!hasAccess) {
+                return res.status(403).json({
+                    success: false,
+                    error: 'Access denied. Only team leaders can view team analytics.'
+                });
             }
             
             const analytics = await AnalyticsService.getTeamAnalyticsSummary(groupId);
@@ -92,24 +89,21 @@ class AnalyticsController {
     static async getWorkloadDistribution(req, res) {
         try {
             const { groupId } = req.params;
-            const { requesterId } = req.query;
-            
+            const requesterId = req.user.userId;
+
             if (!groupId) {
                 return res.status(400).json({
                     success: false,
                     error: 'Group ID is required'
                 });
             }
-            
-            // Access control check
-            if (requesterId) {
-                const hasAccess = await AnalyticsController._checkTeamAccess(requesterId, groupId);
-                if (!hasAccess) {
-                    return res.status(403).json({
-                        success: false,
-                        error: 'Access denied. Only team leaders can view workload distribution.'
-                    });
-                }
+
+            const hasAccess = await AnalyticsController._checkTeamAccess(requesterId, groupId);
+            if (!hasAccess) {
+                return res.status(403).json({
+                    success: false,
+                    error: 'Access denied. Only team leaders can view workload distribution.'
+                });
             }
             
             const workloadData = await AnalyticsService.getWorkloadDistribution(groupId);
@@ -313,24 +307,21 @@ class AnalyticsController {
     static async getDashboardData(req, res) {
         try {
             const { groupId } = req.params;
-            const { requesterId } = req.query;
-            
+            const requesterId = req.user.userId;
+
             if (!groupId) {
                 return res.status(400).json({
                     success: false,
                     error: 'Group ID is required'
                 });
             }
-            
-            // Access control check
-            if (requesterId) {
-                const hasAccess = await AnalyticsController._checkTeamAccess(requesterId, groupId);
-                if (!hasAccess) {
-                    return res.status(403).json({
-                        success: false,
-                        error: 'Access denied. You must be a team member to view this dashboard.'
-                    });
-                }
+
+            const hasAccess = await AnalyticsController._checkMembership(requesterId, groupId);
+            if (!hasAccess) {
+                return res.status(403).json({
+                    success: false,
+                    error: 'Access denied. You must be a team member to view this dashboard.'
+                });
             }
 
             const [teamAnalytics, workloadDistribution, expertiseRankings] = await Promise.all([
@@ -517,6 +508,22 @@ class AnalyticsController {
      * Check if user has access to team analytics (is team leader)
      * Requirement 6.4: Proper access controls and data privacy compliance
      */
+    static async _checkMembership(requesterId, groupId) {
+        try {
+            const result = await execReadCommand(
+                `SELECT 1 FROM dbo.UserGroups WHERE uid = @uid AND gid = @gid`,
+                [
+                    { name: 'uid', type: TYPES.UniqueIdentifier, value: requesterId },
+                    { name: 'gid', type: TYPES.UniqueIdentifier, value: groupId }
+                ]
+            );
+            return result && result.length > 0;
+        } catch (error) {
+            console.error('Error checking membership:', error);
+            return false;
+        }
+    }
+
     static async _checkTeamAccess(requesterId, groupId) {
         try {
             const query = `
