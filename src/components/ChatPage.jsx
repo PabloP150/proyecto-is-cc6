@@ -51,7 +51,6 @@ function ChatPage() {
 
             // Only reset history flags if it's a different user (not just token refresh)
             if (currentUserId && newUserId && currentUserId !== newUserId) {
-                console.log('Different user detected, resetting chat history');
                 setHasReceivedHistory(false);
                 setInitialMessageShown(false);
                 setMessages([]); // Clear messages for different user
@@ -88,23 +87,15 @@ function ChatPage() {
         {
             autoConnect: !!token, // Only auto-connect if we have a token
             onMessage: (data) => {
-                console.log('ChatPage received WebSocket message:', data);
-
-                // Filter out analytics messages and empty content messages
                 if (data.type === 'analytics_response' || data.type === 'analytics_error') {
-                    console.log('Ignoring analytics message:', data.type);
-                    return; // Do not process or display analytics messages in chat
-                }
-
-                // General filter for empty content before processing any message type
-                if (data.type !== 'history_restore' && !data.content && !data.data && !data.error) {
-                    console.log('Ignoring message with no content, data, or error:', data);
                     return;
                 }
 
-                // Handle history restoration separately as it contains an array of messages
+                if (data.type !== 'history_restore' && !data.content && !data.data && !data.error) {
+                    return;
+                }
+
                 if (data.type === 'history_restore') {
-                    console.log('Restoring chat history:', data.messages.length, 'messages');
                     const restoredMessages = data.messages.map((msg, index) => ({
                         id: `restored-${index}-${Date.now()}`,
                         type: msg.type,
@@ -120,11 +111,7 @@ function ChatPage() {
 
                 // Handle regular assistant or system messages
                 if (data.type === 'assistant' || data.type === 'system') {
-                    console.log('Received assistant/system message:', data);
-                    if (!data.content || !data.content.trim()) {
-                        console.log('Ignoring empty assistant/system message after specific type check:', data);
-                        return;
-                    }
+                    if (!data.content || !data.content.trim()) return;
                     setMessages(prev => [...prev, {
                         id: Date.now().toString(),
                         type: data.type,
@@ -135,8 +122,6 @@ function ChatPage() {
                     return;
                 }
 
-                // Fallback for unknown message types
-                console.log('Received unknown message type:', data.type, data);
             },
             onError: (error) => {
                 console.error('WebSocket error:', error);
@@ -213,19 +198,11 @@ function ChatPage() {
         setInputMessage('');
         setIsTyping(true);
 
-        console.log('Sending message via WebSocket:', {
-            type: 'user',
-            content: userMessage.content,
-            timestamp: userMessage.timestamp
-        });
-
         const success = sendWebSocketMessage({
             type: 'user',
             content: userMessage.content,
             timestamp: userMessage.timestamp
         });
-
-        console.log('Message send result:', success);
 
         if (!success) {
             console.error('Failed to send message via WebSocket');

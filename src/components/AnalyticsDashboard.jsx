@@ -30,14 +30,10 @@ const AnalyticsDashboard = () => {
         {
             autoConnect: !!token,
             onMessage: (data) => {
-                console.log('Analytics WebSocket message received:', data);
-                
-                // The analytics endpoint sends clean data, so we can process it directly
                 if (data.event === 'analytics_response') {
                     if (data.data.recommendations || data.data.suggested_plan) {
                         setAnalyticsResponse({ data: data.data });
                     }
-                    console.log('Setting analyticsLoading to false in onMessage');
                     setAnalyticsLoading(false);
                 } else if (data.event === 'analytics_error') {
                     console.error('Analytics operation failed:', data.error);
@@ -49,12 +45,7 @@ const AnalyticsDashboard = () => {
 
     // Generate fallback recommendations using current team data
     const generateFallbackRecommendations = () => {
-        if (!analytics || !analytics.workload_distribution) {
-            console.log('No team data available for fallback recommendations');
-            return;
-        }
-
-        console.log('Generating fallback recommendations from team data');
+        if (!analytics || !analytics.workload_distribution) return;
         
         const availableMembers = analytics.workload_distribution
             .filter(member => member.utilization < 80) // Less than 80% utilized
@@ -434,8 +425,6 @@ const TaskRecommendations = ({
     // Handle analytics responses
     useEffect(() => {
         if (analyticsResponse && analyticsResponse.data) {
-            console.log('Processing analytics response:', analyticsResponse);
-            
             if (analyticsResponse.data.recommendations) {
                 setRecommendations(analyticsResponse.data.recommendations);
             }
@@ -458,15 +447,11 @@ const TaskRecommendations = ({
             return;
         }
 
-        console.log('Setting analyticsLoading to true');
         setAnalyticsLoading(true);
         setRecommendations([]);
         setSuggestedPlan(null);
 
         try {
-            console.log('Sending analytics request via WebSocket...');
-
-            // Send a structured analytics request
             const analyticsMessage = {
                 type: 'analytics',
                 action: 'get_task_assignment_recommendations', // Corrected action name
@@ -487,20 +472,15 @@ const TaskRecommendations = ({
             const success = sendWebSocketMessage(analyticsMessage);
 
             if (!success) {
-                console.error('Failed to send analytics request');
                 setAnalyticsLoading(false);
                 handleAnalyticsError();
             } else {
-                console.log('Analytics request sent via WebSocket');
-                
-                // Set a timeout for the request
                 setTimeout(() => {
                     if (analyticsLoading) {
-                        console.log('Analytics request timeout - using fallback');
                         setAnalyticsLoading(false);
                         generateFallbackRecommendations();
                     }
-                }, 30000); // 30 second timeout
+                }, 30000);
             }
 
         } catch (error) {

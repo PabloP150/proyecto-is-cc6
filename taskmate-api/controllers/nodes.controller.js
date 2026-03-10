@@ -184,13 +184,8 @@ nodesRoute.put('/:id/toggleComplete', async (req, res) => {
 nodesRoute.delete('/:id', async (req, res) => {
     const { id: nid } = req.params;
     try {
-        console.log('[DELETE /nodes/:id] start', { nid });
-        // Eliminar edges relacionadas (source o target)
-        const edgesResult = await deleteEdgesByNode(nid);
-        console.log('[DELETE /nodes/:id] edges deleted (source or target)', { nid, edgesResult });
-        // Luego eliminar el nodo
-        const nodeResult = await NodesModel.deleteNode(nid);
-        console.log('[DELETE /nodes/:id] node deleted', { nid, nodeResult });
+        await deleteEdgesByNode(nid);
+        await NodesModel.deleteNode(nid);
         res.status(200).json({ message: 'Node deleted successfully' });
     } catch (error) {
         console.error('[DELETE /nodes/:id] Error deleting node', { nid, error });
