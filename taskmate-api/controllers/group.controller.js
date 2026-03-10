@@ -2,7 +2,7 @@ const groupRoute = require('express').Router();
 const GroupModel = require('./../models/group.model');
 const UserGroupModel = require('./../models/userGroup.model');
 const { v4: uuidv4 } = require('uuid');
-const UserModel = require('./../models/user.model'); // Asegúrate de tener un modelo de usuario
+const UserModel = require('./../models/user.model');
 
 // Crear un nuevo grupo
 groupRoute.post('/group', async (req, res) => {
@@ -19,7 +19,7 @@ groupRoute.post('/group', async (req, res) => {
     // Importante: devolver el gid creado (no un nuevo uuid)
     res.status(201).json({ message: 'Group created successfully', gid });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: error.message || 'Internal server error' });
     }
 });
 
@@ -30,7 +30,7 @@ groupRoute.get('/:gid/members', async (req, res) => {
         const members = await UserGroupModel.getMembersByGroupId(gid);
         res.status(200).json({ members });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: error.message || 'Internal server error' });
     }
 });
 
@@ -44,7 +44,7 @@ groupRoute.get('/user-groups', async (req, res) => {
         const groups = await GroupModel.getGroupsByUserId(uid);
         res.status(200).json({ groups });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: error.message || 'Internal server error' });
     }
 });
 
@@ -55,7 +55,7 @@ groupRoute.get('/:gid/roles', async (req, res) => {
         const roles = await GroupModel.getRolesByGroupId(gid);
         res.status(200).json(roles);
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: error.message || 'Internal server error' });
     }
 });
 
@@ -67,7 +67,7 @@ groupRoute.post('/join', async (req, res) => {
         await UserGroupModel.addUserToGroup({ uid, gid });
         res.status(200).json({ message: 'Joined group successfully' });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: error.message || 'Internal server error' });
     }
 });
 
@@ -78,7 +78,7 @@ groupRoute.delete('/remove-member', async (req, res) => {
         await UserGroupModel.removeMemberFromGroup(uid, gid);
         res.status(200).json({ message: 'Member removed successfully' });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: error.message || 'Internal server error' });
     }
 });
 
@@ -89,9 +89,9 @@ groupRoute.delete('/leave', async (req, res) => {
         await UserGroupModel.removeMemberFromGroup(uid, gid);
         res.status(200).json({ message: 'Group left successfully' });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: error.message || 'Internal server error' });
     }
-});    
+});
 
 //eliminar un grupo
 groupRoute.delete('/delete', async (req, res) => {
@@ -100,7 +100,7 @@ groupRoute.delete('/delete', async (req, res) => {
         await GroupModel.deleteGroup(gid, adminId);
         res.status(200).json({ message: 'Group deleted successfully' });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: error.message || 'Internal server error' });
     }
 });
 
