@@ -3,11 +3,11 @@ const { TYPES } = require('tedious');
 
 const addUsertask = async (usertaskData) => {
     const { utid, uid, tid, completed } = usertaskData;
-    // IF NOT EXISTS evita duplicados por PRIMARY KEY (uid, tid)
+    // Idempotent: skip insert if (uid, tid) already exists (avoids PK violation)
     const query = `
-        IF NOT EXISTS (SELECT 1 FROM dbo.UserTask WHERE uid=@uid AND tid=@tid)
-            INSERT INTO dbo.UserTask (utid, uid, tid, completed)
-            VALUES (@utid, @uid, @tid, @completed)
+        INSERT INTO dbo.UserTask (utid, uid, tid, completed)
+        SELECT @utid, @uid, @tid, @completed
+        WHERE NOT EXISTS (SELECT 1 FROM dbo.UserTask WHERE uid=@uid AND tid=@tid)
     `;
     const params = [
         { name: 'utid', type: TYPES.UniqueIdentifier, value: utid },
@@ -24,6 +24,12 @@ const deleteUsertask = async (uid, tid) => {
         { name: 'uid', type: TYPES.UniqueIdentifier, value: uid },
         { name: 'tid', type: TYPES.UniqueIdentifier, value: tid },
     ];
+    return execWriteCommand(query, params);
+};
+
+const deleteAllByTid = async (tid) => {
+    const query = `DELETE FROM dbo.UserTask WHERE tid=@tid`;
+    const params = [{ name: 'tid', type: TYPES.UniqueIdentifier, value: tid }];
     return execWriteCommand(query, params);
 };
 
@@ -45,6 +51,7 @@ const getutid = async (tid, uid) => {
 module.exports = {
     addUsertask,
     deleteUsertask,
+    deleteAllByTid,
     getUsertasksByTid,
     getutid,
 };

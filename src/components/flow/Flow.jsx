@@ -107,11 +107,13 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
           }));
           const formattedEdges = edgesData.data.map(edge => ({
             id: edge.eid,
+            type: 'floating',
             source: edge.sourceId,
             target: edge.targetId,
+            markerEnd: { type: MarkerType.ArrowClosed, color: 'darkgray' },
             data: {
               prerequisite: edge.prerequisite,
-              refreshNodes: () => setRefresh(prev => !prev) // Add refresh function
+              refreshNodes: () => setRefresh(prev => !prev)
             }
           }));
 
@@ -296,6 +298,7 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
               id: data.data.eid,
               type: 'floating',
               markerEnd: { type: MarkerType.ArrowClosed },
+              data: { prerequisite: true, refreshNodes: () => setRefresh(prev => !prev) },
             },
             eds,
           ),
@@ -438,7 +441,7 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
           {showDropdown && tasks.length > 0 && (
             <ul className="dropdown-menu">
               {(tasks).map((task) => (
-                <li key={task.id}>
+                <li key={task.tid}>
                   <button
                     className="dropdown-item"
                     onClick={() => {

@@ -21,6 +21,10 @@ export default function CustomNode({ data, id }) {
     setInputValue(data.percentage);
   }, [data.percentage]);
 
+  useEffect(() => {
+    setIsComplete(data.completed);
+  }, [data.completed]);
+
   const handleToggleComplete = async () => {
     if (data.toggleCompletion) {
       try {
@@ -67,7 +71,7 @@ export default function CustomNode({ data, id }) {
             percentage: inputValue
           }),
         });
-        data.setRefresh(!data.refresh);
+        data.setRefresh(prev => !prev);
       } catch (error) {
         console.error('Error updating node percentage:', error);
       }

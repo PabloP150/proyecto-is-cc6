@@ -1,6 +1,7 @@
 const tasksRoute = require('express').Router();
 const { v4: uuidv4 } = require('uuid');
 const TasksModel = require('./../models/tasks.model');
+const UsertaskModel = require('./../models/usertask.model');
 const AnalyticsIntegration = require('../services/AnalyticsIntegration');
 
 tasksRoute.get('/', async (req, res) => {
@@ -81,6 +82,7 @@ tasksRoute.delete('/:id', async (req, res) => {
     const { id: tid } = req.params;
 
     try {
+        await UsertaskModel.deleteAllByTid(tid);
         const result = await TasksModel.deleteTask(tid);
 
         // Record task deletion in analytics (non-blocking)
@@ -90,6 +92,7 @@ tasksRoute.delete('/:id', async (req, res) => {
 
         res.status(200).json({ rowCount: result });
     } catch (error) {
+        console.error('[tasks DELETE] tid:', tid, 'error:', error.message);
         res.status(500).json({ error: error.message || 'Internal server error' });
     }
 });

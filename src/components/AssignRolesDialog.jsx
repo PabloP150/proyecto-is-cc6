@@ -104,7 +104,7 @@ const AssignRolesDialog = ({
     <Dialog
       open={open}
       onClose={handleClose}
-      onExited={handleExited}
+      TransitionProps={{ onExited: handleExited }}
       maxWidth="md"
       fullWidth
       PaperProps={{

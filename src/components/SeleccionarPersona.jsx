@@ -191,6 +191,7 @@ const MemberRow = ({ member, selectedMembers, onToggle }) => {
       <Switch
         checked={selectedMembers.includes(member.uid)}
         onChange={() => onToggle(member)}
+        onClick={(e) => e.stopPropagation()}
         name={member.username}
         color="primary"
         sx={{

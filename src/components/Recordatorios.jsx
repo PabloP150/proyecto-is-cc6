@@ -264,11 +264,8 @@ export default function Recordatorios() {
       recordatorios: l.recordatorios.map((r,i) => i===idx ? { ...r, __justDeleted: true } : r)
     } : l));
 
-    // Backend en paralelo (DELETE + POST a eliminados)
+    // POST a eliminados primero (antes del DELETE, por FK constraint DeleteTask→Tasks)
     (async () => {
-      try {
-        await fetch(`${API_BASE}/api/tasks/${task.tid}`, { method: 'DELETE' });
-      } catch (e) { console.error('Delete task error', e); }
       try {
         await fetch(`${API_BASE}/api/delete`, {
           method: 'POST',
@@ -276,6 +273,9 @@ export default function Recordatorios() {
           body: JSON.stringify(task),
         });
       } catch (e) { console.error('Add to deleted error', e); }
+      try {
+        await fetch(`${API_BASE}/api/tasks/${task.tid}`, { method: 'DELETE' });
+      } catch (e) { console.error('Delete task error', e); }
     })();
 
     // Remover tras animación (3s similar a completados)

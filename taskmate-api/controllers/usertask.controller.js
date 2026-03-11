@@ -11,23 +11,21 @@ usertaskRoute.post('/', async (req, res) => {
 
     try {
         const result = await UsertaskModel.addUsertask({ utid, uid, tid, completed });
-
-        // Get task data for analytics integration
-        const taskData = await TasksModel.getTask(tid);
-        if (taskData && taskData.length > 0) {
-            const task = taskData[0];
-            // Record task assignment in analytics (non-blocking)
-            AnalyticsIntegration.onTaskAssignment(tid, uid, task.gid, {
-                name: task.name,
-                description: task.description,
-                list: task.list
-            }).catch(error => {
-                console.error('Analytics tracking failed for task assignment:', error);
-            });
-        }
-
         res.status(200).json({ data: { rowCount: result, utid } });
+
+        // Analytics tracking - fully non-blocking, after response is sent
+        TasksModel.getTask(tid).then(taskData => {
+            if (taskData && taskData.length > 0) {
+                const task = taskData[0];
+                AnalyticsIntegration.onTaskAssignment(tid, uid, task.gid, {
+                    name: task.name,
+                    description: task.description,
+                    list: task.list
+                }).catch(err => console.error('Analytics tracking failed:', err));
+            }
+        }).catch(err => console.error('Analytics getTask failed:', err));
     } catch (error) {
+        console.error('[usertask POST] error:', error.message, error.stack);
         res.status(500).json({ error: error.message || 'Internal server error' });
     }
 });
