@@ -46,6 +46,23 @@ const ICON_OPTIONS = [
   'help',             // Ayuda
 ];
 
+const StyledPopper = styled(Popper)(() => ({
+  zIndex: 1302,
+  '.MuiAutocomplete-paper': {
+    background: '#222b45',
+    color: '#fff',
+    borderRadius: 8,
+    boxShadow: '0 4px 24px 0 rgba(0,0,0,0.25)',
+    marginTop: 4,
+  },
+  '.MuiAutocomplete-option': {
+    minHeight: 36,
+    '&[aria-selected="true"]': {
+      background: '#19223a',
+    },
+  },
+}));
+
 const RoleForm = ({ initialData = {}, onSubmit, onCancel, loading }) => {
   const [name, setName] = useState(initialData.gr_name || '');
   const [color, setColor] = useState(initialData.gr_color || '#1976d2');
@@ -112,22 +129,7 @@ const RoleForm = ({ initialData = {}, onSubmit, onCancel, loading }) => {
               }}
             />
           )}
-          PopperComponent={styled(Popper)(({ theme }) => ({
-            zIndex: 1302,
-            '.MuiAutocomplete-paper': {
-              background: '#222b45',
-              color: '#fff',
-              borderRadius: 8,
-              boxShadow: '0 4px 24px 0 rgba(0,0,0,0.25)',
-              marginTop: 4,
-            },
-            '.MuiAutocomplete-option': {
-              minHeight: 36,
-              '&[aria-selected="true"]': {
-                background: '#19223a',
-              },
-            },
-          }))}
+          PopperComponent={StyledPopper}
         />
         <Stack direction="row" spacing={1} justifyContent="flex-end">
           <Button onClick={onCancel} disabled={loading}>Cancel</Button>

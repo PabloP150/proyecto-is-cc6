@@ -1,4 +1,4 @@
-import React, { useState, useContext } from 'react';
+import { useState, useContext } from 'react';
 import { API_BASE } from '../config';
 import {
   Box,
@@ -216,7 +216,7 @@ function Login({ onLogin }) {
                   helperText={validationErrors.password}
                   endAdornment={
                     <IconButton
-                      onClick={() => setShowPassword(!showPassword)}
+                      onClick={() => setShowPassword(prev => !prev)}
                       edge="end"
                       sx={{ color: 'text.secondary' }}
                     >

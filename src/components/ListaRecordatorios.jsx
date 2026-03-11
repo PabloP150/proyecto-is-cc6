@@ -8,26 +8,67 @@ import Tooltip from '@mui/material/Tooltip';
 import { useEffect, useRef, useState } from 'react';
 import SeleccionarPersona from './SeleccionarPersona';
 import Button from './ui/Button';
-export default function ListaRecordatorios({ listas, handleEliminar, handleCompletar, handleEditar, filtro, handleEliminarLista, orden, setOrden, handleVaciarCompletados, handleVaciarEliminados }) {
-  // Paleta de gradientes para barras de título (determinista por tarea)
-  const gradientPalette = [
-    ['#3b82f6', '#f59e0b'],
-    ['#6366f1', '#8b5cf6'],
-    ['#06b6d4', '#3b82f6'],
-    ['#ef4444', '#f59e0b'],
-    ['#10b981', '#3b82f6'],
-    ['#ec4899', '#8b5cf6'],
-    ['#f59e0b', '#ef4444'],
-  ];
-  const pickGradient = (seed) => {
-    if (!seed) return gradientPalette[0];
-    let h = 0;
-    for (let i = 0; i < seed.length; i++) {
-      h = (h * 31 + seed.charCodeAt(i)) >>> 0; // hash simple
+
+const GRADIENT_PALETTE = [
+  ['#3b82f6', '#f59e0b'],
+  ['#6366f1', '#8b5cf6'],
+  ['#06b6d4', '#3b82f6'],
+  ['#ef4444', '#f59e0b'],
+  ['#10b981', '#3b82f6'],
+  ['#ec4899', '#8b5cf6'],
+  ['#f59e0b', '#ef4444'],
+];
+
+const pickGradient = (seed) => {
+  if (!seed) return GRADIENT_PALETTE[0];
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) {
+    h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  }
+  return GRADIENT_PALETTE[h % GRADIENT_PALETTE.length];
+};
+
+const formatearFecha = (datetime) => {
+  if (!datetime) return 'Date Not Available';
+  if (typeof datetime === 'string') {
+    const m1 = datetime.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+    if (m1) {
+      const [, y, m, d, hh, mm] = m1;
+      return `${Number(d)}/${Number(m)}/${y} ${hh}:${mm}`;
     }
-    const idx = h % gradientPalette.length;
-    return gradientPalette[idx];
-  };
+    const m2 = datetime.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (m2) {
+      const [, y, m, d] = m2;
+      return `${Number(d)}/${Number(m)}/${y} 00:00`;
+    }
+    const m3 = datetime.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):\d{2}(?:\.\d+)?Z$/);
+    if (m3) {
+      const [, y, m, d, hh, mm] = m3;
+      return `${Number(d)}/${Number(m)}/${y} ${hh}:${mm}`;
+    }
+  }
+  try {
+    const f = new Date(datetime);
+    return `${f.toLocaleDateString()} ${f.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  } catch {
+    return String(datetime);
+  }
+};
+
+const ordenarRecordatorios = (recordatorios, orden) => {
+  switch (orden) {
+    case 'CreationDate':
+      return [...recordatorios].sort((a, b) => new Date(a.datetime) - new Date(b.datetime));
+    case 'Deadline':
+    case 'Priority':
+      return [...recordatorios].sort((a, b) => new Date(a.fechaLimite) - new Date(b.fechaLimite));
+    default:
+      return recordatorios;
+  }
+};
+
+export default function ListaRecordatorios({ listas, handleEliminar, handleCompletar, handleEditar, filtro, handleEliminarLista, orden, setOrden, handleVaciarCompletados, handleVaciarEliminados }) {
+  const fadeTimerRef = useRef(null);
   // Snackbar state
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
 
@@ -66,8 +107,8 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
     });
     if (nuevos.length > 0) {
       setNuevosIds(ids => [...ids, ...nuevos]);
-      // Remover el fade-in después de 1.7s
-      setTimeout(() => {
+      clearTimeout(fadeTimerRef.current);
+      fadeTimerRef.current = setTimeout(() => {
         setNuevosIds(ids => ids.filter(id => !nuevos.includes(id)));
       }, 1700);
     }
@@ -78,6 +119,8 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
     });
     prevTareasRef.current = snap;
   }, [listas]);
+
+  useEffect(() => () => clearTimeout(fadeTimerRef.current), []);
 
   const handleClick = (event) => {
     setAnchorEl(event.currentTarget);
@@ -90,64 +133,6 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
   const handleMenuItemClick = (ordenSeleccionado) => {
     setOrden(ordenSeleccionado);
     handleClose();
-  };
-
-  const ordenarRecordatorios = (recordatorios) => {
-    switch (orden) {
-      case 'CreationDate':
-        return [...recordatorios].sort((a, b) => {
-          const fechaA = new Date(a.datetime);
-          const fechaB = new Date(b.datetime);
-          return fechaA - fechaB;
-        });
-      case 'Deadline':
-        return [...recordatorios].sort((a, b) => {
-          const fechaA = new Date(a.fechaLimite);
-          const fechaB = new Date(b.fechaLimite);
-          return fechaA - fechaB;
-        });
-      case 'Priority':
-        return [...recordatorios].sort((a, b) => {
-          const fechaA = new Date(a.fechaLimite);
-          const fechaB = new Date(b.fechaLimite);
-          return fechaA - fechaB;
-        });
-      default:
-        return recordatorios;
-    }
-  };
-
-  const formatearFecha = (datetime) => {
-    if (!datetime) return 'Date Not Available';
-    // Mostrar exactamente la hora recibida, sin aplicar conversiones de zona horaria.
-    // Soporta: 'YYYY-MM-DDTHH:mm', 'YYYY-MM-DD HH:mm', ISO con Z ('YYYY-MM-DDTHH:mm:ss.sssZ') y solo fecha.
-    if (typeof datetime === 'string') {
-      // ISO con hora (T o espacio) – tomar HH:mm literal
-      const m1 = datetime.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
-      if (m1) {
-        const [, y, m, d, hh, mm] = m1;
-        return `${Number(d)}/${Number(m)}/${y} ${hh}:${mm}`;
-      }
-      // Solo fecha
-      const m2 = datetime.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-      if (m2) {
-        const [, y, m, d] = m2;
-        return `${Number(d)}/${Number(m)}/${y} 00:00`;
-      }
-      // ISO completo con Z – extraer partes sin convertir
-      const m3 = datetime.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):\d{2}(?:\.\d+)?Z$/);
-      if (m3) {
-        const [, y, m, d, hh, mm] = m3;
-        return `${Number(d)}/${Number(m)}/${y} ${hh}:${mm}`;
-      }
-    }
-    // Fallback: usar Date solo si no coincide ningún formato conocido
-    try {
-      const f = new Date(datetime);
-      return `${f.toLocaleDateString()} ${f.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-    } catch {
-      return String(datetime);
-    }
   };
 
   return (
@@ -316,7 +301,7 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
                 justifyContent: 'flex-start',
               }}>
                 {lista.recordatorios && lista.recordatorios.length > 0 ? (
-                  ordenarRecordatorios(lista.recordatorios).map((recordatorio, idx) => (
+                  ordenarRecordatorios(lista.recordatorios, orden).map((recordatorio, idx) => (
                     <Box
                       key={recordatorio.tid || recordatorio.id || idx}
                       sx={{

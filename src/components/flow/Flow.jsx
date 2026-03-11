@@ -17,6 +17,24 @@ import CustomNode from './CustomNode';
 import FloatingEdge from './FloatingEdge';
 import './Flow.css';
 
+const NODE_TYPES = { custom: CustomNode };
+const EDGE_TYPES = { floating: FloatingEdge };
+const DEFAULT_EDGE_OPTIONS = {
+  style: { strokeWidth: 3, stroke: 'darkgray' },
+  type: 'floating',
+  markerEnd: { type: MarkerType.ArrowClosed, color: 'darkgray' },
+};
+const CONNECTION_LINE_STYLE = { strokeWidth: 3, stroke: 'darkgray' };
+
+const formatDateTimeToDate = (datetime) => {
+  const date = new Date(datetime);
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
+};
+
 const Flow = ({ handleNodeEdit, setSelectedNode }) => {
   const { selectedGroupId } = useContext(GroupContext);
   const [refresh, setRefresh] = useState(false);
@@ -34,14 +52,6 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
     refresh: refresh,
     setRefresh
   });   // Cambiar a localStorage cuando funcionen grupos
-
-  function formatDateTimeToDate(datetime) {
-    const date = new Date(datetime);
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  }
 
   // Declarar toggleCompletion antes de los efectos que lo referencian
   const toggleCompletion = useCallback((nodeId) => {
@@ -339,28 +349,6 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
     }
   };
 
-  const nodeTypes = {
-    custom: CustomNode,
-  };
-
-  const edgeTypes = {
-    floating: FloatingEdge,
-  };
-
-  const defaultEdgeOptions = {
-    style: { strokeWidth: 3, stroke: 'darkgray' },
-    type: 'floating',
-    markerEnd: {
-      type: MarkerType.ArrowClosed,
-      color: 'darkgray',
-    },
-  };
-
-  const connectionLineStyle = {
-    strokeWidth: 3,
-    stroke: 'darkgray',
-  };
-
   return (
     <div className='flow'>
       <div style={{
@@ -443,7 +431,7 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
         <div className="dropdown">
           <button
             className="dropdown-button"
-            onClick={() => setShowDropdown(!showDropdown)}
+            onClick={() => setShowDropdown(prev => !prev)}
           >
             Import Task
           </button>
@@ -472,11 +460,11 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
       {selectedGroupId && <ReactFlow
         nodes={nodes}
         edges={edges}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
-        defaultEdgeOptions={defaultEdgeOptions}
+        nodeTypes={NODE_TYPES}
+        edgeTypes={EDGE_TYPES}
+        defaultEdgeOptions={DEFAULT_EDGE_OPTIONS}
         connectionLineComponent={CustomConnectionLine}
-        connectionLineStyle={connectionLineStyle}
+        connectionLineStyle={CONNECTION_LINE_STYLE}
         onNodesChange={onNodesChange}
         onNodeDragStop={onNodeDragStop}
         onNodesDelete={onNodesDelete}
