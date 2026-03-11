@@ -10,7 +10,7 @@ import {
   Link,
   Typography,
 } from '@mui/material';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ThemeProvider } from '../theme';
 import Button from './ui/Button';
@@ -26,6 +26,8 @@ function Register() {
   const [isLoading, setIsLoading] = useState(false);
   const [validationErrors, setValidationErrors] = useState({});
   const navigate = useNavigate();
+  const timerRef = useRef(null);
+  useEffect(() => () => clearTimeout(timerRef.current), []);
 
   // Form validation
   const validateForm = () => {
@@ -85,9 +87,7 @@ function Register() {
         setSuccess('Account created successfully! Redirecting to login...');
         
         // Redirect to login after a short delay
-        setTimeout(() => {
-          navigate('/');
-        }, 2000);
+        timerRef.current = setTimeout(() => navigate('/'), 2000);
       } else {
         const errorData = await response.json();
         setError(errorData.error || 'Registration failed. Please try again.');

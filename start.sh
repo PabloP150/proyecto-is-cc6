@@ -30,7 +30,7 @@ sleep 3
 echo "[4/4] Iniciando Python MCP (puerto 8001)..."
 pkill -f "uvicorn server:app" 2>/dev/null
 cd "$PROJECT_DIR/taskmate-api/mcp"
-python3 -m uvicorn server:app --host 0.0.0.0 --port 8001 > /tmp/taskmate-mcp.log 2>&1 &
+venv/bin/python -m uvicorn server:app --host 0.0.0.0 --port 8001 > /tmp/taskmate-mcp.log 2>&1 &
 sleep 3
 
 echo ""

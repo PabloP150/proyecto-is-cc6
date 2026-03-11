@@ -318,7 +318,7 @@ function GroupsView() {
         setGroups(prev => prev.filter(g => g.gid !== selectedGroup.gid));
         setSelectedGroup(null);
         setSelectedGroupId(null);
-  setMembers([]); // roles y userRolesMap se limpian implícitamente al no tener groupId
+        setMembers([]);
         setShowDetails(false);
         setOpenAssignDialog(false);
         setDeleteError(false);
@@ -338,12 +338,6 @@ function GroupsView() {
       setTimeout(() => setDeleteError(false), 4000);
     }
   };
-
-  // Estado para diálogos de roles
-  // Eliminadas declaraciones duplicadas aquí
-
-  // Callbacks para roles
-  // Se removieron handlers de roles y assign dialog sin uso directo (warnings ESLint)
 
   return (
     <ThemeProvider theme={theme}>

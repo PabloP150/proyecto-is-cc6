@@ -176,58 +176,46 @@ const SeleccionarPersona = ({ tid }) => {
   );
 };
 
+const MemberRow = ({ member, selectedMembers, onToggle }) => {
+  const [hovered, setHovered] = React.useState(false);
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        marginBottom: '12px',
+        padding: '8px 12px',
+        borderRadius: '8px',
+        transition: 'all 0.2s ease',
+        cursor: 'pointer',
+        background: hovered ? 'rgba(59, 130, 246, 0.2)' : 'transparent',
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onClick={() => onToggle(member)}
+    >
+      <Switch
+        checked={selectedMembers.includes(member.uid)}
+        onChange={() => onToggle(member)}
+        name={member.username}
+        color="primary"
+        sx={{
+          '& .MuiSwitch-switchBase.Mui-checked': { color: '#3b82f6' },
+          '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { backgroundColor: '#3b82f6' },
+          '& .MuiSwitch-track': { backgroundColor: 'rgba(255, 255, 255, 0.3)' },
+        }}
+      />
+      <span style={{ marginLeft: '12px', color: 'white', fontWeight: '500', fontSize: '14px' }}>
+        {member.username}
+      </span>
+    </div>
+  );
+};
+
 const MemberSwitchList = ({ members, selectedMembers, onToggle }) => (
-  <div style={{
-    padding: '16px',
-    borderRadius: '12px',
-    minWidth: '200px',
-  }}>
+  <div style={{ padding: '16px', borderRadius: '12px', minWidth: '200px' }}>
     {members.map((member) => (
-      <div
-        key={member.uid}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          marginBottom: '12px',
-          padding: '8px 12px',
-          borderRadius: '8px',
-          transition: 'all 0.2s ease',
-          cursor: 'pointer',
-        }}
-        onMouseEnter={(e) => {
-          e.target.style.background = 'rgba(59, 130, 246, 0.2)';
-        }}
-        onMouseLeave={(e) => {
-          e.target.style.background = 'transparent';
-        }}
-        onClick={() => onToggle(member)}
-      >
-        <Switch
-          checked={selectedMembers.includes(member.uid)}
-          onChange={() => onToggle(member)}
-          name={member.username}
-          color="primary"
-          sx={{
-            '& .MuiSwitch-switchBase.Mui-checked': {
-              color: '#3b82f6',
-            },
-            '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-              backgroundColor: '#3b82f6',
-            },
-            '& .MuiSwitch-track': {
-              backgroundColor: 'rgba(255, 255, 255, 0.3)',
-            },
-          }}
-        />
-        <span style={{
-          marginLeft: '12px',
-          color: 'white',
-          fontWeight: '500',
-          fontSize: '14px',
-        }}>
-          {member.username}
-        </span>
-      </div>
+      <MemberRow key={member.uid} member={member} selectedMembers={selectedMembers} onToggle={onToggle} />
     ))}
   </div>
 );

@@ -40,7 +40,7 @@ export default function useGroupRoles(groupId) {
         console.debug('No se pudo cargar rolesmatrix:', e.message);
       }
     } catch (err) {
-  setError(err.message);
+      setError(err.message);
     } finally {
       setLoading(false);
     }

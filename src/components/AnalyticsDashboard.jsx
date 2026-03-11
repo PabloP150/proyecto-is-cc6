@@ -1,8 +1,23 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useRef } from 'react';
 import { GroupContext } from './GroupContext';
 import useWebSocket from '../hooks/useWebSocket';
 import './AnalyticsDashboard.css';
 import { API_BASE, WS_BASE } from '../config';
+
+const AVAILABLE_ROLES = [
+    'Frontend Developer',
+    'Backend Developer',
+    'QA Engineer',
+    'UI/UX Designer',
+    'DevOps Engineer',
+    'Product Manager'
+];
+
+const getGradientColors = (utilization) => {
+    if (utilization > 80) return { start: '#ef4444', end: '#dc2626' };
+    if (utilization > 60) return { start: '#f59e0b', end: '#d97706' };
+    return { start: '#10b981', end: '#059669' };
+};
 
 const AnalyticsDashboard = () => {
     const { selectedGroupId } = useContext(GroupContext);
@@ -100,16 +115,6 @@ const AnalyticsDashboard = () => {
         generateFallbackRecommendations();
     };
     
-    // Available roles for filtering
-    const availableRoles = [
-        'Frontend Developer',
-        'Backend Developer', 
-        'QA Engineer',
-        'UI/UX Designer',
-        'DevOps Engineer',
-        'Product Manager'
-    ];
-
     // Fetch analytics data from the real API
     const fetchAnalyticsData = async (signal) => {
         if (!selectedGroupId) {
@@ -256,7 +261,7 @@ const AnalyticsDashboard = () => {
                         className="role-selector"
                     >
                         <option value="all">All Roles</option>
-                        {availableRoles.map(role => (
+                        {AVAILABLE_ROLES.map(role => (
                             <option key={role} value={role}>
                                 {role}
                             </option>
@@ -351,12 +356,6 @@ const WorkloadChart = ({ data, selectedRole }) => {
             ) : (
                 filteredData.map((member, index) => {
             const utilization = member.utilization || 0;
-            const getGradientColors = (utilization) => {
-                if (utilization > 80) return { start: '#ef4444', end: '#dc2626' }; // Red gradient
-                if (utilization > 60) return { start: '#f59e0b', end: '#d97706' }; // Orange gradient
-                return { start: '#10b981', end: '#059669' }; // Green gradient
-            };
-
             const colors = getGradientColors(utilization);
 
             return (
@@ -421,14 +420,17 @@ const TaskRecommendations = ({
     const [suggestedPlan, setSuggestedPlan] = useState(null);
     const [taskDescription, setTaskDescription] = useState('');
     const [taskCategory, setTaskCategory] = useState('frontend');
+    const fallbackTimerRef = useRef(null);
+
+    useEffect(() => () => clearTimeout(fallbackTimerRef.current), []);
 
     // Handle analytics responses
     useEffect(() => {
         if (analyticsResponse && analyticsResponse.data) {
+            clearTimeout(fallbackTimerRef.current); // cancel fallback if WS responded
             if (analyticsResponse.data.recommendations) {
                 setRecommendations(analyticsResponse.data.recommendations);
             }
-            
             if (analyticsResponse.data.suggested_plan) {
                 setSuggestedPlan(analyticsResponse.data.suggested_plan);
             }
@@ -475,11 +477,9 @@ const TaskRecommendations = ({
                 setAnalyticsLoading(false);
                 handleAnalyticsError();
             } else {
-                setTimeout(() => {
-                    if (analyticsLoading) {
-                        setAnalyticsLoading(false);
-                        generateFallbackRecommendations();
-                    }
+                fallbackTimerRef.current = setTimeout(() => {
+                    setAnalyticsLoading(false);
+                    generateFallbackRecommendations();
                 }, 30000);
             }
 
