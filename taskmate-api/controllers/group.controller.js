@@ -82,12 +82,12 @@ groupRoute.delete('/remove-member', async (req, res) => {
     }
 });
 
-//abandonar un grupo
+//abandonar un grupo (con transferencia de admin si aplica)
 groupRoute.delete('/leave', async (req, res) => {
     const { uid, gid } = req.body;
     try {
-        await UserGroupModel.removeMemberFromGroup(uid, gid);
-        res.status(200).json({ message: 'Group left successfully' });
+        const outcome = await UserGroupModel.leaveGroup(uid, gid);
+        res.status(200).json({ message: 'Group left successfully', ...outcome });
     } catch (error) {
         res.status(500).json({ error: error.message || 'Internal server error' });
     }

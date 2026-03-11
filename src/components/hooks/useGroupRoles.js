@@ -135,10 +135,12 @@ export default function useGroupRoles(groupId) {
     }
   };
 
-  // Asignar rol a usuario
+  // Asignar rol a usuario (optimistic update — sin re-fetch)
   const assignRole = async (userId, roleId) => {
     if (!groupId || !userId) return;
-    setLoading(true);
+    const prev = userRolesMap[userId] || [];
+    if (prev.includes(roleId)) return; // ya asignado
+    setUserRolesMap(m => ({ ...m, [userId]: [...prev, roleId] }));
     try {
       const res = await fetch(`${API_BASE}/api/usergrouproles/groups/${groupId}/userroles`, {
         method: 'POST',
@@ -146,18 +148,17 @@ export default function useGroupRoles(groupId) {
         body: JSON.stringify({ uid: userId, gr_id: roleId }),
       });
       if (!res.ok) throw new Error('Error al asignar rol');
-      await fetchUserRoles(userId);
     } catch (err) {
       setError(err.message);
-    } finally {
-      setLoading(false);
+      setUserRolesMap(m => ({ ...m, [userId]: prev })); // rollback
     }
   };
 
-  // Quitar rol a usuario
+  // Quitar rol a usuario (optimistic update — sin re-fetch)
   const removeRole = async (userId, roleId) => {
     if (!groupId || !userId) return;
-    setLoading(true);
+    const prev = userRolesMap[userId] || [];
+    setUserRolesMap(m => ({ ...m, [userId]: prev.filter(id => id !== roleId) }));
     try {
       const res = await fetch(`${API_BASE}/api/usergrouproles/groups/${groupId}/userroles`, {
         method: 'DELETE',
@@ -165,11 +166,9 @@ export default function useGroupRoles(groupId) {
         body: JSON.stringify({ uid: userId, gr_id: roleId }),
       });
       if (!res.ok) throw new Error('Error al quitar rol');
-      await fetchUserRoles(userId);
     } catch (err) {
       setError(err.message);
-    } finally {
-      setLoading(false);
+      setUserRolesMap(m => ({ ...m, [userId]: prev })); // rollback
     }
   };
 

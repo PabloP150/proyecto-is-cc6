@@ -114,6 +114,16 @@ function GroupsView() {
                 .then(d => setMembers(d.members))
                 .catch(err => console.error('Error loading members:', err));
             }
+          } else {
+            // El grupo guardado ya no existe para este usuario (fue eliminado o lo abandonó)
+            localStorage.removeItem('selectedGroupId');
+            localStorage.removeItem('selectedGroupName');
+            localStorage.removeItem('showGroupDetails');
+            setSelectedGroupId(null);
+            setSelectedGroupName('');
+            setSelectedGroup(null);
+            setShowDetails(false);
+            setMembers([]);
           }
         }
       } else {
@@ -128,14 +138,23 @@ function GroupsView() {
     cargarGrupos();
   }, [cargarGrupos]);
 
+  // Refrescar grupos al volver a la pestaña (para detectar cambios de admin en tiempo real)
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') cargarGrupos();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [cargarGrupos]);
+
   // Solo resalta el grupo al hacer clic en el nombre, pero no lo selecciona como "en uso"
-  const handleGroupClick = (group) => {
+  const handleGroupClick = useCallback((group) => {
     setSelectedGroup(group);      // Mostrar nombre
     // Si este grupo ya está en uso y showDetails persistido, mantener detalles.
     const persistShow = localStorage.getItem('showGroupDetails') === '1' && localStorage.getItem('selectedGroupId') === String(group.gid);
     setShowDetails(persistShow);
     if (!persistShow) setMembers([]);
-  };
+  }, []);
 
   // Solo el botón USE activa el grupo y carga miembros
 
@@ -197,8 +216,8 @@ function GroupsView() {
       });
 
       if (response.ok) {
+        setMembers(prev => [...prev, { uid, username: newUsername }]);
         setOpenAddUser(false);
-        handleGroupClick(selectedGroup); // Refresh members
         setNewUsername('');
       } else {
         const errorData = await response.json();
@@ -210,17 +229,16 @@ function GroupsView() {
   };
 
   const handleUseGroup = (group) => {
+    // Mostrar datos optimistas inmediatamente
     setSelectedGroupId(group.gid);
     setSelectedGroupName(group.name);
     setSelectedGroup(group);
-    setShowDetails(true); // Mostrar detalles inmediatamente
+    setShowDetails(true);
     localStorage.setItem('selectedGroupId', group.gid);
     localStorage.setItem('selectedGroupName', group.name);
     localStorage.setItem('showGroupDetails', '1');
-    fetch(`${API_BASE}/api/groups/${group.gid}/members`)
-      .then(r => r.json())
-      .then(data => setMembers(data.members))
-      .catch(err => console.error('Error loading members:', err));
+    // Refrescar desde servidor para obtener adminId actualizado (ej. si el admin cambió)
+    cargarGrupos();
   };
 
   const handleDeleteUser = async () => {
@@ -242,6 +260,13 @@ function GroupsView() {
       const userData = await userResponse.json();
       const uid = userData.uid;
 
+      // Si el admin intenta eliminarse a sí mismo, usar leaveGroup (con transferencia de admin)
+      if (uid === userId) {
+        setOpenDeleteUser(false);
+        setUsernameToDelete('');
+        await handleLeaveGroup();
+        return;
+      }
 
       const response = await fetch(`${API_BASE}/api/groups/remove-member`, {
         method: 'DELETE',
@@ -252,11 +277,7 @@ function GroupsView() {
       });
 
       if (response.ok) {
-        // Actualiza la lista de miembros
-        fetch(`${API_BASE}/api/groups/${selectedGroup.gid}/members`)
-          .then(response => response.json())
-          .then(data => setMembers(data.members))
-          .catch(error => console.error('Error loading members:', error));
+        setMembers(prev => prev.filter(m => m.uid !== uid));
       } else {
         const errorData = await response.json();
         console.error('Error deleting user:', errorData.error);
@@ -286,10 +307,21 @@ function GroupsView() {
       });
 
       if (response.ok) {
-        fetch(`${API_BASE}/api/groups/${selectedGroup.gid}/members`)
-          .then(response => response.json())
-          .then(data => setMembers(data.members))
-          .catch(error => console.error('Error loading members:', error));
+        // En cualquier caso (transferred/deleted/left), el usuario ya no pertenece al grupo
+        const leftGid = selectedGroup.gid;
+        if (selectedGroupId === leftGid) {
+          setSelectedGroupId(null);
+          setSelectedGroupName('');
+          localStorage.removeItem('selectedGroupId');
+          localStorage.removeItem('selectedGroupName');
+          localStorage.removeItem('showGroupDetails');
+        }
+        setSelectedGroup(null);
+        setMembers([]);
+        setShowDetails(false);
+        // Quitar el grupo de la lista de inmediato (sin esperar al fetch)
+        setGroups(prev => prev.filter(g => g.gid !== leftGid));
+        cargarGrupos();
       } else {
         const errorData = await response.json();
         console.error('Error leaving group:', errorData.error);
@@ -502,19 +534,8 @@ function GroupsView() {
                     <Box sx={{ display: 'flex', gap: 1.5, flexShrink: 0, flexWrap: 'wrap', justifyContent: { xs: 'flex-start', md: 'flex-end' } }}>
                       {selectedGroup.adminId === localStorage.getItem('userId') ? (
                         <>
-                          {members.length === 1 && (
-                            <Button variant="primary" onClick={handleDeleteGroup} sx={{ 
-                              background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
-                              '&:hover': {
-                                background: 'linear-gradient(135deg, #f87171 0%, #ef4444 100%)',
-                                boxShadow: '0 8px 24px 0 rgba(239, 68, 68, 0.6)',
-                              }
-                            }}>
-                              Delete Group
-                            </Button>
-                          )}
                           {members.length > 1 && (
-                            <Button variant="primary" onClick={() => setOpenDeleteUser(true)} sx={{ 
+                            <Button variant="primary" onClick={() => setOpenDeleteUser(true)} sx={{
                               background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
                               '&:hover': {
                                 background: 'linear-gradient(135deg, #f87171 0%, #ef4444 100%)',
@@ -525,9 +546,18 @@ function GroupsView() {
                             </Button>
                           )}
                           <Button variant="primary" onClick={() => setOpenAddUser(true)}>Add User</Button>
+                          <Button variant="primary" onClick={handleLeaveGroup} sx={{
+                            background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                            '&:hover': {
+                              background: 'linear-gradient(135deg, #f87171 0%, #ef4444 100%)',
+                              boxShadow: '0 8px 24px 0 rgba(239, 68, 68, 0.6)',
+                            }
+                          }}>
+                            {members.length === 1 ? 'Delete Group' : 'Leave Group'}
+                          </Button>
                         </>
                       ) : (
-                        <Button variant="primary" onClick={handleLeaveGroup} sx={{ 
+                        <Button variant="primary" onClick={handleLeaveGroup} sx={{
                           background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
                           '&:hover': {
                             background: 'linear-gradient(135deg, #f87171 0%, #ef4444 100%)',

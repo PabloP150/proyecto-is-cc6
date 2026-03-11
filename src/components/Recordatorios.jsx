@@ -253,7 +253,7 @@ export default function Recordatorios() {
     }
   };
 
-  const handleEliminar = async (listaNombre, idx) => {
+  const handleEliminar = useCallback(async (listaNombre, idx) => {
   const listaActual = listas.find(lista => lista.nombre === listaNombre);
     const task = listaActual?.recordatorios[idx];
     if (!task) return;
@@ -284,11 +284,10 @@ export default function Recordatorios() {
         ...l,
         recordatorios: l.recordatorios.filter((_,i) => i!==idx)
       } : l));
-      // Opcional: recargar eliminados si existe lógica (no implementado aquí)
     }, 3000);
-  };
+  }, [listas, selectedGroupId]);
 
-  const handleCompletar = async (listaNombre, idx) => {
+  const handleCompletar = useCallback(async (listaNombre, idx) => {
   const listaActual = listas.find(lista => lista.nombre === listaNombre);
     const task = listaActual?.recordatorios[idx];
     if (!task) return;
@@ -320,9 +319,9 @@ export default function Recordatorios() {
         recordatorios: l.recordatorios.filter((_,i) => i!==idx)
       } : l));
     }, 3000);
-  };
+  }, [listas, selectedGroupId, cargarCompletados]);
 
-  const handleEditar = (nombre, idx) => {
+  const handleEditar = useCallback((nombre, idx) => {
     const recordatorio = listas.find(lista => lista.nombre === nombre)?.recordatorios[idx];
     if (recordatorio) {
       // Normalizar datetime a 'YYYY-MM-DDTHH:mm' en hora local para edición estable
@@ -340,7 +339,7 @@ export default function Recordatorios() {
       setRecordatorioEditar({ ...recordatorio, datetime: normalizeLocal(recordatorio.datetime) });
       setOpenEditar(true);
     }
-  };
+  }, [listas]);
 
   const listasFiltradas = useMemo(() => {
     switch (filtro) {
@@ -395,7 +394,7 @@ export default function Recordatorios() {
   const [deleteListSuccess, setDeleteListSuccess] = useState(false);
   const [deleteListError, setDeleteListError] = useState(false);
 
-  const handleEliminarLista = async (nombreLista) => {
+  const handleEliminarLista = useCallback(async (nombreLista) => {
     const gid = localStorage.getItem('selectedGroupId');
     if (!gid) {
       console.error('No hay grupo seleccionado');
@@ -436,7 +435,7 @@ export default function Recordatorios() {
       setDeleteListError(true);
       setTimeout(() => setDeleteListError(false), 4000);
     }
-  };
+  }, [selectedGroupId, cargarTareas]);
 
   const handleSubmitEditar = async () => {
   if (!recordatorioEditar?.tid) {
@@ -580,7 +579,7 @@ export default function Recordatorios() {
     }
   };
 
-  const handleVaciarEliminados = async () => {
+  const handleVaciarEliminados = useCallback(async () => {
     if (!selectedGroupId) return;
     try {
       await fetch(`${API_BASE}/api/delete/${selectedGroupId}`, { method: 'DELETE' });
@@ -588,9 +587,9 @@ export default function Recordatorios() {
     } catch (error) {
       console.error('Error al vaciar los eliminados:', error);
     }
-  };
+  }, [selectedGroupId]);
 
-  const handleVaciarCompletados = async () => {
+  const handleVaciarCompletados = useCallback(async () => {
     if (!selectedGroupId) return;
     try {
       await fetch(`${API_BASE}/api/completados/${selectedGroupId}`, { method: 'DELETE' });
@@ -598,7 +597,7 @@ export default function Recordatorios() {
     } catch (error) {
       console.error('Error al vaciar los completados:', error);
     }
-  };
+  }, [selectedGroupId]);
 
   return (
     <ThemeProvider theme={theme}>

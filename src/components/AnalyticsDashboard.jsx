@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext, useRef } from 'react';
+import React, { useState, useEffect, useContext, useRef, useCallback, useMemo } from 'react';
 import { GroupContext } from './GroupContext';
 import useWebSocket from '../hooks/useWebSocket';
 import './AnalyticsDashboard.css';
@@ -59,7 +59,7 @@ const AnalyticsDashboard = () => {
     );
 
     // Generate fallback recommendations using current team data
-    const generateFallbackRecommendations = () => {
+    const generateFallbackRecommendations = useCallback(() => {
         if (!analytics || !analytics.workload_distribution) return;
         
         const availableMembers = analytics.workload_distribution
@@ -105,9 +105,11 @@ const AnalyticsDashboard = () => {
             
             setAnalyticsResponse(fallbackResponse);
         }
-    };
+    }, [analytics]);
 
     // Error handler for analytics operations
+    const handleRoleChange = useCallback((e) => setSelectedRole(e.target.value), []);
+
     const handleAnalyticsError = () => {
         console.error('Analytics operation failed - WebSocket not available');
         setAnalyticsResponse(null);
@@ -196,9 +198,14 @@ const AnalyticsDashboard = () => {
     }, [selectedGroupId]);
 
     // Refresh analytics data
-    const refreshAnalytics = () => {
+    const refreshAnalytics = useCallback(() => {
         fetchAnalyticsData(new AbortController().signal);
-    };
+    }, [selectedGroupId]);
+
+    const workloadDistribution = useMemo(
+        () => analytics?.workload_distribution || [],
+        [analytics?.workload_distribution]
+    );
 
     if (loading) {
         return (
@@ -257,7 +264,7 @@ const AnalyticsDashboard = () => {
                 <div className="dashboard-controls">
                     <select
                         value={selectedRole}
-                        onChange={(e) => setSelectedRole(e.target.value)}
+                        onChange={handleRoleChange}
                         className="role-selector"
                     >
                         <option value="all">All Roles</option>
@@ -297,7 +304,7 @@ const AnalyticsDashboard = () => {
             <div className="dashboard-content">
                 <div className="chart-section">
                     <h2>Team Workload Distribution</h2>
-                    <WorkloadChart data={analytics.workload_distribution || []} selectedRole={selectedRole} />
+                    <WorkloadChart data={workloadDistribution} selectedRole={selectedRole} />
                 </div>
 
                 <div className="expertise-section">
@@ -328,7 +335,7 @@ const AnalyticsDashboard = () => {
     );
 };
 
-const MetricCard = ({ title, value, icon, color }) => (
+const MetricCard = React.memo(({ title, value, icon, color }) => (
     <div className={`metric-card ${color}`}>
         <div className="metric-icon">{icon}</div>
         <div className="metric-content">
@@ -336,16 +343,17 @@ const MetricCard = ({ title, value, icon, color }) => (
             <div className="metric-title">{title}</div>
         </div>
     </div>
-);
+));
 
-const WorkloadChart = ({ data, selectedRole }) => {
+const WorkloadChart = React.memo(({ data, selectedRole }) => {
     // Ensure data is an array
     const workloadData = Array.isArray(data) ? data : [];
-    
+
     // Filter data by selected role if not 'all'
-    const filteredData = selectedRole === 'all' 
-        ? workloadData 
-        : workloadData.filter(member => member.role === selectedRole);
+    const filteredData = useMemo(
+        () => selectedRole === 'all' ? workloadData : workloadData.filter(member => member.role === selectedRole),
+        [workloadData, selectedRole]
+    );
 
     return (
         <div className="workload-chart">
@@ -383,7 +391,7 @@ const WorkloadChart = ({ data, selectedRole }) => {
             )}
         </div>
     );
-};
+});
 
 const ExpertiseList = ({ data }) => {
     const expertiseArray = Array.isArray(data) ? data : [];

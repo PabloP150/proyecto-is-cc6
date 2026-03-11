@@ -5,7 +5,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import { Alert, Box, Divider, IconButton, LinearProgress, List, ListItem, ListItemText, Menu, MenuItem, Snackbar, Typography } from '@mui/material';
 import Tooltip from '@mui/material/Tooltip';
-import { useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import SeleccionarPersona from './SeleccionarPersona';
 import Button from './ui/Button';
 
@@ -67,32 +67,37 @@ const ordenarRecordatorios = (recordatorios, orden) => {
   }
 };
 
-export default function ListaRecordatorios({ listas, handleEliminar, handleCompletar, handleEditar, filtro, handleEliminarLista, orden, setOrden, handleVaciarCompletados, handleVaciarEliminados }) {
+const ListaRecordatorios = memo(function ListaRecordatorios({ listas, handleEliminar, handleCompletar, handleEditar, filtro, handleEliminarLista, orden, setOrden, handleVaciarCompletados, handleVaciarEliminados }) {
   const fadeTimerRef = useRef(null);
   // Snackbar state
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
 
   // Wrapper handlers to show snackbar feedback
-  const handleCompletarConFeedback = (...args) => {
+  const handleCompletarConFeedback = useCallback((...args) => {
     handleCompletar(...args);
     setSnackbar({ open: true, message: 'Task completed', severity: 'success' });
-  };
-  const handleEliminarConFeedback = (...args) => {
+  }, [handleCompletar]);
+  const handleEliminarConFeedback = useCallback((...args) => {
     handleEliminar(...args);
     setSnackbar({ open: true, message: 'Task deleted', severity: 'info' });
-  };
-  const handleEditarConFeedback = (...args) => {
+  }, [handleEliminar]);
+  const handleEditarConFeedback = useCallback((...args) => {
     handleEditar(...args);
     setSnackbar({ open: true, message: 'Task updated', severity: 'success' });
-  };
-  const handleCloseSnackbar = (event, reason) => {
+  }, [handleEditar]);
+  const handleCloseSnackbar = useCallback((event, reason) => {
     if (reason === 'clickaway') return;
     setSnackbar(s => ({ ...s, open: false }));
-  };
+  }, []);
   const [anchorEl, setAnchorEl] = useState(null);
   // Para animación fade-in de tareas nuevas
   const [nuevosIds, setNuevosIds] = useState([]);
   const prevTareasRef = useRef({});
+
+  const sortedListas = useMemo(
+    () => listas.map(lista => ({ ...lista, recordatorios: ordenarRecordatorios(lista.recordatorios || [], orden) })),
+    [listas, orden]
+  );
 
   // Detectar nuevas tareas por lista
   useEffect(() => {
@@ -258,8 +263,8 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
     <Divider sx={{ mb: 2, background: 'rgba(255,255,255,0.08)' }} />
 
       <List>
-        {listas.length > 0 ? (
-          listas.map((lista, index) => (
+        {sortedListas.length > 0 ? (
+          sortedListas.map((lista, index) => (
             <Box key={index} sx={{ mb: 2 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                 <Typography variant="h5" sx={{ 
@@ -301,7 +306,7 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
                 justifyContent: 'flex-start',
               }}>
                 {lista.recordatorios && lista.recordatorios.length > 0 ? (
-                  ordenarRecordatorios(lista.recordatorios, orden).map((recordatorio, idx) => (
+                  lista.recordatorios.map((recordatorio, idx) => (
                     <Box
                       key={recordatorio.tid || recordatorio.id || idx}
                       sx={{
@@ -560,4 +565,6 @@ export default function ListaRecordatorios({ listas, handleEliminar, handleCompl
       </Snackbar>
     </>
   );
-}
+});
+
+export default ListaRecordatorios;

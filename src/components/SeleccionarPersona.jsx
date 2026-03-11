@@ -12,23 +12,15 @@ const SeleccionarPersona = ({ tid }) => {
   const [selectedMembers, setSelectedMembers] = useState([]);
 
   useEffect(() => {
-    const cargarMiembros = async () => {
-      if (!selectedGroupId) return;
+    if (!selectedGroupId) return;
+    const controller = new AbortController();
 
-      try {
-        const response = await fetch(`${API_BASE}/api/groups/${selectedGroupId}/members`);
-        if (response.ok) {
-          const data = await response.json();
-          setMembers(data.members);
-        } else {
-          console.error('Error al cargar los miembros');
-        }
-      } catch (error) {
-        console.error('Error en la solicitud:', error);
-      }
-    };
+    fetch(`${API_BASE}/api/groups/${selectedGroupId}/members`, { signal: controller.signal })
+      .then(res => res.ok ? res.json() : Promise.reject(res.status))
+      .then(data => setMembers(data.members))
+      .catch(err => { if (err?.name !== 'AbortError') console.error('Error al cargar los miembros', err); });
 
-    cargarMiembros();
+    return () => controller.abort();
   }, [selectedGroupId]);
 
   useEffect(() => {

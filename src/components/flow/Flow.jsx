@@ -72,6 +72,8 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
     );
   }, []); // setNodes es estable
 
+  const refreshNodes = useCallback(() => setRefresh(prev => !prev), []);
+
   useEffect(() => {
     if (!selectedGroupId) {
       // limpiar si se des-selecciona
@@ -79,10 +81,14 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
       setEdges([]);
       return;
     }
+    const controller = new AbortController();
+    const { signal } = controller;
     const loadNodesAndEdges = async () => {
       try {
-        const nodesResponse = await fetch(`${API_BASE}/api/nodes/group/${selectedGroupId}`);
-        const edgesResponse = await fetch(`${API_BASE}/api/edges/group/${selectedGroupId}`);
+        const [nodesResponse, edgesResponse] = await Promise.all([
+          fetch(`${API_BASE}/api/nodes/group/${selectedGroupId}`, { signal }),
+          fetch(`${API_BASE}/api/edges/group/${selectedGroupId}`, { signal }),
+        ]);
 
         if (nodesResponse.ok && edgesResponse.ok) {
           const nodesData = await nodesResponse.json();
@@ -113,7 +119,7 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
             markerEnd: { type: MarkerType.ArrowClosed, color: 'darkgray' },
             data: {
               prerequisite: edge.prerequisite,
-              refreshNodes: () => setRefresh(prev => !prev)
+              refreshNodes,
             }
           }));
 
@@ -121,29 +127,24 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
           setEdges(formattedEdges);
         }
       } catch (error) {
-        console.error('Error loading nodes and edges:', error);
+        if (error.name !== 'AbortError') console.error('Error loading nodes and edges:', error);
       }
     };
     loadNodesAndEdges();
-  }, [refresh, selectedGroupId, handleNodeEdit, setSelectedNode, toggleCompletion]);
+    return () => controller.abort();
+  }, [refresh, selectedGroupId, handleNodeEdit, setSelectedNode, toggleCompletion, refreshNodes]);
 
   useEffect(() => {
     if (!selectedGroupId) {
       setTasks([]);
       return;
     }
-    const getTasks = async () => {
-      try {
-        const response = await fetch(`${API_BASE}/api/tasks?gid=${selectedGroupId}`);
-        if (response.ok) {
-          const data = await response.json();
-          setTasks(data.data);
-        }
-      } catch (error) {
-        console.error(error);
-      }
-    };
-    getTasks();
+    const controller = new AbortController();
+    fetch(`${API_BASE}/api/tasks?gid=${selectedGroupId}`, { signal: controller.signal })
+      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then(data => setTasks(data.data))
+      .catch(err => { if (err?.name !== 'AbortError') console.error(err); });
+    return () => controller.abort();
   }, [selectedGroupId]);
 
   const handleImportTask = async (task) => {
@@ -253,7 +254,7 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
   );
 
   //node change in db
-  const onNodeDragStop = async (event, node) => {
+  const onNodeDragStop = useCallback(async (event, node) => {
     try {
       await fetch(`${API_BASE}/api/nodes/${node.id}/coords`, {
         method: 'PUT',
@@ -269,7 +270,7 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
     } catch (error) {
       console.error('Error updating node:', error);
     }
-  }
+  }, []);
 
   const onEdgesChange = useCallback(
     (changes) => setEdges((eds) => applyEdgeChanges(changes, eds)),
