@@ -33,7 +33,9 @@ usertaskRoute.post('/', async (req, res) => {
 });
 
 usertaskRoute.delete('/', async (req, res) => {
-    const { uid, tid } = req.body;
+    // Read from query string (reliable for DELETE) with body as fallback
+    const uid = req.query.uid || req.body?.uid;
+    const tid = req.query.tid || req.body?.tid;
     try {
         const rowCount = await UsertaskModel.deleteUsertask(uid, tid);
         res.status(200).json({ data: { rowCount } });

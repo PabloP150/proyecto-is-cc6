@@ -3,7 +3,12 @@ const { TYPES } = require('tedious');
 
 const addUsertask = async (usertaskData) => {
     const { utid, uid, tid, completed } = usertaskData;
-    const query = `INSERT INTO dbo.UserTask (utid, uid, tid, completed) VALUES (@utid, @uid, @tid, @completed)`;
+    // IF NOT EXISTS evita duplicados por PRIMARY KEY (uid, tid)
+    const query = `
+        IF NOT EXISTS (SELECT 1 FROM dbo.UserTask WHERE uid=@uid AND tid=@tid)
+            INSERT INTO dbo.UserTask (utid, uid, tid, completed)
+            VALUES (@utid, @uid, @tid, @completed)
+    `;
     const params = [
         { name: 'utid', type: TYPES.UniqueIdentifier, value: utid },
         { name: 'uid', type: TYPES.UniqueIdentifier, value: uid },
