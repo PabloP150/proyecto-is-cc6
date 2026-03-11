@@ -61,21 +61,15 @@ const SeleccionarPersona = ({ tid }) => {
     cargarEstado();
   }, [selectedGroupId, tid, members, anchorEl]);
 
-  const handleSelect = async (member) => {
+  const handleSelect = (member) => {
     const isSelected = selectedMembers.includes(member.uid);
-    setSelectedMembers((prev) => {
-      const newSelectedMembers = isSelected
-        ? prev.filter((m) => m !== member.uid)
-        : [...prev, member.uid];
-
-      if (isSelected) {
-        removeUserFromTask(member.uid, tid);
-      } else {
-        addUserToTask(member.uid, tid);
-      }
-
-      return newSelectedMembers;
-    });
+    if (isSelected) {
+      setSelectedMembers(prev => prev.filter(m => m !== member.uid));
+      removeUserFromTask(member.uid, tid);
+    } else {
+      setSelectedMembers(prev => [...prev, member.uid]);
+      addUserToTask(member.uid, tid);
+    }
   };
 
   const handleClick = (event) => {

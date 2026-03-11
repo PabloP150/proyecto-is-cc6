@@ -46,9 +46,6 @@ usertaskRoute.get('/', async (req, res) => {
     const { tid } = req.query;
     try {
         const data = await UsertaskModel.getUsertasksByTid(tid);
-        if (data.length === 0) {
-            return res.status(404).json({ message: 'No se encontraron tareas para este tid.' });
-        }
         res.status(200).json({ data });
     } catch (error) {
         res.status(500).json({ error: error.message || 'Internal server error' });
