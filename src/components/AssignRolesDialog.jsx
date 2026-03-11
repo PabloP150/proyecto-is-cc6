@@ -71,10 +71,10 @@ const AssignRolesDialog = ({
     try {
       if (hasRole) {
         await onRemove(selectedUser.uid, roleId);
-        setUserRoles(userRoles.filter(r => r !== roleId));
+        setUserRoles(prev => prev.filter(r => r !== roleId));
       } else {
         await onAssign(selectedUser.uid, roleId);
-        setUserRoles([...userRoles, roleId]);
+        setUserRoles(prev => [...prev, roleId]);
       }
     } catch (err) {
       alert('Error al asignar/quitar rol: ' + (err?.message || err));

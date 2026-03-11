@@ -10,7 +10,7 @@ import {
   Typography,
 } from '@mui/material';
 import { ThemeProvider } from '@mui/material/styles';
-import { useCallback, useContext, useEffect, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import BarraLateral from './BarraLateral';
 import Dialogos from './Dialogos';
 import { GroupContext } from './GroupContext'; // Importa el contexto
@@ -21,6 +21,15 @@ import Button from './ui/Button';
 import Card from './ui/Card';
 
 
+
+const organizarTareasEnListas = (tareas) => {
+  const listasTemp = {};
+  tareas.forEach(tarea => {
+    if (!listasTemp[tarea.list]) listasTemp[tarea.list] = [];
+    listasTemp[tarea.list].push(tarea);
+  });
+  return Object.keys(listasTemp).map(nombre => ({ nombre, recordatorios: listasTemp[nombre] }));
+};
 
 export default function Recordatorios() {
   const [openRecordatorio, setOpenRecordatorio] = useState(false);
@@ -109,36 +118,27 @@ export default function Recordatorios() {
     }
   }, [selectedGroupId]);
 
+  // Restaurar grupo desde localStorage solo al montar
   useEffect(() => {
     const storedGroupId = localStorage.getItem('selectedGroupId');
     const storedGroupName = localStorage.getItem('selectedGroupName');
-    
     if (storedGroupId) {
       setSelectedGroupId(storedGroupId);
       setSelectedGroupName(storedGroupName);
     }
+  }, [setSelectedGroupId, setSelectedGroupName]);
 
+  // Recargar tareas y completados cuando cambia el grupo
+  useEffect(() => {
     cargarTareas();
-    cargarCompletados(); // Asegúrate de cargar completados al iniciar
+    cargarCompletados();
+  }, [cargarTareas, cargarCompletados]);
 
-    if (filtro === 'deleted') {
-      cargarEliminados(); // Cargar eliminados si el filtro es 'eliminados'
-    }
-  }, [setSelectedGroupId, setSelectedGroupName, cargarTareas, cargarCompletados, cargarEliminados, filtro]);
+  // Cargar eliminados solo cuando el filtro sea 'deleted'
+  useEffect(() => {
+    if (filtro === 'deleted') cargarEliminados();
+  }, [filtro, cargarEliminados]);
 
-  const organizarTareasEnListas = (tareas) => {
-    const listasTemp = {};
-    tareas.forEach(tarea => {
-      if (!listasTemp[tarea.list]) {
-        listasTemp[tarea.list] = [];
-      }
-      listasTemp[tarea.list].push(tarea);
-    });
-    return Object.keys(listasTemp).map(nombreLista => ({
-      nombre: nombreLista,
-      recordatorios: listasTemp[nombreLista]
-    }));
-  };
 
   const handleOpenRecordatorio = () => {
   // Hora por defecto 00:00 si está vacía
@@ -342,45 +342,47 @@ export default function Recordatorios() {
     }
   };
 
-  const filtrarRecordatorios = () => {
+  const listasFiltradas = useMemo(() => {
     switch (filtro) {
-      case 'today':
+      case 'today': {
         const hoy = new Date();
         hoy.setHours(0, 0, 0, 0);
+        const mañana = new Date(hoy.getTime() + 24 * 60 * 60 * 1000);
         return listas.map(lista => ({
           ...lista,
-          recordatorios: lista.recordatorios.filter(recordatorio => {
-            const fechaRecordatorio = new Date(recordatorio.datetime);
-            return fechaRecordatorio >= hoy && fechaRecordatorio < new Date(hoy.getTime() + 24 * 60 * 60 * 1000);
+          recordatorios: lista.recordatorios.filter(r => {
+            const f = new Date(r.datetime);
+            return f >= hoy && f < mañana;
           })
         }));
-      case 'week':
-        const inicioSemana = new Date();
-        inicioSemana.setHours(0, 0, 0, 0);
-        inicioSemana.setDate(inicioSemana.getDate() - inicioSemana.getDay());
-        const finSemana = new Date(inicioSemana);
-        finSemana.setDate(finSemana.getDate() + 7);
+      }
+      case 'week': {
+        const inicio = new Date();
+        inicio.setHours(0, 0, 0, 0);
+        inicio.setDate(inicio.getDate() - inicio.getDay());
+        const fin = new Date(inicio);
+        fin.setDate(fin.getDate() + 7);
         return listas.map(lista => ({
           ...lista,
-          recordatorios: lista.recordatorios.filter(recordatorio => {
-            const fechaRecordatorio = new Date(recordatorio.datetime);
-            return fechaRecordatorio >= inicioSemana && fechaRecordatorio < finSemana;
+          recordatorios: lista.recordatorios.filter(r => {
+            const f = new Date(r.datetime);
+            return f >= inicio && f < fin;
           })
         }));
-      case 'month':
-        const inicioMes = new Date();
-        inicioMes.setDate(1);
-        inicioMes.setHours(0, 0, 0, 0);
-        const finMes = new Date(inicioMes.getFullYear(), inicioMes.getMonth() + 1, 0, 23, 59, 59, 999);
+      }
+      case 'month': {
+        const inicio = new Date();
+        inicio.setDate(1);
+        inicio.setHours(0, 0, 0, 0);
+        const fin = new Date(inicio.getFullYear(), inicio.getMonth() + 1, 0, 23, 59, 59, 999);
         return listas.map(lista => ({
           ...lista,
-          recordatorios: lista.recordatorios.filter(recordatorio => {
-            const fechaRecordatorio = new Date(recordatorio.datetime);
-            return fechaRecordatorio >= inicioMes && fechaRecordatorio <= finMes;
+          recordatorios: lista.recordatorios.filter(r => {
+            const f = new Date(r.datetime);
+            return f >= inicio && f <= fin;
           })
         }));
-      case 'all':
-        return listas;
+      }
       case 'deleted':
         return [{ nombre: 'Deleted', recordatorios: eliminados }];
       case 'completed':
@@ -388,7 +390,7 @@ export default function Recordatorios() {
       default:
         return listas;
     }
-  };
+  }, [filtro, listas, eliminados, completados]);
 
   const [deleteListSuccess, setDeleteListSuccess] = useState(false);
   const [deleteListError, setDeleteListError] = useState(false);
@@ -579,34 +581,20 @@ export default function Recordatorios() {
   };
 
   const handleVaciarEliminados = async () => {
-    const gid = localStorage.getItem('selectedGroupId');
-    if (!gid) {
-      console.error('No hay grupo seleccionado');
-      return;
-    }
-
+    if (!selectedGroupId) return;
     try {
-      await fetch(`${API_BASE}/api/delete/${gid}`, {
-        method: 'DELETE',
-      });
-      setEliminados([]); // Vaciar el estado de eliminados
+      await fetch(`${API_BASE}/api/delete/${selectedGroupId}`, { method: 'DELETE' });
+      setEliminados([]);
     } catch (error) {
       console.error('Error al vaciar los eliminados:', error);
     }
   };
 
   const handleVaciarCompletados = async () => {
-    const gid = localStorage.getItem('selectedGroupId');
-    if (!gid) {
-      console.error('No hay grupo seleccionado');
-      return;
-    }
-
+    if (!selectedGroupId) return;
     try {
-      await fetch(`${API_BASE}/api/completados/${gid}`, {
-        method: 'DELETE',
-      });
-      setCompletados([]); // Vaciar el estado de completados
+      await fetch(`${API_BASE}/api/completados/${selectedGroupId}`, { method: 'DELETE' });
+      setCompletados([]);
     } catch (error) {
       console.error('Error al vaciar los completados:', error);
     }
@@ -755,7 +743,7 @@ export default function Recordatorios() {
               </Box>
             )}
             {selectedGroupId && <ListaRecordatorios
-              listas={filtrarRecordatorios()}
+              listas={listasFiltradas}
               handleEliminar={handleEliminar}
               handleCompletar={handleCompletar}
               handleEditar={handleEditar}

@@ -15,13 +15,16 @@ import PersonIcon from '@mui/icons-material/Person';
 import SendIcon from '@mui/icons-material/Send';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 //import { createTheme, ThemeProvider } from '@mui/material/styles';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
 import useWebSocket from '../hooks/useWebSocket';
 import ThemeProvider from '../theme/ThemeProvider';
 import { WS_BASE } from '../config';
 import './ChatPage.css';
+
+const formatTime = (timestamp) =>
+    new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
 function ChatPage() {
     const [messages, setMessages] = useState([]);
@@ -35,44 +38,32 @@ function ChatPage() {
     // Get user token from localStorage (reactive to changes)
     const [user, setUser] = useState(() => JSON.parse(localStorage.getItem('user') || '{}'));
     const [token, setToken] = useState(() => localStorage.getItem('token') || user.token);
+    const userRef = useRef(user);
+    useEffect(() => { userRef.current = user; }, [user]);
 
     // Update user and token when localStorage changes
+    const handleStorageChange = useCallback(() => {
+        const newUser = JSON.parse(localStorage.getItem('user') || '{}');
+        const newToken = localStorage.getItem('token') || newUser.token;
+        const currentUserId = userRef.current?.userId || userRef.current?.id;
+        const newUserId = newUser?.userId || newUser?.id;
+        setUser(newUser);
+        setToken(newToken);
+        if (currentUserId && newUserId && currentUserId !== newUserId) {
+            setHasReceivedHistory(false);
+            setInitialMessageShown(false);
+            setMessages([]);
+        }
+    }, []);
+
     useEffect(() => {
-        const handleStorageChange = () => {
-            const newUser = JSON.parse(localStorage.getItem('user') || '{}');
-            const newToken = localStorage.getItem('token') || newUser.token;
-
-            // Only reset history if the user actually changed (different userId)
-            const currentUserId = user?.userId || user?.id;
-            const newUserId = newUser?.userId || newUser?.id;
-
-            setUser(newUser);
-            setToken(newToken);
-
-            // Only reset history flags if it's a different user (not just token refresh)
-            if (currentUserId && newUserId && currentUserId !== newUserId) {
-                setHasReceivedHistory(false);
-                setInitialMessageShown(false);
-                setMessages([]); // Clear messages for different user
-            }
-        };
-
-        // Listen for storage changes
         window.addEventListener('storage', handleStorageChange);
-
-        // Also check on component mount/focus
         window.addEventListener('focus', handleStorageChange);
-
         return () => {
             window.removeEventListener('storage', handleStorageChange);
             window.removeEventListener('focus', handleStorageChange);
         };
-    }, []);
-
-    // Debug logging (run only once)
-    useEffect(() => {
-        // debug: info inicial (removido logs)
-    }, []); // Empty dependency array to run only once
+    }, [handleStorageChange]);
 
     // WebSocket connection
     const {
@@ -222,13 +213,6 @@ function ChatPage() {
             e.preventDefault();
             handleSendMessage(e);
         }
-    };
-
-    const formatTime = (timestamp) => {
-        return new Date(timestamp).toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit'
-        });
     };
 
     return (

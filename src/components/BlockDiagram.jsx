@@ -1,4 +1,3 @@
-import React from 'react';
 import './BlockDiagram.css';
 import { API_BASE } from '../config';
 import {
@@ -25,23 +24,20 @@ const theme = createTheme({
   },
 });
 
+const formatDate = (dateStr) => {
+  if (!dateStr) return '';
+  const date = new Date(dateStr);
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
+};
+
 function BlockDiagram() {
   const [showPopup, setShowPopup] = useState(false);
   const [selectedNode, setSelectedNode] = useState(null);
   const [flowKey, setFlowKey] = useState(0);
-
-  const formatDate = (dateStr) => {
-    if (!dateStr) return '';
-
-    const date = new Date(dateStr);
-
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-
-    return `${year}-${month}-${day}`;
-
-  };
 
   const handleNodeEdit = (node) => {
     setSelectedNode(node);
@@ -53,7 +49,7 @@ function BlockDiagram() {
     const formData = new FormData(e.target);
     const data = Object.fromEntries(formData.entries());
     try {
-      setFlowKey(flowKey + 1);
+      setFlowKey(k => k + 1);
       const response1 = await fetch(`${API_BASE}/api/nodes/${selectedNode.nid}`, {
         method: 'PUT',
         headers: {
