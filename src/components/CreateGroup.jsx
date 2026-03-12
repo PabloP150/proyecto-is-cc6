@@ -66,11 +66,7 @@ function CreateGroup() {
           minHeight: '100vh',
           display: 'flex',
           flexDirection: 'column',
-          backgroundImage: 'url(/1.jpeg)',
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          backgroundRepeat: 'no-repeat',
-          backgroundAttachment: 'fixed',
+          backgroundColor: 'background.default',
         }}
       >
         <Container component="main" maxWidth="xs" sx={{ mt: 8 }}>
