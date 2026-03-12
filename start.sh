@@ -21,6 +21,8 @@ sleep 5
 
 # 3. Backend Node.js
 echo "[3/4] Iniciando Backend (puerto 9000)..."
+lsof -ti:3000 | xargs kill -9 2>/dev/null
+lsof -ti:8001 | xargs kill -9 2>/dev/null
 lsof -ti:9000 | xargs kill -9 2>/dev/null
 cd "$PROJECT_DIR"
 node taskmate-api/server.js > /tmp/taskmate-backend.log 2>&1 &
