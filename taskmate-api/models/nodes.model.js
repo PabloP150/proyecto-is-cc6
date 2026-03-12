@@ -63,9 +63,12 @@ const updateNodePercentage = async (nodeData) => {
 };
 
 const deleteNode = async (nid) => {
-    const query = `DELETE FROM dbo.Nodes WHERE nid=@nid`;
     const params = [{ name: 'nid', type: TYPES.UniqueIdentifier, value: nid }];
-    return execWriteCommand(query, params);
+    // Delete edges (FK constraint) and node in a single batch
+    return execWriteCommand(
+        `DELETE FROM dbo.Edges WHERE sourceId=@nid OR targetId=@nid; DELETE FROM dbo.Nodes WHERE nid=@nid`,
+        params
+    );
 };
 
 const getAllNodes = async () => {

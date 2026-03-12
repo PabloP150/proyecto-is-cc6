@@ -422,20 +422,24 @@ class AnalyticsService {
     async getTeamAnalyticsSummary(groupId) {
         try {
             const query = `
-                SELECT 
+                SELECT
                     u.uid,
                     u.username,
                     COUNT(CASE WHEN ta.success_status = 'pending' THEN 1 END) as active_tasks,
                     COUNT(CASE WHEN ta.success_status = 'completed' THEN 1 END) as completed_tasks,
                     COUNT(CASE WHEN ta.success_status = 'failed' THEN 1 END) as failed_tasks,
                     AVG(CASE WHEN ta.completion_time_hours IS NOT NULL THEN ta.completion_time_hours END) as avg_completion_time,
-                    MAX(um.max_concurrent_tasks) as historical_capacity
+                    um_max.max_cap as historical_capacity
                 FROM dbo.Users u
                 JOIN dbo.UserGroups ug ON u.uid = ug.uid
                 LEFT JOIN dbo.TaskAnalytics ta ON u.uid = ta.uid AND ta.gid = @gid
-                LEFT JOIN dbo.UserMetrics um ON u.uid = um.uid
+                LEFT JOIN (
+                    SELECT uid, MAX(max_concurrent_tasks) as max_cap
+                    FROM dbo.UserMetrics
+                    GROUP BY uid
+                ) um_max ON u.uid = um_max.uid
                 WHERE ug.gid = @gid
-                GROUP BY u.uid, u.username
+                GROUP BY u.uid, u.username, um_max.max_cap
                 ORDER BY u.username
             `;
             const params = [

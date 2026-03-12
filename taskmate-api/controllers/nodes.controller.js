@@ -1,7 +1,6 @@
 const nodesRoute = require('express').Router();
 const { v4: uuidv4 } = require('uuid');
 const NodesModel = require('./../models/nodes.model');
-const { deleteEdgesByNode } = require('./../models/edges.model');
 
 // Get all nodes
 nodesRoute.get('/', async (req, res) => {
@@ -180,11 +179,10 @@ nodesRoute.put('/:id/toggleComplete', async (req, res) => {
     }
 });
 
-// Delete a node
+// Delete a node (edges are deleted inside deleteNode in a single batch)
 nodesRoute.delete('/:id', async (req, res) => {
     const { id: nid } = req.params;
     try {
-        await deleteEdgesByNode(nid);
         await NodesModel.deleteNode(nid);
         res.status(200).json({ message: 'Node deleted successfully' });
     } catch (error) {

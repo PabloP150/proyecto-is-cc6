@@ -37,16 +37,15 @@ const updateGroupRole = async (roleData) => {
 };
 
 const deleteGroupRole = async (gr_id, gid) => {
-  // Primero elimina las asignaciones de ese rol
-  const deleteAssignments = `DELETE FROM dbo.UserGroupRoles WHERE gr_id = @gr_id AND gid = @gid`;
   const params = [
     { name: 'gr_id', type: TYPES.UniqueIdentifier, value: gr_id },
     { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
   ];
-  await execWriteCommand(deleteAssignments, params);
-  // Luego elimina el rol
-  const deleteRole = `DELETE FROM dbo.GroupRoles WHERE gr_id = @gr_id AND gid = @gid`;
-  await execWriteCommand(deleteRole, params);
+  await execWriteCommand(
+    `DELETE FROM dbo.UserGroupRoles WHERE gr_id = @gr_id AND gid = @gid;
+     DELETE FROM dbo.GroupRoles WHERE gr_id = @gr_id AND gid = @gid`,
+    params
+  );
   return { success: true };
 };
 
