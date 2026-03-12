@@ -59,8 +59,8 @@ This document provides a comprehensive Entity Relationship Diagram (ERD) for the
   - `targetId` (UNIQUEIDENTIFIER, NOT NULL, FK to Nodes.nid)
   - `prerequisite` (BIT, DEFAULT 1)
 - **Purpose:** Defines relationships and dependencies between nodes
-### A
-ssociation/Junction Tables
+
+### Association/Junction Tables
 
 #### 6. UserGroups
 **Table:** `dbo.UserGroups`
@@ -181,8 +181,9 @@ ssociation/Junction Tables
   - `task_category` IN ('frontend', 'backend', 'database', 'testing', 'general')
   - All numeric fields >= 0
   - `success_rate_percentage` between 0 and 100
-- **Purpose:** Tracks user expertise levels by task category## 
-Entity Relationship Diagram
+- **Purpose:** Tracks user expertise levels by task category
+
+## Entity Relationship Diagram
 
 ```mermaid
 erDiagram
@@ -381,14 +382,6 @@ erDiagram
 ### 5. Historical Data
 - **Complete** archives finished tasks
 - **DeleteTask** maintains audit trail of deleted tasks
-
-## Indexes for Performance
-
-The analytics migration includes strategic indexes:
-- Task assignment queries: `IX_TaskAnalytics_UID_Status`, `IX_TaskAnalytics_GID_Category`
-- Time-based queries: `IX_TaskAnalytics_AssignedAt`, `IX_TaskAnalytics_CompletedAt`
-- User performance: `IX_UserMetrics_UID_Date`, `IX_UserExpertise_Score`
-- Category-based searches: `IX_UserExpertise_Category`
 
 ## Data Integrity Features
 
