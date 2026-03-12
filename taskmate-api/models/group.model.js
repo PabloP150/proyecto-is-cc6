@@ -15,7 +15,7 @@ const addGroup = async (groupData) => {
 };
 
 const getGroupsByUserId = async (uid) => {
-    // Reparar grupos donde adminId ya no es miembro (estado huérfano por borrado incorrecto)
+    // Reparar grupos donde adminId ya no es miembro (solo grupos del usuario, no toda la tabla)
     const repairQuery = `
         UPDATE g SET g.adminId = (
             SELECT TOP 1 ug2.uid
@@ -25,6 +25,7 @@ const getGroupsByUserId = async (uid) => {
             ORDER BY u2.username
         )
         FROM dbo.Groups g
+        INNER JOIN dbo.UserGroups ug_user ON ug_user.gid = g.gid AND ug_user.uid = @uid
         WHERE NOT EXISTS (
             SELECT 1 FROM dbo.UserGroups ug WHERE ug.uid = g.adminId AND ug.gid = g.gid
         )
@@ -32,7 +33,8 @@ const getGroupsByUserId = async (uid) => {
             SELECT 1 FROM dbo.UserGroups ug WHERE ug.gid = g.gid
         )
     `;
-    await execWriteCommand(repairQuery, null);
+    const repairParams = [{ name: 'uid', type: TYPES.UniqueIdentifier, value: uid }];
+    await execWriteCommand(repairQuery, repairParams);
 
     const query = `
         SELECT g.gid, g.adminId, g.name

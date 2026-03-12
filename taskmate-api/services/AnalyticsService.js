@@ -36,24 +36,14 @@ class AnalyticsService {
                 category = 'general';
             }
 
-            // Check if assignment already exists (prevent duplicates)
-            const existingQuery = `
-                SELECT id FROM dbo.TaskAnalytics 
-                WHERE tid = @tid AND uid = @uid AND success_status = 'pending'
-            `;
-            const existingParams = [
-                { name: 'tid', type: TYPES.UniqueIdentifier, value: taskId },
-                { name: 'uid', type: TYPES.UniqueIdentifier, value: userId }
-            ];
-            
-            const existing = await execReadCommand(existingQuery, existingParams);
-            if (existing && existing.length > 0) {
-                return { success: true, message: 'Assignment already recorded' };
-            }
-
+            // Insert only if no pending assignment already exists (single roundtrip)
             const insertQuery = `
-                INSERT INTO dbo.TaskAnalytics (tid, uid, gid, task_category, assigned_at) 
-                VALUES (@tid, @uid, @gid, @category, GETDATE())
+                INSERT INTO dbo.TaskAnalytics (tid, uid, gid, task_category, assigned_at)
+                SELECT @tid, @uid, @gid, @category, GETDATE()
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM dbo.TaskAnalytics
+                    WHERE tid = @tid AND uid = @uid AND success_status = 'pending'
+                )
             `;
             const insertParams = [
                 { name: 'tid', type: TYPES.UniqueIdentifier, value: taskId },
@@ -61,8 +51,11 @@ class AnalyticsService {
                 { name: 'gid', type: TYPES.UniqueIdentifier, value: groupId },
                 { name: 'category', type: TYPES.VarChar, value: category }
             ];
-            
-            await execWriteCommand(insertQuery, insertParams);
+
+            const rowsInserted = await execWriteCommand(insertQuery, insertParams);
+            if (rowsInserted === 0) {
+                return { success: true, message: 'Assignment already recorded' };
+            }
             return {
                 success: true, 
                 task_id: taskId,
@@ -273,12 +266,12 @@ class AnalyticsService {
             if (!taskData || taskData.length === 0) return;
             
             const { uid, task_category, completion_time_hours, success_status } = taskData[0];
-            
-            // Update or create UserExpertise record
-            await this._updateUserExpertise(uid, task_category, completion_time_hours, success_status);
-            
-            // Update daily UserMetrics
-            await this._updateDailyMetrics(uid);
+
+            // Run both updates in parallel — they write to different tables
+            await Promise.all([
+                this._updateUserExpertise(uid, task_category, completion_time_hours, success_status),
+                this._updateDailyMetrics(uid)
+            ]);
             
         } catch (error) {
             console.error('Error updating user metrics:', error);
@@ -526,19 +519,29 @@ class AnalyticsService {
      */
     async getWorkloadDistribution(groupId) {
         try {
-            // This query is based on the user's provided example for accuracy.
             const query = `
-                SELECT 
+                SELECT
                     u.uid,
                     u.username,
-                    MIN(gr.gr_name) as role_name, -- Use MIN to get a single representative role
-                    (SELECT COUNT(*) FROM dbo.UserTask WHERE uid = u.uid AND completed = 0) as current_workload,
-                    (SELECT MAX(max_concurrent_tasks) FROM dbo.UserMetrics WHERE uid = u.uid) as capacity
+                    MIN(gr.gr_name) as role_name,
+                    ISNULL(wl.cnt, 0) as current_workload,
+                    cap.max_cap as capacity
                 FROM dbo.Users u
                 INNER JOIN dbo.UserGroupRoles ugr ON u.uid = ugr.uid
                 INNER JOIN dbo.GroupRoles gr ON gr.gr_id = ugr.gr_id
+                LEFT JOIN (
+                    SELECT uid, COUNT(*) as cnt
+                    FROM dbo.UserTask
+                    WHERE completed = 0
+                    GROUP BY uid
+                ) wl ON wl.uid = u.uid
+                LEFT JOIN (
+                    SELECT uid, MAX(max_concurrent_tasks) as max_cap
+                    FROM dbo.UserMetrics
+                    GROUP BY uid
+                ) cap ON cap.uid = u.uid
                 WHERE ugr.gid = @gid
-                GROUP BY u.uid, u.username
+                GROUP BY u.uid, u.username, wl.cnt, cap.max_cap
                 ORDER BY u.username;
             `;
             const params = [

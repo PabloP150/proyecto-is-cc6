@@ -79,9 +79,11 @@ const updateTaskFromNode = async (taskData) => {
 
 const deleteTask = async (tid) => {
     const param = [{ name: 'tid', type: TYPES.UniqueIdentifier, value: tid }];
-    // Clear FK-constrained rows before deleting the task
-    await execWriteCommand(`DELETE FROM dbo.TaskAnalytics WHERE tid=@tid`, param);
-    return execWriteCommand(`DELETE FROM dbo.Tasks WHERE tid=@tid`, param);
+    // Clear FK-constrained rows and delete task in a single batch
+    return execWriteCommand(
+        `DELETE FROM dbo.TaskAnalytics WHERE tid=@tid; DELETE FROM dbo.Tasks WHERE tid=@tid`,
+        param
+    );
 };
 
 const getAllTasks = async () => {
