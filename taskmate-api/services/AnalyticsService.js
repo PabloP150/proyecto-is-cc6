@@ -662,23 +662,20 @@ class AnalyticsService {
             `;
             
             const activeUsers = await execReadCommand(activeUsersQuery);
-            
-            for (const user of activeUsers) {
+
+            await Promise.all(activeUsers.map(async (user) => {
+                if (!user.uid) {
+                    results.errors.push({ user_id: null, error: 'Invalid user ID' });
+                    return;
+                }
                 try {
-                    // Check if user exists first to potentially throw an error
-                    if (!user.uid) {
-                        throw new Error('Invalid user ID');
-                    }
                     await this._updateDailyMetrics(user.uid);
                     results.users_updated++;
                 } catch (error) {
                     console.error(`Error updating metrics for user ${user.uid}:`, error);
-                    results.errors.push({
-                        user_id: user.uid,
-                        error: error.message
-                    });
+                    results.errors.push({ user_id: user.uid, error: error.message });
                 }
-            }
+            }));
 
             // Update expertise scores for all categories
             try {

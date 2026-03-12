@@ -103,48 +103,45 @@ app.post('/api/utils/populate-assignments/:groupId', async (req, res) => {
 
         let assignmentsCreated = 0;
 
-        // Assign tasks to random members
-        for (const task of unassignedTasks) {
-            if (members.length === 0) break;
+        // Assign tasks to random members (UserTask + TaskAnalytics in parallel per task)
+        if (members.length > 0) {
+            await Promise.all(unassignedTasks.map(async (task) => {
+                const randomMember = members[Math.floor(Math.random() * members.length)];
+                const isCompleted = task.percentage >= 100;
+                const utid = uuidv4();
+                const analyticsId = uuidv4();
+                const assignedAt = new Date();
+                const completedAt = isCompleted ? new Date(assignedAt.getTime() + Math.random() * 24 * 60 * 60 * 1000) : null;
 
-            const randomMember = members[Math.floor(Math.random() * members.length)];
-            const isCompleted = task.percentage >= 100;
-
-            // Create assignment
-            const utid = uuidv4();
-            await execWriteCommand(
-                'INSERT INTO dbo.UserTask (utid, uid, tid, completed) VALUES (@utid, @uid, @tid, @completed)',
-                [
-                    { name: 'utid', type: TYPES.UniqueIdentifier, value: utid },
-                    { name: 'uid', type: TYPES.UniqueIdentifier, value: randomMember.uid },
-                    { name: 'tid', type: TYPES.UniqueIdentifier, value: task.tid },
-                    { name: 'completed', type: TYPES.Bit, value: isCompleted }
-                ]
-            );
-
-            // Create analytics record
-            const analyticsId = uuidv4();
-            const assignedAt = new Date();
-            const completedAt = isCompleted ? new Date(assignedAt.getTime() + Math.random() * 24 * 60 * 60 * 1000) : null;
-
-            await execWriteCommand(
-                `INSERT INTO dbo.TaskAnalytics 
-                 (id, tid, uid, gid, task_category, assigned_at, completed_at, success_status, completion_time_hours) 
-                 VALUES (@id, @tid, @uid, @gid, @category, @assigned_at, @completed_at, @status, @completion_time)`,
-                [
-                    { name: 'id', type: TYPES.UniqueIdentifier, value: analyticsId },
-                    { name: 'tid', type: TYPES.UniqueIdentifier, value: task.tid },
-                    { name: 'uid', type: TYPES.UniqueIdentifier, value: randomMember.uid },
-                    { name: 'gid', type: TYPES.UniqueIdentifier, value: groupId },
-                    { name: 'category', type: TYPES.VarChar, value: 'general' },
-                    { name: 'assigned_at', type: TYPES.DateTime2, value: assignedAt },
-                    { name: 'completed_at', type: TYPES.DateTime2, value: completedAt },
-                    { name: 'status', type: TYPES.VarChar, value: isCompleted ? 'completed' : 'pending' },
-                    { name: 'completion_time', type: TYPES.Decimal, value: completedAt ? Math.random() * 8 + 1 : null }
-                ]
-            );
-
-            assignmentsCreated++;
+                await Promise.all([
+                    execWriteCommand(
+                        'INSERT INTO dbo.UserTask (utid, uid, tid, completed) VALUES (@utid, @uid, @tid, @completed)',
+                        [
+                            { name: 'utid', type: TYPES.UniqueIdentifier, value: utid },
+                            { name: 'uid', type: TYPES.UniqueIdentifier, value: randomMember.uid },
+                            { name: 'tid', type: TYPES.UniqueIdentifier, value: task.tid },
+                            { name: 'completed', type: TYPES.Bit, value: isCompleted }
+                        ]
+                    ),
+                    execWriteCommand(
+                        `INSERT INTO dbo.TaskAnalytics
+                         (id, tid, uid, gid, task_category, assigned_at, completed_at, success_status, completion_time_hours)
+                         VALUES (@id, @tid, @uid, @gid, @category, @assigned_at, @completed_at, @status, @completion_time)`,
+                        [
+                            { name: 'id', type: TYPES.UniqueIdentifier, value: analyticsId },
+                            { name: 'tid', type: TYPES.UniqueIdentifier, value: task.tid },
+                            { name: 'uid', type: TYPES.UniqueIdentifier, value: randomMember.uid },
+                            { name: 'gid', type: TYPES.UniqueIdentifier, value: groupId },
+                            { name: 'category', type: TYPES.VarChar, value: 'general' },
+                            { name: 'assigned_at', type: TYPES.DateTime2, value: assignedAt },
+                            { name: 'completed_at', type: TYPES.DateTime2, value: completedAt },
+                            { name: 'status', type: TYPES.VarChar, value: isCompleted ? 'completed' : 'pending' },
+                            { name: 'completion_time', type: TYPES.Decimal, value: completedAt ? Math.random() * 8 + 1 : null }
+                        ]
+                    )
+                ]);
+                assignmentsCreated++;
+            }));
         }
 
         res.json({

@@ -82,7 +82,6 @@ tasksRoute.delete('/:id', async (req, res) => {
     const { id: tid } = req.params;
 
     try {
-        await UsertaskModel.deleteAllByTid(tid);
         const result = await TasksModel.deleteTask(tid);
 
         // Record task deletion in analytics (non-blocking)
