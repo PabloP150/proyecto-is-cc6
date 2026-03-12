@@ -123,6 +123,7 @@ ssociation/Junction Tables
   - `name` (VARCHAR(25), NOT NULL)
   - `description` (VARCHAR(1000), NOT NULL)
   - `datetime` (SMALLDATETIME, NOT NULL)
+  - `percentage` (INT, NOT NULL DEFAULT 0, CHECK 0-100)
 - **Purpose:** Archive of deleted tasks for audit trail##
 # Analytics System (Added via Migration)
 
@@ -340,10 +341,17 @@ erDiagram
 ### UpdateTargetNodePercentage
 **Trigger on:** `dbo.Nodes` (AFTER UPDATE)
 **Purpose:** Automatically calculates and updates the percentage completion of target nodes based on their prerequisite source nodes
-**Logic:** 
+**Logic:**
 - When a node is updated, finds all target nodes that depend on it
 - Calculates percentage as (completed_children / total_children) * 100
 - Recursively updates dependent nodes in a cascading manner
+
+### UpdateTargetOnPrerequisiteChange
+**Trigger on:** `dbo.Edges` (AFTER UPDATE)
+**Purpose:** Recalculates target node percentage when an edge's prerequisite flag changes
+**Logic:**
+- Fires when an edge is updated (e.g., prerequisite toggled on/off)
+- Recalculates the target node's percentage based on its updated set of prerequisite sources
 
 ## Key Relationships Summary
 
