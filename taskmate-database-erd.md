@@ -124,8 +124,9 @@ ssociation/Junction Tables
   - `description` (VARCHAR(1000), NOT NULL)
   - `datetime` (SMALLDATETIME, NOT NULL)
   - `percentage` (INT, NOT NULL DEFAULT 0, CHECK 0-100)
-- **Purpose:** Archive of deleted tasks for audit trail##
-# Analytics System (Added via Migration)
+- **Purpose:** Archive of deleted tasks for audit trail
+
+## Analytics System
 
 #### 12. TaskAnalytics
 **Table:** `dbo.TaskAnalytics`
@@ -271,6 +272,7 @@ erDiagram
         VARCHAR(25) name "NOT NULL"
         VARCHAR(1000) description "NOT NULL"
         SMALLDATETIME datetime "NOT NULL"
+        INT percentage "NOT NULL DEFAULT 0"
     }
     
     TaskAnalytics {
