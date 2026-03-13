@@ -50,28 +50,17 @@ function BlockDiagram() {
     const data = Object.fromEntries(formData.entries());
     try {
       setFlowKey(k => k + 1);
-      const response1 = await fetch(`${API_BASE}/api/nodes/${selectedNode.nid}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: data.name,
-          description: data.description,
-          date: formatDate(data.date)
-        }),
+      const body = JSON.stringify({
+        name: data.name,
+        description: data.description,
+        date: formatDate(data.date)
       });
-      const response2 = await fetch(`${API_BASE}/api/tasks/nodes/${selectedNode.nid}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: data.name,
-          description: data.description,
-          date: formatDate(data.date)
-        }),
-      });
+      const headers = { 'Content-Type': 'application/json' };
+
+      const [response1, response2] = await Promise.all([
+        fetch(`${API_BASE}/api/nodes/${selectedNode.nid}`, { method: 'PUT', headers, body }),
+        fetch(`${API_BASE}/api/tasks/nodes/${selectedNode.nid}`, { method: 'PUT', headers, body }),
+      ]);
 
       if (response1.ok && response2.ok) {
         setShowPopup(false);

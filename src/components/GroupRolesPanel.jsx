@@ -151,7 +151,9 @@ const GroupRolesPanel = ({ groupId, isLeader, roles: externalRoles, createRole: 
                         <GRChip
                           label={role.gr_name}
                           ownerState={{ baseColor: role.gr_color }}
-                          icon={role.gr_icon ? <span className="material-icons">{role.gr_icon}</span> : null}
+                          icon={role.gr_icon && /^[a-z_]+$/.test(role.gr_icon)
+                            ? <span className="material-icons">{role.gr_icon}</span>
+                            : undefined}
                           size="small"
                         />
                       </span>

@@ -188,6 +188,7 @@ function ChatPage() {
         setMessages(prev => [...prev, userMessage]);
         setInputMessage('');
         setIsTyping(true);
+        setTimeout(() => inputRef.current?.focus(), 0);
 
         const success = sendWebSocketMessage({
             type: 'user',
@@ -328,8 +329,26 @@ function ChatPage() {
                                                 wordBreak: 'break-word',
                                                 // Add styles for markdown content
                                                 '& .markdown-content': {
-                                                    '& p': { margin: 0 },
+                                                    '& p': { margin: '0 0 8px 0' },
+                                                    '& p:last-child': { margin: 0 },
                                                     '& a': { color: 'secondary.main' },
+                                                    '& h1,& h2,& h3,& h4': { margin: '12px 0 6px 0', fontWeight: 600, lineHeight: 1.3 },
+                                                    '& h1': { fontSize: '1.2em' },
+                                                    '& h2': { fontSize: '1.1em' },
+                                                    '& h3': { fontSize: '1em' },
+                                                    '& ul,& ol': { margin: '4px 0', paddingLeft: '20px' },
+                                                    '& li': { margin: '2px 0' },
+                                                    '& table': { borderCollapse: 'collapse', width: '100%', margin: '8px 0', fontSize: '0.85em' },
+                                                    '& th': { backgroundColor: 'rgba(255,255,255,0.1)', padding: '6px 10px', border: '1px solid rgba(255,255,255,0.2)', textAlign: 'left', fontWeight: 600 },
+                                                    '& td': { padding: '5px 10px', border: '1px solid rgba(255,255,255,0.15)' },
+                                                    '& tr:nth-of-type(even)': { backgroundColor: 'rgba(255,255,255,0.04)' },
+                                                    '& code': { backgroundColor: 'rgba(0,0,0,0.3)', padding: '1px 5px', borderRadius: '3px', fontSize: '0.88em', fontFamily: 'monospace' },
+                                                    '& pre': { backgroundColor: 'rgba(0,0,0,0.3)', padding: '10px', borderRadius: '6px', overflowX: 'auto', margin: '8px 0' },
+                                                    '& pre code': { backgroundColor: 'transparent', padding: 0 },
+                                                    '& blockquote': { borderLeft: '3px solid rgba(255,255,255,0.3)', margin: '6px 0', paddingLeft: '12px', opacity: 0.85 },
+                                                    '& hr': { border: 'none', borderTop: '1px solid rgba(255,255,255,0.15)', margin: '10px 0' },
+                                                    '& strong': { fontWeight: 700 },
+                                                    '& em': { fontStyle: 'italic' },
                                                 }
                                             }}
                                         >

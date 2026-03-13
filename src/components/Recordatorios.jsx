@@ -130,8 +130,7 @@ export default function Recordatorios() {
 
   // Recargar tareas y completados cuando cambia el grupo
   useEffect(() => {
-    cargarTareas();
-    cargarCompletados();
+    void Promise.all([cargarTareas(), cargarCompletados()]);
   }, [cargarTareas, cargarCompletados]);
 
   // Cargar eliminados solo cuando el filtro sea 'deleted'
@@ -285,7 +284,7 @@ export default function Recordatorios() {
         recordatorios: l.recordatorios.filter((_,i) => i!==idx)
       } : l));
     }, 3000);
-  }, [listas, selectedGroupId]);
+  }, [listas]);
 
   const handleCompletar = useCallback(async (listaNombre, idx) => {
   const listaActual = listas.find(lista => lista.nombre === listaNombre);
@@ -319,7 +318,7 @@ export default function Recordatorios() {
         recordatorios: l.recordatorios.filter((_,i) => i!==idx)
       } : l));
     }, 3000);
-  }, [listas, selectedGroupId, cargarCompletados]);
+  }, [listas, cargarCompletados]);
 
   const handleEditar = useCallback((nombre, idx) => {
     const recordatorio = listas.find(lista => lista.nombre === nombre)?.recordatorios[idx];
@@ -435,7 +434,7 @@ export default function Recordatorios() {
       setDeleteListError(true);
       setTimeout(() => setDeleteListError(false), 4000);
     }
-  }, [selectedGroupId, cargarTareas]);
+  }, [cargarTareas]);
 
   const handleSubmitEditar = async () => {
   if (!recordatorioEditar?.tid) {
@@ -570,12 +569,18 @@ export default function Recordatorios() {
     switch (filtro) {
       case 'today':
         return 'Today';
+      case 'week':
+        return 'This Week';
       case 'month':
         return 'This Month';
+      case 'completed':
+        return 'Completed';
+      case 'deleted':
+        return 'Deleted';
       case 'all':
         return 'All Tasks';
       default:
-        return 'Tasks';
+        return 'All Tasks';
     }
   };
 
@@ -669,7 +674,7 @@ export default function Recordatorios() {
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
             }}>
-              Tasks {selectedGroupName && `- ${selectedGroupName}`}
+              Tasks {selectedGroupId && `(${listasFiltradas.reduce((sum, l) => sum + (l.recordatorios?.length || 0), 0)})`} {selectedGroupName && `- ${selectedGroupName}`}
             </Typography>
             <IconButton 
               onClick={() => setDrawerOpen(true)} 

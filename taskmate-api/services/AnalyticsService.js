@@ -366,15 +366,11 @@ class AnalyticsService {
     async _updateDailyMetrics(userId) {
         try {
             const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
-            
-            // Get current active tasks count
-            const activeCount = await this.getCurrentWorkload(userId);
-            
-            // Get today's max concurrent tasks (approximate)
+
             const maxConcurrentQuery = `
                 SELECT COUNT(*) as concurrent_count
-                FROM dbo.TaskAnalytics 
-                WHERE uid = @uid 
+                FROM dbo.TaskAnalytics
+                WHERE uid = @uid
                 AND CAST(assigned_at AS DATE) = @today
                 AND (completed_at IS NULL OR CAST(completed_at AS DATE) >= @today)
             `;
@@ -382,8 +378,12 @@ class AnalyticsService {
                 { name: 'uid', type: TYPES.UniqueIdentifier, value: userId },
                 { name: 'today', type: TYPES.Date, value: today }
             ];
-            
-            const concurrentResult = await execReadCommand(maxConcurrentQuery, concurrentParams);
+
+            // Both reads are independent — run in parallel
+            const [activeCount, concurrentResult] = await Promise.all([
+                this.getCurrentWorkload(userId),
+                execReadCommand(maxConcurrentQuery, concurrentParams)
+            ]);
             const maxConcurrent = concurrentResult[0]?.concurrent_count || activeCount;
             
             // Upsert daily metrics
@@ -667,46 +667,43 @@ class AnalyticsService {
             
             const activeUsers = await execReadCommand(activeUsersQuery);
 
-            await Promise.all(activeUsers.map(async (user) => {
-                if (!user.uid) {
-                    results.errors.push({ user_id: null, error: 'Invalid user ID' });
-                    return;
-                }
-                try {
-                    await this._updateDailyMetrics(user.uid);
-                    results.users_updated++;
-                } catch (error) {
-                    console.error(`Error updating metrics for user ${user.uid}:`, error);
-                    results.errors.push({ user_id: user.uid, error: error.message });
-                }
-            }));
+            const expertiseUpdateQuery = `
+                UPDATE ue SET
+                    expertise_score = CASE
+                        WHEN ue.tasks_completed > 0 THEN
+                            LEAST(100, ue.success_rate_percentage +
+                                CASE WHEN ue.avg_completion_time_hours > 0
+                                     THEN GREATEST(0, 20 - (ue.avg_completion_time_hours / 2))
+                                     ELSE 10 END)
+                        ELSE 0
+                    END,
+                    last_updated = GETDATE()
+                FROM dbo.UserExpertise ue
+                WHERE ue.last_updated < DATEADD(hour, -1, GETDATE())
+            `;
 
-            // Update expertise scores for all categories
-            try {
-                const expertiseUpdateQuery = `
-                    UPDATE ue SET 
-                        expertise_score = CASE 
-                            WHEN ue.tasks_completed > 0 THEN 
-                                LEAST(100, ue.success_rate_percentage + 
-                                    CASE WHEN ue.avg_completion_time_hours > 0 
-                                         THEN GREATEST(0, 20 - (ue.avg_completion_time_hours / 2))
-                                         ELSE 10 END)
-                            ELSE 0 
-                        END,
-                        last_updated = GETDATE()
-                    FROM dbo.UserExpertise ue
-                    WHERE ue.last_updated < DATEADD(hour, -1, GETDATE())
-                `;
-                
-                const expertiseUpdateResult = await execWriteCommand(expertiseUpdateQuery);
-                results.expertise_records_updated = expertiseUpdateResult;
-            } catch (error) {
-                console.error('Error updating expertise scores:', error);
-                results.errors.push({
-                    operation: 'expertise_update',
-                    error: error.message
-                });
-            }
+            // Daily metrics (UserMetrics table) and expertise scores (UserExpertise table) are independent — run in parallel
+            const [, expertiseUpdateResult] = await Promise.all([
+                Promise.all(activeUsers.map(async (user) => {
+                    if (!user.uid) {
+                        results.errors.push({ user_id: null, error: 'Invalid user ID' });
+                        return;
+                    }
+                    try {
+                        await this._updateDailyMetrics(user.uid);
+                        results.users_updated++;
+                    } catch (error) {
+                        console.error(`Error updating metrics for user ${user.uid}:`, error);
+                        results.errors.push({ user_id: user.uid, error: error.message });
+                    }
+                })),
+                execWriteCommand(expertiseUpdateQuery).catch((error) => {
+                    console.error('Error updating expertise scores:', error);
+                    results.errors.push({ operation: 'expertise_update', error: error.message });
+                    return 0;
+                })
+            ]);
+            results.expertise_records_updated = expertiseUpdateResult ?? 0;
 
             return results;
         } catch (error) {

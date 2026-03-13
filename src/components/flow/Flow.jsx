@@ -9,7 +9,7 @@ import {
     ReactFlow
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { useCallback, useContext, useEffect, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { API_BASE } from '../../config';
 import { GroupContext } from '../GroupContext';
 import CustomConnectionLine from './CustomConnectionLine';
@@ -310,6 +310,12 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
     }
   }, [selectedGroupId]);
 
+  // Tasks available for import — exclude tasks already imported as nodes
+  const availableTasks = useMemo(() => {
+    const nodeIds = new Set(nodes.map(n => n.id));
+    return tasks.filter(t => !nodeIds.has(t.tid));
+  }, [tasks, nodes]);
+
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setNodeData(prev => ({
@@ -439,9 +445,9 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
           >
             Import Task
           </button>
-          {showDropdown && tasks.length > 0 && (
+          {showDropdown && (
             <ul className="dropdown-menu">
-              {(tasks).map((task) => (
+              {availableTasks.length > 0 ? availableTasks.map((task) => (
                 <li key={task.tid}>
                   <button
                     className="dropdown-item"
@@ -453,7 +459,11 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
                     {task.name}
                   </button>
                 </li>
-              ))}
+              )) : (
+                <li style={{ padding: '8px 10px', color: '#666', fontStyle: 'italic' }}>
+                  No tasks available
+                </li>
+              )}
             </ul>
           )}
         </div>

@@ -14,9 +14,9 @@ const addGroupRole = async (roleData) => {
   const params = [
     { name: 'gr_id', type: TYPES.UniqueIdentifier, value: gr_id },
     { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
-    { name: 'gr_name', type: TYPES.VarChar, value: gr_name },
-    { name: 'gr_color', type: TYPES.VarChar, value: gr_color },
-    { name: 'gr_icon', type: TYPES.VarChar, value: gr_icon },
+    { name: 'gr_name', type: TYPES.NVarChar, value: gr_name },
+    { name: 'gr_color', type: TYPES.NVarChar, value: gr_color },
+    { name: 'gr_icon', type: TYPES.NVarChar, value: gr_icon },
   ];
   await execWriteCommand(query, params);
   return { success: true };
@@ -28,9 +28,9 @@ const updateGroupRole = async (roleData) => {
   const params = [
     { name: 'gr_id', type: TYPES.UniqueIdentifier, value: gr_id },
     { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
-    { name: 'gr_name', type: TYPES.VarChar, value: gr_name },
-    { name: 'gr_color', type: TYPES.VarChar, value: gr_color },
-    { name: 'gr_icon', type: TYPES.VarChar, value: gr_icon },
+    { name: 'gr_name', type: TYPES.NVarChar, value: gr_name },
+    { name: 'gr_color', type: TYPES.NVarChar, value: gr_color },
+    { name: 'gr_icon', type: TYPES.NVarChar, value: gr_icon },
   ];
   await execWriteCommand(query, params);
   return { success: true };

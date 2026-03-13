@@ -58,10 +58,25 @@ const formatearFecha = (datetime) => {
 const ordenarRecordatorios = (recordatorios, orden) => {
   switch (orden) {
     case 'CreationDate':
-      return [...recordatorios].sort((a, b) => new Date(a.datetime) - new Date(b.datetime));
+      // Default order — preserve API insertion order (no sort)
+      return recordatorios;
     case 'Deadline':
-    case 'Priority':
-      return [...recordatorios].sort((a, b) => new Date(a.fechaLimite) - new Date(b.fechaLimite));
+      // Sort by due date ascending (soonest first)
+      return [...recordatorios].sort((a, b) => new Date(a.datetime) - new Date(b.datetime));
+    case 'Priority': {
+      // Priority: tasks with lower completion % and closer deadlines rank higher
+      const now = Date.now();
+      return [...recordatorios].sort((a, b) => {
+        const pctA = Number(a.percentage) || 0;
+        const pctB = Number(b.percentage) || 0;
+        // Lower percentage = higher priority
+        if (pctA !== pctB) return pctA - pctB;
+        // Same percentage → closer deadline first
+        const dA = new Date(a.datetime).getTime() - now;
+        const dB = new Date(b.datetime).getTime() - now;
+        return dA - dB;
+      });
+    }
     default:
       return recordatorios;
   }

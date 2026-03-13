@@ -3,6 +3,36 @@ const groupModel = require('../models/group.model');
 const taskModel = require('../models/tasks.model');
 const nodeModel = require('../models/nodes.model');
 const userGroupModel = require('../models/userGroup.model');
+const groupRolesModel = require('../models/groupRoles.model');
+
+// Fallback: map common emojis to Material Icons names
+const EMOJI_TO_ICON = {
+    '🔧': 'build', '👨‍💻': 'code', '🎨': 'palette', '🧪': 'bug_report',
+    '📋': 'assignment', '👤': 'person', '📊': 'insights', '🛠️': 'settings',
+    '💻': 'terminal', '🔒': 'lock', '🌐': 'public', '📝': 'edit',
+    '⭐': 'star', '🔔': 'notifications', '💬': 'chat', '☁️': 'cloud',
+    '📦': 'storage', '🚀': 'rocket_launch', '📅': 'event', '👥': 'group',
+    '🧑‍💼': 'supervisor_account', '🎯': 'leaderboard', '🔍': 'visibility',
+    '💡': 'lightbulb', '📱': 'phone_android', '🖥️': 'desktop_windows',
+};
+const VALID_ICONS = new Set([
+    'dashboard','assignment','check_circle','pending_actions','event','group',
+    'person','supervisor_account','admin_panel_settings','emoji_events','star',
+    'leaderboard','insights','timeline','workspaces','code','terminal',
+    'bug_report','build','cloud','storage','api','integration_instructions',
+    'extension','chat','forum','comment','notifications','visibility','edit',
+    'delete','settings','lock','public','favorite','help','palette',
+    'rocket_launch','lightbulb','phone_android','desktop_windows',
+]);
+function normalizeIcon(icon) {
+    if (!icon) return 'star';
+    if (VALID_ICONS.has(icon)) return icon;
+    if (EMOJI_TO_ICON[icon]) return EMOJI_TO_ICON[icon];
+    // Strip non-ascii and check again
+    const cleaned = icon.replace(/[^a-z_]/g, '');
+    if (VALID_ICONS.has(cleaned)) return cleaned;
+    return 'star';
+}
 
 class ProjectService {
     /**
@@ -86,7 +116,26 @@ class ProjectService {
             // 2. Add the creator to the group
             await userGroupModel.addUserToGroup({ uid: userId, gid: groupId });
 
-            // 3. Create tasks from the recommendations (in parallel)
+            // 3. Create group roles (in parallel)
+            if (projectData.roles && Array.isArray(projectData.roles) && projectData.roles.length > 0) {
+                console.log(`Creating ${projectData.roles.length} roles for project ${groupId}`);
+                await Promise.all(projectData.roles.map(async (role) => {
+                    if (!role.name) return;
+                    try {
+                        await groupRolesModel.addGroupRole({
+                            gr_id: uuidv4(),
+                            gid: groupId,
+                            gr_name: role.name.substring(0, 30),
+                            gr_color: role.color || '#6b7280',
+                            gr_icon: normalizeIcon(role.icon),
+                        });
+                    } catch (roleError) {
+                        console.error(`Failed to create role ${role.name}:`, roleError);
+                    }
+                }));
+            }
+
+            // 4. Create tasks from the recommendations (in parallel)
             console.log(`Creating ${projectData.tasks.length} tasks for project ${groupId}`);
             await Promise.all(projectData.tasks.map(async (task, i) => {
                 const taskId = uuidv4();
@@ -125,7 +174,7 @@ class ProjectService {
                     gid: groupId,
                     name: truncatedTaskName,
                     description: task.description || '',
-                    list: task.status || 'To Do',
+                    list: task.list || task.status || 'To Do',
                     datetime: dueDate,
                     percentage: 0
                 };
@@ -139,7 +188,7 @@ class ProjectService {
                 }
             }));
 
-            // 4. Create milestones in Nodes table (in parallel, if provided)
+            // 5. Create milestones in Nodes table (in parallel, if provided)
             if (projectData.milestones && Array.isArray(projectData.milestones)) {
                 console.log(`Creating ${projectData.milestones.length} milestones for project ${groupId}`);
                 await Promise.all(projectData.milestones.map(async (milestone, i) => {

@@ -53,7 +53,6 @@ function GroupsView() {
   // Estado para diálogos de roles (solo una vez, al inicio)
   // Eliminados estados openRoleForm / editingRole (no usados tras refactor de roles controlados)
   const [openAssignDialog, setOpenAssignDialog] = useState(false);
-  // Feedback visual (iconos) para eliminación de grupo
   const [deleteSuccess, setDeleteSuccess] = useState(false);
   const [deleteError, setDeleteError] = useState(false);
   // Controla si mostramos los detalles (miembros/roles) dentro de esta vista. Persistimos en localStorage.
@@ -80,11 +79,10 @@ function GroupsView() {
   useEffect(() => {
     if (!groupId || !showDetails) return;
     if (!members || members.length === 0) return;
-    members.forEach(m => {
-      if (!userRolesMap[m.uid]) {
-        fetchUserRoles(m.uid);
-      }
-    });
+    const unloaded = members.filter(m => !userRolesMap[m.uid]);
+    if (unloaded.length > 0) {
+      void Promise.all(unloaded.map(m => fetchUserRoles(m.uid)));
+    }
   }, [groupId, members, showDetails, userRolesMap, fetchUserRoles]);
 
   const cargarGrupos = useCallback(async () => {
@@ -331,22 +329,20 @@ function GroupsView() {
     }
   };
 
+  // eslint-disable-next-line no-unused-vars
   const handleDeleteGroup = async () => {
     const userId = localStorage.getItem('userId');
     if (!userId || !selectedGroup) {
       console.error('Cannot delete: missing userId or selectedGroup');
       return;
     }
-
     try {
       const groupResponse = await fetch(`${API_BASE}/api/groups/delete`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ gid: selectedGroup.gid, adminId: userId }),
       });
-
       if (groupResponse.ok) {
-        // Limpieza inmediata de estado local para mejor UX
         setGroups(prev => prev.filter(g => g.gid !== selectedGroup.gid));
         setSelectedGroup(null);
         setSelectedGroupId(null);
