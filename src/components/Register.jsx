@@ -1,4 +1,5 @@
 import { PersonAdd as RegisterIcon } from '@mui/icons-material';
+import { API_BASE } from '../config';
 import {
   Alert,
   Box,
@@ -9,7 +10,7 @@ import {
   Link,
   Typography,
 } from '@mui/material';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ThemeProvider } from '../theme';
 import Button from './ui/Button';
@@ -25,6 +26,8 @@ function Register() {
   const [isLoading, setIsLoading] = useState(false);
   const [validationErrors, setValidationErrors] = useState({});
   const navigate = useNavigate();
+  const timerRef = useRef(null);
+  useEffect(() => () => clearTimeout(timerRef.current), []);
 
   // Form validation
   const validateForm = () => {
@@ -71,7 +74,7 @@ function Register() {
     setIsLoading(true);
 
     try {
-      const response = await fetch('http://localhost:9000/api/users', {
+      const response = await fetch(`${API_BASE}/api/users`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -84,9 +87,7 @@ function Register() {
         setSuccess('Account created successfully! Redirecting to login...');
         
         // Redirect to login after a short delay
-        setTimeout(() => {
-          navigate('/');
-        }, 2000);
+        timerRef.current = setTimeout(() => navigate('/'), 2000);
       } else {
         const errorData = await response.json();
         setError(errorData.error || 'Registration failed. Please try again.');

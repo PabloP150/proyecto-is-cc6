@@ -30,7 +30,7 @@ class WebSocketServer {
 
         try {
             if (!token) throw new Error('No token provided');
-            const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+            const decoded = jwt.verify(token, process.env.JWT_SECRET);
             userId = decoded.userId || decoded.id;
         } catch (error) {
             console.log(`WebSocket upgrade rejected for ${pathname}: ${error.message}`);
@@ -57,6 +57,9 @@ class WebSocketServer {
 
     setupEventHandlers() {
         this.wss.on('connection', (ws, req, connectionType) => {
+            ws.isAlive = true;
+            ws.on('pong', () => { ws.isAlive = true; });
+
             if (connectionType === 'chat') {
                 this.handleChatConnection(ws, req);
             } else if (connectionType === 'insights') {
@@ -183,9 +186,13 @@ class WebSocketServer {
     setupHeartbeat() {
         this.heartbeatInterval = setInterval(() => {
             this.wss.clients.forEach((ws) => {
-                if (ws.readyState === WebSocket.OPEN) {
-                    ws.ping();
+                if (ws.readyState !== WebSocket.OPEN) return;
+                if (ws.isAlive === false) {
+                    ws.terminate();
+                    return;
                 }
+                ws.isAlive = false;
+                ws.ping();
             });
         }, 30000);
     }

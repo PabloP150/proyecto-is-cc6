@@ -281,7 +281,21 @@ Un usuario inicia sesión y selecciona un grupo de trabajo activo. Puede crear n
 
 ## Diagramas
 
-*[Esta sección contendrá todos los diagramas técnicos del sistema]*
+Los diagramas técnicos se mantienen como archivos Mermaid versionados junto al código.
+
+### Diagramas de arquitectura y dominio
+
+| Diagrama | Archivo |
+|---|---|
+| Arquitectura general | [taskmate-architecture-diagram.md](taskmate-architecture-diagram.md) |
+| Modelo de datos (ERD) | [taskmate-database-erd.md](taskmate-database-erd.md) |
+| Casos de uso | [use-case-diagram.md](use-case-diagram.md) |
+| Flujo de casos de uso | [use-case-flowchart.md](use-case-flowchart.md) |
+| Secuencia del chatbot | [chatbot-sequence-diagram.md](chatbot-sequence-diagram.md) |
+
+### Diagramas por fase de trabajo
+
+Los diagramas específicos de cada fase (comparativas de secuencia "antes vs. después", etc.) se documentan junto al capítulo de esa fase en [`docs/`](docs/README.md). Ver por ejemplo los diagramas de la Fase 2 en [`docs/fase-02-optimizacion-rendimiento/README.md`](docs/fase-02-optimizacion-rendimiento/README.md#diagramas).
 
 ---#
 # Resultados
@@ -477,8 +491,8 @@ W3C. (2023). *Web Content Accessibility Guidelines (WCAG) 2.2*. World Wide Web C
 
 ### Anexo A: Calendarización Original del Proyecto
 
-*[Esta sección contendrá la planificación temporal inicial del proyecto]*
+La planificación temporal original, con las dos líneas de trabajo (Pablo Pineda y Christian Martínez) y las pre-entregas, se encuentra en [`Calendarizacion_TaskMate.md`](Calendarizacion_TaskMate.md).
 
 ### Anexo B: Calendarización Final del Proyecto
 
-*[Esta sección contendrá la planificación temporal real con desviaciones y ajustes realizados]*
+*Pendiente — se completará al cierre de la Fase 8 (Pruebas finales), documentando las fechas reales de cada fase y las desviaciones respecto al Anexo A. El avance real de cada fase puede consultarse mientras tanto en [`docs/README.md`](docs/README.md).*

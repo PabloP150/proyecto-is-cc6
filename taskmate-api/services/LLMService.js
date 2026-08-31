@@ -7,6 +7,10 @@ class LLMService extends EventEmitter {
     this.ws = null;
     this.connectionPromise = null;
     this.url = process.env.LLM_WEBSOCKET_URL || 'ws://localhost:8001/ws';
+    // Evita que un 'error' sin listener tumbe el proceso
+    this.on('error', (err) => {
+      console.error('[LLMService] Unhandled error event:', err.message);
+    });
     this.connect();
   }
 
@@ -37,7 +41,11 @@ class LLMService extends EventEmitter {
 
     this.ws.on('error', (error) => {
       console.error('[LLMService] WebSocket error:', error.message);
-      this.emit('error', error);
+      // No re-emitir 'error' directamente para evitar crash si no hay listener externo.
+      // La reconexión se maneja aquí mismo si el close no se dispara.
+      if (this.connectionPromise) {
+        this.connectionPromise = null;
+      }
     });
   }
 

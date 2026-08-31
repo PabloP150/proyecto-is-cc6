@@ -3,6 +3,8 @@ import { Box, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, Slide
 import Button from './ui/Button';
 import TextField from './ui/TextField';
 
+const SLIDER_MARKS = [0, 25, 50, 75, 100].map(v => ({ value: v, label: `${v}%` }));
+
 export default function Dialogos({
   openRecordatorio,
   handleCloseRecordatorio,
@@ -304,7 +306,7 @@ export default function Dialogos({
                   setRecordatorioEditar({ ...recordatorioEditar, percentage: v });
                 }}
                 step={5}
-                marks={[0,25,50,75,100].map(v => ({ value: v, label: `${v}%` }))}
+                marks={SLIDER_MARKS}
                 min={0}
                 max={100}
                 sx={{
@@ -398,5 +400,3 @@ export default function Dialogos({
     </>
   );
 }
-
-

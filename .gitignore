@@ -32,3 +32,10 @@ taskmate-api/.env
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+*.log
+
+# Python virtual environment
+taskmate-api/mcp/venv/
+**/__pycache__/
+*.pyc
+*.pyo

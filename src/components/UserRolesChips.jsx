@@ -49,7 +49,11 @@ const InlineRoleChip = ({ role, size = 'small', withTooltip }) => {
       size={size}
       label={role.gr_name}
       ownerState={{ baseColor: role.gr_color }}
-      icon={role.gr_icon ? <span className="material-icons">{role.gr_icon}</span> : null}
+      icon={role.gr_icon ? (
+        /^[a-z_]+$/.test(role.gr_icon)
+          ? <span className="material-icons">{role.gr_icon}</span>
+          : <span style={{ fontSize: 15, lineHeight: 1 }}>{role.gr_icon}</span>
+      ) : null}
     />
   );
   return chip;

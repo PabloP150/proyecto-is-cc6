@@ -15,12 +15,16 @@ import PersonIcon from '@mui/icons-material/Person';
 import SendIcon from '@mui/icons-material/Send';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 //import { createTheme, ThemeProvider } from '@mui/material/styles';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
 import useWebSocket from '../hooks/useWebSocket';
 import ThemeProvider from '../theme/ThemeProvider';
+import { WS_BASE } from '../config';
 import './ChatPage.css';
+
+const formatTime = (timestamp) =>
+    new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
 function ChatPage() {
     const [messages, setMessages] = useState([]);
@@ -34,45 +38,32 @@ function ChatPage() {
     // Get user token from localStorage (reactive to changes)
     const [user, setUser] = useState(() => JSON.parse(localStorage.getItem('user') || '{}'));
     const [token, setToken] = useState(() => localStorage.getItem('token') || user.token);
+    const userRef = useRef(user);
+    useEffect(() => { userRef.current = user; }, [user]);
 
     // Update user and token when localStorage changes
+    const handleStorageChange = useCallback(() => {
+        const newUser = JSON.parse(localStorage.getItem('user') || '{}');
+        const newToken = localStorage.getItem('token') || newUser.token;
+        const currentUserId = userRef.current?.userId || userRef.current?.id;
+        const newUserId = newUser?.userId || newUser?.id;
+        setUser(newUser);
+        setToken(newToken);
+        if (currentUserId && newUserId && currentUserId !== newUserId) {
+            setHasReceivedHistory(false);
+            setInitialMessageShown(false);
+            setMessages([]);
+        }
+    }, []);
+
     useEffect(() => {
-        const handleStorageChange = () => {
-            const newUser = JSON.parse(localStorage.getItem('user') || '{}');
-            const newToken = localStorage.getItem('token') || newUser.token;
-
-            // Only reset history if the user actually changed (different userId)
-            const currentUserId = user?.userId || user?.id;
-            const newUserId = newUser?.userId || newUser?.id;
-
-            setUser(newUser);
-            setToken(newToken);
-
-            // Only reset history flags if it's a different user (not just token refresh)
-            if (currentUserId && newUserId && currentUserId !== newUserId) {
-                console.log('Different user detected, resetting chat history');
-                setHasReceivedHistory(false);
-                setInitialMessageShown(false);
-                setMessages([]); // Clear messages for different user
-            }
-        };
-
-        // Listen for storage changes
         window.addEventListener('storage', handleStorageChange);
-
-        // Also check on component mount/focus
         window.addEventListener('focus', handleStorageChange);
-
         return () => {
             window.removeEventListener('storage', handleStorageChange);
             window.removeEventListener('focus', handleStorageChange);
         };
-    }, []);
-
-    // Debug logging (run only once)
-    useEffect(() => {
-        // debug: info inicial (removido logs)
-    }, []); // Empty dependency array to run only once
+    }, [handleStorageChange]);
 
     // WebSocket connection
     const {
@@ -82,28 +73,20 @@ function ChatPage() {
         error: wsError,
         connect: connectWebSocket
     } = useWebSocket(
-        'ws://localhost:9000/chat',
+        `${WS_BASE}/chat`,
         token,
         {
             autoConnect: !!token, // Only auto-connect if we have a token
             onMessage: (data) => {
-                console.log('ChatPage received WebSocket message:', data);
-
-                // Filter out analytics messages and empty content messages
                 if (data.type === 'analytics_response' || data.type === 'analytics_error') {
-                    console.log('Ignoring analytics message:', data.type);
-                    return; // Do not process or display analytics messages in chat
-                }
-
-                // General filter for empty content before processing any message type
-                if (data.type !== 'history_restore' && !data.content && !data.data && !data.error) {
-                    console.log('Ignoring message with no content, data, or error:', data);
                     return;
                 }
 
-                // Handle history restoration separately as it contains an array of messages
+                if (data.type !== 'history_restore' && !data.content && !data.data && !data.error) {
+                    return;
+                }
+
                 if (data.type === 'history_restore') {
-                    console.log('Restoring chat history:', data.messages.length, 'messages');
                     const restoredMessages = data.messages.map((msg, index) => ({
                         id: `restored-${index}-${Date.now()}`,
                         type: msg.type,
@@ -119,11 +102,7 @@ function ChatPage() {
 
                 // Handle regular assistant or system messages
                 if (data.type === 'assistant' || data.type === 'system') {
-                    console.log('Received assistant/system message:', data);
-                    if (!data.content || !data.content.trim()) {
-                        console.log('Ignoring empty assistant/system message after specific type check:', data);
-                        return;
-                    }
+                    if (!data.content || !data.content.trim()) return;
                     setMessages(prev => [...prev, {
                         id: Date.now().toString(),
                         type: data.type,
@@ -134,8 +113,6 @@ function ChatPage() {
                     return;
                 }
 
-                // Fallback for unknown message types
-                console.log('Received unknown message type:', data.type, data);
             },
             onError: (error) => {
                 console.error('WebSocket error:', error);
@@ -211,20 +188,13 @@ function ChatPage() {
         setMessages(prev => [...prev, userMessage]);
         setInputMessage('');
         setIsTyping(true);
-
-        console.log('Sending message via WebSocket:', {
-            type: 'user',
-            content: userMessage.content,
-            timestamp: userMessage.timestamp
-        });
+        setTimeout(() => inputRef.current?.focus(), 0);
 
         const success = sendWebSocketMessage({
             type: 'user',
             content: userMessage.content,
             timestamp: userMessage.timestamp
         });
-
-        console.log('Message send result:', success);
 
         if (!success) {
             console.error('Failed to send message via WebSocket');
@@ -244,13 +214,6 @@ function ChatPage() {
             e.preventDefault();
             handleSendMessage(e);
         }
-    };
-
-    const formatTime = (timestamp) => {
-        return new Date(timestamp).toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit'
-        });
     };
 
     return (
@@ -366,8 +329,26 @@ function ChatPage() {
                                                 wordBreak: 'break-word',
                                                 // Add styles for markdown content
                                                 '& .markdown-content': {
-                                                    '& p': { margin: 0 },
+                                                    '& p': { margin: '0 0 8px 0' },
+                                                    '& p:last-child': { margin: 0 },
                                                     '& a': { color: 'secondary.main' },
+                                                    '& h1,& h2,& h3,& h4': { margin: '12px 0 6px 0', fontWeight: 600, lineHeight: 1.3 },
+                                                    '& h1': { fontSize: '1.2em' },
+                                                    '& h2': { fontSize: '1.1em' },
+                                                    '& h3': { fontSize: '1em' },
+                                                    '& ul,& ol': { margin: '4px 0', paddingLeft: '20px' },
+                                                    '& li': { margin: '2px 0' },
+                                                    '& table': { borderCollapse: 'collapse', width: '100%', margin: '8px 0', fontSize: '0.85em' },
+                                                    '& th': { backgroundColor: 'rgba(255,255,255,0.1)', padding: '6px 10px', border: '1px solid rgba(255,255,255,0.2)', textAlign: 'left', fontWeight: 600 },
+                                                    '& td': { padding: '5px 10px', border: '1px solid rgba(255,255,255,0.15)' },
+                                                    '& tr:nth-of-type(even)': { backgroundColor: 'rgba(255,255,255,0.04)' },
+                                                    '& code': { backgroundColor: 'rgba(0,0,0,0.3)', padding: '1px 5px', borderRadius: '3px', fontSize: '0.88em', fontFamily: 'monospace' },
+                                                    '& pre': { backgroundColor: 'rgba(0,0,0,0.3)', padding: '10px', borderRadius: '6px', overflowX: 'auto', margin: '8px 0' },
+                                                    '& pre code': { backgroundColor: 'transparent', padding: 0 },
+                                                    '& blockquote': { borderLeft: '3px solid rgba(255,255,255,0.3)', margin: '6px 0', paddingLeft: '12px', opacity: 0.85 },
+                                                    '& hr': { border: 'none', borderTop: '1px solid rgba(255,255,255,0.15)', margin: '10px 0' },
+                                                    '& strong': { fontWeight: 700 },
+                                                    '& em': { fontStyle: 'italic' },
                                                 }
                                             }}
                                         >

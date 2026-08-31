@@ -3,6 +3,36 @@ const groupModel = require('../models/group.model');
 const taskModel = require('../models/tasks.model');
 const nodeModel = require('../models/nodes.model');
 const userGroupModel = require('../models/userGroup.model');
+const groupRolesModel = require('../models/groupRoles.model');
+
+// Fallback: map common emojis to Material Icons names
+const EMOJI_TO_ICON = {
+    '🔧': 'build', '👨‍💻': 'code', '🎨': 'palette', '🧪': 'bug_report',
+    '📋': 'assignment', '👤': 'person', '📊': 'insights', '🛠️': 'settings',
+    '💻': 'terminal', '🔒': 'lock', '🌐': 'public', '📝': 'edit',
+    '⭐': 'star', '🔔': 'notifications', '💬': 'chat', '☁️': 'cloud',
+    '📦': 'storage', '🚀': 'rocket_launch', '📅': 'event', '👥': 'group',
+    '🧑‍💼': 'supervisor_account', '🎯': 'leaderboard', '🔍': 'visibility',
+    '💡': 'lightbulb', '📱': 'phone_android', '🖥️': 'desktop_windows',
+};
+const VALID_ICONS = new Set([
+    'dashboard','assignment','check_circle','pending_actions','event','group',
+    'person','supervisor_account','admin_panel_settings','emoji_events','star',
+    'leaderboard','insights','timeline','workspaces','code','terminal',
+    'bug_report','build','cloud','storage','api','integration_instructions',
+    'extension','chat','forum','comment','notifications','visibility','edit',
+    'delete','settings','lock','public','favorite','help','palette',
+    'rocket_launch','lightbulb','phone_android','desktop_windows',
+]);
+function normalizeIcon(icon) {
+    if (!icon) return 'star';
+    if (VALID_ICONS.has(icon)) return icon;
+    if (EMOJI_TO_ICON[icon]) return EMOJI_TO_ICON[icon];
+    // Strip non-ascii and check again
+    const cleaned = icon.replace(/[^a-z_]/g, '');
+    if (VALID_ICONS.has(cleaned)) return cleaned;
+    return 'star';
+}
 
 class ProjectService {
     /**
@@ -86,34 +116,47 @@ class ProjectService {
             // 2. Add the creator to the group
             await userGroupModel.addUserToGroup({ uid: userId, gid: groupId });
 
-            // 3. Create tasks from the recommendations
+            // 3. Create group roles (in parallel)
+            if (projectData.roles && Array.isArray(projectData.roles) && projectData.roles.length > 0) {
+                console.log(`Creating ${projectData.roles.length} roles for project ${groupId}`);
+                await Promise.all(projectData.roles.map(async (role) => {
+                    if (!role.name) return;
+                    try {
+                        await groupRolesModel.addGroupRole({
+                            gr_id: uuidv4(),
+                            gid: groupId,
+                            gr_name: role.name.substring(0, 30),
+                            gr_color: role.color || '#6b7280',
+                            gr_icon: normalizeIcon(role.icon),
+                        });
+                    } catch (roleError) {
+                        console.error(`Failed to create role ${role.name}:`, roleError);
+                    }
+                }));
+            }
+
+            // 4. Create tasks from the recommendations (in parallel)
             console.log(`Creating ${projectData.tasks.length} tasks for project ${groupId}`);
-            for (let i = 0; i < projectData.tasks.length; i++) {
-                const task = projectData.tasks[i];
+            await Promise.all(projectData.tasks.map(async (task, i) => {
                 const taskId = uuidv4();
 
-                // Validate task data
                 if (!task.name && !task.task) {
                     console.warn(`Task ${i + 1} missing name, using default`);
                 }
 
                 let dueDate;
                 try {
-                    // Handle both duration string and ISO date formats
                     if (task.due_date) {
                         if (task.due_date.includes('T') || task.due_date.includes('-')) {
-                            // ISO date format
                             dueDate = new Date(task.due_date);
                             if (isNaN(dueDate.getTime())) {
                                 console.warn(`Invalid due_date format for task ${i + 1}: ${task.due_date}, using current date`);
                                 dueDate = new Date();
                             }
                         } else {
-                            // Duration string format
                             dueDate = this._calculateDueDate(task.due_date);
                         }
                     } else if (task.duration) {
-                        // Fallback to duration for backward compatibility
                         dueDate = this._calculateDueDate(task.duration);
                     } else {
                         dueDate = new Date();
@@ -123,7 +166,6 @@ class ProjectService {
                     dueDate = new Date();
                 }
 
-                // Truncate task name to fit database constraint (25 chars)
                 const taskName = task.name || task.task || `Task ${i + 1}`;
                 const truncatedTaskName = taskName.length > 25 ? taskName.substring(0, 22) + '...' : taskName;
 
@@ -132,7 +174,7 @@ class ProjectService {
                     gid: groupId,
                     name: truncatedTaskName,
                     description: task.description || '',
-                    list: task.status || 'To Do',
+                    list: task.list || task.status || 'To Do',
                     datetime: dueDate,
                     percentage: 0
                 };
@@ -144,16 +186,14 @@ class ProjectService {
                     console.error(`Failed to create task ${i + 1}:`, taskError);
                     throw new Error(`Failed to create task: ${taskData.name}`);
                 }
-            }
+            }));
 
-            // 4. Create milestones in Nodes table (if provided)
+            // 5. Create milestones in Nodes table (in parallel, if provided)
             if (projectData.milestones && Array.isArray(projectData.milestones)) {
                 console.log(`Creating ${projectData.milestones.length} milestones for project ${groupId}`);
-                for (let i = 0; i < projectData.milestones.length; i++) {
-                    const milestone = projectData.milestones[i];
+                await Promise.all(projectData.milestones.map(async (milestone, i) => {
                     const nodeId = uuidv4();
 
-                    // Validate milestone data
                     if (!milestone.name) {
                         console.warn(`Milestone ${i + 1} missing name, using default`);
                     }
@@ -162,14 +202,12 @@ class ProjectService {
                     try {
                         if (milestone.date) {
                             if (milestone.date.includes('T') || milestone.date.includes('-')) {
-                                // ISO date format
                                 milestoneDate = new Date(milestone.date);
                                 if (isNaN(milestoneDate.getTime())) {
                                     console.warn(`Invalid date format for milestone ${i + 1}: ${milestone.date}, using current date`);
                                     milestoneDate = new Date();
                                 }
                             } else {
-                                // Duration string format
                                 milestoneDate = this._calculateDueDate(milestone.date);
                             }
                         } else {
@@ -180,7 +218,6 @@ class ProjectService {
                         milestoneDate = new Date();
                     }
 
-                    // Truncate milestone name to fit database constraint (25 chars)
                     const milestoneName = milestone.name || `Milestone ${i + 1}`;
                     const truncatedMilestoneName = milestoneName.length > 25 ? milestoneName.substring(0, 22) + '...' : milestoneName;
 
@@ -203,7 +240,7 @@ class ProjectService {
                         console.error(`Failed to create milestone ${i + 1}:`, milestoneError);
                         throw new Error(`Failed to create milestone: ${milestoneData.name}`);
                     }
-                }
+                }));
             } else {
                 console.log('No milestones provided, skipping milestone creation');
             }

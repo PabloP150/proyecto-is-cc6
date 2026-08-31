@@ -105,7 +105,8 @@ CREATE TABLE dbo.DeleteTask(
 	gid			UNIQUEIDENTIFIER	NOT NULL,
 	name		VARCHAR(25)			NOT NULL,
 	description	VARCHAR(1000)		NOT NULL,
-	datetime	SMALLDATETIME		NOT NULL
+	datetime	SMALLDATETIME		NOT NULL,
+	percentage	INT					NOT NULL DEFAULT 0 CHECK(percentage BETWEEN 0 AND 100),
 	FOREIGN KEY (gid) REFERENCES dbo.Groups(gid)
 );
 

@@ -3,6 +3,7 @@ import { Button } from '@mui/material';
 
 import { getEdgeParams } from './utils.js';
 import { useEffect, useState } from 'react';
+import { API_BASE } from '../../config';
 
 function FloatingEdge({ id, source, target, markerEnd, style, data }) {
   const sourceNode = useInternalNode(source);
@@ -42,7 +43,7 @@ function FloatingEdge({ id, source, target, markerEnd, style, data }) {
     setPrerequisite(newPrerequisite);
     
     try {
-      await fetch(`http://localhost:9000/api/edges/${id}`, {
+      await fetch(`${API_BASE}/api/edges/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

@@ -1,7 +1,5 @@
 const { execReadCommand, execWriteCommand } = require('../helpers/execQuery');
 const { TYPES } = require('tedious');
-const getConnection = require('../helpers/getConnection');
-const { Request, ISOLATION_LEVEL } = require('tedious');
 
 class AnalyticsService {
     /**
@@ -38,25 +36,14 @@ class AnalyticsService {
                 category = 'general';
             }
 
-            // Check if assignment already exists (prevent duplicates)
-            const existingQuery = `
-                SELECT id FROM dbo.TaskAnalytics 
-                WHERE tid = @tid AND uid = @uid AND success_status = 'pending'
-            `;
-            const existingParams = [
-                { name: 'tid', type: TYPES.UniqueIdentifier, value: taskId },
-                { name: 'uid', type: TYPES.UniqueIdentifier, value: userId }
-            ];
-            
-            const existing = await execReadCommand(existingQuery, existingParams);
-            if (existing && existing.length > 0) {
-                console.log(`Analytics: Task assignment already exists - Task: ${taskId}, User: ${userId}`);
-                return { success: true, message: 'Assignment already recorded' };
-            }
-
+            // Insert only if no pending assignment already exists (single roundtrip)
             const insertQuery = `
-                INSERT INTO dbo.TaskAnalytics (tid, uid, gid, task_category, assigned_at) 
-                VALUES (@tid, @uid, @gid, @category, GETDATE())
+                INSERT INTO dbo.TaskAnalytics (tid, uid, gid, task_category, assigned_at)
+                SELECT @tid, @uid, @gid, @category, GETDATE()
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM dbo.TaskAnalytics
+                    WHERE tid = @tid AND uid = @uid AND success_status = 'pending'
+                )
             `;
             const insertParams = [
                 { name: 'tid', type: TYPES.UniqueIdentifier, value: taskId },
@@ -64,11 +51,12 @@ class AnalyticsService {
                 { name: 'gid', type: TYPES.UniqueIdentifier, value: groupId },
                 { name: 'category', type: TYPES.VarChar, value: category }
             ];
-            
-            await execWriteCommand(insertQuery, insertParams);
-            console.log(`Analytics: Recorded task assignment - Task: ${taskId}, User: ${userId}, Category: ${category}`);
-            
-            return { 
+
+            const rowsInserted = await execWriteCommand(insertQuery, insertParams);
+            if (rowsInserted === 0) {
+                return { success: true, message: 'Assignment already recorded' };
+            }
+            return {
                 success: true, 
                 task_id: taskId,
                 user_id: userId,
@@ -94,9 +82,9 @@ class AnalyticsService {
      * @param {string} taskId - Task UUID
      * @param {boolean} success - Whether task was completed successfully
      */
-    async recordTaskCompletion(taskId, success = true) {
+    async recordTaskCompletion(taskId, success = true, statusOverride = null) {
         return this.executeWithErrorHandling(async () => {
-            const status = success ? 'completed' : 'failed';
+            const status = statusOverride || (success ? 'completed' : 'failed');
             
             // First, verify the task exists and is pending
             const verifyQuery = `
@@ -139,8 +127,7 @@ class AnalyticsService {
                 // Don't fail the main operation if metrics update fails
             }
             
-            console.log(`Analytics: Recorded task completion - Task: ${taskId}, Status: ${status}`);
-            return { 
+            return {
                 success: true, 
                 task_id: taskId,
                 status: status,
@@ -279,12 +266,12 @@ class AnalyticsService {
             if (!taskData || taskData.length === 0) return;
             
             const { uid, task_category, completion_time_hours, success_status } = taskData[0];
-            
-            // Update or create UserExpertise record
-            await this._updateUserExpertise(uid, task_category, completion_time_hours, success_status);
-            
-            // Update daily UserMetrics
-            await this._updateDailyMetrics(uid);
+
+            // Run both updates in parallel — they write to different tables
+            await Promise.all([
+                this._updateUserExpertise(uid, task_category, completion_time_hours, success_status),
+                this._updateDailyMetrics(uid)
+            ]);
             
         } catch (error) {
             console.error('Error updating user metrics:', error);
@@ -379,15 +366,11 @@ class AnalyticsService {
     async _updateDailyMetrics(userId) {
         try {
             const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
-            
-            // Get current active tasks count
-            const activeCount = await this.getCurrentWorkload(userId);
-            
-            // Get today's max concurrent tasks (approximate)
+
             const maxConcurrentQuery = `
                 SELECT COUNT(*) as concurrent_count
-                FROM dbo.TaskAnalytics 
-                WHERE uid = @uid 
+                FROM dbo.TaskAnalytics
+                WHERE uid = @uid
                 AND CAST(assigned_at AS DATE) = @today
                 AND (completed_at IS NULL OR CAST(completed_at AS DATE) >= @today)
             `;
@@ -395,8 +378,12 @@ class AnalyticsService {
                 { name: 'uid', type: TYPES.UniqueIdentifier, value: userId },
                 { name: 'today', type: TYPES.Date, value: today }
             ];
-            
-            const concurrentResult = await execReadCommand(maxConcurrentQuery, concurrentParams);
+
+            // Both reads are independent — run in parallel
+            const [activeCount, concurrentResult] = await Promise.all([
+                this.getCurrentWorkload(userId),
+                execReadCommand(maxConcurrentQuery, concurrentParams)
+            ]);
             const maxConcurrent = concurrentResult[0]?.concurrent_count || activeCount;
             
             // Upsert daily metrics
@@ -435,20 +422,24 @@ class AnalyticsService {
     async getTeamAnalyticsSummary(groupId) {
         try {
             const query = `
-                SELECT 
+                SELECT
                     u.uid,
                     u.username,
                     COUNT(CASE WHEN ta.success_status = 'pending' THEN 1 END) as active_tasks,
                     COUNT(CASE WHEN ta.success_status = 'completed' THEN 1 END) as completed_tasks,
                     COUNT(CASE WHEN ta.success_status = 'failed' THEN 1 END) as failed_tasks,
                     AVG(CASE WHEN ta.completion_time_hours IS NOT NULL THEN ta.completion_time_hours END) as avg_completion_time,
-                    MAX(um.max_concurrent_tasks) as historical_capacity
+                    um_max.max_cap as historical_capacity
                 FROM dbo.Users u
                 JOIN dbo.UserGroups ug ON u.uid = ug.uid
                 LEFT JOIN dbo.TaskAnalytics ta ON u.uid = ta.uid AND ta.gid = @gid
-                LEFT JOIN dbo.UserMetrics um ON u.uid = um.uid
+                LEFT JOIN (
+                    SELECT uid, MAX(max_concurrent_tasks) as max_cap
+                    FROM dbo.UserMetrics
+                    GROUP BY uid
+                ) um_max ON u.uid = um_max.uid
                 WHERE ug.gid = @gid
-                GROUP BY u.uid, u.username
+                GROUP BY u.uid, u.username, um_max.max_cap
                 ORDER BY u.username
             `;
             const params = [
@@ -532,19 +523,29 @@ class AnalyticsService {
      */
     async getWorkloadDistribution(groupId) {
         try {
-            // This query is based on the user's provided example for accuracy.
             const query = `
-                SELECT 
+                SELECT
                     u.uid,
                     u.username,
-                    MIN(gr.gr_name) as role_name, -- Use MIN to get a single representative role
-                    (SELECT COUNT(*) FROM dbo.UserTask WHERE uid = u.uid AND completed = 0) as current_workload,
-                    (SELECT MAX(max_concurrent_tasks) FROM dbo.UserMetrics WHERE uid = u.uid) as capacity
+                    MIN(gr.gr_name) as role_name,
+                    ISNULL(wl.cnt, 0) as current_workload,
+                    cap.max_cap as capacity
                 FROM dbo.Users u
                 INNER JOIN dbo.UserGroupRoles ugr ON u.uid = ugr.uid
                 INNER JOIN dbo.GroupRoles gr ON gr.gr_id = ugr.gr_id
+                LEFT JOIN (
+                    SELECT uid, COUNT(*) as cnt
+                    FROM dbo.UserTask
+                    WHERE completed = 0
+                    GROUP BY uid
+                ) wl ON wl.uid = u.uid
+                LEFT JOIN (
+                    SELECT uid, MAX(max_concurrent_tasks) as max_cap
+                    FROM dbo.UserMetrics
+                    GROUP BY uid
+                ) cap ON cap.uid = u.uid
                 WHERE ugr.gid = @gid
-                GROUP BY u.uid, u.username
+                GROUP BY u.uid, u.username, wl.cnt, cap.max_cap
                 ORDER BY u.username;
             `;
             const params = [
@@ -665,50 +666,44 @@ class AnalyticsService {
             `;
             
             const activeUsers = await execReadCommand(activeUsersQuery);
-            
-            for (const user of activeUsers) {
-                try {
-                    // Check if user exists first to potentially throw an error
-                    if (!user.uid) {
-                        throw new Error('Invalid user ID');
-                    }
-                    await this._updateDailyMetrics(user.uid);
-                    results.users_updated++;
-                } catch (error) {
-                    console.error(`Error updating metrics for user ${user.uid}:`, error);
-                    results.errors.push({
-                        user_id: user.uid,
-                        error: error.message
-                    });
-                }
-            }
 
-            // Update expertise scores for all categories
-            try {
-                const expertiseUpdateQuery = `
-                    UPDATE ue SET 
-                        expertise_score = CASE 
-                            WHEN ue.tasks_completed > 0 THEN 
-                                LEAST(100, ue.success_rate_percentage + 
-                                    CASE WHEN ue.avg_completion_time_hours > 0 
-                                         THEN GREATEST(0, 20 - (ue.avg_completion_time_hours / 2))
-                                         ELSE 10 END)
-                            ELSE 0 
-                        END,
-                        last_updated = GETDATE()
-                    FROM dbo.UserExpertise ue
-                    WHERE ue.last_updated < DATEADD(hour, -1, GETDATE())
-                `;
-                
-                const expertiseUpdateResult = await execWriteCommand(expertiseUpdateQuery);
-                results.expertise_records_updated = expertiseUpdateResult;
-            } catch (error) {
-                console.error('Error updating expertise scores:', error);
-                results.errors.push({
-                    operation: 'expertise_update',
-                    error: error.message
-                });
-            }
+            const expertiseUpdateQuery = `
+                UPDATE ue SET
+                    expertise_score = CASE
+                        WHEN ue.tasks_completed > 0 THEN
+                            LEAST(100, ue.success_rate_percentage +
+                                CASE WHEN ue.avg_completion_time_hours > 0
+                                     THEN GREATEST(0, 20 - (ue.avg_completion_time_hours / 2))
+                                     ELSE 10 END)
+                        ELSE 0
+                    END,
+                    last_updated = GETDATE()
+                FROM dbo.UserExpertise ue
+                WHERE ue.last_updated < DATEADD(hour, -1, GETDATE())
+            `;
+
+            // Daily metrics (UserMetrics table) and expertise scores (UserExpertise table) are independent — run in parallel
+            const [, expertiseUpdateResult] = await Promise.all([
+                Promise.all(activeUsers.map(async (user) => {
+                    if (!user.uid) {
+                        results.errors.push({ user_id: null, error: 'Invalid user ID' });
+                        return;
+                    }
+                    try {
+                        await this._updateDailyMetrics(user.uid);
+                        results.users_updated++;
+                    } catch (error) {
+                        console.error(`Error updating metrics for user ${user.uid}:`, error);
+                        results.errors.push({ user_id: user.uid, error: error.message });
+                    }
+                })),
+                execWriteCommand(expertiseUpdateQuery).catch((error) => {
+                    console.error('Error updating expertise scores:', error);
+                    results.errors.push({ operation: 'expertise_update', error: error.message });
+                    return 0;
+                })
+            ]);
+            results.expertise_records_updated = expertiseUpdateResult ?? 0;
 
             return results;
         } catch (error) {

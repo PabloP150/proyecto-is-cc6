@@ -1,5 +1,5 @@
-import React from 'react';
 import './BlockDiagram.css';
+import { API_BASE } from '../config';
 import {
   Typography,
   Container,
@@ -24,23 +24,20 @@ const theme = createTheme({
   },
 });
 
+const formatDate = (dateStr) => {
+  if (!dateStr) return '';
+  const date = new Date(dateStr);
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
+};
+
 function BlockDiagram() {
   const [showPopup, setShowPopup] = useState(false);
   const [selectedNode, setSelectedNode] = useState(null);
   const [flowKey, setFlowKey] = useState(0);
-
-  const formatDate = (dateStr) => {
-    if (!dateStr) return '';
-
-    const date = new Date(dateStr);
-
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-
-    return `${year}-${month}-${day}`;
-
-  };
 
   const handleNodeEdit = (node) => {
     setSelectedNode(node);
@@ -52,29 +49,18 @@ function BlockDiagram() {
     const formData = new FormData(e.target);
     const data = Object.fromEntries(formData.entries());
     try {
-      setFlowKey(flowKey + 1);
-      const response1 = await fetch(`http://localhost:9000/api/nodes/${selectedNode.nid}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: data.name,
-          description: data.description,
-          date: formatDate(data.date)
-        }),
+      setFlowKey(k => k + 1);
+      const body = JSON.stringify({
+        name: data.name,
+        description: data.description,
+        date: formatDate(data.date)
       });
-      const response2 = await fetch(`http://localhost:9000/api/tasks/nodes/${selectedNode.nid}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: data.name,
-          description: data.description,
-          date: formatDate(data.date)
-        }),
-      });
+      const headers = { 'Content-Type': 'application/json' };
+
+      const [response1, response2] = await Promise.all([
+        fetch(`${API_BASE}/api/nodes/${selectedNode.nid}`, { method: 'PUT', headers, body }),
+        fetch(`${API_BASE}/api/tasks/nodes/${selectedNode.nid}`, { method: 'PUT', headers, body }),
+      ]);
 
       if (response1.ok && response2.ok) {
         setShowPopup(false);

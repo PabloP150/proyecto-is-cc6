@@ -3,6 +3,7 @@ import { Menu, MenuItem, IconButton } from '@mui/material';
 import PersonIcon from '@mui/icons-material/Person';
 import { GroupContext } from './GroupContext';
 import Switch from '@mui/material/Switch';
+import { API_BASE } from '../config';
 
 const SeleccionarPersona = ({ tid }) => {
   const { selectedGroupId } = useContext(GroupContext);
@@ -11,23 +12,15 @@ const SeleccionarPersona = ({ tid }) => {
   const [selectedMembers, setSelectedMembers] = useState([]);
 
   useEffect(() => {
-    const cargarMiembros = async () => {
-      if (!selectedGroupId) return;
+    if (!selectedGroupId) return;
+    const controller = new AbortController();
 
-      try {
-        const response = await fetch(`http://localhost:9000/api/groups/${selectedGroupId}/members`);
-        if (response.ok) {
-          const data = await response.json();
-          setMembers(data.members);
-        } else {
-          console.error('Error al cargar los miembros');
-        }
-      } catch (error) {
-        console.error('Error en la solicitud:', error);
-      }
-    };
+    fetch(`${API_BASE}/api/groups/${selectedGroupId}/members`, { signal: controller.signal })
+      .then(res => res.ok ? res.json() : Promise.reject(res.status))
+      .then(data => setMembers(data.members))
+      .catch(err => { if (err?.name !== 'AbortError') console.error('Error al cargar los miembros', err); });
 
-    cargarMiembros();
+    return () => controller.abort();
   }, [selectedGroupId]);
 
   useEffect(() => {
@@ -36,7 +29,7 @@ const SeleccionarPersona = ({ tid }) => {
       if (!selectedGroupId || members.length === 0 || !anchorEl) return;
 
       try {
-        const response = await fetch(`http://localhost:9000/api/usertask?tid=${tid}`);
+        const response = await fetch(`${API_BASE}/api/usertask?tid=${tid}`);
         if (response.ok) {
           const data = await response.json();
           if (!data.data || data.data.length === 0) {
@@ -60,21 +53,15 @@ const SeleccionarPersona = ({ tid }) => {
     cargarEstado();
   }, [selectedGroupId, tid, members, anchorEl]);
 
-  const handleSelect = async (member) => {
+  const handleSelect = (member) => {
     const isSelected = selectedMembers.includes(member.uid);
-    setSelectedMembers((prev) => {
-      const newSelectedMembers = isSelected
-        ? prev.filter((m) => m !== member.uid)
-        : [...prev, member.uid];
-
-      if (isSelected) {
-        removeUserFromTask(member.uid, tid);
-      } else {
-        addUserToTask(member.uid, tid);
-      }
-
-      return newSelectedMembers;
-    });
+    if (isSelected) {
+      setSelectedMembers(prev => prev.filter(m => m !== member.uid));
+      removeUserFromTask(member.uid, tid);
+    } else {
+      setSelectedMembers(prev => [...prev, member.uid]);
+      addUserToTask(member.uid, tid);
+    }
   };
 
   const handleClick = (event) => {
@@ -87,7 +74,7 @@ const SeleccionarPersona = ({ tid }) => {
 
   const addUserToTask = async (uid, tid) => {
     try {
-      const response = await fetch('http://localhost:9000/api/usertask', {
+      const response = await fetch(`${API_BASE}/api/usertask`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -104,7 +91,7 @@ const SeleccionarPersona = ({ tid }) => {
 
   const removeUserFromTask = async (uid, tid) => {
     try {
-      const response = await fetch(`http://localhost:9000/api/usertask?uid=${uid}&tid=${tid}`, {
+      const response = await fetch(`${API_BASE}/api/usertask?uid=${uid}&tid=${tid}`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
@@ -175,58 +162,47 @@ const SeleccionarPersona = ({ tid }) => {
   );
 };
 
+const MemberRow = ({ member, selectedMembers, onToggle }) => {
+  const [hovered, setHovered] = React.useState(false);
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        marginBottom: '12px',
+        padding: '8px 12px',
+        borderRadius: '8px',
+        transition: 'all 0.2s ease',
+        cursor: 'pointer',
+        background: hovered ? 'rgba(59, 130, 246, 0.2)' : 'transparent',
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onClick={() => onToggle(member)}
+    >
+      <Switch
+        checked={selectedMembers.includes(member.uid)}
+        onChange={() => onToggle(member)}
+        onClick={(e) => e.stopPropagation()}
+        name={member.username}
+        color="primary"
+        sx={{
+          '& .MuiSwitch-switchBase.Mui-checked': { color: '#3b82f6' },
+          '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { backgroundColor: '#3b82f6' },
+          '& .MuiSwitch-track': { backgroundColor: 'rgba(255, 255, 255, 0.3)' },
+        }}
+      />
+      <span style={{ marginLeft: '12px', color: 'white', fontWeight: '500', fontSize: '14px' }}>
+        {member.username}
+      </span>
+    </div>
+  );
+};
+
 const MemberSwitchList = ({ members, selectedMembers, onToggle }) => (
-  <div style={{
-    padding: '16px',
-    borderRadius: '12px',
-    minWidth: '200px',
-  }}>
+  <div style={{ padding: '16px', borderRadius: '12px', minWidth: '200px' }}>
     {members.map((member) => (
-      <div
-        key={member.uid}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          marginBottom: '12px',
-          padding: '8px 12px',
-          borderRadius: '8px',
-          transition: 'all 0.2s ease',
-          cursor: 'pointer',
-        }}
-        onMouseEnter={(e) => {
-          e.target.style.background = 'rgba(59, 130, 246, 0.2)';
-        }}
-        onMouseLeave={(e) => {
-          e.target.style.background = 'transparent';
-        }}
-        onClick={() => onToggle(member)}
-      >
-        <Switch
-          checked={selectedMembers.includes(member.uid)}
-          onChange={() => onToggle(member)}
-          name={member.username}
-          color="primary"
-          sx={{
-            '& .MuiSwitch-switchBase.Mui-checked': {
-              color: '#3b82f6',
-            },
-            '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-              backgroundColor: '#3b82f6',
-            },
-            '& .MuiSwitch-track': {
-              backgroundColor: 'rgba(255, 255, 255, 0.3)',
-            },
-          }}
-        />
-        <span style={{
-          marginLeft: '12px',
-          color: 'white',
-          fontWeight: '500',
-          fontSize: '14px',
-        }}>
-          {member.username}
-        </span>
-      </div>
+      <MemberRow key={member.uid} member={member} selectedMembers={selectedMembers} onToggle={onToggle} />
     ))}
   </div>
 );

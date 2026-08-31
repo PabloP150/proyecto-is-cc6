@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { Divider } from '@mui/material';
+import { API_BASE } from '../../config';
 
 export default function CustomNode({ data, id }) {
   const [inputValue, setInputValue] = useState(`${data.percentage}`);
@@ -20,11 +21,15 @@ export default function CustomNode({ data, id }) {
     setInputValue(data.percentage);
   }, [data.percentage]);
 
+  useEffect(() => {
+    setIsComplete(data.completed);
+  }, [data.completed]);
+
   const handleToggleComplete = async () => {
     if (data.toggleCompletion) {
       try {
         data.toggleCompletion(id);
-        await fetch(`http://localhost:9000/api/nodes/${id}/toggleComplete`, {
+        await fetch(`${API_BASE}/api/nodes/${id}/toggleComplete`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -56,7 +61,7 @@ export default function CustomNode({ data, id }) {
       }
       setInputValue(inputValue);
       try {
-        await fetch(`http://localhost:9000/api/nodes/${id}/percentage`, {
+        await fetch(`${API_BASE}/api/nodes/${id}/percentage`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -66,7 +71,7 @@ export default function CustomNode({ data, id }) {
             percentage: inputValue
           }),
         });
-        data.setRefresh(!data.refresh);
+        data.setRefresh(prev => !prev);
       } catch (error) {
         console.error('Error updating node percentage:', error);
       }

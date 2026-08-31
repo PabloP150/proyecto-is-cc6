@@ -1,6 +1,7 @@
 import React from 'react';
 import { Drawer, Box, List as MUIList, ListItem as MUIListItem, ListItemIcon, ListItemButton, ListItemText } from '@mui/material';
 import TodayIcon from '@mui/icons-material/Today';
+import DateRangeIcon from '@mui/icons-material/DateRange';
 import EventNoteIcon from '@mui/icons-material/EventNote';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
@@ -33,6 +34,14 @@ export default function BarraLateral({ drawerOpen, setDrawerOpen, setFiltro }) {
                 <TodayIcon sx={{ color: 'white' }} />
               </ListItemIcon>
               <ListItemText primary="Today" />
+            </ListItemButton>
+          </MUIListItem>
+          <MUIListItem disablePadding>
+            <ListItemButton onClick={() => setFiltro('week')} sx={listItemButtonStyle}>
+              <ListItemIcon>
+                <DateRangeIcon sx={{ color: 'white' }} />
+              </ListItemIcon>
+              <ListItemText primary="This Week" />
             </ListItemButton>
           </MUIListItem>
           <MUIListItem disablePadding>
