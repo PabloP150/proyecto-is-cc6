@@ -27,12 +27,6 @@ const deleteUsertask = async (uid, tid) => {
     return execWriteCommand(query, params);
 };
 
-const deleteAllByTid = async (tid) => {
-    const query = `DELETE FROM dbo.UserTask WHERE tid=@tid`;
-    const params = [{ name: 'tid', type: TYPES.UniqueIdentifier, value: tid }];
-    return execWriteCommand(query, params);
-};
-
 const getUsertasksByTid = async (tid) => {
     const query = `SELECT utid, uid, tid, completed FROM dbo.UserTask WHERE tid=@tid`;
     const params = [{ name: 'tid', type: TYPES.UniqueIdentifier, value: tid }];
@@ -51,7 +45,6 @@ const getutid = async (tid, uid) => {
 module.exports = {
     addUsertask,
     deleteUsertask,
-    deleteAllByTid,
     getUsertasksByTid,
     getutid,
 };

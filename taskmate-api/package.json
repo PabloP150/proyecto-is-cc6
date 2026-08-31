@@ -5,7 +5,8 @@
   "scripts": {
     "start": "node server.js",
     "test": "jest",
-    "test:watch": "jest --watch"
+    "test:watch": "jest --watch",
+    "test:performance": "NODE_ENV=integration-test jest tests/performance.test.js --runInBand"
   },
   "keywords": [],
   "author": "",
