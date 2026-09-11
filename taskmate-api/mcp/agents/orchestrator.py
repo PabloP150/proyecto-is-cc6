@@ -3,6 +3,7 @@ import os
 import re
 import time
 import unicodedata
+from collections import OrderedDict
 from datetime import date
 from typing import Any, Dict, Optional
 
@@ -14,7 +15,12 @@ from agents.repo_analysis_agent import RepoAnalysisAgent, RepoAnalysisError
 logger = logging.getLogger(__name__)
 
 SESSION_TTL_SEC = float(os.getenv('MCP_SESSION_TTL_SEC', 2 * 60 * 60))
+MAX_SESSIONS = int(os.getenv('MCP_MAX_SESSIONS', 1000))
+# How long a confirmed plan waits for Node's save_plan_result before the user can retry.
+PENDING_SAVE_TTL_SEC = float(os.getenv('MCP_PENDING_SAVE_TTL_SEC', 60))
 PURGE_INTERVAL_SEC = 60.0
+MAX_USER_MESSAGE_CHARS = 4000
+PROJECT_INFO_MAX_CHARS = 4000
 
 CONFIRM, DISCARD, REJECT, CHANGE = 'confirm', 'discard', 'reject', 'change'
 
@@ -90,6 +96,14 @@ def _format_wait(seconds: Optional[float]) -> str:
     return f"{minutes}m {secs}s" if minutes else f"{secs}s"
 
 
+def cap_project_info(text: str) -> str:
+    """Keeps the original idea and the latest refinements when the accumulated description grows too long."""
+    if len(text) <= PROJECT_INFO_MAX_CHARS:
+        return text
+    half = PROJECT_INFO_MAX_CHARS // 2
+    return text[:half].rstrip() + " ... " + text[-half:].lstrip()
+
+
 def _error_details(exc: llm_service.LLMError) -> Dict[str, Any]:
     details: Dict[str, Any] = {"code": exc.code}
     if isinstance(exc, llm_service.LLMRateLimitError) and exc.retry_after is not None:
@@ -98,9 +112,12 @@ def _error_details(exc: llm_service.LLMError) -> Dict[str, Any]:
 
 
 class OrchestratorAgent:
-    def __init__(self, session_ttl_sec: Optional[float] = None):
-        self.sessions = {}
+    def __init__(self, session_ttl_sec: Optional[float] = None, max_sessions: Optional[int] = None,
+                 pending_save_ttl_sec: Optional[float] = None):
+        self.sessions: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()  # least recently used first
         self.session_ttl_sec = SESSION_TTL_SEC if session_ttl_sec is None else session_ttl_sec
+        self.max_sessions = MAX_SESSIONS if max_sessions is None else max_sessions
+        self.pending_save_ttl_sec = PENDING_SAVE_TTL_SEC if pending_save_ttl_sec is None else pending_save_ttl_sec
         self._last_purge = time.monotonic()
         self.recommendations_agent = RecommendationsAgent()
         self.analytics_agent = AnalyticsAgent()
@@ -117,7 +134,13 @@ class OrchestratorAgent:
                 "project_info": "",
                 "generated_plan": None,
                 "waiting_for_confirmation": False,
+                "pending_save": None,
             }
+            while len(self.sessions) > self.max_sessions:
+                evicted, _ = self.sessions.popitem(last=False)
+                logger.info("Evicted least recently used session %s (limit %d)", evicted, self.max_sessions)
+        else:
+            self.sessions.move_to_end(session_id)
         state["last_seen"] = now
         return state
 
@@ -137,8 +160,16 @@ class OrchestratorAgent:
     def clear_plan_state(state: Dict[str, Any], keep_project_info: bool = False) -> None:
         state["generated_plan"] = None
         state["waiting_for_confirmation"] = False
+        state["pending_save"] = None
         if not keep_project_info:
             state["project_info"] = ""
+
+    @staticmethod
+    def _restore_pending_plan(state: Dict[str, Any]) -> None:
+        pending = state.get("pending_save") or {}
+        state["pending_save"] = None
+        state["generated_plan"] = pending.get("plan")
+        state["waiting_for_confirmation"] = True
 
     @staticmethod
     def requires_session_lock(request: Dict[str, Any]) -> bool:
@@ -146,13 +177,15 @@ class OrchestratorAgent:
         return request.get("type") != "analytics" and request.get("method") != "analyze_repository"
 
     @staticmethod
-    def error_reply(session_id: str, request: Dict[str, Any], message: str) -> Dict[str, Any]:
+    def error_reply(session_id: Optional[str], request: Dict[str, Any], message: str,
+                    code: Optional[str] = None) -> Dict[str, Any]:
         base = {"sessionId": session_id, "requestId": request.get("requestId")}
-        if request.get("type") == "analytics":
-            return {"event": "analytics_error", **base, "error": message}
         if request.get("method") == "analyze_repository":
-            return {"event": "repo_analysis_error", **base, "error": {"code": "INTERNAL_ERROR", "message": message}}
-        return {"event": "error", **base, "error": message}
+            return {"event": "repo_analysis_error", **base, "error": {"code": code or "INTERNAL_ERROR", "message": message}}
+        reply = {"event": "analytics_error" if request.get("type") == "analytics" else "error", **base, "error": message}
+        if code:
+            reply["code"] = code
+        return reply
 
     def add_to_conversation(self, session_id: str, message: str, is_user: bool = True):
         """Add message to conversation history. Truncates long messages to avoid 413 errors."""
@@ -176,6 +209,8 @@ class OrchestratorAgent:
         method = request.get("method") or "handle_user_message"
         if method == "analyze_repository":
             return await self._handle_repo_analysis(session_id, websocket, request)
+        if method == "save_plan_result":
+            return self._handle_save_plan_result(session_id, request)
         if method != "handle_user_message":
             await websocket.send_json({"event": "error", "sessionId": session_id,
                                        "requestId": request.get("requestId"), "error": f"Unknown method: {method}"})
@@ -183,11 +218,14 @@ class OrchestratorAgent:
         return await self._handle_user_message(session_id, websocket, request)
 
     async def _reply(self, websocket, session_id: str, request_id, content: str,
-                     error: Optional[llm_service.LLMError] = None) -> None:
+                     error: Optional[llm_service.LLMError] = None, extra: Optional[Dict[str, Any]] = None,
+                     record: bool = True) -> None:
         data: Dict[str, Any] = {"content": content}
+        if extra:
+            data.update(extra)
         if error is not None:
             data["error"] = _error_details(error)
-        else:
+        elif record:
             self.add_to_conversation(session_id, content, is_user=False)
         await websocket.send_json({"event": "response", "data": data, "requestId": request_id, "sessionId": session_id})
 
@@ -197,35 +235,57 @@ class OrchestratorAgent:
             history.pop()
 
     async def _handle_user_message(self, session_id: str, websocket, request: dict):
-        state = self.get_session_state(session_id)
         params = request.get("params") if isinstance(request.get("params"), dict) else {}
         user_message = params.get("message")
         request_id = request.get("requestId")
         if not isinstance(user_message, str) or not user_message.strip():
-            await websocket.send_json({"event": "error", "sessionId": session_id, "requestId": request_id,
-                                       "error": "Message is required."})
+            await websocket.send_json(self.error_reply(session_id, request, "Message is required."))
+            return
+        if len(user_message) > MAX_USER_MESSAGE_CHARS:
+            await websocket.send_json(self.error_reply(
+                session_id, request, f"The message is too long (maximum {MAX_USER_MESSAGE_CHARS} characters).",
+                code="MESSAGE_TOO_LONG"))
             return
 
+        state = self.get_session_state(session_id)
         logger.debug("[Session: %s] Received user message (%d chars)", session_id, len(user_message))
+
+        pending = state.get("pending_save")
+        if pending:
+            if time.monotonic() - pending["since"] < self.pending_save_ttl_sec:
+                await self._reply(websocket, session_id, request_id,
+                                  "I'm still saving your project plan. One moment, please.", record=False)
+                return
+            logger.warning("[Session: %s] No save_plan_result arrived in time; the plan awaits confirmation again",
+                           session_id)
+            self._restore_pending_plan(state)
+            await self._reply(websocket, session_id, request_id,
+                              "I couldn't confirm whether your project plan was saved. Check your projects, then type "
+                              "**yes** to try saving it again or **no** to discard it.",
+                              extra={"awaiting_confirmation": True})
+            return
+
         self.add_to_conversation(session_id, user_message, is_user=True)
 
         if state["waiting_for_confirmation"]:
             decision = classify_confirmation(user_message)
             if decision == CONFIRM:
+                # Nothing is recorded as saved until Node reports the outcome with save_plan_result.
+                state["pending_save"] = {"plan": state.get("generated_plan") or {},
+                                         "original_message": state["project_info"],
+                                         "since": time.monotonic()}
+                state["generated_plan"] = None
+                state["waiting_for_confirmation"] = False
+                logger.info("[Session: %s] Plan confirmed; asking Node to save it", session_id)
                 await websocket.send_json({
                     "event": "save_plan",
                     "sessionId": session_id,
                     "requestId": request_id,
                     "data": {
-                        "plan": state.get("generated_plan") or {},
-                        "original_message": state["project_info"]
+                        "plan": state["pending_save"]["plan"],
+                        "original_message": state["pending_save"]["original_message"]
                     }
                 })
-                logger.info("[Session: %s] Plan confirmed; asking Node to save it", session_id)
-                # A saved project starts a fresh conversation, otherwise the old context would make the
-                # "enough information?" check fire immediately for the next project.
-                self.clear_plan_state(state)
-                state["conversation_history"] = ["Assistant: The previous project plan was saved to the workspace."]
                 return
             if decision == DISCARD:
                 self.clear_plan_state(state)
@@ -252,7 +312,31 @@ class OrchestratorAgent:
             return
 
         logger.debug("[Session: %s] Sending response", session_id)
-        await self._reply(websocket, session_id, request_id, response_content)
+        await self._reply(websocket, session_id, request_id, response_content,
+                          extra={"awaiting_confirmation": True} if state["waiting_for_confirmation"] else None)
+
+    def _handle_save_plan_result(self, session_id: str, request: dict) -> None:
+        """Node's report after a save_plan. It is a notification: no reply is sent."""
+        params = request.get("params") if isinstance(request.get("params"), dict) else {}
+        state = self.sessions.get(session_id)
+        if state is None or not state.get("pending_save"):
+            logger.info("[Session: %s] save_plan_result without a pending save; ignored", session_id)
+            return
+        self.get_session_state(session_id)
+        if params.get("success") is True:
+            group_name = str(params.get("groupName") or "")[:100]
+            note = (f'The project plan was saved to the workspace as "{group_name}".' if group_name
+                    else "The project plan was saved to the workspace.")
+            # A saved project starts a fresh conversation, otherwise the old context would make the
+            # "enough information?" check fire immediately for the next project.
+            self.clear_plan_state(state)
+            state["conversation_history"] = [f"Assistant: {note}"]
+            logger.info("[Session: %s] Node saved the plan", session_id)
+            return
+        logger.warning("[Session: %s] Node could not save the plan (%s)", session_id, params.get("errorCode"))
+        self._restore_pending_plan(state)
+        self.add_to_conversation(session_id, "Saving the project plan failed; it is waiting for confirmation again.",
+                                 is_user=False)
 
     async def _chat_reply(self, state: Dict[str, Any], user_message: str, conversation_context: str) -> str:
         today = date.today().strftime("%B %d, %Y")
@@ -316,10 +400,12 @@ Be conversational, make progress each turn, and NEVER repeat yourself:"""
 
     @staticmethod
     def _accumulate_project_info(state: Dict[str, Any], user_message: str) -> None:
-        state["project_info"] = f"{state['project_info']} {user_message}" if state["project_info"] else user_message
+        state["project_info"] = cap_project_info(
+            f"{state['project_info']} {user_message}" if state["project_info"] else user_message)
 
     async def _generate_plan(self, session_id: str, state: Dict[str, Any], user_message: str) -> str:
-        project_info = f"{state['project_info']} {user_message}" if state["project_info"] else user_message
+        project_info = cap_project_info(
+            f"{state['project_info']} {user_message}" if state["project_info"] else user_message)
         logger.info("[Session: %s] Generating project plan", session_id)
         try:
             plan_data = await self.recommendations_agent.handle(project_info)

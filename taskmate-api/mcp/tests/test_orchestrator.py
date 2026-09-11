@@ -2,7 +2,8 @@ import pytest
 
 import llm_service
 from agents import orchestrator as orchestrator_module
-from agents.orchestrator import CHANGE, CONFIRM, DISCARD, REJECT, OrchestratorAgent, classify_confirmation
+from agents.orchestrator import (CHANGE, CONFIRM, DISCARD, PROJECT_INFO_MAX_CHARS, REJECT, OrchestratorAgent,
+                                 classify_confirmation)
 
 PLAN = {"recommendations": {
     "project_name": "Dog Walker",
@@ -66,6 +67,7 @@ async def test_user_message_flow_regression(llm, fake_socket):
     assert reply["event"] == "response" and reply["requestId"] == "r2"
     assert "Project Plan Ready: **Dog Walker**" in reply["data"]["content"]
     assert "**2** tasks" in reply["data"]["content"]
+    assert reply["data"]["awaiting_confirmation"] is True
     state = agent.sessions["S"]
     assert state["waiting_for_confirmation"] and state["generated_plan"] == PLAN
     # An explicit trigger skips both the "enough info?" check and the chat call.
@@ -77,18 +79,105 @@ async def test_user_message_flow_regression(llm, fake_socket):
                      "data": {"plan": PLAN, "original_message": "I want to build an app for dog walkers generate the plan"}}
 
 
-async def test_state_is_cleared_after_save(llm, fake_socket):
-    agent = OrchestratorAgent()
+def save_result(success, **extra):
+    return {"requestId": "n1", "sessionId": "S", "method": "save_plan_result", "params": {"success": success, **extra}}
+
+
+async def confirmed_agent(fake_socket, **kwargs):
+    agent = OrchestratorAgent(**kwargs)
     await agent.handle_message("S", fake_socket, request("create the plan for a todo app"))
-    await agent.handle_message("S", fake_socket, request("yes"))
+    await agent.handle_message("S", fake_socket, request("yes", "confirm"))
+    assert fake_socket.sent[-1]["event"] == "save_plan" and fake_socket.sent[-1]["requestId"] == "confirm"
+    return agent
+
+
+async def test_confirmation_waits_for_save_result_before_recording(llm, fake_socket):
+    agent = await confirmed_agent(fake_socket)
     state = agent.sessions["S"]
-    assert fake_socket.sent[-1]["event"] == "save_plan"
-    assert state["project_info"] == "" and state["generated_plan"] is None
+    assert state["pending_save"]["plan"] == PLAN
     assert state["waiting_for_confirmation"] is False
-    assert state["conversation_history"] == ["Assistant: The previous project plan was saved to the workspace."]
+    assert not any("saved" in line for line in state["conversation_history"])
+
+
+async def test_state_is_cleared_after_successful_save(llm, fake_socket):
+    agent = await confirmed_agent(fake_socket)
+    sent_before = len(fake_socket.sent)
+    await agent.handle_message("S", fake_socket, save_result(True, groupId="g-1", groupName="Dog Walker"))
+    assert len(fake_socket.sent) == sent_before  # notification: no reply
+    state = agent.sessions["S"]
+    assert state["project_info"] == "" and state["generated_plan"] is None and state["pending_save"] is None
+    assert state["waiting_for_confirmation"] is False
+    assert state["conversation_history"] == ['Assistant: The project plan was saved to the workspace as "Dog Walker".']
 
     await agent.handle_message("S", fake_socket, request("yes"))
     assert fake_socket.sent[-1]["event"] == "response"
+
+
+async def test_failed_save_restores_the_plan_for_a_retry(llm, fake_socket):
+    agent = await confirmed_agent(fake_socket)
+    await agent.handle_message("S", fake_socket, save_result(False, errorCode="SAVE_FAILED"))
+    state = agent.sessions["S"]
+    assert state["waiting_for_confirmation"] is True and state["generated_plan"] == PLAN
+    assert state["pending_save"] is None and "todo app" in state["project_info"]
+
+    await agent.handle_message("S", fake_socket, request("sí", "retry"))
+    reply = fake_socket.sent[-1]
+    assert (reply["event"], reply["requestId"]) == ("save_plan", "retry") and reply["data"]["plan"] == PLAN
+
+
+async def test_messages_during_a_pending_save_do_not_trigger_another_save(llm, fake_socket):
+    agent = await confirmed_agent(fake_socket)
+    await agent.handle_message("S", fake_socket, request("yes", "again"))
+    reply = fake_socket.sent[-1]
+    assert reply["event"] == "response" and "still saving" in reply["data"]["content"]
+    assert agent.sessions["S"]["pending_save"] is not None
+
+
+async def test_missing_save_result_expires_and_the_plan_can_be_retried(llm, fake_socket):
+    agent = await confirmed_agent(fake_socket, pending_save_ttl_sec=0)
+    await agent.handle_message("S", fake_socket, request("hello?", "late"))
+    reply = fake_socket.sent[-1]
+    assert reply["event"] == "response" and reply["requestId"] == "late"
+    assert reply["data"]["awaiting_confirmation"] is True and "couldn't confirm" in reply["data"]["content"]
+    assert agent.sessions["S"]["generated_plan"] == PLAN
+
+    await agent.handle_message("S", fake_socket, request("yes", "retry"))
+    assert fake_socket.sent[-1]["event"] == "save_plan"
+
+
+async def test_save_result_without_pending_save_is_ignored(llm, fake_socket):
+    agent = OrchestratorAgent()
+    await agent.handle_message("S", fake_socket, save_result(True))
+    assert fake_socket.sent == [] and "S" not in agent.sessions
+
+
+async def test_session_cap_evicts_the_least_recently_used(llm, fake_socket):
+    agent = OrchestratorAgent(max_sessions=3)
+    for session_id in ("s1", "s2", "s3"):
+        agent.get_session_state(session_id)
+    agent.get_session_state("s1")  # s2 becomes the least recently used
+    agent.get_session_state("s4")
+    assert list(agent.sessions) == ["s3", "s1", "s4"]
+
+
+async def test_project_info_growth_is_capped(llm, fake_socket):
+    agent = OrchestratorAgent()
+    await agent.handle_message("S", fake_socket, request("ORIGINAL IDEA: an app " + "a" * 3000))
+    for index in range(5):
+        await agent.handle_message("S", fake_socket, request(f"feature {index} for the app " + "b" * 3000))
+    await agent.handle_message("S", fake_socket, request("LATEST: users want dark mode in the app"))
+    info = agent.sessions["S"]["project_info"]
+    assert len(info) <= PROJECT_INFO_MAX_CHARS + 5
+    assert info.startswith("ORIGINAL IDEA") and info.endswith("dark mode in the app")
+
+
+async def test_too_long_message_is_rejected_with_code(llm, fake_socket):
+    agent = OrchestratorAgent()
+    await agent.handle_message("S", fake_socket, request("x" * 4001, "big"))
+    assert fake_socket.sent[-1] == {"event": "error", "sessionId": "S", "requestId": "big",
+                                    "error": "The message is too long (maximum 4000 characters).",
+                                    "code": "MESSAGE_TOO_LONG"}
+    assert not llm["generate"]
 
 
 async def test_diseno_while_waiting_is_not_a_confirmation(llm, fake_socket):

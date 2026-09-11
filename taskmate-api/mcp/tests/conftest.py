@@ -1,9 +1,13 @@
 import os
 import sys
 
-# Must happen before llm_service is imported: the tests never use a real key or reach Groq.
+# Must happen before llm_service/server are imported: the tests never use real secrets or reach Groq.
 os.environ["GROQ_API_KEY"] = "gsk_test_dummy_key_not_real"
 os.environ.pop("LLM_API_KEY", None)
+TEST_SHARED_SECRET = "test-shared-secret"
+os.environ["MCP_SHARED_SECRET"] = TEST_SHARED_SECRET
+os.environ.pop("MCP_ALLOW_NO_SECRET", None)
+AUTH_HEADERS = {"X-MCP-Secret": TEST_SHARED_SECRET}
 
 MCP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if MCP_DIR not in sys.path:

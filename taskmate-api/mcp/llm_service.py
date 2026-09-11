@@ -9,7 +9,11 @@ import groq
 from groq import AsyncGroq
 from dotenv import load_dotenv
 
-load_dotenv()
+_HERE = os.path.dirname(os.path.abspath(__file__))
+# Like the Node API: local files first, then the repository root; existing variables always win.
+for _env_path in (os.path.join(_HERE, '.env'), os.path.join(_HERE, '..', '.env'), os.path.join(_HERE, '..', '..', '.env')):
+    if os.path.isfile(_env_path):
+        load_dotenv(_env_path)
 
 logger = logging.getLogger(__name__)
 

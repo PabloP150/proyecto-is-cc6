@@ -1,4 +1,5 @@
 import asyncio
+import hmac
 import json
 import logging
 import os
@@ -14,7 +15,39 @@ logging.basicConfig(level=os.getenv('MCP_LOG_LEVEL', 'INFO'),
                     format='%(asctime)s %(levelname)s %(name)s: %(message)s')
 logger = logging.getLogger(__name__)
 
+SECRET_HEADER = 'x-mcp-secret'
+# Application-level cap, well below uvicorn's ws_max_size (4 MiB in the start scripts), so an
+# oversized request gets an error reply instead of closing the connection shared by every user.
+MAX_MESSAGE_CHARS = int(os.getenv('MCP_MAX_MESSAGE_CHARS', 1024 * 1024))
+WS_MAX_SIZE = 4 * 1024 * 1024
+POLICY_VIOLATION = 1008
+
+
+def resolve_shared_secret(env) -> Optional[str]:
+    """Returns the shared secret Node must present; refuses to run without one unless explicitly allowed."""
+    secret = env.get('MCP_SHARED_SECRET')
+    if secret:
+        return secret
+    if env.get('MCP_ALLOW_NO_SECRET') == '1':
+        logger.warning("MCP_SHARED_SECRET is not set and MCP_ALLOW_NO_SECRET=1: the WebSocket is unauthenticated.")
+        return None
+    raise RuntimeError("MCP_SHARED_SECRET is not set. Refusing to start the MCP server "
+                       "(set MCP_ALLOW_NO_SECRET=1 only for tests).")
+
+
+SHARED_SECRET = resolve_shared_secret(os.environ)
+
 _connections: Set['Connection'] = set()
+
+
+def is_authorized(headers) -> bool:
+    # Browsers always send Origin; Node's ws client does not. Rejecting it blocks cross-site WebSocket use.
+    if headers.get('origin') is not None:
+        return False
+    if SHARED_SECRET is None:
+        return True
+    provided = headers.get(SECRET_HEADER) or ''
+    return hmac.compare_digest(provided.encode('utf-8'), SHARED_SECRET.encode('utf-8'))
 
 
 class _SessionLock:
@@ -25,17 +58,21 @@ class _SessionLock:
         self.users = 0
 
 
-def _ids_from_malformed(raw: str):
-    """Best effort so even a reply to malformed JSON can be routed by Node."""
-    ids = []
-    for key in ('sessionId', 'requestId'):
-        match = re.search(r'"%s"\s*:\s*"([^"\\]{1,200})"' % key, raw or '')
-        ids.append(match.group(1) if match else None)
-    return ids[0], ids[1]
+def _fields_from_raw(raw: str) -> Dict[str, Any]:
+    """Best effort so even a reply to malformed or oversized JSON can be routed by Node."""
+    head = (raw or '')[:4096]
+    fields: Dict[str, Any] = {}
+    for key in ('sessionId', 'requestId', 'method', 'type'):
+        match = re.search(r'"%s"\s*:\s*"([^"\\]{1,200})"' % key, head)
+        fields[key] = match.group(1) if match else None
+    return fields
 
 
-def _error_reply(session_id: Optional[str], request_id: Any, message: str) -> Dict[str, Any]:
-    return {"event": "error", "sessionId": session_id, "requestId": request_id, "error": message}
+def _error_reply(session_id: Optional[str], request_id: Any, message: str, code: Optional[str] = None) -> Dict[str, Any]:
+    reply = {"event": "error", "sessionId": session_id, "requestId": request_id, "error": message}
+    if code:
+        reply["code"] = code
+    return reply
 
 
 class Connection:
@@ -63,13 +100,19 @@ class Connection:
             logger.debug("Could not deliver reply for request %s", message.get('requestId'), exc_info=True)
 
     def dispatch(self, raw: str) -> None:
+        if len(raw) > MAX_MESSAGE_CHARS:
+            fields = _fields_from_raw(raw)
+            logger.warning("Rejected a %d-character message for session %s", len(raw), fields['sessionId'])
+            self._spawn(self._safe_send(self.agent.error_reply(
+                fields['sessionId'], fields, "The message is too large.", code='MESSAGE_TOO_LONG')))
+            return
         try:
             request = json.loads(raw)
         except ValueError:
             request = None
         if not isinstance(request, dict):
-            session_id, request_id = _ids_from_malformed(raw)
-            self._spawn(self._safe_send(_error_reply(session_id, request_id, "Invalid JSON format.")))
+            fields = _fields_from_raw(raw)
+            self._spawn(self._safe_send(_error_reply(fields['sessionId'], fields['requestId'], "Invalid JSON format.")))
             return
 
         session_id = request.get('sessionId')
@@ -130,6 +173,12 @@ app = FastAPI(lifespan=lifespan)
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """Handles the Node.js WebSocket connection and dispatches each message independently."""
+    if not is_authorized(websocket.headers):
+        logger.warning("Rejected an unauthorized WebSocket connection from %s",
+                       websocket.client.host if websocket.client else 'unknown')
+        # Closing before accept makes the server answer the handshake with HTTP 403.
+        await websocket.close(code=POLICY_VIOLATION)
+        return
     await websocket.accept()
     connection = Connection(websocket, orchestrator)
     _connections.add(connection)
@@ -159,4 +208,4 @@ async def websocket_endpoint(websocket: WebSocket):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("server:app", host=os.getenv('MCP_HOST', '127.0.0.1'),
-                port=int(os.getenv('MCP_PORT', 8001)), reload=True)
+                port=int(os.getenv('MCP_PORT', 8001)), ws_max_size=WS_MAX_SIZE, reload=True)

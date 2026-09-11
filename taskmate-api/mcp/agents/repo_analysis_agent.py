@@ -54,10 +54,8 @@ _SECRET_PATTERNS = [
 ]
 _SECRET_ASSIGNMENT = re.compile(
     r'(?i)\b(password|passwd|pwd|secret|api[_-]?key|token|access[_-]?key|private[_-]?key)(\s*[:=]\s*)["\']?[^\s"\']{6,}["\']?')
-_PUNCTUATION = str.maketrans({
-    '‘': "'", '’': "'", '“': '"', '”': '"', '–': '-', '—': '-',
-    '…': '...', ' ': ' ',
-})
+# Bidirectional overrides can make a task name display differently from what it stores.
+_INVISIBLE = {'\u202a', '\u202b', '\u202c', '\u202d', '\u202e', '\u2066', '\u2067', '\u2068', '\u2069'}
 
 SYSTEM_PROMPT = """You are TaskMate's repository planning assistant. You read a snapshot of a software repository and propose the NEXT work for the team as a JSON object.
 
@@ -138,28 +136,37 @@ async def _acquire_within(semaphore: asyncio.Semaphore, timeout: float) -> bool:
 # ---------------------------------------------------------------- text helpers
 
 def normalize_name(text: str) -> str:
-    """Case- and accent-insensitive comparison key."""
+    """Case- and accent-insensitive comparison key (names made only of symbols/emoji compare as-is)."""
     decomposed = unicodedata.normalize('NFKD', text or '')
     without_marks = ''.join(ch for ch in decomposed if not unicodedata.combining(ch))
-    return ' '.join(re.sub(r'[^\w]+', ' ', without_marks.casefold()).split())
+    key = ' '.join(re.sub(r'[^\w]+', ' ', without_marks.casefold()).split())
+    return key or ' '.join((text or '').casefold().split())
+
+
+def truncate_utf16(text: str, max_units: int) -> str:
+    """Cuts to max_units UTF-16 code units (what NVARCHAR(n) and JS .length count) without splitting a character."""
+    units = 0
+    for index, ch in enumerate(text):
+        units += 2 if ord(ch) > 0xFFFF else 1
+        if units > max_units:
+            return text[:index]
+    return text
 
 
 def clean_text(value: Any, max_len: int, single_line: bool = False) -> str:
-    """Latin-1 only (the target columns are VARCHAR), no control characters, trimmed to max_len."""
-    text = str(value or '').translate(_PUNCTUATION)
+    """Unicode text without control or bidi-override characters, trimmed to max_len UTF-16 units."""
     kept = []
-    for ch in text:
-        code = ord(ch)
+    for ch in str(value or ''):
         if ch in '\n\t':
             kept.append(' ' if single_line else ch)
-        elif 32 <= code <= 0xFF and not 0x7F <= code <= 0x9F:
+        elif unicodedata.category(ch) != 'Cc' and ch not in _INVISIBLE:
             kept.append(ch)
     text = ''.join(kept)
     if single_line:
         text = ' '.join(text.split())
     else:
         text = '\n'.join(' '.join(line.split()) for line in text.splitlines()).strip()
-    return text[:max_len].rstrip()
+    return truncate_utf16(text, max_len).rstrip()
 
 
 def redact_secrets(text: str) -> str:

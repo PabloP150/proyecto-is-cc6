@@ -173,8 +173,26 @@ async def test_names_categories_and_duplicates_are_normalized(llm):
     }]
     plan = await analyze()
     names = [task["name"] for task in plan["tasks"]]
-    assert names == ["Implementar autenticación", 'Migración "BD" - índices', "Diseño"]
+    assert names == ["Implementar autenticación", "Migración “BD” — índices", "Diseño 🚀"]
     assert [task["category"] for task in plan["tasks"]] == ["frontend", "database", "general"]
+
+
+async def test_non_latin1_text_is_preserved_within_utf16_limits(llm):
+    llm["outputs"] = [{
+        "summary": "Resumen con emoji 🚀 y “comillas” — y 中文",
+        "milestones": [{"key": "m1", "name": "Lanzamiento 🚀", "description": "Fase “final” — ✅",
+                        "target_date": "2026-10-01"}],
+        "tasks": [{"name": "😀" * 20, "description": "Descripción 📦\u202eoculto\x07", "milestone_key": "m1"},
+                  {"name": "Soporte 中文 y العربية"}],
+    }]
+    plan = await analyze()
+    assert plan["summary"] == "Resumen con emoji 🚀 y “comillas” — y 中文"
+    assert plan["milestones"][0]["name"] == "Lanzamiento 🚀"
+    assert plan["milestones"][0]["description"] == "Fase “final” — ✅"
+    emoji_name = plan["tasks"][0]["name"]
+    assert emoji_name == "😀" * 12 and len(emoji_name.encode("utf-16-le")) // 2 <= 25
+    assert plan["tasks"][0]["description"] == "Descripción 📦oculto"  # bidi override and control char removed
+    assert plan["tasks"][1]["name"] == "Soporte 中文 y العربية"
 
 
 async def test_prompt_injection_in_readme_does_not_change_output_handling(llm):

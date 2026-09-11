@@ -5,6 +5,9 @@ import re
 import anyio
 import pytest
 from starlette.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
+
+from conftest import AUTH_HEADERS, TEST_SHARED_SECRET
 
 import llm_service
 import server
@@ -46,7 +49,7 @@ def agent(monkeypatch):
 
 @pytest.fixture
 def ws(agent):
-    with TestClient(server.app).websocket_connect("/ws") as socket:
+    with TestClient(server.app).websocket_connect("/ws", headers=AUTH_HEADERS) as socket:
         yield socket
 
 
@@ -150,12 +153,12 @@ def test_llm_failure_becomes_a_friendly_reply(agent, ws, monkeypatch):
 
 def test_session_state_survives_disconnect_and_expires_by_ttl(agent):
     client = TestClient(server.app)
-    with client.websocket_connect("/ws") as socket:
+    with client.websocket_connect("/ws", headers=AUTH_HEADERS) as socket:
         socket.send_json(user_msg("A", "r1", "first message"))
         recv(socket)
     assert "A" in agent.sessions
 
-    with client.websocket_connect("/ws") as socket:
+    with client.websocket_connect("/ws", headers=AUTH_HEADERS) as socket:
         socket.send_json(user_msg("A", "r2", "second message"))
         recv(socket)
     history = agent.sessions["A"]["conversation_history"]
@@ -193,3 +196,78 @@ async def test_connection_close_cancels_in_flight_tasks():
     await asyncio.wait_for(connection.close(), 1)
     assert cancelled.is_set()
     assert not connection._tasks and not connection._session_locks
+
+
+@pytest.mark.parametrize("headers", [
+    {},
+    {"X-MCP-Secret": "wrong-secret"},
+    {"X-MCP-Secret": TEST_SHARED_SECRET + "x"},
+    {**AUTH_HEADERS, "Origin": "http://localhost:3000"},
+    {**AUTH_HEADERS, "Origin": "null"},
+])
+def test_unauthorized_connections_are_rejected_before_accept(agent, headers):
+    with pytest.raises(WebSocketDisconnect) as info:
+        with TestClient(server.app).websocket_connect("/ws", headers=headers):
+            pass
+    assert info.value.code == server.POLICY_VIOLATION
+
+
+def test_correct_secret_is_accepted(agent):
+    with TestClient(server.app).websocket_connect("/ws", headers={"x-mcp-secret": TEST_SHARED_SECRET}) as socket:
+        socket.send_json(user_msg("A", "r1", "hello"))
+        assert recv(socket)["requestId"] == "r1"
+
+
+def test_without_a_secret_the_server_refuses_to_start_unless_allowed():
+    with pytest.raises(RuntimeError):
+        server.resolve_shared_secret({})
+    with pytest.raises(RuntimeError):
+        server.resolve_shared_secret({"MCP_SHARED_SECRET": "", "MCP_ALLOW_NO_SECRET": "true"})
+    assert server.resolve_shared_secret({"MCP_ALLOW_NO_SECRET": "1"}) is None
+    assert server.resolve_shared_secret({"MCP_SHARED_SECRET": "s", "MCP_ALLOW_NO_SECRET": "1"}) == "s"
+
+
+def test_allow_no_secret_mode_still_rejects_browsers(agent, monkeypatch):
+    monkeypatch.setattr(server, "SHARED_SECRET", None)
+    with TestClient(server.app).websocket_connect("/ws") as socket:
+        socket.send_json(user_msg("A", "r1", "hello"))
+        assert recv(socket)["requestId"] == "r1"
+    with pytest.raises(WebSocketDisconnect):
+        with TestClient(server.app).websocket_connect("/ws", headers={"Origin": "https://evil.example"}):
+            pass
+
+
+def test_too_long_user_message_gets_an_error_and_the_connection_stays_open(agent, ws):
+    ws.send_json(user_msg("A", "long", "x" * 4001))
+    reply = recv(ws)
+    assert reply["event"] == "error" and reply["code"] == "MESSAGE_TOO_LONG"
+    assert (reply["sessionId"], reply["requestId"]) == ("A", "long")
+    assert "A" not in agent.sessions
+
+    ws.send_json(user_msg("A", "ok", "x" * 4000))
+    assert recv(ws)["requestId"] == "ok"
+
+
+def test_oversized_frames_are_rejected_without_closing_the_shared_connection(agent, ws, monkeypatch):
+    monkeypatch.setattr(server, "MAX_MESSAGE_CHARS", 2000)
+    ws.send_json(user_msg("A", "huge", "y" * 3000))
+    reply = recv(ws)
+    assert reply == {"event": "error", "sessionId": "A", "requestId": "huge",
+                     "error": "The message is too large.", "code": "MESSAGE_TOO_LONG"}
+
+    ws.send_json({"requestId": "huge-repo", "sessionId": "B", "method": "analyze_repository",
+                  "params": {"snapshot": {"readme": "z" * 3000}}})
+    reply = recv(ws)
+    assert (reply["event"], reply["sessionId"], reply["requestId"]) == ("repo_analysis_error", "B", "huge-repo")
+    assert reply["error"]["code"] == "MESSAGE_TOO_LONG"
+
+    ws.send_json({"requestId": "huge-an", "sessionId": "C", "type": "analytics", "action": "x", "data": {"p": "q" * 3000}})
+    reply = recv(ws)
+    assert (reply["event"], reply["code"], reply["requestId"]) == ("analytics_error", "MESSAGE_TOO_LONG", "huge-an")
+
+    ws.send_json(user_msg("A", "after", "still here"))
+    assert recv(ws)["requestId"] == "after"
+
+
+def test_uvicorn_frame_limit_is_above_the_application_limit():
+    assert server.WS_MAX_SIZE == 4 * 1024 * 1024 > server.MAX_MESSAGE_CHARS

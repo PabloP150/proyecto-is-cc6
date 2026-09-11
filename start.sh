@@ -32,14 +32,17 @@ sleep 3
 echo "[4/4] Iniciando Python MCP (puerto 8001)..."
 pkill -f "uvicorn server:app" 2>/dev/null
 cd "$PROJECT_DIR/taskmate-api/mcp"
-venv/bin/python -m uvicorn server:app --host 0.0.0.0 --port 8001 > /tmp/taskmate-mcp.log 2>&1 &
+if ! grep -q '^MCP_SHARED_SECRET=.' "$PROJECT_DIR/.env" 2>/dev/null && [ -z "$MCP_SHARED_SECRET" ]; then
+  echo "     AVISO: falta MCP_SHARED_SECRET en .env; el servidor MCP no arrancará."
+fi
+venv/bin/python -m uvicorn server:app --host 127.0.0.1 --port 8001 --ws-max-size 4194304 > /tmp/taskmate-mcp.log 2>&1 &
 sleep 3
 
 echo ""
 echo "✓ Todo listo:"
 echo "  Frontend:  http://localhost:3000  (corre: npm start)"
 echo "  Backend:   http://localhost:9000"
-echo "  MCP/AI:    http://localhost:8001"
+echo "  MCP/AI:    ws://127.0.0.1:8001/ws (solo local, requiere X-MCP-Secret)"
 echo ""
 echo "Logs:"
 echo "  Backend: tail -f /tmp/taskmate-backend.log"
