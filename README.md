@@ -8,7 +8,7 @@ Plataforma colaborativa de gestión de proyectos con IA integrada. Permite a equ
 |------|-----------|
 | Frontend | React 18, MUI v6, ReactFlow 11, react-big-calendar |
 | Backend | Node.js, Express 4, tedious (SQL Server), ws 8, GitHub App (REST + webhooks) |
-| AI/MCP | Python 3.9+, FastAPI, Groq (`llama-3.1-8b-instant`) |
+| AI/MCP | Python 3.9+, FastAPI, Groq (`openai/gpt-oss-20b`) |
 | Base de datos | Microsoft SQL Server (Docker), migraciones versionadas en `taskmate-api/migrations/` |
 
 ## Requisitos

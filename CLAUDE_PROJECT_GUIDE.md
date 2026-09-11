@@ -8,7 +8,7 @@
 
 **TaskMate** — Plataforma colaborativa de gestión de proyectos con IA integrada.
 Permite a equipos crear grupos, gestionar tareas, visualizar proyectos como grafos de nodos/milestones,
-chatear con un asistente IA (Groq/Llama) que genera planes completos, y ver analytics de rendimiento.
+chatear con un asistente IA (Groq, modelo openai/gpt-oss-20b) que genera planes completos, y ver analytics de rendimiento.
 
 **Monorepo** en `/Users/pablopineda/Downloads/proyecto-is-cc6/`
 
@@ -19,7 +19,7 @@ chatear con un asistente IA (Groq/Llama) que genera planes completos, y ver anal
 ```
 [React 18 :3000]  <── HTTP REST ──>  [Node.js Express :9000]  <── WebSocket ──>  [Python FastAPI :8001]
                   <── WebSocket ──>          │                                            │
-                                     [SQL Server DB]                          [Groq API: llama-3.3-70b]
+                                     [SQL Server DB]                          [Groq API: gpt-oss-20b]
                                     [pool.js: min2/max10]
 ```
 
@@ -102,7 +102,7 @@ proyecto-is-cc6/
 │   ├── __tests__/                ← Jest tests (SessionManager, UserSession, LLMService, AnalyticsService, etc.)
 │   ├── mcp/                      ← Python FastAPI server
 │   │   ├── server.py             ← FastAPI, WS /ws endpoint, delega a orchestrator
-│   │   ├── llm_service.py        ← AsyncGroq: generate(), generate_stream() → llama-3.3-70b-versatile
+│   │   ├── llm_service.py        ← AsyncGroq: generate(), generate_stream() → openai/gpt-oss-20b
 │   │   ├── requirements.txt      ← google-generativeai, fastapi, uvicorn, python-dotenv, websockets, groq
 │   │   └── agents/
 │   │       ├── orchestrator.py   ← Router principal, historial 20 msgs, waiting_for_confirmation, save_plan
@@ -358,7 +358,7 @@ ChatPage.jsx → WS ws://localhost:9000/chat?token=JWT
 → LLMService.send() → ws :8001 (Python)
 → OrchestratorAgent.handle_message()
   → acumula project_info en conversación hasta tener suficiente info
-  → si tiene info → RecommendationsAgent.handle() → JSON plan vía Groq llama-3.3-70b
+  → si tiene info → RecommendationsAgent.handle() → JSON plan vía Groq gpt-oss-20b
   → pide confirmación al usuario (waiting_for_confirmation = true)
   → si "yes/ok/sure" → emite {event:'save_plan', data:{plan, original_message}}
 → Respuesta back → LLMService.emit(sessionId) → UserSession.forwardResponseToClient()
@@ -522,7 +522,7 @@ ANALYTICS_ENABLED=true
 ```env
 GROQ_API_KEY=tu-groq-key      # Principal — usado por llm_service.py
 LLM_API_KEY=tu-key            # Alternativa / fallback
-LLM_MODEL=llama-3.3-70b-versatile   # Modelo Groq
+LLM_MODEL=openai/gpt-oss-20b   # Modelo Groq
 LLM_TEMPERATURE=0.7
 ```
 
@@ -618,7 +618,7 @@ tasks.controller + usertask.controller + complete.controller
 
 ChatPage.jsx
   └── → useWebSocket('/chat') → WS :9000 → UserSession → LLMService → Python :8001
-       └── OrchestratorAgent → RecommendationsAgent → Groq llama-3.3-70b
+       └── OrchestratorAgent → RecommendationsAgent → Groq gpt-oss-20b
             └── si 'save_plan' → ProjectService.createProjectFromPlan()
 
 AnalyticsDashboard.jsx

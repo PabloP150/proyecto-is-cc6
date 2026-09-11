@@ -72,7 +72,8 @@ PLANNING RULES:
 - Dates use the format YYYY-MM-DD and must be on or after {today}.
 - "category" must be exactly one of: frontend, backend, database, testing, general.
 - Write ALL human-readable text (summary, names, descriptions) in Spanish.
-- Names: at most 25 characters. Descriptions: one or two short sentences. Summary: at most three sentences.
+- Names: at most 25 characters. Descriptions: one or two short sentences.
+- Summary: two or three sentences for someone who has never seen the repository, in this order: what the project is and what it does; its main technologies (from the manifests and the README); its current state and what is still missing. At most 550 characters.
 
 OUTPUT: respond ONLY with one JSON object, without markdown, with exactly this shape:
 {{"summary": "...", "milestones": [{{"key": "m1", "name": "...", "description": "...", "target_date": "YYYY-MM-DD"}}], "tasks": [{{"name": "...", "description": "...", "milestone_key": "m1", "due_date": "YYYY-MM-DD", "category": "backend"}}]}}"""
@@ -151,6 +152,25 @@ def truncate_utf16(text: str, max_units: int) -> str:
         if units > max_units:
             return text[:index]
     return text
+
+
+def utf16_len(text: str) -> int:
+    return sum(2 if ord(ch) > 0xFFFF else 1 for ch in text)
+
+
+def clean_name(value: Any) -> str:
+    """Single-line name within NAME_MAX that never ends in half a word ("Middleware de autenticaci"):
+    cut at the last space when that keeps most of it, otherwise end with an ellipsis."""
+    text = clean_text(value, NAME_MAX * 4, single_line=True)
+    if utf16_len(text) <= NAME_MAX:
+        return text
+    cut = truncate_utf16(text, NAME_MAX)
+    if text[len(cut):len(cut) + 1] == ' ':
+        return cut.rstrip(' ,.;:-')
+    space = cut.rfind(' ')
+    if space >= NAME_MAX * 0.6:
+        return cut[:space].rstrip(' ,.;:-')
+    return truncate_utf16(text, NAME_MAX - 1).rstrip() + '…'
 
 
 def clean_text(value: Any, max_len: int, single_line: bool = False) -> str:
@@ -321,7 +341,7 @@ def build_plan(data: Any, today: date, limits, existing_names: Set[str]) -> Dict
         raw = LLMPlan.model_validate(data)
     except ValidationError as exc:
         raise InvalidPlanError("schema mismatch") from exc
-    if not any(clean_text(task.name, NAME_MAX, single_line=True) for task in raw.tasks):
+    if not any(clean_name(task.name) for task in raw.tasks):
         raise InvalidPlanError("no usable tasks")
 
     max_date = today + timedelta(days=MAX_FUTURE_DAYS)
@@ -335,7 +355,7 @@ def build_plan(data: Any, today: date, limits, existing_names: Set[str]) -> Dict
     milestone_dates: Dict[str, str] = {}
     names_seen: Dict[str, str] = {}
     for item in raw.milestones:
-        name = clean_text(item.name, NAME_MAX, single_line=True)
+        name = clean_name(item.name)
         raw_key = clean_text(item.key, KEY_MAX, single_line=True)
         if not name:
             continue
@@ -362,7 +382,7 @@ def build_plan(data: Any, today: date, limits, existing_names: Set[str]) -> Dict
     for item in raw.tasks:
         if len(tasks) >= limits.maxTasks:
             break
-        name = clean_text(item.name, NAME_MAX, single_line=True)
+        name = clean_name(item.name)
         normalized = normalize_name(name)
         if not normalized or normalized in seen:
             continue
@@ -390,7 +410,7 @@ class RepoAnalysisAgent:
         deadline = loop.time() + DEADLINE_SEC
         params = AnalyzeRepositoryParams.model_validate(raw_params if isinstance(raw_params, dict) else {})
         today = _resolve_today(params.today)
-        existing_names = {normalize_name(clean_text(task.name, NAME_MAX, single_line=True))
+        existing_names = {normalize_name(clean_name(task.name))
                           for task in params.existing.tasks}
         existing_names.discard('')
 

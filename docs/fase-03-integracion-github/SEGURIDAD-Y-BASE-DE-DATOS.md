@@ -123,7 +123,7 @@ Además: los tokens de instalación se piden acotados al repositorio del grupo, 
 
 ### A.7 IA: datos enviados a Groq y *prompt injection*
 
-**Qué sale hacia Groq (`llama-3.1-8b-instant`):**
+**Qué sale hacia Groq (`openai/gpt-oss-20b`):**
 
 | Flujo | Datos |
 |-------|-------|

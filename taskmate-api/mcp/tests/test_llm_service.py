@@ -60,6 +60,20 @@ async def test_generate_json_uses_json_mode_without_sdk_retries(client):
     assert fake.options == [{"max_retries": 0}]
 
 
+async def test_gpt_oss_models_get_the_reasoning_effort_and_others_do_not(client, monkeypatch):
+    monkeypatch.setattr(llm_service, "REASONING_EFFORT", "low")
+    fake = client(lambda **_: completion('{"ok": true}'))
+    await llm_service.generate_json("Reply in JSON", model="openai/gpt-oss-20b")
+    await llm_service.generate_json("Reply in JSON", model="qwen/qwen3.6-27b")
+    assert fake.calls[0]["model"] == "openai/gpt-oss-20b" and fake.calls[0]["reasoning_effort"] == "low"
+    assert fake.calls[1]["model"] == "qwen/qwen3.6-27b" and "reasoning_effort" not in fake.calls[1]
+
+
+def test_default_model_is_one_groq_still_serves():
+    # Groq retired the Llama 3.x models; the default must not point at one of them.
+    assert not llm_service.MODEL.startswith("llama-3")
+
+
 async def test_generate_json_adds_the_word_json_when_missing(client):
     fake = client(lambda **_: completion('{"a": 1}'))
     await llm_service.generate_json([{"role": "user", "content": "plan something"}])

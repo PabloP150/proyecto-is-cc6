@@ -40,6 +40,7 @@ describe('RepoPlanCard', () => {
     renderCard();
     expect(screen.getByText(XSS)).toBeInTheDocument();
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
+    expect(screen.getByText('Sobre el repositorio')).toBeInTheDocument();
     expect(screen.getByText('Resumen **sin** markdown')).toBeInTheDocument();
     expect(screen.queryByText('sin', { selector: 'strong' })).not.toBeInTheDocument();
     expect(screen.getByText('MVP')).toBeInTheDocument();

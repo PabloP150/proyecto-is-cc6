@@ -190,7 +190,7 @@ async def test_non_latin1_text_is_preserved_within_utf16_limits(llm):
     assert plan["milestones"][0]["name"] == "Lanzamiento 🚀"
     assert plan["milestones"][0]["description"] == "Fase “final” — ✅"
     emoji_name = plan["tasks"][0]["name"]
-    assert emoji_name == "😀" * 12 and len(emoji_name.encode("utf-16-le")) // 2 <= 25
+    assert emoji_name == "😀" * 12 + "…" and len(emoji_name.encode("utf-16-le")) // 2 <= 25
     assert plan["tasks"][0]["description"] == "Descripción 📦oculto"  # bidi override and control char removed
     assert plan["tasks"][1]["name"] == "Soporte 中文 y العربية"
 
@@ -312,3 +312,17 @@ async def test_missing_or_malformed_params_do_not_crash(llm):
     assert len(plan["tasks"]) == 2
     plan = await RepoAnalysisAgent().analyze(None)
     assert len(plan["tasks"]) == 2
+
+
+@pytest.mark.parametrize("raw, expected", [
+    ("Carrito funcional", "Carrito funcional"),
+    ("Implementar autenticación con JWT", "Implementar autenticación"),  # cut already between words
+    ("Pruebas de integración del carrito", "Pruebas de integración"),     # back off to the last space
+    ("Middleware de autenticación", "Middleware de autenticac…"),        # last space too early: ellipsis
+    ("Internacionalizacióncompleta", "Internacionalizacióncomp…"),       # no space at all: ellipsis
+])
+def test_long_names_are_cut_at_a_word_boundary_or_with_an_ellipsis(raw, expected):
+    from agents.repo_analysis_agent import clean_name, utf16_len
+    name = clean_name(raw)
+    assert name == expected
+    assert utf16_len(name) <= 25

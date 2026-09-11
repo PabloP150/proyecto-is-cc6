@@ -18,8 +18,12 @@ for _env_path in (os.path.join(_HERE, '.env'), os.path.join(_HERE, '..', '.env')
 logger = logging.getLogger(__name__)
 
 API_KEY = os.getenv('GROQ_API_KEY') or os.getenv('LLM_API_KEY')
-MODEL = os.getenv('LLM_MODEL', 'llama-3.1-8b-instant')
+# Groq retired the Llama 3.x models (they now answer 404 model_not_found).
+MODEL = os.getenv('LLM_MODEL', 'openai/gpt-oss-20b')
 REPO_ANALYSIS_MODEL = os.getenv('REPO_ANALYSIS_MODEL') or MODEL
+# gpt-oss models reason before answering and that reasoning counts against max_tokens and the per-minute
+# token quota; "low" keeps chat answers and JSON plans within budget. Only sent to models that accept it.
+REASONING_EFFORT = os.getenv('LLM_REASONING_EFFORT', 'low')
 TEMPERATURE = float(os.getenv('LLM_TEMPERATURE', 0.7))
 TIMEOUT_SEC = float(os.getenv('LLM_TIMEOUT_SEC', 60))
 MAX_RETRIES = int(os.getenv('LLM_MAX_RETRIES', 2))
@@ -142,12 +146,15 @@ async def _complete(messages: List[Dict[str, str]], *, model: Optional[str], tem
                     max_tokens: Optional[int], timeout: Optional[float], max_retries: Optional[int] = None,
                     **extra: Any):
     limit = timeout or TIMEOUT_SEC
+    chosen_model = model or MODEL
+    if REASONING_EFFORT and chosen_model.startswith('openai/gpt-oss'):
+        extra.setdefault('reasoning_effort', REASONING_EFFORT)
     try:
         client = _get_client(max_retries)
         # The SDK timeout is per network operation; wait_for bounds the whole call including retries.
         return await asyncio.wait_for(
             client.chat.completions.create(
-                model=model or MODEL,
+                model=chosen_model,
                 messages=messages,
                 temperature=TEMPERATURE if temperature is None else temperature,
                 max_tokens=max_tokens or MAX_TOKENS_CHAT,

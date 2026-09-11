@@ -119,7 +119,7 @@ Requiere que el admin active **«Permitir análisis con IA»** en la pestaña Re
 
 **Cómo funciona** (ver [Diagrama 4](#diagrama-4-análisis-del-repositorio-con-ia-en-el-chat)):
 - `UserSession` (Node) valida membresía, repositorio conectado y no suspendido, permiso de IA, un análisis a la vez por sesión y **un análisis por usuario por minuto**; construye un *snapshot* de ≈7 000 caracteres (+ ≈1 500 de tareas e hitos existentes) sin archivos `.env*`, llaves ni binarios, con patrones de secretos redactados.
-- Python (`repo_analysis_agent.py`) envuelve los datos en una etiqueta aleatoria `DATA-xxxxxxxx`, declara todo su contenido como **datos no confiables**, llama a Groq (`llama-3.1-8b-instant`) en modo JSON (temperatura 0.2, `max_tokens` 1500), un análisis simultáneo global, y valida la salida con Pydantic (fechas ≥ hoy, categorías permitidas, sin duplicar tareas existentes).
+- Python (`repo_analysis_agent.py`) envuelve los datos en una etiqueta aleatoria `DATA-xxxxxxxx`, declara todo su contenido como **datos no confiables**, llama a Groq (`openai/gpt-oss-20b`) en modo JSON (temperatura 0.2, `max_tokens` 1500), un análisis simultáneo global, y valida la salida con Pydantic (fechas ≥ hoy, categorías permitidas, sin duplicar tareas existentes).
 - Node **revalida** el plan (`repoPlan.sanitizePlan`), lo guarda como pendiente por sesión (máx. 5, expira a los 30 min, un solo uso) y envía la tarjeta. Al confirmar, `ProjectService.addPlanToGroup` inserta en **una transacción**: hitos → `Nodes` (en `x = 250·i`), tareas → `Tasks` con `list` = nombre del hito (≤25) o `GitHub`. Si el guardado falla, el plan vuelve a quedar pendiente.
 - Timeout de 90 s por petición a Python; si el enlace con Python se cae, las peticiones en vuelo fallan de inmediato con un código conocido.
 
@@ -324,7 +324,7 @@ flowchart LR
     subgraph NUBE["Internet"]
         GH["GitHub<br/>TaskMate App + API REST"]
         SMEE["smee.io<br/>canal de webhooks"]
-        GROQ["Groq<br/>llama-3.1-8b-instant"]
+        GROQ["Groq<br/>openai/gpt-oss-20b"]
     end
 
     FE -->|"REST con Bearer JWT"| API

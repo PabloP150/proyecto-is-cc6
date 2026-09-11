@@ -139,9 +139,14 @@ function PlanBody({ plan, content }) {
   return (
     <Box>
       {plan.summary && (
-        <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', mb: 1 }}>
-          {plan.summary}
-        </Typography>
+        <>
+          <Typography variant="overline" component="p" sx={{ color: 'text.secondary', lineHeight: 1.6 }}>
+            Sobre el repositorio
+          </Typography>
+          <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', mb: 1 }}>
+            {plan.summary}
+          </Typography>
+        </>
       )}
       {plan.milestones.map((milestone, index) => {
         const target = formatDay(text(milestone.target_date));

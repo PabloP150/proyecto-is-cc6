@@ -148,7 +148,7 @@ MIGRATION_DB_PASSWORD=<SA_PASSWORD del contenedor>
 LLM_WEBSOCKET_URL=ws://127.0.0.1:8001/ws
 MCP_SHARED_SECRET=<openssl rand -hex 32>
 GROQ_API_KEY=<tu llave de Groq>
-LLM_MODEL=llama-3.1-8b-instant
+LLM_MODEL=openai/gpt-oss-20b
 
 # --- GitHub App
 GITHUB_APP_ID=<App ID>
