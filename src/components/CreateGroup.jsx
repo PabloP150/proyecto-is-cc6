@@ -1,4 +1,5 @@
 import {
+    Alert,
     Box,
     Button,
     Container,
@@ -8,9 +9,10 @@ import {
     Typography,
 } from '@mui/material';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
-import { useState } from 'react';
+import { useContext, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { API_BASE } from '../config';
+import { api } from '../api/client';
+import { GroupContext } from './GroupContext';
 
 const theme = createTheme({
   palette: {
@@ -27,34 +29,37 @@ const theme = createTheme({
 
 function CreateGroup() {
   const [groupName, setGroupName] = useState('');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
   const navigate = useNavigate();
-  // userId local eliminado (se lee directamente de localStorage en el submit)
+  const { setSelectedGroupId, setSelectedGroupName, refreshGroups } = useContext(GroupContext);
 
   const handleCreateGroup = async (e) => {
     e.preventDefault();
-    const userId = localStorage.getItem('userId'); // Obtén el userId del localStorage
+    const userId = localStorage.getItem('userId');
     if (!userId) {
-      console.error('User ID is not available');
+      setError('No se encontró la sesión del usuario. Vuelve a iniciar sesión.');
       return;
     }
+    const name = groupName.trim();
+    if (!name) {
+      setError('El nombre del grupo no puede estar vacío.');
+      return;
+    }
+    setSaving(true);
+    setError('');
     try {
-      const response = await fetch(`${API_BASE}/api/groups/group`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ adminId: userId, name: groupName }),
-      });
-
-      if (response.ok) {
-        await response.json(); // consumir respuesta (no usada)
-        navigate('/recordatorios');
-      } else {
-        const errorData = await response.json();
-        console.error(errorData.error);
+      const data = await api.post('/api/groups/group', { adminId: userId, name });
+      if (data?.gid) {
+        setSelectedGroupId(data.gid);
+        setSelectedGroupName(name);
       }
-    } catch (error) {
-      console.error('Error en la solicitud:', error);
+      refreshGroups().catch(() => {});
+      navigate('/tasks');
+    } catch (err) {
+      setError(err.message || 'No se pudo crear el grupo.');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -87,10 +92,16 @@ function CreateGroup() {
                 value={groupName}
                 onChange={(e) => setGroupName(e.target.value)}
               />
+              {error && (
+                <Alert severity="error" sx={{ mt: 2 }}>
+                  {error}
+                </Alert>
+              )}
               <Button
                 type="submit"
                 fullWidth
                 variant="contained"
+                disabled={saving}
                 sx={{ mt: 3, mb: 2, backgroundColor: 'grey.600' }}
               >
                 Crear Grupo

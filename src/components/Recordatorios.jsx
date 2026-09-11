@@ -1,18 +1,22 @@
 import AddIcon from '@mui/icons-material/Add';
-import { API_BASE } from '../config';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import {
+  Alert,
   Box,
   Container,
   CssBaseline,
   IconButton,
+  Snackbar,
   Typography,
 } from '@mui/material';
 import { ThemeProvider } from '@mui/material/styles';
 import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { api, errorMessage } from '../api/client';
 import BarraLateral from './BarraLateral';
 import Dialogos from './Dialogos';
+import { TASKS_CHANGED_EVENT } from './github/githubUtils';
+import useTaskLinks from './github/useTaskLinks';
 import { GroupContext } from './GroupContext'; // Importa el contexto
 import ListaRecordatorios from './ListaRecordatorios';
 // Import new theme and UI components
@@ -31,6 +35,23 @@ const organizarTareasEnListas = (tareas) => {
   return Object.keys(listasTemp).map(nombre => ({ nombre, recordatorios: listasTemp[nombre] }));
 };
 
+// Duración de la animación de completar/eliminar antes de quitar la tarjeta de la lista.
+const COMPLETE_ANIMATION_MS = 3000;
+
+const sameTask = (r, tid) => String(r.tid || r.id) === String(tid);
+const mapTask = (listas, tid, fn) => listas.map(l => (
+  l.recordatorios.some(r => sameTask(r, tid))
+    ? { ...l, recordatorios: l.recordatorios.map(r => (sameTask(r, tid) ? fn(r) : r)) }
+    : l
+));
+const dropTask = (listas, tid) => listas.map(l => (
+  l.recordatorios.some(r => sameTask(r, tid))
+    ? { ...l, recordatorios: l.recordatorios.filter(r => !sameTask(r, tid)) }
+    : l
+));
+const withoutUiFlags = ({ __justCompleted, __justDeleted, ...task }) => task;
+const remainingAnimation = (startedAt) => Math.max(0, COMPLETE_ANIMATION_MS - (Date.now() - startedAt));
+
 export default function Recordatorios() {
   const [openRecordatorio, setOpenRecordatorio] = useState(false);
   const [openLista, setOpenLista] = useState(false);
@@ -48,94 +69,99 @@ export default function Recordatorios() {
   const [filtro, setFiltro] = useState('todos');
   const [recordatorioEditar, setRecordatorioEditar] = useState(null);
   const [openEditar, setOpenEditar] = useState(false); // Estado para el diálogo de edición
-  const { selectedGroupId, selectedGroupName, setSelectedGroupId, setSelectedGroupName } = useContext(GroupContext); // Usa el contexto para obtener el gid y el nombre
+  const { selectedGroupId, selectedGroupName } = useContext(GroupContext); // Usa el contexto para obtener el gid y el nombre
+  const [feedback, setFeedback] = useState({ open: false, message: '', severity: 'error' });
+  // One request per group for every task's branch/PR (not one per task).
+  const { getLink: getTaskLink, repoConnected, refresh: refreshTaskLinks } = useTaskLinks(selectedGroupId);
 
-  const cargarTareas = useCallback(async () => {
+  const notify = useCallback((message, severity = 'error') => setFeedback({ open: true, message, severity }), []);
+  const notifyError = useCallback((err, fallback) => {
+    if (err?.name === 'AbortError') return;
+    notify(errorMessage(err, fallback), 'error');
+  }, [notify]);
+  const handleCloseFeedback = useCallback((event, reason) => {
+    if (reason === 'clickaway') return;
+    setFeedback(f => ({ ...f, open: false }));
+  }, []);
+
+  const cargarTareas = useCallback(async (signal) => {
     if (!selectedGroupId) {
       setListas([]);
       return;
     }
     try {
-      const response = await fetch(`${API_BASE}/api/tasks?gid=${selectedGroupId}`);
-      if (response.ok) {
-        const data = await response.json();
-        const listasOrganizadas = organizarTareasEnListas(data.data);
-        // Persistencia de listas sin tareas: recuperamos listas guardadas localmente para este grupo
-        try {
-          const stored = localStorage.getItem('customLists');
-          if (stored) {
-            const parsed = JSON.parse(stored);
-            const groupLists = parsed[selectedGroupId] || [];
-            // Agregar las listas que no estén ya incluidas por las tareas existentes
-            const nombresExistentes = new Set(listasOrganizadas.map(l => l.nombre));
-            groupLists.forEach(nombre => {
-              if (!nombresExistentes.has(nombre)) {
-                listasOrganizadas.push({ nombre, recordatorios: [] });
-              }
-            });
-          }
-        } catch (e) {
-          console.error('Error leyendo customLists de localStorage', e);
+      const data = await api.get(`/api/tasks?gid=${selectedGroupId}`, { signal });
+      const listasOrganizadas = organizarTareasEnListas(data?.data || []);
+      // Persistencia de listas sin tareas: recuperamos listas guardadas localmente para este grupo
+      try {
+        const stored = localStorage.getItem('customLists');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          const groupLists = parsed[selectedGroupId] || [];
+          // Agregar las listas que no estén ya incluidas por las tareas existentes
+          const nombresExistentes = new Set(listasOrganizadas.map(l => l.nombre));
+          groupLists.forEach(nombre => {
+            if (!nombresExistentes.has(nombre)) {
+              listasOrganizadas.push({ nombre, recordatorios: [] });
+            }
+          });
         }
-        setListas(listasOrganizadas);
-      } else {
-        console.error('Error al cargar las tareas');
+      } catch (e) {
+        console.error('Error leyendo customLists de localStorage', e);
       }
-    } catch (error) {
-      console.error('Error en la solicitud:', error);
+      setListas(listasOrganizadas);
+    } catch (err) {
+      notifyError(err, 'Could not load tasks');
     }
-  }, [selectedGroupId]);
+  }, [selectedGroupId, notifyError]);
 
-  const cargarCompletados = useCallback(async () => {
+  const cargarCompletados = useCallback(async (signal) => {
     if (!selectedGroupId) { setCompletados([]); return; }
 
     try {
-      const response = await fetch(`${API_BASE}/api/completados/${selectedGroupId}`);
-      if (response.ok) {
-        const data = await response.json();
-        setCompletados(data.data);
-      } else {
-        console.error('Error al cargar las tareas completadas:', response.status, response.statusText);
-      }
-    } catch (error) {
-      console.error('Error en la solicitud:', error);
+      const data = await api.get(`/api/completados/${selectedGroupId}`, { signal });
+      setCompletados(data?.data || []);
+    } catch (err) {
+      notifyError(err, 'Could not load completed tasks');
     }
-  }, [selectedGroupId]);
+  }, [selectedGroupId, notifyError]);
 
-  const cargarEliminados = useCallback(async () => {
+  const cargarEliminados = useCallback(async (signal) => {
     if (!selectedGroupId) { setEliminados([]); return; }
 
     try {
-      const response = await fetch(`${API_BASE}/api/delete/${selectedGroupId}`);
-      if (response.ok) {
-        const data = await response.json();
-        setEliminados(data.data);
-      } else {
-        console.error('Error al cargar los eliminados:', response.status, response.statusText);
-      }
-    } catch (error) {
-      console.error('Error en la solicitud:', error);
+      const data = await api.get(`/api/delete/${selectedGroupId}`, { signal });
+      setEliminados(data?.data || []);
+    } catch (err) {
+      notifyError(err, 'Could not load deleted tasks');
     }
-  }, [selectedGroupId]);
+  }, [selectedGroupId, notifyError]);
 
-  // Restaurar grupo desde localStorage solo al montar
+  // Recargar tareas y completados cuando cambia el grupo (GroupContext ya restaura el grupo guardado)
   useEffect(() => {
-    const storedGroupId = localStorage.getItem('selectedGroupId');
-    const storedGroupName = localStorage.getItem('selectedGroupName');
-    if (storedGroupId) {
-      setSelectedGroupId(storedGroupId);
-      setSelectedGroupName(storedGroupName);
-    }
-  }, [setSelectedGroupId, setSelectedGroupName]);
-
-  // Recargar tareas y completados cuando cambia el grupo
-  useEffect(() => {
-    void Promise.all([cargarTareas(), cargarCompletados()]);
+    const controller = new AbortController();
+    cargarTareas(controller.signal);
+    cargarCompletados(controller.signal);
+    return () => controller.abort();
   }, [cargarTareas, cargarCompletados]);
+
+  useEffect(() => {
+    const onTasksChanged = (event) => {
+      const gid = event?.detail?.groupId;
+      if (gid && String(gid).toLowerCase() !== String(selectedGroupId || '').toLowerCase()) return;
+      cargarTareas();
+      refreshTaskLinks();
+    };
+    window.addEventListener(TASKS_CHANGED_EVENT, onTasksChanged);
+    return () => window.removeEventListener(TASKS_CHANGED_EVENT, onTasksChanged);
+  }, [selectedGroupId, cargarTareas, refreshTaskLinks]);
 
   // Cargar eliminados solo cuando el filtro sea 'deleted'
   useEffect(() => {
-    if (filtro === 'deleted') cargarEliminados();
+    if (filtro !== 'deleted') return undefined;
+    const controller = new AbortController();
+    cargarEliminados(controller.signal);
+    return () => controller.abort();
   }, [filtro, cargarEliminados]);
 
 
@@ -196,132 +222,89 @@ export default function Recordatorios() {
     };
 
     try {
-      const response = await fetch(`${API_BASE}/api/tasks`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(nuevaTarea),
+      const data = await api.post('/api/tasks', nuevaTarea);
+      const nueva = { ...nuevaTarea, tid: data?.data?.tid };
+
+      // Actualizar el estado local con la nueva tarea (creando la lista si no existe)
+      setListas(prevListas => {
+        const existe = prevListas.some(lista => lista.nombre === listaSeleccionada);
+        if (!existe) return [...prevListas, { nombre: listaSeleccionada, recordatorios: [nueva] }];
+        return prevListas.map(lista => (
+          lista.nombre === listaSeleccionada
+            ? { ...lista, recordatorios: [...lista.recordatorios, nueva] }
+            : lista
+        ));
       });
 
-      if (response.ok) {
-        const data = await response.json();
-
-        // Actualizar el estado local con la nueva tarea
-        setListas(prevListas => {
-          const nuevasListas = prevListas.map(lista => {
-            if (lista.nombre === listaSeleccionada) {
-              return {
-                ...lista,
-                recordatorios: [
-                  ...lista.recordatorios,
-                  {
-                    ...nuevaTarea,
-                    tid: data.data.tid // Asegúrate de que el ID se esté asignando correctamente
-                  }
-                ]
-              };
-            }
-            return lista;
-          });
-
-          // Si la lista seleccionada no existe, créala
-          if (!nuevasListas.some(lista => lista.nombre === listaSeleccionada)) {
-            nuevasListas.push({
-              nombre: listaSeleccionada,
-              recordatorios: [{
-                ...nuevaTarea,
-                tid: data.data.tid
-              }]
-            });
-          }
-
-          return nuevasListas;
-        });
-
-        setOpenRecordatorio(false);
-        setNombre('');
-        setDescripcion('');
-        setFecha('');
-        setHora('');
-      } else {
-        console.error('Error al agregar la tarea');
-      }
-    } catch (error) {
-      console.error('Error en la solicitud:', error);
+      setOpenRecordatorio(false);
+      setNombre('');
+      setDescripcion('');
+      setFecha('');
+      setHora('');
+    } catch (err) {
+      notifyError(err, 'Could not create the task');
     }
   };
 
-  const handleEliminar = useCallback(async (listaNombre, idx) => {
-  const listaActual = listas.find(lista => lista.nombre === listaNombre);
-    const task = listaActual?.recordatorios[idx];
-    if (!task) return;
+  // Atomic delete on the server (moves the task to the deleted list in one transaction).
+  // Resolves true when deleted; on failure the card is restored (or dropped if it no longer exists).
+  const handleEliminar = useCallback(async (listaNombre, task) => {
+    if (!task?.tid) return false;
+    const { tid } = task;
+    const original = withoutUiFlags(task);
+    const startedAt = Date.now();
 
-    // Marcar visualmente para animación (optimista)
-    setListas(prev => prev.map(l => l.nombre === listaNombre ? {
-      ...l,
-      recordatorios: l.recordatorios.map((r,i) => i===idx ? { ...r, __justDeleted: true } : r)
-    } : l));
+    setListas(prev => mapTask(prev, tid, r => ({ ...r, __justDeleted: true })));
+    try {
+      await api.post(`/api/tasks/${tid}/trash`);
+    } catch (err) {
+      if (err?.code === 'TASK_NOT_FOUND') {
+        setListas(prev => dropTask(prev, tid));
+        notify('This task no longer exists. The list was refreshed.', 'warning');
+        cargarTareas();
+      } else {
+        setListas(prev => mapTask(prev, tid, () => original));
+        notifyError(err, 'Could not delete the task');
+      }
+      return false;
+    }
+    setTimeout(() => setListas(prev => dropTask(prev, tid)), remainingAnimation(startedAt));
+    cargarEliminados();
+    refreshTaskLinks();
+    return true;
+  }, [cargarTareas, cargarEliminados, notify, notifyError, refreshTaskLinks]);
 
-    // POST a eliminados primero (antes del DELETE, por FK constraint DeleteTask→Tasks)
-    (async () => {
-      try {
-        await fetch(`${API_BASE}/api/delete`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(task),
-        });
-      } catch (e) { console.error('Add to deleted error', e); }
-      try {
-        await fetch(`${API_BASE}/api/tasks/${task.tid}`, { method: 'DELETE' });
-      } catch (e) { console.error('Delete task error', e); }
-    })();
+  // Atomic completion on the server ('completed' and 'already_completed' are both success).
+  // `restore` maps the card back when the request fails for any reason other than a missing task.
+  const completarEnServidor = useCallback(async (tid, restore) => {
+    const startedAt = Date.now();
+    try {
+      await api.post(`/api/tasks/${tid}/complete`);
+    } catch (err) {
+      if (err?.code === 'TASK_NOT_FOUND') {
+        setListas(prev => dropTask(prev, tid));
+        notify('This task no longer exists. The list was refreshed.', 'warning');
+        cargarTareas();
+      } else {
+        setListas(prev => mapTask(prev, tid, restore));
+        notifyError(err, 'Could not complete the task');
+      }
+      return false;
+    }
+    setTimeout(() => setListas(prev => dropTask(prev, tid)), remainingAnimation(startedAt));
+    cargarCompletados();
+    refreshTaskLinks();
+    return true;
+  }, [cargarTareas, cargarCompletados, notify, notifyError, refreshTaskLinks]);
 
-    // Remover tras animación (3s similar a completados)
-    setTimeout(() => {
-      setListas(prev => prev.map(l => l.nombre === listaNombre ? {
-        ...l,
-        recordatorios: l.recordatorios.filter((_,i) => i!==idx)
-      } : l));
-    }, 3000);
-  }, [listas]);
+  const handleCompletar = useCallback(async (listaNombre, task) => {
+    if (!task?.tid) return false;
+    const original = withoutUiFlags(task);
+    setListas(prev => mapTask(prev, task.tid, r => ({ ...r, percentage: 100, __justCompleted: true })));
+    return completarEnServidor(task.tid, () => original);
+  }, [completarEnServidor]);
 
-  const handleCompletar = useCallback(async (listaNombre, idx) => {
-  const listaActual = listas.find(lista => lista.nombre === listaNombre);
-    const task = listaActual?.recordatorios[idx];
-    if (!task) return;
-
-    // Marcar porcentaje 100 y bandera de completado para animación
-    setListas(prev => prev.map(l => l.nombre === listaNombre ? {
-      ...l,
-      recordatorios: l.recordatorios.map((r,i) => i===idx ? { ...r, percentage: 100, __justCompleted: true } : r)
-    } : l));
-
-    // Backend paralelo
-    (async () => {
-      try { await fetch(`${API_BASE}/api/tasks/${task.tid}`, { method: 'DELETE' }); } catch(e){ console.error('Delete task error', e); }
-      try {
-        await fetch(`${API_BASE}/api/completados`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...task, percentage: 100 }),
-        });
-        setCompletados(prev => [...prev, { ...task, percentage: 100 }]);
-      } catch(e){ console.error('Add to completed error', e); }
-      cargarCompletados();
-    })();
-
-    // Remover tras animación (3s)
-    setTimeout(() => {
-      setListas(prev => prev.map(l => l.nombre === listaNombre ? {
-        ...l,
-        recordatorios: l.recordatorios.filter((_,i) => i!==idx)
-      } : l));
-    }, 3000);
-  }, [listas, cargarCompletados]);
-
-  const handleEditar = useCallback((nombre, idx) => {
-    const recordatorio = listas.find(lista => lista.nombre === nombre)?.recordatorios[idx];
+  const handleEditar = useCallback((listaNombre, recordatorio) => {
     if (recordatorio) {
       // Normalizar datetime a 'YYYY-MM-DDTHH:mm' en hora local para edición estable
       const normalizeLocal = (dt) => {
@@ -335,10 +318,10 @@ export default function Recordatorios() {
         const mm = String(d.getMinutes()).padStart(2,'0');
         return `${y}-${m}-${da}T${hh}:${mm}`;
       };
-      setRecordatorioEditar({ ...recordatorio, datetime: normalizeLocal(recordatorio.datetime) });
+      setRecordatorioEditar({ ...withoutUiFlags(recordatorio), datetime: normalizeLocal(recordatorio.datetime) });
       setOpenEditar(true);
     }
-  }, [listas]);
+  }, []);
 
   const listasFiltradas = useMemo(() => {
     switch (filtro) {
@@ -394,170 +377,69 @@ export default function Recordatorios() {
   const [deleteListError, setDeleteListError] = useState(false);
 
   const handleEliminarLista = useCallback(async (nombreLista) => {
-    const gid = localStorage.getItem('selectedGroupId');
-    if (!gid) {
-      console.error('No hay grupo seleccionado');
-      return;
-    }
+    const gid = selectedGroupId;
+    if (!gid) return;
     try {
-      const response = await fetch(`${API_BASE}/api/tasks/list/${gid}/${encodeURIComponent(nombreLista)}`, {
-        method: 'DELETE',
-      });
-      if (response.ok) {
-        setListas(prevListas => prevListas.filter(lista => lista.nombre !== nombreLista));
-        // Actualizar localStorage quitando la lista
-        try {
-          const stored = localStorage.getItem('customLists');
-          if (stored) {
-            const parsed = JSON.parse(stored);
-            if (parsed[gid]) {
-              parsed[gid] = parsed[gid].filter(n => n !== nombreLista);
-              localStorage.setItem('customLists', JSON.stringify(parsed));
-            }
+      await api.del(`/api/tasks/list/${gid}/${encodeURIComponent(nombreLista)}`);
+      setListas(prevListas => prevListas.filter(lista => lista.nombre !== nombreLista));
+      // Actualizar localStorage quitando la lista
+      try {
+        const stored = localStorage.getItem('customLists');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed[gid]) {
+            parsed[gid] = parsed[gid].filter(n => n !== nombreLista);
+            localStorage.setItem('customLists', JSON.stringify(parsed));
           }
-        } catch (e) {
-          console.error('Error actualizando customLists tras eliminar lista', e);
         }
-        cargarTareas();
-        setDeleteListError(false);
-        setDeleteListSuccess(true);
-        setTimeout(() => setDeleteListSuccess(false), 3000);
-      } else {
-        console.error('Error al eliminar la lista');
-        setDeleteListSuccess(false);
-        setDeleteListError(true);
-        setTimeout(() => setDeleteListError(false), 4000);
+      } catch {
+        // customLists corrupto: se ignora, la lista ya se quitó del estado
       }
-    } catch (error) {
-      console.error('Error en la solicitud:', error);
+      cargarTareas();
+      setDeleteListError(false);
+      setDeleteListSuccess(true);
+      setTimeout(() => setDeleteListSuccess(false), 3000);
+    } catch (err) {
+      notifyError(err, 'Could not delete the list');
       setDeleteListSuccess(false);
       setDeleteListError(true);
       setTimeout(() => setDeleteListError(false), 4000);
     }
-  }, [cargarTareas]);
+  }, [cargarTareas, selectedGroupId, notifyError]);
 
   const handleSubmitEditar = async () => {
-  if (!recordatorioEditar?.tid) {
-        console.error('El TID es undefined. Asegúrate de que el recordatorio se haya seleccionado correctamente.');
-        return; 
-    }
-  if (!selectedGroupId) return;
+    if (!recordatorioEditar?.tid || !selectedGroupId) return;
+    const editado = withoutUiFlags(recordatorioEditar);
+    const { tid } = editado;
+
     try {
-      const response = await fetch(`${API_BASE}/api/tasks/${recordatorioEditar.tid}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          gid: selectedGroupId,
-          name: recordatorioEditar.name,
-          description: recordatorioEditar.description,
-          list: recordatorioEditar.list,
-          datetime: recordatorioEditar.datetime,
-          percentage: recordatorioEditar.percentage,
-        }),
+      await api.put(`/api/tasks/${tid}`, {
+        gid: selectedGroupId,
+        name: editado.name,
+        description: editado.description,
+        list: editado.list,
+        datetime: editado.datetime,
+        percentage: editado.percentage,
       });
-
-      if (response.ok) {
-        // El PUT solo devuelve rowCount, no la tarea; usamos el estado editado como fuente confiable
-        const updatedRecordatorio = { ...recordatorioEditar };
-        const goingToCompleted = Number(updatedRecordatorio.percentage) >= 100;
-        const unifiedId = updatedRecordatorio.tid;
-
-        // Actualizar estado en listas (si no se completa aún quedará en su lista actual)
-        setListas(prevListas => prevListas.map(lista => {
-          if (lista.nombre === updatedRecordatorio.list) {
-            return {
-              ...lista,
-              recordatorios: lista.recordatorios.map(r => {
-                const rId = r.tid || r.id;
-                return String(rId) === String(unifiedId) ? { ...updatedRecordatorio } : r;
-              })
-            };
-          }
-          return lista;
-        }));
-
-  // Si llega a 100%, mostrar animación check rápida y luego mover a completados
-        if (goingToCompleted) {
-          // Añadir flag temporal local para animación sin recargar todo
-          setListas(prevListas => prevListas.map(lista => {
-            if (lista.nombre === updatedRecordatorio.list) {
-              return {
-                ...lista,
-                recordatorios: lista.recordatorios.map(r => {
-                  const rId = r.tid || r.id;
-                  return String(rId) === String(unifiedId) ? { ...r, __justCompleted: true } : r;
-                })
-              };
-            }
-            return lista;
-          }));
-
-          // Enviar a endpoint de completados (no elimina de Tasks, así que haremos delete explícito luego)
-          try {
-            const completarResponse = await fetch(`${API_BASE}/api/completados`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                gid: selectedGroupId,
-                tid: updatedRecordatorio.tid,
-                name: updatedRecordatorio.name,
-                description: updatedRecordatorio.description,
-                list: updatedRecordatorio.list,
-                datetime: updatedRecordatorio.datetime,
-                percentage: updatedRecordatorio.percentage,
-              }),
-            });
-            if (completarResponse.ok) {
-              const data = await completarResponse.json();
-              const recordatorioCompletado = data.recordatorio || data.data || updatedRecordatorio;
-              // Evitar duplicados por id/tid
-              setCompletados(prev => {
-                const exists = prev.some(r => (r.tid || r.id) === unifiedId);
-                return exists ? prev : [...prev, recordatorioCompletado];
-              });
-            }
-          } catch (e) {
-            console.error('Error enviando a completados tras edición', e);
-          }
-
-          // Eliminar de Tasks explícitamente y luego quitar de la UI con delay para animación
-          try {
-            await fetch(`${API_BASE}/api/tasks/${updatedRecordatorio.tid}`, {
-              method: 'DELETE'
-            });
-          } catch (e) {
-            console.error('Error eliminando task original tras completar', e);
-          }
-
-          setTimeout(() => {
-            setListas(prevListas => prevListas.map(lista => {
-              if (lista.nombre === updatedRecordatorio.list) {
-                return {
-                  ...lista,
-                  recordatorios: lista.recordatorios.filter(r => {
-                    const rId = r.tid || r.id;
-                    return String(rId) !== String(unifiedId);
-                  })
-                };
-              }
-              return lista;
-            }));
-            cargarCompletados();
-          }, 3000); // tiempo para animación (ajustado de 1.6s a 3s)
-        } else {
-          cargarTareas();
-        }
-
-        handleCloseEditar(); // cerramos inmediatamente; animación ocurre en la lista (si visible)
-        setOpenEditar(false);
-      } else {
-        console.error('Error al actualizar el recordatorio');
-      }
-    } catch (error) {
-      console.error('Error en la solicitud:', error);
+    } catch (err) {
+      // El diálogo queda abierto para que el usuario pueda reintentar sin perder la edición.
+      notifyError(err, 'Could not update the task');
+      return;
     }
+    handleCloseEditar();
+
+    if (Number(editado.percentage) < 100) {
+      setListas(prev => mapTask(prev, tid, () => editado));
+      notify('Task updated', 'success');
+      cargarTareas();
+      return;
+    }
+
+    // Llegó a 100%: animación y completado atómico. El PUT ya guardó la edición, así que si
+    // completar falla se conserva lo editado y solo se quita la animación.
+    setListas(prev => mapTask(prev, tid, () => ({ ...editado, __justCompleted: true })));
+    const ok = await completarEnServidor(tid, r => ({ ...r, __justCompleted: false }));
+    if (ok) notify('Task completed', 'success');
   };
 
   const handleCloseEditar = () => {
@@ -587,22 +469,22 @@ export default function Recordatorios() {
   const handleVaciarEliminados = useCallback(async () => {
     if (!selectedGroupId) return;
     try {
-      await fetch(`${API_BASE}/api/delete/${selectedGroupId}`, { method: 'DELETE' });
+      await api.del(`/api/delete/${selectedGroupId}`);
       setEliminados([]);
-    } catch (error) {
-      console.error('Error al vaciar los eliminados:', error);
+    } catch (err) {
+      notifyError(err, 'Could not empty the deleted tasks');
     }
-  }, [selectedGroupId]);
+  }, [selectedGroupId, notifyError]);
 
   const handleVaciarCompletados = useCallback(async () => {
     if (!selectedGroupId) return;
     try {
-      await fetch(`${API_BASE}/api/completados/${selectedGroupId}`, { method: 'DELETE' });
+      await api.del(`/api/completados/${selectedGroupId}`);
       setCompletados([]);
-    } catch (error) {
-      console.error('Error al vaciar los completados:', error);
+    } catch (err) {
+      notifyError(err, 'Could not empty the completed tasks');
     }
-  }, [selectedGroupId]);
+  }, [selectedGroupId, notifyError]);
 
   return (
     <ThemeProvider theme={theme}>
@@ -758,6 +640,9 @@ export default function Recordatorios() {
               sx={{ color: 'white' }}
               handleVaciarCompletados={handleVaciarCompletados}
               handleVaciarEliminados={handleVaciarEliminados}
+              getTaskLink={getTaskLink}
+              repoConnected={repoConnected}
+              onTaskLinkChange={refreshTaskLinks}
             />}
             {(deleteListSuccess || deleteListError) && (
               <Box
@@ -827,6 +712,16 @@ export default function Recordatorios() {
             handleCloseEditar={handleCloseEditar}
           />
         </Card>
+        <Snackbar
+          open={feedback.open}
+          autoHideDuration={4000}
+          onClose={handleCloseFeedback}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        >
+          <Alert onClose={handleCloseFeedback} severity={feedback.severity} sx={{ width: '100%' }}>
+            {feedback.message}
+          </Alert>
+        </Snackbar>
       </Container>
     </ThemeProvider>
   );

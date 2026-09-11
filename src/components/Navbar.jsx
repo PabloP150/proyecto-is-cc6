@@ -18,6 +18,7 @@ const NAV_ITEMS = [
   { path: '/block-diagram', label: 'Milestones' },
   { path: '/groups', label: 'Groups' },
   { path: '/analytics', label: 'Analytics' },
+  { path: '/github', label: 'GitHub' },
   { path: '/chat', label: 'AI Bot' },
 ];
 

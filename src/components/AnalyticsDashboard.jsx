@@ -2,7 +2,8 @@ import React, { useState, useEffect, useContext, useRef, useCallback, useMemo } 
 import { GroupContext } from './GroupContext';
 import useWebSocket from '../hooks/useWebSocket';
 import './AnalyticsDashboard.css';
-import { API_BASE, WS_BASE } from '../config';
+import { WS_BASE } from '../config';
+import { api, errorMessage, getAuthToken } from '../api/client';
 
 const AVAILABLE_ROLES = [
     'Frontend Developer',
@@ -28,12 +29,9 @@ const AnalyticsDashboard = () => {
     // State for analytics recommendations
     const [analyticsResponse, setAnalyticsResponse] = useState(null);
     const [analyticsLoading, setAnalyticsLoading] = useState(false);
-    
-    // Get user token from localStorage
-    const [token] = useState(() => {
-        const user = JSON.parse(localStorage.getItem('user') || '{}');
-        return localStorage.getItem('token') || user.token;
-    });
+    const [loadError, setLoadError] = useState('');
+
+    const [token] = useState(getAuthToken);
 
     // WebSocket connection for analytics
     const {
@@ -118,7 +116,7 @@ const AnalyticsDashboard = () => {
     };
     
     // Fetch analytics data from the real API
-    const fetchAnalyticsData = async (signal) => {
+    const fetchAnalyticsData = useCallback(async (signal) => {
         if (!selectedGroupId) {
             setLoading(false);
             return;
@@ -127,14 +125,8 @@ const AnalyticsDashboard = () => {
         setLoading(true);
 
         try {
-            const res = await fetch(`${API_BASE}/api/analytics/dashboard/${selectedGroupId}`, {
-                headers: { Authorization: `Bearer ${token}` },
-                signal
-            });
-
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const json = await res.json();
-            if (!json.success) throw new Error(json.error || 'API error');
+            const json = await api.get(`/api/analytics/dashboard/${selectedGroupId}`, { signal });
+            if (!json?.success) throw new Error(json?.error || 'API error');
 
             const { team_analytics, workload_distribution, expertise_rankings } = json.data;
 
@@ -176,10 +168,11 @@ const AnalyticsDashboard = () => {
                 workload_distribution: workload,
                 expertise_rankings: expertiseFlat
             });
+            setLoadError('');
 
         } catch (error) {
             if (error.name === 'AbortError') return;
-            console.error('Error fetching analytics:', error);
+            setLoadError(errorMessage(error, 'Could not load analytics'));
             setAnalytics({
                 team_analytics: { total_members: 0, active_tasks: 0, completion_rate: 0 },
                 workload_distribution: [],
@@ -188,19 +181,19 @@ const AnalyticsDashboard = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [selectedGroupId]);
 
     useEffect(() => {
         if (!selectedGroupId) return;
         const controller = new AbortController();
         fetchAnalyticsData(controller.signal);
         return () => controller.abort();
-    }, [selectedGroupId]);
+    }, [selectedGroupId, fetchAnalyticsData]);
 
     // Refresh analytics data
     const refreshAnalytics = useCallback(() => {
-        fetchAnalyticsData(new AbortController().signal);
-    }, [selectedGroupId]);
+        fetchAnalyticsData();
+    }, [fetchAnalyticsData]);
 
     const workloadDistribution = useMemo(
         () => analytics?.workload_distribution || [],
@@ -279,6 +272,19 @@ const AnalyticsDashboard = () => {
                     </button>
                 </div>
             </div>
+
+            {loadError && (
+                <div role="alert" style={{
+                    margin: '0 0 16px',
+                    padding: '10px 14px',
+                    borderRadius: '10px',
+                    background: 'rgba(239, 68, 68, 0.12)',
+                    border: '1px solid rgba(239, 68, 68, 0.4)',
+                    color: '#fca5a5'
+                }}>
+                    Could not load analytics data: {loadError}
+                </div>
+            )}
 
             <div className="metrics-grid">
                 <MetricCard

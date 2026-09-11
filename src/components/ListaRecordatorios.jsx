@@ -6,6 +6,7 @@ import FilterListIcon from '@mui/icons-material/FilterList';
 import { Alert, Box, Divider, IconButton, LinearProgress, List, ListItem, ListItemText, Menu, MenuItem, Snackbar, Typography } from '@mui/material';
 import Tooltip from '@mui/material/Tooltip';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import TaskGitHubActions from './github/TaskGitHubActions';
 import SeleccionarPersona from './SeleccionarPersona';
 import Button from './ui/Button';
 
@@ -82,24 +83,20 @@ const ordenarRecordatorios = (recordatorios, orden) => {
   }
 };
 
-const ListaRecordatorios = memo(function ListaRecordatorios({ listas, handleEliminar, handleCompletar, handleEditar, filtro, handleEliminarLista, orden, setOrden, handleVaciarCompletados, handleVaciarEliminados }) {
+const ListaRecordatorios = memo(function ListaRecordatorios({ listas, handleEliminar, handleCompletar, handleEditar, filtro, handleEliminarLista, orden, setOrden, handleVaciarCompletados, handleVaciarEliminados, getTaskLink, repoConnected = false, onTaskLinkChange }) {
   const fadeTimerRef = useRef(null);
   // Snackbar state
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
 
-  // Wrapper handlers to show snackbar feedback
-  const handleCompletarConFeedback = useCallback((...args) => {
-    handleCompletar(...args);
+  // Handlers resolve false when the server rejected the change (the parent already showed the error).
+  const handleCompletarConFeedback = useCallback(async (...args) => {
+    if (await handleCompletar(...args) === false) return;
     setSnackbar({ open: true, message: 'Task completed', severity: 'success' });
   }, [handleCompletar]);
-  const handleEliminarConFeedback = useCallback((...args) => {
-    handleEliminar(...args);
+  const handleEliminarConFeedback = useCallback(async (...args) => {
+    if (await handleEliminar(...args) === false) return;
     setSnackbar({ open: true, message: 'Task deleted', severity: 'info' });
   }, [handleEliminar]);
-  const handleEditarConFeedback = useCallback((...args) => {
-    handleEditar(...args);
-    setSnackbar({ open: true, message: 'Task updated', severity: 'success' });
-  }, [handleEditar]);
   const handleCloseSnackbar = useCallback((event, reason) => {
     if (reason === 'clickaway') return;
     setSnackbar(s => ({ ...s, open: false }));
@@ -478,7 +475,7 @@ const ListaRecordatorios = memo(function ListaRecordatorios({ listas, handleElim
                         }}
                       />
                        {filtro === 'deleted' || filtro === 'completed' ? null : (
-                         <Box sx={{ display: 'flex', flexDirection: 'row', gap: 1, mt: 2 }}>
+                         <Box sx={{ display: 'flex', flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 1, mt: 2 }}>
                            <Tooltip title="Assign user" arrow>
                              <span>
                                <SeleccionarPersona tid={recordatorio.tid} />
@@ -489,7 +486,7 @@ const ListaRecordatorios = memo(function ListaRecordatorios({ listas, handleElim
                                edge="end" 
                                aria-label="edit" 
                                size="small" 
-                               onClick={(e) => { e.stopPropagation(); handleEditarConFeedback(lista.nombre, idx); }} 
+                               onClick={(e) => { e.stopPropagation(); handleEditar(lista.nombre, recordatorio); }} 
                                sx={{ 
                                  color: 'white',
                                  background: 'rgba(59, 130, 246, 0.1)',
@@ -511,7 +508,7 @@ const ListaRecordatorios = memo(function ListaRecordatorios({ listas, handleElim
                                edge="end" 
                                aria-label="complete" 
                                size="small" 
-                               onClick={(e) => { e.stopPropagation(); handleCompletarConFeedback(lista.nombre, idx); }} 
+                               onClick={(e) => { e.stopPropagation(); handleCompletarConFeedback(lista.nombre, recordatorio); }} 
                                sx={{ 
                                  color: 'white',
                                  background: 'rgba(16, 185, 129, 0.1)',
@@ -533,7 +530,7 @@ const ListaRecordatorios = memo(function ListaRecordatorios({ listas, handleElim
                                edge="end" 
                                aria-label="delete" 
                                size="small" 
-                               onClick={(e) => { e.stopPropagation(); handleEliminarConFeedback(lista.nombre, idx); }} 
+                               onClick={(e) => { e.stopPropagation(); handleEliminarConFeedback(lista.nombre, recordatorio); }} 
                                sx={{ 
                                  color: 'white',
                                  background: 'rgba(239, 68, 68, 0.1)',
@@ -550,6 +547,14 @@ const ListaRecordatorios = memo(function ListaRecordatorios({ listas, handleElim
                                <DeleteIcon fontSize="small" />
                              </IconButton>
                            </Tooltip>
+                           {recordatorio.tid && (
+                             <TaskGitHubActions
+                               tid={recordatorio.tid}
+                               link={getTaskLink ? getTaskLink(recordatorio.tid) : null}
+                               repoConnected={repoConnected}
+                               onChange={onTaskLinkChange}
+                             />
+                           )}
                          </Box>
                        )}
                     </Box>

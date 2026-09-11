@@ -1,10 +1,10 @@
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import { API_BASE } from '../config';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import PersonIcon from '@mui/icons-material/Person';
-import { Box, Container, CssBaseline, Dialog, DialogActions, DialogContent, DialogTitle, List, ListItem, styled, TextField, Typography } from '@mui/material';
+import { Alert, Box, Container, CssBaseline, Dialog, DialogActions, DialogContent, DialogTitle, List, ListItem, Snackbar, styled, TextField, Typography } from '@mui/material';
 import { ThemeProvider } from '@mui/material/styles';
 import { useCallback, useContext, useEffect, useState } from 'react';
+import { api, errorMessage } from '../api/client';
 import theme from '../theme/theme';
 import AssignRolesDialog from './AssignRolesDialog';
 import { GroupContext } from './GroupContext';
@@ -41,7 +41,6 @@ const UseButton = styled(Button)(({ theme, selected }) => ({
 
 function GroupsView() {
   const [selectedAssignUser, setSelectedAssignUser] = useState(null);
-  const [groups, setGroups] = useState([]);
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [members, setMembers] = useState([]);
   const [openCreateGroup, setOpenCreateGroup] = useState(false);
@@ -57,7 +56,22 @@ function GroupsView() {
   const [deleteError, setDeleteError] = useState(false);
   // Controla si mostramos los detalles (miembros/roles) dentro de esta vista. Persistimos en localStorage.
   const [showDetails, setShowDetails] = useState(() => localStorage.getItem('showGroupDetails') === '1');
-  const { selectedGroupId, setSelectedGroupId, setSelectedGroupName } = useContext(GroupContext);
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+  const {
+    selectedGroupId,
+    setSelectedGroupId,
+    setSelectedGroupName,
+    groups,
+    setGroups,
+    refreshGroups,
+  } = useContext(GroupContext);
+
+  const notify = useCallback((message, severity = 'success') => setSnackbar({ open: true, message, severity }), []);
+  const notifyError = useCallback((err, fallback) => notify(errorMessage(err, fallback), 'error'), [notify]);
+  const handleCloseSnackbar = useCallback((event, reason) => {
+    if (reason === 'clickaway') return;
+    setSnackbar(s => ({ ...s, open: false }));
+  }, []);
 
   // Solo cargamos roles cuando el grupo está realmente "en uso" (selectedGroupId coincide)
   const groupId = (selectedGroup && selectedGroupId === selectedGroup.gid && showDetails) ? selectedGroup.gid : null;
@@ -85,52 +99,45 @@ function GroupsView() {
     }
   }, [groupId, members, showDetails, userRolesMap, fetchUserRoles]);
 
+  const loadMembers = useCallback(async (gid) => {
+    try {
+      const data = await api.get(`/api/groups/${gid}/members`);
+      setMembers(data?.members || []);
+    } catch (err) {
+      notifyError(err, 'Could not load group members');
+    }
+  }, [notifyError]);
+
   const cargarGrupos = useCallback(async () => {
-    const userId = localStorage.getItem('userId');
-    if (!userId) {
-      console.error('User ID is not available');
+    let list;
+    try {
+      list = await refreshGroups();
+    } catch (err) {
+      notifyError(err, 'Could not load your groups');
       return;
     }
-    try {
-      const response = await fetch(`${API_BASE}/api/groups/user-groups?uid=${userId}`);
-      if (response.ok) {
-        const data = await response.json();
-        setGroups(data.groups);
-        const storedGroupId = localStorage.getItem('selectedGroupId');
-        const storedShow = localStorage.getItem('showGroupDetails') === '1';
-        if (storedGroupId) {
-          const groupToSelect = data.groups.find(g => g.gid === storedGroupId);
-          if (groupToSelect) {
-            setSelectedGroupId(groupToSelect.gid);
-            setSelectedGroupName(groupToSelect.name);
-            setSelectedGroup(groupToSelect);
-            if (storedShow) {
-              setShowDetails(true);
-              // Cargar miembros inmediatamente
-              fetch(`${API_BASE}/api/groups/${groupToSelect.gid}/members`)
-                .then(r => r.json())
-                .then(d => setMembers(d.members))
-                .catch(err => console.error('Error loading members:', err));
-            }
-          } else {
-            // El grupo guardado ya no existe para este usuario (fue eliminado o lo abandonó)
-            localStorage.removeItem('selectedGroupId');
-            localStorage.removeItem('selectedGroupName');
-            localStorage.removeItem('showGroupDetails');
-            setSelectedGroupId(null);
-            setSelectedGroupName('');
-            setSelectedGroup(null);
-            setShowDetails(false);
-            setMembers([]);
-          }
-        }
-      } else {
-        console.error('Error al cargar los grupos');
+    const storedGroupId = localStorage.getItem('selectedGroupId');
+    const storedShow = localStorage.getItem('showGroupDetails') === '1';
+    if (!storedGroupId) return;
+    const groupToSelect = list.find(g => g.gid === storedGroupId);
+    if (groupToSelect) {
+      setSelectedGroupId(groupToSelect.gid);
+      setSelectedGroupName(groupToSelect.name);
+      setSelectedGroup(groupToSelect);
+      if (storedShow) {
+        setShowDetails(true);
+        loadMembers(groupToSelect.gid);
       }
-    } catch (error) {
-      console.error('Error en la solicitud:', error);
+    } else {
+      // El grupo guardado ya no existe para este usuario (fue eliminado o lo abandonó)
+      localStorage.removeItem('showGroupDetails');
+      setSelectedGroupId(null);
+      setSelectedGroupName('');
+      setSelectedGroup(null);
+      setShowDetails(false);
+      setMembers([]);
     }
-  }, [setGroups, setSelectedGroupId, setSelectedGroupName, setSelectedGroup]);
+  }, [refreshGroups, notifyError, loadMembers, setSelectedGroupId, setSelectedGroupName]);
 
   useEffect(() => {
     cargarGrupos();
@@ -159,75 +166,62 @@ function GroupsView() {
   const handleCreateGroup = async () => {
     const userId = localStorage.getItem('userId');
     if (!userId) {
-      console.error('User ID is not available');
+      notify('Your session is missing. Please log in again.', 'error');
+      return;
+    }
+    const name = newGroupName.trim();
+    if (!name) {
+      notify('Group name is required', 'error');
       return;
     }
     try {
-      const response = await fetch(`${API_BASE}/api/groups/group`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ adminId: userId, name: newGroupName }),
-      });
-
-      if (response.ok) {
-        await response.json(); // consumir respuesta sin almacenar
-        setOpenCreateGroup(false);
-        cargarGrupos();
-      } else {
-        const errorData = await response.json();
-        console.error(errorData.error);
-      }
-    } catch (error) {
-      console.error('Error en la solicitud:', error);
+      await api.post('/api/groups/group', { adminId: userId, name });
+      setOpenCreateGroup(false);
+      setNewGroupName('');
+      notify('Group created');
+      cargarGrupos();
+    } catch (err) {
+      notifyError(err, 'Could not create the group');
     }
-    setNewGroupName('');
+  };
+
+  // Resolves a username to its uid; returns null (after notifying) when it cannot.
+  const lookupUid = async (username) => {
+    try {
+      const data = await api.get(`/api/users/getuid?username=${encodeURIComponent(username.trim())}`);
+      if (data?.uid) return data.uid;
+      notify(`User "${username}" not found`, 'error');
+    } catch (err) {
+      notifyError(err, `User "${username}" not found`);
+    }
+    return null;
   };
 
   const handleAddUserToGroup = async () => {
     if (!selectedGroup) {
-      console.error('No group selected');
+      notify('Select a group first', 'error');
       return;
     }
+    if (!newUsername.trim()) {
+      notify('Username is required', 'error');
+      return;
+    }
+    const uid = await lookupUid(newUsername);
+    if (!uid) return;
     try {
-      const userResponse = await fetch(`${API_BASE}/api/users/getuid?username=${newUsername}`);
-      if (!userResponse.ok) {
-        const errorData = await userResponse.json();
-        console.error(errorData.error);
-        return;
-      }
-      const userData = await userResponse.json();
-      const uid = userData.uid;
-
-      if (!uid) {
-        console.error('UID is null or undefined');
-        return;
-      }
-
-      const response = await fetch(`${API_BASE}/api/groups/join`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ uid, gid: selectedGroup.gid }),
-      });
-
-      if (response.ok) {
-        setMembers(prev => [...prev, { uid, username: newUsername }]);
-        setOpenAddUser(false);
-        setNewUsername('');
-      } else {
-        const errorData = await response.json();
-        console.error(errorData.error);
-      }
-    } catch (error) {
-      console.error('Error en la solicitud:', error);
+      await api.post('/api/groups/join', { uid, gid: selectedGroup.gid });
+      setMembers(prev => [...prev, { uid, username: newUsername.trim() }]);
+      setOpenAddUser(false);
+      setNewUsername('');
+      notify('User added to the group');
+    } catch (err) {
+      notifyError(err, 'Could not add the user');
     }
   };
 
   const handleUseGroup = (group) => {
-    // Mostrar datos optimistas inmediatamente
+    // Mostrar datos optimistas inmediatamente (localStorage se escribe aquí para que
+    // cargarGrupos lo lea sin esperar la sincronización de GroupContext)
     setSelectedGroupId(group.gid);
     setSelectedGroupName(group.name);
     setSelectedGroup(group);
@@ -241,91 +235,61 @@ function GroupsView() {
 
   const handleDeleteUser = async () => {
     const userId = localStorage.getItem('userId');
-    if (!userId) {
-      console.error('User ID is not available');
+    if (!userId || !selectedGroup) {
+      notify('Select a group first', 'error');
+      return;
+    }
+    if (!usernameToDelete.trim()) {
+      notify('Username is required', 'error');
+      return;
+    }
+
+    const uid = await lookupUid(usernameToDelete);
+    if (!uid) return;
+
+    // Si el admin intenta eliminarse a sí mismo, usar leaveGroup (con transferencia de admin)
+    if (uid === userId) {
+      setOpenDeleteUser(false);
+      setUsernameToDelete('');
+      await handleLeaveGroup();
       return;
     }
 
     try {
-
-      const userResponse = await fetch(`${API_BASE}/api/users/getuid?username=${usernameToDelete}`);
-      if (!userResponse.ok) {
-        const errorData = await userResponse.json();
-        console.error(errorData.error);
-        return;
-      }
-
-      const userData = await userResponse.json();
-      const uid = userData.uid;
-
-      // Si el admin intenta eliminarse a sí mismo, usar leaveGroup (con transferencia de admin)
-      if (uid === userId) {
-        setOpenDeleteUser(false);
-        setUsernameToDelete('');
-        await handleLeaveGroup();
-        return;
-      }
-
-      const response = await fetch(`${API_BASE}/api/groups/remove-member`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ uid, gid: selectedGroup.gid }),
-      });
-
-      if (response.ok) {
-        setMembers(prev => prev.filter(m => m.uid !== uid));
-      } else {
-        const errorData = await response.json();
-        console.error('Error deleting user:', errorData.error);
-      }
-    } catch (error) {
-      console.error('Error in request:', error);
+      await api.del('/api/groups/remove-member', { body: { uid, gid: selectedGroup.gid } });
+      setMembers(prev => prev.filter(m => m.uid !== uid));
+      setOpenDeleteUser(false);
+      setUsernameToDelete('');
+      notify('Member removed');
+    } catch (err) {
+      notifyError(err, 'Could not remove the member');
     }
-
-    setOpenDeleteUser(false);
-    setUsernameToDelete('');
   };
 
   const handleLeaveGroup = async () => {
     const userId = localStorage.getItem('userId');
-    if (!userId) {
-      console.error('User ID is not available');
+    if (!userId || !selectedGroup) {
+      notify('Select a group first', 'error');
       return;
     }
 
     try {
-      const response = await fetch(`${API_BASE}/api/groups/leave`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ uid: userId, gid: selectedGroup.gid }),
-      });
-
-      if (response.ok) {
-        // En cualquier caso (transferred/deleted/left), el usuario ya no pertenece al grupo
-        const leftGid = selectedGroup.gid;
-        if (selectedGroupId === leftGid) {
-          setSelectedGroupId(null);
-          setSelectedGroupName('');
-          localStorage.removeItem('selectedGroupId');
-          localStorage.removeItem('selectedGroupName');
-          localStorage.removeItem('showGroupDetails');
-        }
-        setSelectedGroup(null);
-        setMembers([]);
-        setShowDetails(false);
-        // Quitar el grupo de la lista de inmediato (sin esperar al fetch)
-        setGroups(prev => prev.filter(g => g.gid !== leftGid));
-        cargarGrupos();
-      } else {
-        const errorData = await response.json();
-        console.error('Error leaving group:', errorData.error);
+      await api.del('/api/groups/leave', { body: { uid: userId, gid: selectedGroup.gid } });
+      // En cualquier caso (transferred/deleted/left), el usuario ya no pertenece al grupo
+      const leftGid = selectedGroup.gid;
+      if (selectedGroupId === leftGid) {
+        setSelectedGroupId(null);
+        setSelectedGroupName('');
+        localStorage.removeItem('showGroupDetails');
       }
-    } catch (error) {
-      console.error('Error in request:', error);
+      setSelectedGroup(null);
+      setMembers([]);
+      setShowDetails(false);
+      // Quitar el grupo de la lista de inmediato (sin esperar al fetch)
+      setGroups(prev => prev.filter(g => g.gid !== leftGid));
+      cargarGrupos();
+    } catch (err) {
+      notifyError(err, 'Could not leave the group');
     }
   };
 
@@ -333,34 +297,21 @@ function GroupsView() {
   const handleDeleteGroup = async () => {
     const userId = localStorage.getItem('userId');
     if (!userId || !selectedGroup) {
-      console.error('Cannot delete: missing userId or selectedGroup');
+      notify('Select a group first', 'error');
       return;
     }
     try {
-      const groupResponse = await fetch(`${API_BASE}/api/groups/delete`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gid: selectedGroup.gid, adminId: userId }),
-      });
-      if (groupResponse.ok) {
-        setGroups(prev => prev.filter(g => g.gid !== selectedGroup.gid));
-        setSelectedGroup(null);
-        setSelectedGroupId(null);
-        setMembers([]);
-        setShowDetails(false);
-        setOpenAssignDialog(false);
-        setDeleteError(false);
-        setDeleteSuccess(true);
-        setTimeout(() => setDeleteSuccess(false), 3000);
-      } else {
-        const errorData = await groupResponse.json();
-        console.error('Error deleting group:', errorData.error);
-        setDeleteSuccess(false);
-        setDeleteError(true);
-        setTimeout(() => setDeleteError(false), 4000);
-      }
-    } catch (error) {
-      console.error('Error in request:', error);
+      await api.del('/api/groups/delete', { body: { gid: selectedGroup.gid, adminId: userId } });
+      setGroups(prev => prev.filter(g => g.gid !== selectedGroup.gid));
+      setSelectedGroup(null);
+      setSelectedGroupId(null);
+      setMembers([]);
+      setShowDetails(false);
+      setOpenAssignDialog(false);
+      setDeleteError(false);
+      setDeleteSuccess(true);
+      setTimeout(() => setDeleteSuccess(false), 3000);
+    } catch (err) {
       setDeleteSuccess(false);
       setDeleteError(true);
       setTimeout(() => setDeleteError(false), 4000);
@@ -654,7 +605,7 @@ function GroupsView() {
                         {/* Botón para asignar/editar roles, visible para todos si el usuario es admin del grupo */}
                         {selectedGroup.adminId === localStorage.getItem('userId') && (
                           <Button
-                            variant="outlined"
+                            variant="outline"
                             size="small"
                             sx={{ ml: 2, minWidth: 110 }}
                             onClick={async () => {
@@ -889,6 +840,17 @@ function GroupsView() {
           <Button variant="secondary" onClick={handleCreateGroup}>Create</Button>
         </DialogActions>
       </Dialog>
+
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </ThemeProvider>
   );
 }

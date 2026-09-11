@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { Divider } from '@mui/material';
-import { API_BASE } from '../../config';
+import { api } from '../../api/client';
 
 export default function CustomNode({ data, id }) {
   const [inputValue, setInputValue] = useState(`${data.percentage}`);
@@ -27,20 +27,12 @@ export default function CustomNode({ data, id }) {
 
   const handleToggleComplete = async () => {
     if (data.toggleCompletion) {
+      data.toggleCompletion(id);
       try {
-        data.toggleCompletion(id);
-        await fetch(`${API_BASE}/api/nodes/${id}/toggleComplete`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            nid: id,
-            completed: data.completed ? 0 : 1
-          }),
-        });
+        await api.put(`/api/nodes/${id}/toggleComplete`, { nid: id, completed: data.completed ? 0 : 1 });
       } catch (error) {
-        console.error('Error updating node:', error);
+        data.toggleCompletion(id);
+        data.onError?.(error, 'Could not update the milestone');
       }
     }
   };
@@ -61,19 +53,11 @@ export default function CustomNode({ data, id }) {
       }
       setInputValue(inputValue);
       try {
-        await fetch(`${API_BASE}/api/nodes/${id}/percentage`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            nid: id,
-            percentage: inputValue
-          }),
-        });
+        await api.put(`/api/nodes/${id}/percentage`, { nid: id, percentage: inputValue });
         data.setRefresh(prev => !prev);
       } catch (error) {
-        console.error('Error updating node percentage:', error);
+        setInputValue(data.percentage);
+        data.onError?.(error, 'Could not update the progress');
       }
     } else {
       setInputValue(data.percentage);
