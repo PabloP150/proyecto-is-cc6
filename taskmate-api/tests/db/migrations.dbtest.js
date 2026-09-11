@@ -110,6 +110,29 @@ describe('constraints', () => {
         expect(row.percentage).toBe(25);
     });
 
+    it('migration 006: progress propagates through the whole chain in one update and cycles terminate', async () => {
+        const pct = async (nid) => (await execReadCommand('SELECT percentage FROM dbo.Nodes WHERE nid = @nid', [h.guid('nid', nid)]))[0].percentage;
+        const [a, b, c] = [await h.createNode(gid), await h.createNode(gid), await h.createNode(gid)];
+        await h.createEdge(gid, a, b, { prerequisite: false });
+        await h.createEdge(gid, b, c, { prerequisite: false });
+        await h.createEdge(gid, c, a, { prerequisite: false }); // cycle back to the start
+
+        await execWriteCommand('UPDATE dbo.Nodes SET percentage = 80 WHERE nid = @nid', [h.guid('nid', a)]);
+
+        expect(await pct(b)).toBe(80);
+        expect(await pct(c)).toBe(80);
+        expect(await pct(a)).toBe(80);
+    });
+
+    it('migration 006: switching an edge to prerequisite recomputes its target (0 without progressor sources)', async () => {
+        const [src, target] = [await h.createNode(gid, { percentage: 60 }), await h.createNode(gid)];
+        const eid = await h.createEdge(gid, src, target, { prerequisite: true });
+        await execWriteCommand('UPDATE dbo.Edges SET prerequisite = 0 WHERE eid = @eid', [h.guid('eid', eid)]);
+        expect((await execReadCommand('SELECT percentage FROM dbo.Nodes WHERE nid = @nid', [h.guid('nid', target)]))[0].percentage).toBe(60);
+        await execWriteCommand('UPDATE dbo.Edges SET prerequisite = 1 WHERE eid = @eid', [h.guid('eid', eid)]);
+        expect((await execReadCommand('SELECT percentage FROM dbo.Nodes WHERE nid = @nid', [h.guid('nid', target)]))[0].percentage).toBe(0);
+    });
+
     it('migration 005 repairs orphaned groups by join date, not by username', async () => {
         const admin = await h.createUser('adm');
         const veteran = await h.createUser('zzz');
