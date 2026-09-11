@@ -9,8 +9,8 @@ const addNode = async (nodeData, options = {}) => {
     const params = [
         { name: 'nid', type: TYPES.UniqueIdentifier, value: nid },
         { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
-        { name: 'name', type: TYPES.VarChar, value: name },
-        { name: 'description', type: TYPES.VarChar, value: description },
+        { name: 'name', type: TYPES.NVarChar, value: name },
+        { name: 'description', type: TYPES.NVarChar, value: description },
         { name: 'date', type: TYPES.Date, value: new Date(date) },
         { name: 'completed', type: TYPES.Bit, value: completed ?? false },
         { name: 'x_pos', type: TYPES.Float, value: x_pos },
@@ -25,8 +25,8 @@ const updateNode = async (nodeData) => {
     const query = `UPDATE dbo.Nodes SET name=@name, description=@description, date=@date WHERE nid=@nid`;
     const params = [
         { name: 'nid', type: TYPES.UniqueIdentifier, value: nid },
-        { name: 'name', type: TYPES.VarChar, value: name },
-        { name: 'description', type: TYPES.VarChar, value: description },
+        { name: 'name', type: TYPES.NVarChar, value: name },
+        { name: 'description', type: TYPES.NVarChar, value: description },
         { name: 'date', type: TYPES.Date, value: new Date(date) },
     ];
     return execWriteCommand(query, params);
@@ -70,11 +70,6 @@ const deleteNode = async (nid, options = {}) => useTransaction(options, async (t
     return tx.write('DELETE FROM dbo.Nodes WHERE nid = @nid', params);
 });
 
-const getAllNodes = async () => {
-    const query = `SELECT nid, gid, name, description, date, completed, x_pos, y_pos, percentage FROM dbo.Nodes`;
-    return execReadCommand(query);
-};
-
 const getNodesAndTasks = async (gid) => {
     const query = `
         SELECT name, nid AS id, date, description FROM dbo.Nodes WHERE gid=@gid
@@ -104,7 +99,6 @@ module.exports = {
     updateNodeCompleted,
     updateNodePercentage,
     deleteNode,
-    getAllNodes,
     getNodesAndTasks,
     getNode,
     getNodesByGroupId,

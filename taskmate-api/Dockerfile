@@ -15,7 +15,6 @@ WORKDIR /usr/src/app
 
 COPY setup-db.sh .
 COPY taskmate_tables.sql .
-COPY taskmate_triggers.sql .
 COPY migrations/ ./migrations/
 
 RUN chmod +x setup-db.sh migrations/run-migrations.sh

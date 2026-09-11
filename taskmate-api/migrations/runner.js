@@ -40,7 +40,13 @@ const batch = (conn, sql) => new Promise((resolve, reject) => {
     conn.execSqlBatch(request);
 });
 
-const openConnection = () => require('../helpers/pool').connect();
+// Migrations need DDL rights the app login does not have: MIGRATION_DB_USERNAME/PASSWORD
+// (e.g. SA) when set, otherwise the DB_* app credentials.
+const migrationCredentials = () => (process.env.MIGRATION_DB_USERNAME
+    ? { userName: process.env.MIGRATION_DB_USERNAME, password: process.env.MIGRATION_DB_PASSWORD }
+    : undefined);
+
+const openConnection = () => require('../helpers/pool').connect(migrationCredentials());
 
 async function withConnection(fn, { log = () => {} } = {}) {
     const conn = await openConnection();
@@ -152,7 +158,10 @@ async function ensureBaseSchema({ log } = {}) {
     }, { log });
 }
 
-module.exports = { up, down, reapply, status, ensureBaseSchema, splitBatches, listMigrations };
+// Runs one batch with the migration credentials (tests use it for DDL the app login cannot run).
+const execAdmin = (sql) => withConnection(conn => batch(conn, sql));
+
+module.exports = { up, down, reapply, status, ensureBaseSchema, execAdmin, splitBatches, listMigrations };
 
 if (require.main === module) {
     const [command = 'up', ...rest] = process.argv.slice(2);

@@ -4,7 +4,7 @@ const nodesModel = require('../../models/nodes.model');
 const groupRolesModel = require('../../models/groupRoles.model');
 const access = require('../../models/access.model');
 const github = require('../../models/github.model');
-const { execWriteCommand } = require('../../helpers/execQuery');
+const { execReadCommand, execWriteCommand } = require('../../helpers/execQuery');
 const h = require('./helpers');
 
 // A group with at least one row in every table that depends on it.
@@ -110,6 +110,41 @@ describe('userGroup.leaveGroup / removeMemberFromGroup', () => {
     });
 });
 
+describe('admin succession', () => {
+    // A username like "!a" sorts first alphabetically; it must not inherit the group.
+    async function groupWithJoinOrder() {
+        const admin = await h.createUser('adm');
+        const veteran = await h.createUser('zzz');
+        const newcomer = await h.createUser('!a');
+        const gid = await h.createGroup(admin.uid);
+        await h.addMember(veteran.uid, gid);
+        await h.addMember(newcomer.uid, gid);
+        await h.setJoinedAt(admin.uid, gid, '2026-01-01T00:00:00Z');
+        await h.setJoinedAt(veteran.uid, gid, '2026-02-01T00:00:00Z');
+        await h.setJoinedAt(newcomer.uid, gid, '2026-03-01T00:00:00Z');
+        return { admin, veteran, newcomer, gid };
+    }
+
+    it('leaveGroup hands the group to the earliest member, not the first username', async () => {
+        const { admin, veteran, gid } = await groupWithJoinOrder();
+        const result = await userGroupModel.leaveGroup(admin.uid, gid);
+        expect(result.result).toBe('transferred');
+        expect(h.sameId(result.newAdminId, veteran.uid)).toBe(true);
+    });
+
+    it('removeMemberFromGroup on the admin follows the same rule; ties go to the lowest uid', async () => {
+        const { admin, veteran, newcomer, gid } = await groupWithJoinOrder();
+        await h.setJoinedAt(newcomer.uid, gid, '2026-02-01T00:00:00Z');
+        await userGroupModel.removeMemberFromGroup(admin.uid, gid);
+        const [{ adminId }] = await execReadCommand('SELECT adminId FROM dbo.Groups WHERE gid = @gid', [h.guid('gid', gid)]);
+        // SQL Server sorts UNIQUEIDENTIFIER in its own byte order, so the expected tie winner comes from the database.
+        const [{ first }] = await execReadCommand(
+            'SELECT TOP 1 uid AS first FROM dbo.UserGroups WHERE gid = @gid ORDER BY joined_at, uid', [h.guid('gid', gid)]);
+        expect(h.sameId(adminId, first)).toBe(true);
+        expect([veteran.uid, newcomer.uid].some(id => h.sameId(id, adminId))).toBe(true);
+    });
+});
+
 describe('atomic deletes in nodes/groupRoles', () => {
     it('deleteNode removes its edges and the node', async () => {
         const user = await h.createUser('nod');
@@ -141,6 +176,17 @@ describe('access.model', () => {
         expect(await access.isGroupAdmin(admin.uid, gid)).toBe(true);
         expect(await access.isGroupAdmin(member.uid, gid)).toBe(false);
         expect(await access.isGroupMember('not-a-uuid', gid)).toBe(false);
+
+        // Leader = admin, or a role whose name contains "leader" in any case (the fixture's role is 'Leader').
+        const plain = await h.createUser('pln');
+        await h.addMember(plain.uid, gid);
+        expect(await access.isGroupLeader(admin.uid, gid)).toBe(true);
+        expect(await access.isGroupLeader(member.uid, gid)).toBe(true);
+        expect(await access.isGroupLeader(plain.uid, gid)).toBe(false);
+        const teamLead = await h.createRole(gid, 'Co-TEAMLEADER');
+        await h.assignRole(plain.uid, gid, teamLead);
+        expect(await access.isGroupLeader(plain.uid, gid)).toBe(true);
+        expect(await access.isGroupLeader(outsider.uid, gid)).toBe(false);
 
         expect(h.sameId(await access.resolveGroupId('task', tid), gid)).toBe(true);
         expect(h.sameId(await access.resolveGroupId('groupRole', grId), gid)).toBe(true);

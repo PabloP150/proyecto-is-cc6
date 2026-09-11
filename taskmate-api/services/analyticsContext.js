@@ -14,7 +14,8 @@ const num = (value, fallback) => (value === null || value === undefined ? fallba
 /**
  * buildTeamContext(groupId) → {team_members: [{uid, username, current_workload, historical_capacity,
  *   expertise_by_category: {frontend|backend|database|testing|general: {expertise_score, success_rate_percentage}}}]}
- * current_workload = open assignments (UserTask, completed = 0) across all of the user's groups;
+ * current_workload = the user's assignments (UserTask rows) across all of their groups. UserTask.completed
+ * is not a completion flag (the UI sends true for "assigned"); completed tasks leave Tasks and UserTask;
  * historical_capacity = highest daily max_concurrent_tasks recorded (3 when there is no history).
  */
 async function buildTeamContext(groupId) {
@@ -22,7 +23,7 @@ async function buildTeamContext(groupId) {
     const [members, expertise] = await Promise.all([
         execReadCommand(
             `SELECT u.uid, u.username,
-                    (SELECT COUNT(*) FROM dbo.UserTask ut WHERE ut.uid = u.uid AND ut.completed = 0) AS current_workload,
+                    (SELECT COUNT(*) FROM dbo.UserTask ut INNER JOIN dbo.Tasks t ON t.tid = ut.tid WHERE ut.uid = u.uid) AS current_workload,
                     (SELECT MAX(um.max_concurrent_tasks) FROM dbo.UserMetrics um WHERE um.uid = u.uid) AS historical_capacity
              FROM dbo.Users u
              INNER JOIN dbo.UserGroups ug ON ug.uid = u.uid

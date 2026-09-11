@@ -2,12 +2,13 @@ const AnalyticsService = require('../../services/AnalyticsService');
 const AnalyticsIntegration = require('../../services/AnalyticsIntegration');
 const { buildTeamContext, CATEGORIES } = require('../../services/analyticsContext');
 const tasksModel = require('../../models/tasks.model');
-const { execReadCommand } = require('../../helpers/execQuery');
+const { TYPES } = require('tedious');
+const { execReadCommand, execWriteCommand } = require('../../helpers/execQuery');
 const h = require('./helpers');
 
 const expertiseOf = async (uid, category) => (await execReadCommand(
     'SELECT tasks_completed, success_rate_percentage, expertise_score FROM dbo.UserExpertise WHERE uid = @uid AND task_category = @cat',
-    [h.guid('uid', uid), { name: 'cat', type: require('tedious').TYPES.VarChar, value: category }]
+    [h.guid('uid', uid), { name: 'cat', type: TYPES.VarChar, value: category }]
 ))[0];
 
 describe('analytics on top of the fact table', () => {
@@ -39,7 +40,7 @@ describe('analytics on top of the fact table', () => {
 
         const failedTid = await h.createTask(gid);
         await h.assignTask(user.uid, failedTid, gid, { category: 'backend' });
-        await tasksModel.deleteTask(failedTid);
+        await tasksModel.trashTask(failedTid);
         await expect(AnalyticsIntegration.onTaskDeletion(failedTid))
             .resolves.toEqual(expect.objectContaining({ success: true, status: 'failed' }));
         expect(await expertiseOf(user.uid, 'backend')).toEqual(expect.objectContaining({ tasks_completed: 2, success_rate_percentage: 50 }));
@@ -65,6 +66,29 @@ describe('analytics on top of the fact table', () => {
         const result = await AnalyticsService.batchUpdateUserMetrics();
         expect(result.errors).toEqual([]);
         expect(result.users_updated).toBeGreaterThanOrEqual(1);
+    });
+
+    it('workload counts every assignment of an existing task, whatever UserTask.completed says', async () => {
+        const worker = await h.createUser('wrk');
+        const team = await h.createGroup(worker.uid);
+        const roleId = await h.createRole(team, 'Dev');
+        await h.assignRole(worker.uid, team, roleId);
+        // The UI sends completed = true meaning "assigned".
+        for (const completed of [true, true, false]) {
+            const tid = await h.createTask(team);
+            await execWriteCommand(
+                'INSERT INTO dbo.UserTask (utid, uid, tid, completed) VALUES (NEWID(), @uid, @tid, @completed)',
+                [h.guid('uid', worker.uid), h.guid('tid', tid), { name: 'completed', type: TYPES.Bit, value: completed }]
+            );
+        }
+        const done = await h.createTask(team);
+        await h.assignTask(worker.uid, done, team);
+        await tasksModel.completeTask(done);
+
+        const { team_members: [member] } = await buildTeamContext(team);
+        expect(member.current_workload).toBe(3);
+        const { workload_distribution: [row] } = await AnalyticsService.getWorkloadDistribution(team);
+        expect(row.current_workload).toBe(3);
     });
 
     it('buildTeamContext returns every member with workload, capacity and all five categories', async () => {

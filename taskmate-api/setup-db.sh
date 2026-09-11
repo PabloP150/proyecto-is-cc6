@@ -1,7 +1,7 @@
 #!/bin/bash
 # Container entrypoint. Starts SQL Server, then idempotently creates the database, the app
-# login/user and the base schema (each step is skipped when it already exists) and applies
-# pending migrations. Safe to run on every container start.
+# login/user (db_datareader + db_datawriter only) and the base schema (each step is skipped when
+# it already exists) and applies pending migrations as SA. Safe to run on every container start.
 #
 # Env: SA_PASSWORD, DB_PASSWORD (app login), DB_NAME=taskmate-db, DB_USERNAME=sqladmin.
 set -uo pipefail
@@ -46,9 +46,15 @@ USE [$DB_NAME];
 GO
 IF DATABASE_PRINCIPAL_ID(N'$APP_LOGIN') IS NULL CREATE USER [$APP_LOGIN] FOR LOGIN [$APP_LOGIN];
 GO
-IF IS_ROLEMEMBER(N'db_owner', N'$APP_LOGIN') = 0 ALTER ROLE db_owner ADD MEMBER [$APP_LOGIN];
+-- Least privilege: the API only reads and writes data. Schema changes run as SA (migrations).
+-- Older images made the app login db_owner with CONTROL; that is taken back here.
+IF IS_ROLEMEMBER(N'db_owner', N'$APP_LOGIN') = 1 ALTER ROLE db_owner DROP MEMBER [$APP_LOGIN];
 GO
-GRANT CONTROL ON DATABASE::[$DB_NAME] TO [$APP_LOGIN];
+REVOKE CONTROL ON DATABASE::[$DB_NAME] FROM [$APP_LOGIN];
+GO
+IF IS_ROLEMEMBER(N'db_datareader', N'$APP_LOGIN') = 0 ALTER ROLE db_datareader ADD MEMBER [$APP_LOGIN];
+GO
+IF IS_ROLEMEMBER(N'db_datawriter', N'$APP_LOGIN') = 0 ALTER ROLE db_datawriter ADD MEMBER [$APP_LOGIN];
 GO
 SQL
 

@@ -11,7 +11,7 @@ async function createUser(prefix = 'u') {
     const username = `${prefix}_${uid.slice(0, 8)}`.slice(0, 25);
     await execWriteCommand(
         'INSERT INTO dbo.Users (uid, username, password) VALUES (@uid, @username, @password)',
-        [guid('uid', uid), { name: 'username', type: TYPES.VarChar, value: username }, { name: 'password', type: TYPES.VarChar, value: 'x' }]
+        [guid('uid', uid), { name: 'username', type: TYPES.NVarChar, value: username }, { name: 'password', type: TYPES.VarChar, value: 'x' }]
     );
     return { uid, username };
 }
@@ -25,7 +25,7 @@ async function createGroup(adminUid, name = 'Test group') {
     const gid = uuidv4();
     await execWriteCommand(
         'INSERT INTO dbo.Groups (gid, adminId, name) VALUES (@gid, @adminId, @name)',
-        [guid('gid', gid), guid('adminId', adminUid), { name: 'name', type: TYPES.VarChar, value: name }]
+        [guid('gid', gid), guid('adminId', adminUid), { name: 'name', type: TYPES.NVarChar, value: name }]
     );
     await addMember(adminUid, gid);
     return gid;
@@ -38,9 +38,9 @@ async function createTask(gid, { name = 'Task', list = 'To Do', percentage = 0, 
          VALUES (@tid, @gid, @name, @description, @list, '2030-01-01', @percentage)`,
         [
             guid('tid', tid), guid('gid', gid),
-            { name: 'name', type: TYPES.VarChar, value: name },
-            { name: 'description', type: TYPES.VarChar, value: description },
-            { name: 'list', type: TYPES.VarChar, value: list },
+            { name: 'name', type: TYPES.NVarChar, value: name },
+            { name: 'description', type: TYPES.NVarChar, value: description },
+            { name: 'list', type: TYPES.NVarChar, value: list },
             { name: 'percentage', type: TYPES.Int, value: percentage },
         ]
     );
@@ -64,7 +64,7 @@ async function createNode(gid, { name = 'Node', percentage = 0 } = {}) {
     await execWriteCommand(
         `INSERT INTO dbo.Nodes (nid, gid, name, description, date, completed, x_pos, y_pos, percentage)
          VALUES (@nid, @gid, @name, 'd', '2030-01-01', 0, 0, 0, @percentage)`,
-        [guid('nid', nid), guid('gid', gid), { name: 'name', type: TYPES.VarChar, value: name }, { name: 'percentage', type: TYPES.Int, value: percentage }]
+        [guid('nid', nid), guid('gid', gid), { name: 'name', type: TYPES.NVarChar, value: name }, { name: 'percentage', type: TYPES.Int, value: percentage }]
     );
     return nid;
 }
@@ -82,7 +82,7 @@ async function createRole(gid, name = 'Leader') {
     const grId = uuidv4();
     await execWriteCommand(
         `INSERT INTO dbo.GroupRoles (gr_id, gid, gr_name, gr_color, gr_icon) VALUES (@gr, @gid, @name, '#000', 'star')`,
-        [guid('gr', grId), guid('gid', gid), { name: 'name', type: TYPES.VarChar, value: name }]
+        [guid('gr', grId), guid('gid', gid), { name: 'name', type: TYPES.NVarChar, value: name }]
     );
     return grId;
 }
@@ -96,6 +96,14 @@ async function assignRole(uid, gid, grId) {
     return ugrId;
 }
 
+// Membership start used for admin succession (joined_at has 1-second precision).
+async function setJoinedAt(uid, gid, date) {
+    await execWriteCommand(
+        'UPDATE dbo.UserGroups SET joined_at = @at WHERE uid = @uid AND gid = @gid',
+        [guid('uid', uid), guid('gid', gid), { name: 'at', type: TYPES.DateTimeOffset, value: new Date(date) }]
+    );
+}
+
 // count('dbo.Tasks WHERE gid = @gid', [guid('gid', gid)])
 async function count(fromWhere, params = []) {
     const rows = await execReadCommand(`SELECT COUNT(*) AS n FROM ${fromWhere}`, params);
@@ -107,5 +115,5 @@ const githubId = () => ++nextGitHubId;
 
 module.exports = {
     guid, sameId, createUser, addMember, createGroup, createTask, assignTask,
-    createNode, createEdge, createRole, assignRole, count, githubId,
+    createNode, createEdge, createRole, assignRole, setJoinedAt, count, githubId,
 };

@@ -33,9 +33,9 @@ const addTask = async (taskData, options = {}) => {
     const params = [
         { name: 'tid', type: TYPES.UniqueIdentifier, value: tid },
         { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
-        { name: 'name', type: TYPES.VarChar, value: name },
-    { name: 'description', type: TYPES.VarChar, value: safeDescription },
-        { name: 'list', type: TYPES.VarChar, value: list },
+        { name: 'name', type: TYPES.NVarChar, value: name },
+    { name: 'description', type: TYPES.NVarChar, value: safeDescription },
+        { name: 'list', type: TYPES.NVarChar, value: list },
         { name: 'datetime', type: TYPES.SmallDateTime, value: toLocalDate(datetime) },
         { name: 'percentage', type: TYPES.Int, value: percentage ?? 0 },
     ];
@@ -52,9 +52,9 @@ const updateTask = async (taskData) => {
     const params = [
         { name: 'tid', type: TYPES.UniqueIdentifier, value: tid },
         { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
-        { name: 'name', type: TYPES.VarChar, value: name },
-    { name: 'description', type: TYPES.VarChar, value: safeDescription },
-        { name: 'list', type: TYPES.VarChar, value: list },
+        { name: 'name', type: TYPES.NVarChar, value: name },
+    { name: 'description', type: TYPES.NVarChar, value: safeDescription },
+        { name: 'list', type: TYPES.NVarChar, value: list },
         { name: 'datetime', type: TYPES.SmallDateTime, value: toLocalDate(datetime) },
         { name: 'percentage', type: TYPES.Int, value: percentage ?? 0 },
     ];
@@ -70,8 +70,8 @@ const updateTaskFromNode = async (taskData) => {
                    WHERE tid=@tid`;
     const params = [
         { name: 'tid', type: TYPES.UniqueIdentifier, value: tid },
-        { name: 'name', type: TYPES.VarChar, value: name },
-    { name: 'description', type: TYPES.VarChar, value: safeDescription },
+        { name: 'name', type: TYPES.NVarChar, value: name },
+    { name: 'description', type: TYPES.NVarChar, value: safeDescription },
         { name: 'datetime', type: TYPES.SmallDateTime, value: toLocalDate(date) },
         { name: 'percentage', type: TYPES.Int, value: percentage ?? null },
     ];
@@ -90,16 +90,6 @@ const CLOSE_PENDING_FACTS = (status, where) => `
     FROM dbo.TaskAnalytics ta
     CROSS APPLY (SELECT CASE WHEN GETDATE() < ta.assigned_at THEN ta.assigned_at ELSE GETDATE() END AS closed_at) c
     WHERE ta.success_status = 'pending' AND ${where}`;
-
-// Deletes a task atomically: its pending analytics facts are marked 'failed', its assignments
-// removed and TaskBranches goes by cascade. Returns the number of Tasks rows deleted (0 or 1).
-const deleteTask = async (tid, options = {}) => useTransaction(options, async (tx) => {
-    const params = [{ name: 'tid', type: TYPES.UniqueIdentifier, value: tid }];
-    await tx.read('SELECT tid FROM dbo.Tasks WITH (UPDLOCK, HOLDLOCK) WHERE tid = @tid', params);
-    await tx.write(CLOSE_PENDING_FACTS('failed', 'ta.tid = @tid'), params);
-    await tx.write('DELETE FROM dbo.UserTask WHERE tid = @tid', params);
-    return tx.write('DELETE FROM dbo.Tasks WHERE tid = @tid', params);
-});
 
 /**
  * completeTask(tid, {tx, source: 'manual' | 'github_pr'}) → {status: 'completed' | 'already_completed' | 'not_found', task?}
@@ -178,12 +168,6 @@ const trashTask = async (tid, options = {}) => useTransaction(options, async (tx
     return { status: 'deleted', task: rows[0] };
 });
 
-const getAllTasks = async () => {
-    // Devuelve la fecha/hora como string exacto desde SQL (YYYY-MM-DD HH:mm)
-    const query = `SELECT tid, gid, name, description, list, CONVERT(VARCHAR(16), datetime, 120) AS datetimeStr, percentage FROM dbo.Tasks`;
-    return execReadCommand(query);
-};
-
 const getTask = async (tid) => {
     // Devuelve la fecha/hora como string exacto desde SQL (YYYY-MM-DD HH:mm)
     const query = `SELECT tid, gid, name, description, list, CONVERT(VARCHAR(16), datetime, 120) AS datetimeStr, percentage FROM dbo.Tasks WHERE tid=@tid`;
@@ -198,12 +182,12 @@ const getTasksByGroupId = async (gid) => {
     return execReadCommand(query, params);
 };
 
-// Same cleanup as deleteTask for every task of a list; the range lock keeps new tasks from
+// Same cleanup as trashTask (without the DeleteTask copy) for every task of a list; the range lock keeps new tasks from
 // slipping into the list between statements. Returns the number of tasks deleted.
 const deleteTasksByList = async (gid, list, options = {}) => useTransaction(options, async (tx) => {
     const params = [
         { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
-        { name: 'list', type: TYPES.VarChar, value: list },
+        { name: 'list', type: TYPES.NVarChar, value: list },
     ];
     await tx.read('SELECT tid FROM dbo.Tasks WITH (UPDLOCK, HOLDLOCK) WHERE gid = @gid AND list = @list', params);
     await tx.write(
@@ -222,10 +206,8 @@ module.exports = {
     addTask,
     updateTask,
     updateTaskFromNode,
-    deleteTask,
     completeTask,
     trashTask,
-    getAllTasks,
     getTask,
     getTasksByGroupId,
     deleteTasksByList,

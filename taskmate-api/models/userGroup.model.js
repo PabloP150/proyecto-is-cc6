@@ -30,13 +30,13 @@ const getMembersByGroupId = async (gid) => {
   return execReadCommand(query, params);
 };
 
-// Next admin when the current one goes away: first remaining member by username.
+// Next admin when the current one goes away: the longest-standing member (joined_at, then uid).
+// Never by username, which users pick themselves (a "!a" user would otherwise inherit the group).
 const NEXT_ADMIN_QUERY = `
     SELECT TOP 1 ug.uid
     FROM dbo.UserGroups ug
-    INNER JOIN dbo.Users u ON u.uid = ug.uid
     WHERE ug.gid = @gid AND ug.uid <> @uid
-    ORDER BY u.username`;
+    ORDER BY ug.joined_at, ug.uid`;
 
 const removeMembership = (tx, params) => tx.write(
   `DELETE FROM dbo.UserGroupRoles WHERE uid = @uid AND gid = @gid;

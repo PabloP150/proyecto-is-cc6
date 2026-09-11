@@ -7,13 +7,14 @@ const h = require('./helpers');
 const SHA = 'c'.repeat(40);
 const t = (iso) => new Date(iso);
 
-async function setup() {
+async function setup({ link = true } = {}) {
     const user = await h.createUser('gh');
     const gid = await h.createGroup(user.uid);
     const installationId = h.githubId();
     const repoId = h.githubId();
     await github.upsertInstallation({ installationId, accountLogin: 'octo-org', accountType: 'Organization' });
     await github.upsertRepository({ repoId, installationId, name: 'taskmate', defaultBranch: 'main', isPrivate: false });
+    if (link) await github.linkGroupRepository({ gid, repoId, connectedBy: user.uid });
     return { user, gid, installationId, repoId };
 }
 
@@ -25,7 +26,7 @@ const prBase = (repoId, over = {}) => ({
 
 describe('installations and repositories', () => {
     it('upserts, suspends and links a repository to a group', async () => {
-        const { user, gid, installationId, repoId } = await setup();
+        const { user, gid, installationId, repoId } = await setup({ link: false });
         await expect(github.upsertInstallation({ installationId, accountLogin: 'octo-org', accountType: 'Organization' }))
             .resolves.toEqual({ created: false });
         await expect(github.linkGroupRepository({ gid, repoId, connectedBy: user.uid })).resolves.toEqual({ previousRepoId: null });
@@ -34,7 +35,7 @@ describe('installations and repositories', () => {
         const repo = await github.getGroupRepository(gid);
         expect(repo).toEqual(expect.objectContaining({
             repoId, owner: 'octo-org', name: 'taskmate', fullName: 'octo-org/taskmate', defaultBranch: 'main',
-            isPrivate: false, installationId, connectedByUsername: user.username,
+            isPrivate: false, installationId, connectedByUsername: user.username, aiAnalysisEnabled: false,
         }));
         expect(repo.suspendedAt.toISOString()).toBe('2026-09-02T00:00:00.000Z');
 
@@ -48,7 +49,6 @@ describe('installations and repositories', () => {
     it('deleting an installation cascades to repositories, links, branches and PRs', async () => {
         const { user, gid, installationId, repoId } = await setup();
         const tid = await h.createTask(gid);
-        await github.linkGroupRepository({ gid, repoId, connectedBy: user.uid });
         await github.insertTaskBranch({ tid, repoId, branchName: 'tm/a', baseSha: SHA, createdBy: user.uid });
         await github.applyPullRequest(prBase(repoId, { headBranch: 'tm/a' }));
 
@@ -58,6 +58,53 @@ describe('installations and repositories', () => {
             expect(await h.count(`${table} WHERE repo_id = @repoId`, p)).toBe(0);
         }
         expect(await h.count('dbo.Tasks WHERE tid = @tid', [h.guid('tid', tid)])).toBe(1);
+    });
+});
+
+describe('repository switch, unlink and AI opt-in', () => {
+    it('switching repos drops the old branches and old-repo merges no longer find the task', async () => {
+        const { user, gid, installationId, repoId } = await setup();
+        const tid = await h.createTask(gid);
+        await github.insertTaskBranch({ tid, repoId, branchName: 'tm/old', baseSha: SHA, createdBy: user.uid });
+        expect(await github.setAiAnalysisEnabled(gid, true)).toBe(true);
+
+        const newRepo = h.githubId();
+        await github.upsertRepository({ repoId: newRepo, installationId, name: 'next', defaultBranch: 'main', isPrivate: true });
+        await github.linkGroupRepository({ gid, repoId: newRepo, connectedBy: user.uid });
+
+        expect(await github.getTaskBranch(tid)).toBeNull();
+        expect(await github.findTaskByBranch(repoId, 'tm/old')).toBeNull();
+        expect(await github.getTaskLinksByGroup(gid)).toEqual([]);
+        expect((await github.getGroupRepository(gid)).aiAnalysisEnabled).toBe(false);
+        // A new branch for the same task is possible again.
+        await github.insertTaskBranch({ tid, repoId: newRepo, branchName: 'tm/old', baseSha: SHA, createdBy: user.uid });
+        expect(h.sameId((await github.findTaskByBranch(newRepo, 'tm/old')).tid, tid)).toBe(true);
+    });
+
+    it('re-linking the same repo keeps branches and the opt-in; unlinking drops every branch', async () => {
+        const { user, gid, repoId } = await setup();
+        const tid = await h.createTask(gid);
+        await github.insertTaskBranch({ tid, repoId, branchName: 'tm/keep', baseSha: SHA, createdBy: user.uid });
+        await github.setAiAnalysisEnabled(gid, true);
+        await github.linkGroupRepository({ gid, repoId, connectedBy: user.uid });
+        expect(await github.getTaskBranch(tid)).not.toBeNull();
+        expect((await github.getGroupRepository(gid)).aiAnalysisEnabled).toBe(true);
+
+        expect(await github.unlinkGroupRepository(gid)).toBe(true);
+        expect(await github.getTaskBranch(tid)).toBeNull();
+        expect(await github.findTaskByBranch(repoId, 'tm/keep')).toBeNull();
+        expect(await github.unlinkGroupRepository(gid)).toBe(false);
+        expect(await github.setAiAnalysisEnabled(gid, true)).toBe(false);
+    });
+
+    it('branch rows left from an older link are ignored by findTaskByBranch and getTaskLinksByGroup', async () => {
+        const { user, gid, installationId } = await setup();
+        const tid = await h.createTask(gid);
+        const otherRepo = h.githubId();
+        await github.upsertRepository({ repoId: otherRepo, installationId, name: 'other', defaultBranch: 'main', isPrivate: false });
+        await github.insertTaskBranch({ tid, repoId: otherRepo, branchName: 'tm/stray', baseSha: SHA, createdBy: user.uid });
+        expect(await github.findTaskByBranch(otherRepo, 'tm/stray')).toBeNull();
+        expect(await github.getTaskLinksByGroup(gid)).toEqual([]);
     });
 });
 
@@ -170,6 +217,36 @@ describe('webhook deliveries', () => {
         expect(await github.purgeDeliveries(30)).toBeGreaterThanOrEqual(1);
         expect(await h.count('dbo.GitHubWebhookDeliveries WHERE delivery_id = @id', [h.guid('id', ignoredId)])).toBe(0);
         expect(await h.count('dbo.GitHubWebhookDeliveries WHERE delivery_id = @id', [h.guid('id', deliveryId)])).toBe(1);
+    });
+
+    it('the same signed payload under a new delivery id is a duplicate (replay protection)', async () => {
+        const hash = require('crypto').createHash('sha256').update(`body-${uuidv4()}`).digest('hex');
+        const first = uuidv4();
+        await expect(github.beginDelivery({ deliveryId: first, event: 'pull_request', payloadSha256: hash }))
+            .resolves.toEqual({ duplicate: false, previousStatus: null });
+        await github.finishDelivery(first, 'processed');
+
+        const replay = await github.beginDelivery({ deliveryId: uuidv4(), event: 'pull_request', payloadSha256: hash.toUpperCase() });
+        expect(replay).toEqual(expect.objectContaining({ duplicate: true, previousStatus: 'processed' }));
+        expect(h.sameId(replay.duplicateOf, first)).toBe(true);
+        await expect(github.beginDelivery({ deliveryId: uuidv4(), event: 'x', payloadSha256: 'nothex' })).rejects.toThrow(TypeError);
+    });
+
+    it('a failed payload can be reprocessed under a new delivery id; the hash moves to it', async () => {
+        const hash = require('crypto').createHash('sha256').update(`body-${uuidv4()}`).digest('hex');
+        const failed = uuidv4();
+        await github.beginDelivery({ deliveryId: failed, event: 'pull_request', payloadSha256: hash });
+        await github.failDelivery(failed, 'boom');
+        const retry = uuidv4();
+        await expect(github.beginDelivery({ deliveryId: retry, event: 'pull_request', payloadSha256: hash }))
+            .resolves.toEqual({ duplicate: false, previousStatus: null });
+        const rows = await execReadCommand(
+            'SELECT delivery_id, status, payload_sha256 FROM dbo.GitHubWebhookDeliveries WHERE delivery_id IN (@a, @b)',
+            [h.guid('a', failed), h.guid('b', retry)]
+        );
+        const byId = Object.fromEntries(rows.map(r => [String(r.delivery_id).toLowerCase(), r]));
+        expect(byId[failed]).toEqual(expect.objectContaining({ status: 'failed', payload_sha256: null }));
+        expect(byId[retry]).toEqual(expect.objectContaining({ status: 'processing', payload_sha256: hash }));
     });
 
     it('a delivery stuck in processing for more than 10 minutes can be claimed again', async () => {

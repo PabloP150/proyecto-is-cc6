@@ -10,7 +10,7 @@ const h = require('./helpers');
 const byName = (name) => [{ name: 'name', type: TYPES.VarChar, value: name }];
 
 describe('ProjectService.createProjectFromPlan', () => {
-    it('creates group, membership, roles, tasks and milestones; strips non-Latin-1 text', async () => {
+    it('creates group, membership, roles, tasks and milestones; keeps Unicode, truncates to the columns', async () => {
         const user = await h.createUser('prj');
         const name = `P${Date.now() % 1e8}`;
         const result = await projectService.createProjectFromPlan({
@@ -25,7 +25,7 @@ describe('ProjectService.createProjectFromPlan', () => {
         expect(await h.count('dbo.UserGroups WHERE gid = @gid', p)).toBe(1);
         expect(await h.count('dbo.GroupRoles WHERE gid = @gid', p)).toBe(2);
         const tasks = await execReadCommand('SELECT name, LEN(description) AS len FROM dbo.Tasks WHERE gid = @gid ORDER BY name', p);
-        expect(tasks).toEqual([{ name: 'API', len: 0 }, { name: 'Diseño  UI', len: 1000 }]);
+        expect(tasks).toEqual([{ name: 'API', len: 0 }, { name: 'Diseño 🚀 UI', len: 1000 }]);
         const nodes = await execReadCommand('SELECT name, x_pos FROM dbo.Nodes WHERE gid = @gid ORDER BY x_pos', p);
         expect(nodes).toEqual([{ name: 'M1', x_pos: 0 }, { name: 'M2', x_pos: 250 }]);
     });

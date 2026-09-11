@@ -97,7 +97,7 @@ class AnalyticsService {
             
             const taskData = await execReadCommand(verifyQuery, verifyParams);
             if (!taskData || taskData.length === 0) {
-                // tasks.completeTask / deleteTask close the facts inside their own transaction, so the
+                // tasks.completeTask / trashTask close the facts inside their own transaction, so the
                 // hook that runs after them only has to refresh the derived metrics (idempotent).
                 const closed = await execReadCommand(
                     `SELECT TOP 1 success_status FROM dbo.TaskAnalytics
@@ -515,10 +515,12 @@ class AnalyticsService {
                 INNER JOIN dbo.UserGroupRoles ugr ON u.uid = ugr.uid
                 INNER JOIN dbo.GroupRoles gr ON gr.gr_id = ugr.gr_id
                 LEFT JOIN (
-                    SELECT uid, COUNT(*) as cnt
-                    FROM dbo.UserTask
-                    WHERE completed = 0
-                    GROUP BY uid
+                    -- Every assignment of an existing task: UserTask.completed is not a completion
+                    -- flag (the UI sends true for "assigned") and completed tasks leave UserTask.
+                    SELECT ut.uid, COUNT(*) as cnt
+                    FROM dbo.UserTask ut
+                    INNER JOIN dbo.Tasks t ON t.tid = ut.tid
+                    GROUP BY ut.uid
                 ) wl ON wl.uid = u.uid
                 LEFT JOIN (
                     SELECT uid, MAX(max_concurrent_tasks) as max_cap

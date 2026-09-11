@@ -79,7 +79,7 @@ class AnalyticsIntegration {
     }
 
     /**
-     * Hook for task deletion - called when a task is deleted. tasks.deleteTask already marks the
+     * Hook for task deletion - called when a task is deleted. tasks.trashTask already marks the
      * facts 'failed' in its transaction; this refreshes the derived metrics (or closes facts
      * left pending by older code paths).
      * @param {string} taskId - Task UUID

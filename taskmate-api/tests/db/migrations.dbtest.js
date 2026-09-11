@@ -110,6 +110,43 @@ describe('constraints', () => {
         expect(row.percentage).toBe(25);
     });
 
+    it('migration 005 repairs orphaned groups by join date, not by username', async () => {
+        const admin = await h.createUser('adm');
+        const veteran = await h.createUser('zzz');
+        const newcomer = await h.createUser('!a');
+        const orphan = await h.createGroup(admin.uid);
+        await h.addMember(veteran.uid, orphan);
+        await h.addMember(newcomer.uid, orphan);
+        await h.setJoinedAt(veteran.uid, orphan, '2026-01-01T00:00:00Z');
+        await h.setJoinedAt(newcomer.uid, orphan, '2026-05-01T00:00:00Z');
+        await execWriteCommand('DELETE FROM dbo.UserGroups WHERE uid = @uid AND gid = @gid', [h.guid('uid', admin.uid), h.guid('gid', orphan)]);
+        await runner.reapply({ version: 5 });
+        const [group] = await execReadCommand('SELECT adminId FROM dbo.Groups WHERE gid = @gid', [h.guid('gid', orphan)]);
+        expect(h.sameId(group.adminId, veteran.uid)).toBe(true);
+    });
+
+    it('005 columns: NVARCHAR text, joined_at default, AI opt-in off by default, unique payload hash', async () => {
+        const types = await execReadCommand(
+            `SELECT OBJECT_NAME(c.object_id) + '.' + c.name AS col, t.name AS type, c.max_length
+             FROM sys.columns c INNER JOIN sys.types t ON t.user_type_id = c.user_type_id
+             WHERE (c.object_id = OBJECT_ID('dbo.Tasks') AND c.name IN ('name', 'description', 'list'))
+                OR (c.object_id = OBJECT_ID('dbo.Users') AND c.name = 'username')
+                OR (c.object_id = OBJECT_ID('dbo.GroupRoles') AND c.name IN ('gr_name', 'gr_icon'))`
+        );
+        const byCol = Object.fromEntries(types.map(r => [r.col, `${r.type}(${r.max_length})`]));
+        expect(byCol).toEqual({
+            'Tasks.name': 'nvarchar(50)', 'Tasks.description': 'nvarchar(2000)', 'Tasks.list': 'nvarchar(50)',
+            'Users.username': 'nvarchar(50)', 'GroupRoles.gr_name': 'nvarchar(80)', 'GroupRoles.gr_icon': 'varchar(40)',
+        });
+        const hash = 'a'.repeat(64);
+        await execWriteCommand(`INSERT INTO dbo.GitHubWebhookDeliveries (delivery_id, event, payload_sha256) VALUES (NEWID(), 'x', @h)`,
+            [{ name: 'h', type: TYPES.Char, value: hash }]);
+        const dup = await execWriteCommand(`INSERT INTO dbo.GitHubWebhookDeliveries (delivery_id, event, payload_sha256) VALUES (NEWID(), 'x', @h)`,
+            [{ name: 'h', type: TYPES.Char, value: hash }]).catch(e => e);
+        expect(isUniqueViolation(dup)).toBe(true);
+        await execWriteCommand(`DELETE FROM dbo.GitHubWebhookDeliveries WHERE payload_sha256 = @h`, [{ name: 'h', type: TYPES.Char, value: hash }]);
+    });
+
     it('migration 004 hands orphaned groups to their first remaining member', async () => {
         const admin = await h.createUser('aaa');
         const member = await h.createUser('zzz');

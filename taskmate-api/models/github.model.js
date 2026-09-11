@@ -106,7 +106,15 @@ const deleteRepository = async (repoId, options = {}) => (await write(options,
 
 // ---------------------------------------------------------------- group <-> repository
 
+// Branch rows of the group's tasks that point to another repository: they would link tasks to
+// the wrong repo, block "create branch" and let merges in the old repo complete tasks.
+const DELETE_STALE_BRANCHES = `
+    DELETE tb FROM dbo.TaskBranches tb
+    INNER JOIN dbo.Tasks t ON t.tid = tb.tid
+    WHERE t.gid = @gid AND (@repoId IS NULL OR tb.repo_id <> @repoId)`;
+
 // linkGroupRepository({gid, repoId, connectedBy}) → {previousRepoId}
+// Switching repositories also drops the old repo's task branches and resets the AI opt-in.
 const linkGroupRepository = async ({ gid, repoId, connectedBy }, options = {}) => {
     try {
         return await useTransaction(options, async (tx) => {
@@ -122,7 +130,8 @@ const linkGroupRepository = async ({ gid, repoId, connectedBy }, options = {}) =
             if (current.length > 0) {
                 await tx.write(
                     `UPDATE dbo.GroupRepositories
-                     SET repo_id = @repoId, connected_by = @connectedBy, connected_at = SYSDATETIMEOFFSET()
+                     SET ai_analysis_enabled = CASE WHEN repo_id = @repoId THEN ai_analysis_enabled ELSE 0 END,
+                         repo_id = @repoId, connected_by = @connectedBy, connected_at = SYSDATETIMEOFFSET()
                      WHERE gid = @gid`,
                     params
                 );
@@ -132,6 +141,7 @@ const linkGroupRepository = async ({ gid, repoId, connectedBy }, options = {}) =
                     params
                 );
             }
+            await tx.write(DELETE_STALE_BRANCHES, params);
             return { previousRepoId: current.length > 0 ? toNumber(current[0].repo_id) : null };
         });
     } catch (err) {
@@ -140,15 +150,29 @@ const linkGroupRepository = async ({ gid, repoId, connectedBy }, options = {}) =
     }
 };
 
-const unlinkGroupRepository = async (gid, options = {}) => (await write(options,
-    'DELETE FROM dbo.GroupRepositories WHERE gid = @gid',
-    [{ name: 'gid', type: TYPES.UniqueIdentifier, value: gid }]
+// Also drops every task branch of the group. → true when a link existed.
+const unlinkGroupRepository = async (gid, options = {}) => useTransaction(options, async (tx) => {
+    const params = [
+        { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
+        { name: 'repoId', type: TYPES.BigInt, value: null },
+    ];
+    await tx.write(DELETE_STALE_BRANCHES, params);
+    return (await tx.write('DELETE FROM dbo.GroupRepositories WHERE gid = @gid', params)) > 0;
+});
+
+// setAiAnalysisEnabled(gid, enabled) → false when the group has no repository.
+const setAiAnalysisEnabled = async (gid, enabled, options = {}) => (await write(options,
+    'UPDATE dbo.GroupRepositories SET ai_analysis_enabled = @enabled WHERE gid = @gid',
+    [
+        { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
+        { name: 'enabled', type: TYPES.Bit, value: Boolean(enabled) },
+    ]
 )) > 0;
 
 const getGroupRepository = async (gid, options = {}) => {
     const rows = await read(options,
         `SELECT gr.gid, gr.repo_id, i.account_login AS owner, r.name, r.default_branch, r.is_private,
-                r.installation_id, i.suspended_at, gr.connected_at, gr.connected_by,
+                r.installation_id, i.suspended_at, gr.connected_at, gr.connected_by, gr.ai_analysis_enabled,
                 u.username AS connected_by_username
          FROM dbo.GroupRepositories gr
          INNER JOIN dbo.GitHubRepositories r ON r.repo_id = gr.repo_id
@@ -172,6 +196,7 @@ const getGroupRepository = async (gid, options = {}) => {
         connectedAt: r.connected_at,
         connectedBy: r.connected_by,
         connectedByUsername: r.connected_by_username,
+        aiAnalysisEnabled: Boolean(r.ai_analysis_enabled),
     };
 };
 
@@ -223,12 +248,14 @@ const insertTaskBranch = async ({ tid, repoId, branchName, baseSha, createdBy },
     return { tid, repoId: Number(repoId), branchName, baseSha, createdBy };
 };
 
-// Branch names compare case-sensitively (BIN2 collation on the column).
+// Branch names compare case-sensitively (BIN2 collation on the column). Only branches of the
+// repository the task's group is linked to right now count.
 const findTaskByBranch = async (repoId, branchName, options = {}) => {
     const rows = await read(options,
         `SELECT tb.tid, t.gid
          FROM dbo.TaskBranches tb
          INNER JOIN dbo.Tasks t ON t.tid = tb.tid
+         INNER JOIN dbo.GroupRepositories gr ON gr.gid = t.gid AND gr.repo_id = tb.repo_id
          WHERE tb.repo_id = @repoId AND tb.branch_name = @branchName`,
         [bigIntParam('repoId', repoId), { name: 'branchName', type: TYPES.NVarChar, value: branchName }]
     );
@@ -241,6 +268,7 @@ const getTaskLinksByGroup = async (gid, options = {}) => {
         `SELECT tb.tid, tb.branch_name, pr.number, pr.title, pr.state, pr.is_draft, pr.opened_at, pr.merged_at
          FROM dbo.TaskBranches tb
          INNER JOIN dbo.Tasks t ON t.tid = tb.tid
+         INNER JOIN dbo.GroupRepositories gr ON gr.gid = t.gid AND gr.repo_id = tb.repo_id
          OUTER APPLY (
              SELECT TOP 1 p.number, p.title, p.state, p.is_draft, p.opened_at, p.merged_at
              FROM dbo.PullRequests p
@@ -375,45 +403,68 @@ const applyPullRequest = async (pr, options = {}) => useTransaction(options, asy
 // ---------------------------------------------------------------- webhook deliveries
 
 /**
- * beginDelivery({deliveryId, event, action, installationId}) → {duplicate, previousStatus}
- * duplicate = already 'processed'/'ignored', or 'processing' by another request right now.
- * 'failed' deliveries (and 'processing' ones abandoned for more than 10 minutes) are claimed again.
+ * beginDelivery({deliveryId, event, action, installationId, payloadSha256}) → {duplicate, previousStatus, duplicateOf?}
+ * duplicate = this deliveryId, or another delivery with the same payload hash (a captured signed body
+ * replayed under a new X-GitHub-Delivery), already ended 'processed'/'ignored' or is 'processing' right
+ * now. 'failed' deliveries (and 'processing' ones abandoned for more than 10 minutes) are claimed again;
+ * the payload hash then moves to the new attempt (the column is unique).
  */
-const beginDelivery = async ({ deliveryId, event, action = null, installationId = null }) => useTransaction({}, async (tx) => {
-    const params = [
-        { name: 'id', type: TYPES.UniqueIdentifier, value: deliveryId },
-        { name: 'event', type: TYPES.VarChar, value: event },
-        { name: 'action', type: TYPES.VarChar, value: action },
-        { name: 'installationId', type: TYPES.BigInt, value: installationId === null ? null : Number(installationId) },
-        { name: 'staleMinutes', type: TYPES.Int, value: DELIVERY_STALE_MINUTES },
-    ];
-    const rows = await tx.read(
-        `SELECT status,
-                CASE WHEN received_at < DATEADD(MINUTE, -@staleMinutes, SYSDATETIMEOFFSET()) THEN 1 ELSE 0 END AS stale
-         FROM dbo.GitHubWebhookDeliveries WITH (UPDLOCK, HOLDLOCK) WHERE delivery_id = @id`,
-        params
-    );
-    if (rows.length === 0) {
-        await tx.write(
-            `INSERT INTO dbo.GitHubWebhookDeliveries (delivery_id, event, action, installation_id)
-             VALUES (@id, @event, @action, @installationId)`,
+const beginDelivery = async ({ deliveryId, event, action = null, installationId = null, payloadSha256 = null }) => {
+    const hash = payloadSha256 === null || payloadSha256 === undefined ? null : String(payloadSha256).toLowerCase();
+    if (hash !== null && !/^[0-9a-f]{64}$/.test(hash)) throw new TypeError('payloadSha256 must be a hex SHA-256');
+
+    return useTransaction({}, async (tx) => {
+        const params = [
+            { name: 'id', type: TYPES.UniqueIdentifier, value: deliveryId },
+            { name: 'event', type: TYPES.VarChar, value: event },
+            { name: 'action', type: TYPES.VarChar, value: action },
+            { name: 'installationId', type: TYPES.BigInt, value: installationId === null ? null : Number(installationId) },
+            { name: 'staleMinutes', type: TYPES.Int, value: DELIVERY_STALE_MINUTES },
+            { name: 'hash', type: TYPES.Char, value: hash },
+        ];
+        const STATUS_COLUMNS = `delivery_id, status,
+                CASE WHEN received_at < DATEADD(MINUTE, -@staleMinutes, SYSDATETIMEOFFSET()) THEN 1 ELSE 0 END AS stale`;
+        const blocks = (row) => row.status === 'processed' || row.status === 'ignored' || (row.status === 'processing' && !row.stale);
+
+        const [byId] = await tx.read(
+            `SELECT ${STATUS_COLUMNS} FROM dbo.GitHubWebhookDeliveries WITH (UPDLOCK, HOLDLOCK) WHERE delivery_id = @id`,
             params
         );
-        return { duplicate: false, previousStatus: null };
-    }
-    const { status, stale } = rows[0];
-    if (status === 'processed' || status === 'ignored' || (status === 'processing' && !stale)) {
-        return { duplicate: true, previousStatus: status };
-    }
-    await tx.write(
-        `UPDATE dbo.GitHubWebhookDeliveries
-         SET status = 'processing', processed_at = NULL, error = NULL, received_at = SYSDATETIMEOFFSET(),
-             event = @event, action = @action, installation_id = @installationId
-         WHERE delivery_id = @id`,
-        params
-    );
-    return { duplicate: false, previousStatus: status };
-});
+        if (byId && blocks(byId)) return { duplicate: true, previousStatus: byId.status };
+
+        if (hash !== null) {
+            const [byHash] = await tx.read(
+                `SELECT ${STATUS_COLUMNS} FROM dbo.GitHubWebhookDeliveries WITH (UPDLOCK, HOLDLOCK)
+                 WHERE payload_sha256 = @hash AND delivery_id <> @id`,
+                params
+            );
+            if (byHash && blocks(byHash)) {
+                return { duplicate: true, previousStatus: byHash.status, duplicateOf: byHash.delivery_id };
+            }
+            if (byHash) {
+                await tx.write('UPDATE dbo.GitHubWebhookDeliveries SET payload_sha256 = NULL WHERE payload_sha256 = @hash', params);
+            }
+        }
+
+        if (!byId) {
+            await tx.write(
+                `INSERT INTO dbo.GitHubWebhookDeliveries (delivery_id, event, action, installation_id, payload_sha256)
+                 VALUES (@id, @event, @action, @installationId, @hash)`,
+                params
+            );
+            return { duplicate: false, previousStatus: null };
+        }
+        await tx.write(
+            `UPDATE dbo.GitHubWebhookDeliveries
+             SET status = 'processing', processed_at = NULL, error = NULL, received_at = SYSDATETIMEOFFSET(),
+                 event = @event, action = @action, installation_id = @installationId,
+                 payload_sha256 = COALESCE(@hash, payload_sha256)
+             WHERE delivery_id = @id`,
+            params
+        );
+        return { duplicate: false, previousStatus: byId.status };
+    });
+};
 
 const finishDelivery = async (deliveryId, status, options = {}) => {
     if (status !== 'processed' && status !== 'ignored') throw new TypeError(`finishDelivery: invalid status "${status}"`);
@@ -456,6 +507,7 @@ module.exports = {
     linkGroupRepository,
     unlinkGroupRepository,
     getGroupRepository,
+    setAiAnalysisEnabled,
     getTaskBranch,
     insertTaskBranch,
     findTaskByBranch,

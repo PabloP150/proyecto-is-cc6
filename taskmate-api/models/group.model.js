@@ -10,7 +10,7 @@ const addGroup = async (groupData, options = {}) => {
     const params = [
         { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
         { name: 'adminId', type: TYPES.UniqueIdentifier, value: adminId },
-        { name: 'name', type: TYPES.VarChar, value: name },
+        { name: 'name', type: TYPES.NVarChar, value: name },
     ];
     await (options.tx ? options.tx.write(query, params) : execWriteCommand(query, params));
     return { success: true };
@@ -21,7 +21,7 @@ const createGroupWithAdmin = async ({ gid, adminId, name }, options = {}) => use
     const params = [
         { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
         { name: 'adminId', type: TYPES.UniqueIdentifier, value: adminId },
-        { name: 'name', type: TYPES.VarChar, value: name },
+        { name: 'name', type: TYPES.NVarChar, value: name },
     ];
     await tx.write('INSERT INTO dbo.Groups (gid, adminId, name) VALUES (@gid, @adminId, @name)', params);
     await tx.write('INSERT INTO dbo.UserGroups (uid, gid) VALUES (@adminId, @gid)', params);

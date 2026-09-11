@@ -38,7 +38,7 @@ function normalizeIcon(icon) {
 }
 
 
-// Column sizes of the VARCHAR columns written here.
+// Column sizes of the text columns written here (NVARCHAR since migration 005; role colour is VARCHAR).
 const LIMITS = { name: 25, list: 25, description: 1000, roleName: 40, roleColor: 20 };
 const MAX_PLAN_TASKS = 100;
 const MAX_PLAN_MILESTONES = 50;
@@ -47,13 +47,20 @@ const NODE_SPACING_X = 250;
 const MIN_DATE = new Date(1900, 0, 1);
 const MAX_DATE = new Date(2079, 5, 6);
 
-// The VARCHAR columns use a Latin-1 code page: characters outside U+0000-U+00FF (emoji, CJK...)
-// would be stored as '?', so they are dropped before writing.
-const toLatin1 = (value) => String(value ?? '').normalize('NFC').replace(/[^\u0000-\u00FF]/g, '');
-const clip = (value, max) => toLatin1(value).trim().slice(0, max);
+// NVARCHAR lengths count UTF-16 code units: cut at `max` units without splitting a surrogate pair.
+const fitUnits = (text, max) => {
+    let out = '';
+    for (const ch of text) {
+        if (out.length + ch.length > max) break;
+        out += ch;
+    }
+    return out;
+};
+const normalizeText = (value) => String(value ?? '').normalize('NFC').trim();
+const clip = (value, max) => fitUnits(normalizeText(value), max);
 const shorten = (value, max) => {
-    const text = toLatin1(value).trim();
-    return text.length > max ? `${text.slice(0, max - 3)}...` : text;
+    const text = normalizeText(value);
+    return text.length > max ? `${fitUnits(text, max - 3)}...` : text;
 };
 
 // 'YYYY-MM-DD' is a calendar date: build it in local time (the pool uses useUTC: false).
@@ -217,7 +224,7 @@ class ProjectService {
      * addPlanToGroup(gid, plan, uid) → {taskIds, nodeIds}
      * Saves a confirmed repository-analysis plan into an existing group in one transaction:
      * milestones become Nodes at x = 250*i, tasks become Tasks whose list is their milestone's
-     * name (<= 25) or 'GitHub'. Text is truncated to the columns and stripped to Latin-1.
+     * name (<= 25) or 'GitHub'. Text is truncated to the column sizes.
      * Throws AppError NOT_GROUP_MEMBER (403) or VALIDATION_ERROR (400).
      */
     async addPlanToGroup(gid, plan, uid) {

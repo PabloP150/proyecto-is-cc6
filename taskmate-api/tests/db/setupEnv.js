@@ -23,6 +23,17 @@ function mapTestDbEnv() {
     if (process.env.TEST_DB_PORT) process.env.DB_PORT = process.env.TEST_DB_PORT;
     else delete process.env.DB_PORT;
     delete process.env.DB_INSTANCE;
+    // DDL (migrations, helper tables) runs with a separate login, like in production where the
+    // app login only has db_datareader/db_datawriter.
+    delete process.env.MIGRATION_DB_USERNAME;
+    delete process.env.MIGRATION_DB_PASSWORD;
+    if (process.env.TEST_DB_MIGRATION_USERNAME) {
+        process.env.MIGRATION_DB_USERNAME = process.env.TEST_DB_MIGRATION_USERNAME;
+        process.env.MIGRATION_DB_PASSWORD = process.env.TEST_DB_MIGRATION_PASSWORD;
+    } else if (process.env.TEST_DB_SA_PASSWORD) {
+        process.env.MIGRATION_DB_USERNAME = 'sa';
+        process.env.MIGRATION_DB_PASSWORD = process.env.TEST_DB_SA_PASSWORD;
+    }
     process.env.ANALYTICS_ENABLED = 'true';
 }
 

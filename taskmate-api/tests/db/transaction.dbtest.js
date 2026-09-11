@@ -3,6 +3,7 @@ const pool = require('../../helpers/pool');
 const { execReadCommand, execWriteCommand, runRequest } = require('../../helpers/execQuery');
 const { withTransaction, isUniqueViolation, isDeadlock } = require('../../helpers/transaction');
 const { AppError } = require('../../helpers/errors');
+const { execAdmin } = require('../../migrations/runner');
 
 const TABLE = 'dbo.TxHelperTest';
 const idParam = (id) => ({ name: 'id', type: TYPES.Int, value: id });
@@ -19,13 +20,14 @@ const SESSION_STATE = `SELECT @@SPID AS spid, @@TRANCOUNT AS trancount, (@@OPTIO
 let nextId = 1000;
 const newId = () => ++nextId;
 
+// The app login has no DDL rights: the helper table is created with the migration login.
 beforeAll(async () => {
-    await execWriteCommand(`IF OBJECT_ID(N'${TABLE}', N'U') IS NOT NULL DROP TABLE ${TABLE};
+    await execAdmin(`IF OBJECT_ID(N'${TABLE}', N'U') IS NOT NULL DROP TABLE ${TABLE};
         CREATE TABLE ${TABLE} (id INT NOT NULL CONSTRAINT PK_TxHelperTest PRIMARY KEY, v INT NOT NULL)`);
 });
 
 afterAll(async () => {
-    await execWriteCommand(`IF OBJECT_ID(N'${TABLE}', N'U') IS NOT NULL DROP TABLE ${TABLE}`);
+    await execAdmin(`IF OBJECT_ID(N'${TABLE}', N'U') IS NOT NULL DROP TABLE ${TABLE}`);
 });
 
 describe('execQuery', () => {

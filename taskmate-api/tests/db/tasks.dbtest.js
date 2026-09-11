@@ -83,18 +83,18 @@ describe('tasks deletion', () => {
         repoId = await linkedRepo(gid, user.uid);
     });
 
-    it('deleteTask keeps the analytics fact as failed and removes dependents', async () => {
+    it('trashTask keeps the analytics fact as failed and removes dependents (incl. the branch)', async () => {
         const tid = await h.createTask(gid);
         await h.assignTask(user.uid, tid, gid);
         await github.insertTaskBranch({ tid, repoId, branchName: `tm/del-${tid.slice(0, 8)}`, baseSha: SHA, createdBy: user.uid });
 
-        await expect(tasksModel.deleteTask(tid)).resolves.toBe(1);
+        await expect(tasksModel.trashTask(tid)).resolves.toEqual(expect.objectContaining({ status: 'deleted' }));
         const p = [h.guid('tid', tid)];
         expect(await h.count('dbo.Tasks WHERE tid = @tid', p)).toBe(0);
         expect(await h.count('dbo.UserTask WHERE tid = @tid', p)).toBe(0);
         expect(await h.count('dbo.TaskBranches WHERE tid = @tid', p)).toBe(0);
         expect((await facts(tid)).map(f => f.success_status)).toEqual(['failed']);
-        await expect(tasksModel.deleteTask(tid)).resolves.toBe(0);
+        await expect(tasksModel.trashTask(tid)).resolves.toEqual({ status: 'not_found' });
     });
 
     it('trashTask archives into DeleteTask and deletes atomically', async () => {

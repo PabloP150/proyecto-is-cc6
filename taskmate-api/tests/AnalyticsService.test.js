@@ -3,7 +3,6 @@ const { execReadCommand, execWriteCommand } = require('../helpers/execQuery');
 
 // Mock the database helpers
 jest.mock('../helpers/execQuery');
-jest.mock('../helpers/getConnection');
 
 describe('AnalyticsService', () => {
     beforeEach(() => {
@@ -12,7 +11,6 @@ describe('AnalyticsService', () => {
 
     describe('recordTaskAssignment', () => {
         it('should record task assignment successfully', async () => {
-            execReadCommand.mockResolvedValueOnce([]); // No existing assignment
             execWriteCommand.mockResolvedValue(1);
 
             const result = await AnalyticsService.recordTaskAssignment(
@@ -48,7 +46,6 @@ describe('AnalyticsService', () => {
         });
 
         it('should handle invalid category gracefully', async () => {
-            execReadCommand.mockResolvedValueOnce([]); // No existing assignment
             execWriteCommand.mockResolvedValue(1);
 
             const result = await AnalyticsService.recordTaskAssignment(
@@ -63,7 +60,6 @@ describe('AnalyticsService', () => {
         });
 
         it('should handle foreign key constraint errors', async () => {
-            execReadCommand.mockResolvedValueOnce([]); // No existing assignment
             execWriteCommand.mockRejectedValue(new Error('FOREIGN KEY constraint failed'));
 
             await expect(AnalyticsService.recordTaskAssignment('task-123', 'user-456', 'group-789'))

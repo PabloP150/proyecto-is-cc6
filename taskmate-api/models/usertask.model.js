@@ -47,15 +47,6 @@ const getUsertasksByTid = async (tid) => {
     return execReadCommand(query, params);
 };
 
-const getutid = async (tid, uid) => {
-    const query = `SELECT utid FROM dbo.UserTask WHERE tid=@tid AND uid=@uid`;
-    const params = [
-        { name: 'tid', type: TYPES.UniqueIdentifier, value: tid },
-        { name: 'uid', type: TYPES.UniqueIdentifier, value: uid },
-    ];
-    return execReadCommand(query, params);
-};
-
 /**
  * populateAssignmentsForGroup(gid) → {assigned, group, members, totalTasks}
  * Demo-data utility (formerly inline in server.js /api/utils/populate-assignments): every task
@@ -119,6 +110,5 @@ module.exports = {
     addUsertask,
     deleteUsertask,
     getUsertasksByTid,
-    getutid,
     populateAssignmentsForGroup,
 };

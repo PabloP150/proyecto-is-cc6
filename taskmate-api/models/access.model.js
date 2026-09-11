@@ -20,7 +20,8 @@ const isGroupMember = async (uid, gid, options = {}) => {
     return rows.length > 0;
 };
 
-// The admin must also still be a member (getGroupsByUserId repairs orphaned admins lazily).
+// The admin must also still be a member. leaveGroup/removeMemberFromGroup hand the admin role
+// over in the same transaction, and migrations 004/005 repaired groups orphaned before that.
 const isGroupAdmin = async (uid, gid, options = {}) => {
     if (!isUuid(uid) || !isUuid(gid)) return false;
     const rows = await read(options,
@@ -28,6 +29,26 @@ const isGroupAdmin = async (uid, gid, options = {}) => {
          FROM dbo.Groups g
          INNER JOIN dbo.UserGroups ug ON ug.gid = g.gid AND ug.uid = g.adminId
          WHERE g.gid = @gid AND g.adminId = @uid`,
+        [
+            { name: 'uid', type: TYPES.UniqueIdentifier, value: uid },
+            { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
+        ]);
+    return rows.length > 0;
+};
+
+// isGroupLeader(uid, gid) → bool: a member who is the group admin or holds a role whose name
+// contains "leader" (any case).
+const isGroupLeader = async (uid, gid, options = {}) => {
+    if (!isUuid(uid) || !isUuid(gid)) return false;
+    const rows = await read(options,
+        `SELECT 1 AS ok
+         FROM dbo.UserGroups ug
+         INNER JOIN dbo.Groups g ON g.gid = ug.gid
+         WHERE ug.uid = @uid AND ug.gid = @gid
+           AND (g.adminId = @uid OR EXISTS (
+               SELECT 1 FROM dbo.UserGroupRoles ugr
+               INNER JOIN dbo.GroupRoles gr ON gr.gr_id = ugr.gr_id AND gr.gid = ugr.gid
+               WHERE ugr.uid = @uid AND ugr.gid = @gid AND LOWER(gr.gr_name) LIKE N'%leader%'))`,
         [
             { name: 'uid', type: TYPES.UniqueIdentifier, value: uid },
             { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
@@ -62,6 +83,7 @@ const resolveGroupId = async (kind, id, options = {}) => {
 module.exports = {
     isGroupMember,
     isGroupAdmin,
+    isGroupLeader,
     resolveGroupId,
     isUuid,
     RESOURCE_KINDS: Object.keys(GROUP_OF),

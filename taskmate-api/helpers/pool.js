@@ -39,9 +39,13 @@ let active = 0;
 const queue = [];
 let ending = false;
 
-function createConnection() {
+// `credentials` ({userName, password}) replaces the app login, e.g. for the migration runner.
+function createConnection(credentials) {
+    const config = credentials
+        ? { ...dbConfig, authentication: { type: DB_AUTH_TYPE, options: { userName: credentials.userName, password: credentials.password } } }
+        : dbConfig;
     return new Promise((resolve, reject) => {
-        const conn = new Connection(dbConfig);
+        const conn = new Connection(config);
         // A socket error on an idle connection must not crash the process; the
         // connection moves to the Final state and is discarded on next acquire.
         conn.on('error', () => {});
@@ -169,5 +173,5 @@ async function end() {
 
 const stats = () => ({ active, idle: idle.length, waiting: queue.length, max: POOL_MAX });
 
-// `connect` opens a dedicated connection outside the pool (migration runner).
+// `connect([credentials])` opens a dedicated connection outside the pool (migration runner, tests).
 module.exports = { acquire, release, initialize, end, stats, connect: createConnection };
