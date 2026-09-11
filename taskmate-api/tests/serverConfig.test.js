@@ -1,3 +1,5 @@
+// server.js refuses to load without a JWT secret; CI has no .env.
+process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret';
 jest.mock('../services/LLMService', () => ({ on: jest.fn(), removeListener: jest.fn(), send: jest.fn() }));
 jest.mock('../services/WebSocketServer', () => jest.fn().mockImplementation(() => ({ close: jest.fn() })));
 
