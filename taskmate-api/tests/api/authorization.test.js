@@ -7,6 +7,9 @@ const app = require('../../app');
 
 const { ALICE, BOB, EVE, GROUP_A, GROUP_B, TASK_A, TASK_B, NODE_A, NODE_A2, NODE_B, EDGE_A, ROLE_A, ROLE_B, UGR_A, UGR_B, UNKNOWN } = ids;
 
+const TASK_BODY = { name: 'n', list: 'L', datetime: '2026-09-11T10:00', percentage: 0 };
+const NODE_TEXT = { name: 'n', description: 'd', date: '2026-09-11' };
+
 const call = (method, path, body, userId) => {
     let req = request(app)[method](path);
     if (userId) req = req.set(bearer(userId));
@@ -17,11 +20,10 @@ const call = (method, path, body, userId) => {
 const MEMBER_ROUTES = [
     ['get', `/api/tasks?gid=${GROUP_A}`, undefined, 200],
     ['get', `/api/tasks/${TASK_A}`, undefined, 200],
-    ['post', '/api/tasks', { gid: GROUP_A, name: 'n', list: 'L' }, 200],
-    ['put', `/api/tasks/${TASK_A}`, { gid: GROUP_A, name: 'n' }, 200],
-    ['put', `/api/tasks/nodes/${TASK_A}`, { name: 'n' }, 200],
+    ['post', '/api/tasks', { gid: GROUP_A, ...TASK_BODY }, 200],
+    ['put', `/api/tasks/${TASK_A}`, { gid: GROUP_A, ...TASK_BODY }, 200],
+    ['put', `/api/tasks/nodes/${TASK_A}`, NODE_TEXT, 200],
     ['post', `/api/tasks/${TASK_A}/complete`, undefined, 200],
-    ['delete', `/api/tasks/${TASK_A}`, undefined, 200],
     ['delete', `/api/tasks/list/${GROUP_A}/L`, undefined, 200],
     ['get', `/api/groups/${GROUP_A}/members`, undefined, 200],
     ['get', `/api/groups/${GROUP_A}/roles`, undefined, 200],
@@ -29,8 +31,8 @@ const MEMBER_ROUTES = [
     ['get', `/api/nodes/tasks/${GROUP_A}`, undefined, 200],
     ['get', `/api/nodes/group/${GROUP_A}`, undefined, 200],
     ['get', `/api/nodes/${NODE_A}`, undefined, 200],
-    ['post', '/api/nodes', { gid: GROUP_A, name: 'n', date: '2026-09-11' }, 200],
-    ['put', `/api/nodes/${NODE_A}`, { name: 'n' }, 200],
+    ['post', '/api/nodes', { gid: GROUP_A, ...NODE_TEXT, x_pos: 10, y_pos: 10 }, 200],
+    ['put', `/api/nodes/${NODE_A}`, NODE_TEXT, 200],
     ['put', `/api/nodes/${NODE_A}/coords`, { x_pos: 1, y_pos: 2 }, 200],
     ['put', `/api/nodes/${NODE_A}/percentage`, { percentage: 5 }, 200],
     ['put', `/api/nodes/${NODE_A}/toggleComplete`, { completed: 1 }, 200],
@@ -41,16 +43,13 @@ const MEMBER_ROUTES = [
     ['put', `/api/edges/${EDGE_A}`, { prerequisite: 0 }, 200],
     ['delete', `/api/edges/${EDGE_A}`, undefined, 200],
     ['delete', `/api/edges/source/${NODE_A}`, undefined, 200],
-    ['post', '/api/completados', { gid: GROUP_A, tid: TASK_A, name: 'n' }, 200],
     ['get', `/api/completados/${GROUP_A}`, undefined, 200],
     ['delete', `/api/completados/${GROUP_A}`, undefined, 200],
-    ['post', '/api/delete', { gid: GROUP_A, tid: TASK_A, name: 'n' }, 200],
     ['get', `/api/delete/${GROUP_A}`, undefined, 200],
     ['delete', `/api/delete/${GROUP_A}`, undefined, 200],
     ['post', '/api/usertask', { uid: BOB, tid: TASK_A, completed: true }, 200],
     ['delete', `/api/usertask?uid=${BOB}&tid=${TASK_A}`, undefined, 200],
     ['get', `/api/usertask?tid=${TASK_A}`, undefined, 200],
-    ['get', `/api/usertask/getutid?tid=${TASK_A}&uid=${BOB}`, undefined, 200],
     ['get', `/api/grouproles/groups/${GROUP_A}/roles`, undefined, 200],
     ['get', `/api/usergrouproles/groups/${GROUP_A}/userroles`, undefined, 200],
     ['get', `/api/usergrouproles/groups/${GROUP_A}/rolesmatrix`, undefined, 200],
@@ -58,7 +57,6 @@ const MEMBER_ROUTES = [
     ['get', `/api/usergrouproles/groups/${GROUP_A}/users/${BOB}/roles/${ROLE_A}`, undefined, 200],
     ['get', `/api/usergrouproles/groups/${GROUP_A}/roles/${ROLE_A}/users`, undefined, 200],
     ['get', `/api/usergrouproles/groups/${GROUP_A}/roles/${ROLE_A}/count`, undefined, 200],
-    ['get', `/api/analytics/dashboard/${GROUP_A}`, undefined, 200],
 ];
 
 const ADMIN_ROUTES = [
@@ -72,6 +70,7 @@ const ADMIN_ROUTES = [
     ['delete', `/api/usergrouproles/groups/${GROUP_A}/userroles/${UGR_A}`, undefined, 200],
     ['delete', `/api/usergrouproles/groups/${GROUP_A}/userroles`, { uid: BOB, gr_id: ROLE_A }, 200],
     ['post', `/api/utils/populate-assignments/${GROUP_A}`, undefined, 200],
+    ['get', `/api/analytics/dashboard/${GROUP_A}`, undefined, 200],
 ];
 
 let m;
@@ -170,7 +169,6 @@ describe('validation and not-found', () => {
         ['post', '/api/edges', { gid: GROUP_A, sourceId: 'x', targetId: NODE_A2 }],
         ['get', `/api/usergrouproles/groups/${GROUP_A}/users/nope/roles`, undefined],
         ['post', '/api/usertask', { uid: 'nope', tid: TASK_A }],
-        ['post', '/api/completados', { gid: GROUP_A }],
     ])('%s %s → 400 VALIDATION_ERROR', async (method, path, body) => {
         const res = await call(method, path, body, ALICE);
         expect(res.status).toBe(400);
@@ -185,7 +183,7 @@ describe('validation and not-found', () => {
 
     test.each([
         ['get', `/api/tasks/${UNKNOWN}`, undefined, 'TASK_NOT_FOUND'],
-        ['delete', `/api/tasks/${UNKNOWN}`, undefined, 'TASK_NOT_FOUND'],
+        ['post', `/api/tasks/${UNKNOWN}/trash`, undefined, 'TASK_NOT_FOUND'],
         ['put', `/api/nodes/${UNKNOWN}/coords`, { x_pos: 1 }, 'NOT_FOUND'],
         ['delete', `/api/edges/${UNKNOWN}`, undefined, 'NOT_FOUND'],
         ['put', `/api/grouproles/groups/${GROUP_A}/roles/${ROLE_B}`, { gr_name: 'x' }, 'NOT_FOUND'],
@@ -204,15 +202,25 @@ describe('validation and not-found', () => {
     });
 
     test.each([
-        ['put', `/api/tasks/${TASK_A}`, { gid: GROUP_B, name: 'n' }],
-        ['post', '/api/nodes', { gid: GROUP_A, nid: TASK_B, name: 'n', date: '2026-09-11' }],
+        ['put', `/api/tasks/${TASK_A}`, { gid: GROUP_B, ...TASK_BODY }],
+        ['post', '/api/nodes', { gid: GROUP_A, nid: TASK_B, ...NODE_TEXT, x_pos: 1, y_pos: 1 }],
         ['post', '/api/edges', { gid: GROUP_A, sourceId: NODE_A, targetId: NODE_B }],
-        ['post', '/api/completados', { gid: GROUP_A, tid: TASK_B }],
-        ['post', '/api/delete', { gid: GROUP_A, tid: TASK_B }],
     ])('cross-group references are rejected: %s %s', async (method, path, body) => {
         const res = await call(method, path, body, ALICE);
         expect(res.status).toBe(400);
         expect(res.body.code).toBe('VALIDATION_ERROR');
+    });
+
+    test.each([
+        ['post', '/api/completados', { gid: GROUP_A, tid: TASK_A }],
+        ['post', '/api/delete', { gid: GROUP_A, tid: TASK_A }],
+        ['delete', `/api/tasks/${TASK_A}`, undefined],
+        ['get', `/api/usertask/getutid?tid=${TASK_A}&uid=${BOB}`, undefined],
+        ['post', '/api/analytics/batch-update', {}],
+    ])('removed route %s %s → 404', async (method, path, body) => {
+        const res = await call(method, path, body, ALICE);
+        expect(res.status).toBe(404);
+        expect(res.body.code).toBe('NOT_FOUND');
     });
 
     test('GET /api/nodes (all nodes of every group) no longer exists', async () => {

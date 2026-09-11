@@ -7,6 +7,8 @@ const app = require('../../app');
 
 const { ALICE, BOB, EVE, GROUP_A, TASK_A, TASK_B, DONE_A, NODE_A, UNKNOWN } = ids;
 
+const NODE_TEXT = { name: 'n', description: 'd', date: '2026-09-11' };
+
 let m;
 beforeEach(() => { m = applyDefaults(); });
 
@@ -122,25 +124,18 @@ describe('POST /api/tasks/:tid/complete', () => {
         expect(res.status).toBe(500);
         expect(res.body.error).toBe('Internal server error');
     });
-
-    test('legacy POST /api/completados keeps working', async () => {
-        const res = await request(app).post('/api/completados').set(bearer(BOB))
-            .send({ gid: GROUP_A, tid: TASK_A, name: 'n', percentage: 100 });
-        expect(res.status).toBe(200);
-        expect(res.body).toEqual({ data: { rowCount: 1, tid: TASK_A } });
-    });
 });
 
 describe('PUT /api/tasks/nodes/:id (flow editor)', () => {
     test('a node id that is not a task is accepted without touching Tasks', async () => {
-        const res = await request(app).put(`/api/tasks/nodes/${NODE_A}`).set(bearer(BOB)).send({ name: 'n' });
+        const res = await request(app).put(`/api/tasks/nodes/${NODE_A}`).set(bearer(BOB)).send(NODE_TEXT);
         expect(res.status).toBe(200);
         expect(res.body).toEqual({ data: { rowCount: 0, tid: NODE_A } });
         expect(m.tasks.updateTaskFromNode).not.toHaveBeenCalled();
     });
 
     test('a task id updates the task', async () => {
-        const res = await request(app).put(`/api/tasks/nodes/${TASK_A}`).set(bearer(BOB)).send({ name: 'n' });
+        const res = await request(app).put(`/api/tasks/nodes/${TASK_A}`).set(bearer(BOB)).send(NODE_TEXT);
         expect(res.status).toBe(200);
         expect(m.tasks.updateTaskFromNode).toHaveBeenCalledWith(expect.objectContaining({ tid: TASK_A, name: 'n' }));
     });
@@ -165,4 +160,26 @@ describe('POST /api/utils/populate-assignments/:groupId', () => {
         const res = await request(app).post('/api/utils/populate-assignments/test-group-456').set(bearer(ALICE));
         expect(res.status).toBe(400);
     });
+});
+
+describe('TRUST_PROXY', () => {
+    const { createApp } = require('../../app');
+    const withEnv = (value, fn) => {
+        const previous = process.env.TRUST_PROXY;
+        if (value === undefined) delete process.env.TRUST_PROXY; else process.env.TRUST_PROXY = value;
+        try { return fn(); } finally {
+            if (previous === undefined) delete process.env.TRUST_PROXY; else process.env.TRUST_PROXY = previous;
+        }
+    };
+
+    test.each([
+        [undefined, false],
+        ['false', false],
+        ['1', 1],
+        ['true', true],
+        ['loopback', 'loopback'],
+    ])('TRUST_PROXY=%s → trust proxy %s', (value, expected) => {
+        withEnv(value, () => expect(createApp().get('trust proxy')).toBe(expected));
+    });
+
 });

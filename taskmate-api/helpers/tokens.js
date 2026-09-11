@@ -20,8 +20,7 @@ const signAccessToken = ({ userId, username }) => {
     });
 };
 
-// Tokens issued before `typ` existed carry no typ (and no aud); they stay valid until they
-// expire (24 h). Anything else with a typ, or with an audience, was minted for another purpose.
+// Only login tokens: typ 'access', no audience (purpose tokens carry one) and an expiry.
 const verifyAccessToken = (token) => {
     let decoded;
     try {
@@ -29,8 +28,7 @@ const verifyAccessToken = (token) => {
     } catch {
         throw new AppError('UNAUTHENTICATED', 'Invalid or expired token.', 401);
     }
-    const hasForeignTyp = decoded.typ !== undefined && decoded.typ !== ACCESS_TYP;
-    if (hasForeignTyp || decoded.aud !== undefined || !decoded.userId) {
+    if (decoded.typ !== ACCESS_TYP || decoded.aud !== undefined || !decoded.userId || !decoded.exp) {
         throw new AppError('UNAUTHENTICATED', 'Invalid or expired token.', 401);
     }
     return { userId: decoded.userId, username: decoded.username };

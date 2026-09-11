@@ -53,10 +53,13 @@ describe('requireAuth', () => {
         }
     });
 
-    test('legacy login token without typ is still accepted', async () => {
+    test('legacy tokens without typ and tokens without exp are rejected', async () => {
         const legacy = jwt.sign({ userId: ids.ALICE, username: 'alice' }, SECRET, { expiresIn: '24h' });
-        const res = await request(app).get(PROTECTED).set('Authorization', `Bearer ${legacy}`);
-        expect(res.status).toBe(200);
+        const forever = jwt.sign({ userId: ids.ALICE, username: 'alice', typ: 'access' }, SECRET);
+        for (const token of [legacy, forever]) {
+            const res = await request(app).get(PROTECTED).set('Authorization', `Bearer ${token}`);
+            expect(res.status).toBe(401);
+        }
     });
 
     test('access token works and scheme is case-insensitive', async () => {

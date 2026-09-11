@@ -20,8 +20,20 @@ const analyticsController = require('./controllers/analytics.controller');
 const utilsController = require('./controllers/utils.controller');
 const { githubRouter, githubCallbackRouter, githubWebhookHandler } = require('./controllers/github.controller');
 
+// TRUST_PROXY (default off): a hop count ("1"), "true", or an Express trust list ("loopback, 10.0.0.0/8").
+// Only enable it behind a real reverse proxy; otherwise clients could spoof X-Forwarded-For and dodge IP rate limits.
+const parseTrustProxy = (value) => {
+    if (value === undefined || value === '' || /^(false|0|off|no)$/i.test(value)) return null;
+    if (/^\d+$/.test(value)) return Number(value);
+    if (/^true$/i.test(value)) return true;
+    return value;
+};
+
 function createApp() {
     const app = express();
+
+    const trustProxy = parseTrustProxy(process.env.TRUST_PROXY);
+    if (trustProxy !== null) app.set('trust proxy', trustProxy);
 
     app.use(helmet());
     app.use(corsMiddleware());

@@ -1,3 +1,6 @@
+// createServer() refuses weak secrets, so this suite runs with a strong one.
+process.env.JWT_SECRET = 'ws-suite-7f3c9a1e5b2d8c4f6a0e9b3d7c1f5a2e8b4d6c0a';
+
 const { ids, TEAM_CONTEXT, registerMocks, applyDefaults, tokenFor } = require('./support/mocks');
 
 registerMocks();
@@ -11,10 +14,11 @@ jest.mock('../../services/SessionManager', () => class {
     disconnectUser() {}
 });
 
+const net = require('net');
 const WebSocket = require('ws');
 const jwt = require('jsonwebtoken');
 const { signPurposeToken } = require('../../helpers/tokens');
-const { createServer } = require('../../server');
+const { createServer, assertStrongJwtSecret } = require('../../server');
 
 let server;
 let port;
@@ -69,10 +73,35 @@ describe('WebSocket handshake', () => {
         expect((await connect('/insights', { token: hs512 })).status).toBe(401);
     });
 
-    test('accepts access tokens and legacy tokens without typ', async () => {
+    test('accepts access tokens; legacy tokens without typ are rejected', async () => {
         expect((await connect('/chat', { token: tokenFor(ids.ALICE) })).status).toBe(101);
-        const legacy = jwt.sign({ userId: ids.BOB, username: 'bob' }, process.env.JWT_SECRET);
-        expect((await connect('/insights', { token: legacy })).status).toBe(101);
+        const legacy = jwt.sign({ userId: ids.BOB, username: 'bob' }, process.env.JWT_SECRET, { expiresIn: '1h' });
+        expect((await connect('/insights', { token: legacy })).status).toBe(401);
+    });
+
+    test('unknown paths answer 404', async () => {
+        expect((await connect('/nope', { token: tokenFor(ids.ALICE) })).status).toBe(404);
+    });
+
+    test('a hostile Host header or an unparseable URL cannot crash the server', async () => {
+        const rawUpgrade = (target, host) => new Promise((resolve) => {
+            const socket = net.connect(port, '127.0.0.1', () => {
+                socket.write(`GET ${target} HTTP/1.1\r\nHost: ${host}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n`
+                    + 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n');
+            });
+            let head = '';
+            socket.on('data', (chunk) => {
+                head += chunk.toString();
+                if (head.includes('\r\n\r\n')) socket.destroy();
+            });
+            socket.on('close', () => resolve(head.split('\r\n')[0]));
+            socket.on('error', () => resolve(head.split('\r\n')[0]));
+        });
+
+        expect(await rawUpgrade(`/chat?token=${tokenFor(ids.ALICE)}`, '%')).toMatch(/^HTTP\/1\.1 101/);
+        expect(await rawUpgrade('//[', 'localhost')).toBe('HTTP/1.1 400 Bad Request');
+        // Still serving
+        expect((await connect('/chat', { token: tokenFor(ids.ALICE) })).status).toBe(101);
     });
 
     test('rejects browser handshakes from a foreign origin with 403', async () => {
@@ -90,8 +119,8 @@ describe('/insights analytics requests', () => {
         data,
     });
 
-    test('members get the server-built team_context (client-supplied one is dropped)', async () => {
-        const { ws } = await connect('/insights', { token: tokenFor(ids.BOB) });
+    test('leaders get the server-built team_context (client-supplied one is dropped)', async () => {
+        const { ws } = await connect('/insights', { token: tokenFor(ids.ALICE) });
         const sent = nextLlmSend();
         ws.send(analyticsRequest({ group_id: ids.GROUP_A, task_description: 'x', team_context: { forged: true } }));
 
@@ -106,19 +135,28 @@ describe('/insights analytics requests', () => {
         expect(await reply).toMatchObject({ event: 'analytics_response' });
     });
 
-    test('non-members get analytics_error NOT_GROUP_MEMBER and nothing reaches Python', async () => {
-        const { ws } = await connect('/insights', { token: tokenFor(ids.EVE) });
-        const reply = nextMessage(ws);
-        ws.send(analyticsRequest({ group_id: ids.GROUP_A, task_description: 'x' }));
+    test.each([['a plain member', ids.BOB], ['a non-member', ids.EVE]])(
+        '%s gets analytics_error NOT_GROUP_ADMIN and nothing reaches Python', async (_label, userId) => {
+            const { ws } = await connect('/insights', { token: tokenFor(userId) });
+            const reply = nextMessage(ws);
+            ws.send(analyticsRequest({ group_id: ids.GROUP_A, task_description: 'x' }));
 
-        expect(await reply).toEqual({
-            event: 'analytics_error',
-            requestId: 'req-1',
-            error: expect.any(String),
-            code: 'NOT_GROUP_MEMBER',
+            expect(await reply).toEqual({
+                event: 'analytics_error',
+                requestId: 'req-1',
+                error: expect.any(String),
+                code: 'NOT_GROUP_ADMIN',
+            });
+            expect(m.llm.send).not.toHaveBeenCalled();
+            expect(m.context.buildTeamContext).not.toHaveBeenCalled();
         });
+
+    test('unknown actions are rejected with VALIDATION_ERROR', async () => {
+        const { ws } = await connect('/insights', { token: tokenFor(ids.ALICE) });
+        const reply = nextMessage(ws);
+        ws.send(JSON.stringify({ type: 'analytics', requestId: 'req-2', action: 'drop_tables', data: { group_id: ids.GROUP_A } }));
+        expect(await reply).toMatchObject({ event: 'analytics_error', requestId: 'req-2', code: 'VALIDATION_ERROR' });
         expect(m.llm.send).not.toHaveBeenCalled();
-        expect(m.context.buildTeamContext).not.toHaveBeenCalled();
     });
 
     test('demo groups (non-UUID ids) are forwarded without team_context', async () => {
@@ -134,7 +172,7 @@ describe('/insights analytics requests', () => {
 
     test('an unreachable agent (send() resolves false) answers analytics_error LLM_ERROR', async () => {
         m.llm.send.mockResolvedValue(false);
-        const { ws } = await connect('/insights', { token: tokenFor(ids.BOB) });
+        const { ws } = await connect('/insights', { token: tokenFor(ids.ALICE) });
         const reply = nextMessage(ws);
         ws.send(analyticsRequest({ group_id: ids.GROUP_A }));
 
@@ -150,5 +188,40 @@ describe('/insights analytics requests', () => {
         const error = await reply;
         expect(error).toMatchObject({ event: 'analytics_error', code: 'INTERNAL_ERROR' });
         expect(JSON.stringify(error)).not.toMatch(/secret_col/);
+    });
+});
+
+describe('connection limits', () => {
+    test('messages above 64 KB close the socket (1009) without reaching the session', async () => {
+        const { ws } = await connect('/chat', { token: tokenFor(ids.ALICE) });
+        const closed = new Promise((resolve) => ws.on('close', (code) => resolve(code)));
+        ws.send(JSON.stringify({ type: 'user', content: 'x'.repeat(70 * 1024) }));
+        expect(await closed).toBe(1009);
+    });
+
+    test('sockets are closed (4001) when the access token expires', async () => {
+        const shortLived = jwt.sign({ userId: ids.ALICE, username: 'alice', typ: 'access' }, process.env.JWT_SECRET, { expiresIn: 1 });
+        const { ws, status } = await connect('/insights', { token: shortLived });
+        expect(status).toBe(101);
+        const closed = await new Promise((resolve) => ws.on('close', (code, reason) => resolve({ code, reason: reason.toString() })));
+        expect(closed).toEqual({ code: 4001, reason: 'Token expired' });
+    });
+});
+
+describe('JWT_SECRET strength (real startup path)', () => {
+    test.each(['test', 'short-but-random-3f9a', 'change-me-please-this-is-a-long-placeholder-value', 'your-secret-key-goes-here-0123456789abcdef'])(
+        'rejects %s', (secret) => {
+            expect(() => assertStrongJwtSecret(secret)).toThrow(/JWT_SECRET/);
+        });
+
+    test('accepts a long random secret, and createServer enforces the check', () => {
+        expect(() => assertStrongJwtSecret('9c1e7b3a5d2f8e4c6a0b9d3f7e1c5a2b8d4f6e0c')).not.toThrow();
+        const previous = process.env.JWT_SECRET;
+        process.env.JWT_SECRET = 'test';
+        try {
+            expect(() => createServer()).toThrow(/JWT_SECRET/);
+        } finally {
+            process.env.JWT_SECRET = previous;
+        }
     });
 });

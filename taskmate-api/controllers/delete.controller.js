@@ -1,25 +1,9 @@
 // controllers/delete.controller.js
+// Trashed-task history. Trashing a task is POST /api/tasks/:tid/trash (atomic).
 const deleteRoute = require('express').Router();
 const DeleteModel = require('./../models/delete.model');
-const AccessModel = require('./../models/access.model');
-const { AppError, sendError } = require('../helpers/errors');
-const { requireGroupMember, assertUuid, sameId } = require('../middleware/groupAccess');
-
-deleteRoute.post('/', requireGroupMember('gid'), async (req, res) => {
-    const { name, description, datetime, percentage } = req.body;
-    const gid = req.groupId;
-    try {
-        const tid = assertUuid(req.body.tid, 'tid');
-        const taskGroup = await AccessModel.resolveGroupId('task', tid);
-        if (taskGroup && !sameId(taskGroup, gid)) {
-            throw new AppError('VALIDATION_ERROR', 'tid belongs to another group', 400);
-        }
-        const rowCount = await DeleteModel.addDelete({ tid, gid, name, description, datetime, percentage });
-        res.status(200).json({ data: { rowCount, tid } });
-    } catch (error) {
-        sendError(res, error);
-    }
-});
+const { sendError } = require('../helpers/errors');
+const { requireGroupMember } = require('../middleware/groupAccess');
 
 deleteRoute.get('/:gid', requireGroupMember('gid'), async (req, res) => {
     try {

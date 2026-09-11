@@ -61,14 +61,4 @@ usertaskRoute.get('/', taskMember, async (req, res) => {
     }
 });
 
-usertaskRoute.get('/getutid', taskMember, async (req, res) => {
-    try {
-        const uid = assertUuid(readParam(req, 'uid'), 'uid');
-        const data = await UsertaskModel.getutid(req.resourceId, uid);
-        res.status(200).json({ data });
-    } catch (error) {
-        sendError(res, error);
-    }
-});
-
 module.exports = usertaskRoute;

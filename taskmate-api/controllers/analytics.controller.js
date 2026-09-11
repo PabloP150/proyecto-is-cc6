@@ -12,6 +12,7 @@ const llmService = require('../services/LLMService');
 
 const TASK_CATEGORIES = ['frontend', 'backend', 'database', 'testing', 'general'];
 const PRIVACY_MODES = ['team_leader_only', 'team', 'private'];
+const MAX_TASK_DESCRIPTION = 2000; // it becomes part of the LLM prompt
 
 // Known client errors keep their code; anything else becomes a generic 500 with the endpoint's message.
 const fail = (res, error, message) => {
@@ -38,13 +39,27 @@ class AnalyticsController {
         try {
             const userId = assertUuid(req.params.userId, 'userId');
 
-            // Own data, or a leader/admin of a group the user belongs to
-            const hasAccess = await AnalyticsController._checkUserAccess(req.user.userId, userId);
-            if (!hasAccess) {
-                throw leaderOnly('Access denied. You can only view your own analytics or those of your team members if you lead the team.');
+            let analytics;
+            if (sameId(req.user.userId, userId)) {
+                analytics = await AnalyticsService.getUserAnalyticsSummary(userId);
+            } else {
+                // Another member: only through a group the caller leads, and only that group's slice
+                // (the global summary would expose what the user does in every other group).
+                const groupId = req.query.groupId;
+                if (groupId === undefined) {
+                    throw new AppError('VALIDATION_ERROR', 'groupId is required to view another member\'s analytics', 400);
+                }
+                assertUuid(groupId, 'groupId');
+                if (!(await AnalyticsController._checkTeamAccess(req.user.userId, groupId))) {
+                    throw leaderOnly('Access denied. Only team leaders can view the analytics of their team members.');
+                }
+                const team = await AnalyticsService.getTeamAnalyticsSummary(groupId);
+                const member = (team && team.team_members || []).find(m => sameId(String(m.user_id), userId));
+                if (!member) {
+                    throw new AppError('NOT_FOUND', 'The user is not a member of this group', 404);
+                }
+                analytics = { group_id: groupId, ...member, updated_at: team.updated_at };
             }
-
-            const analytics = await AnalyticsService.getUserAnalyticsSummary(userId);
 
             res.status(200).json({
                 success: true,
@@ -117,10 +132,9 @@ class AnalyticsController {
             const parsedDays = Number.parseInt(req.query.days, 10);
             const days = Number.isFinite(parsedDays) ? Math.min(Math.max(parsedDays, 1), 365) : 30;
 
-            // Users can view their own trends, or team leaders can view team member trends
-            const hasAccess = await AnalyticsController._checkUserAccess(req.user.userId, userId);
-            if (!hasAccess) {
-                throw leaderOnly('Access denied. You can only view your own trends or team member trends if you are a team leader.');
+            // Trends span every group the user belongs to, so they are only shown to the user themself.
+            if (!sameId(req.user.userId, userId)) {
+                throw leaderOnly('Access denied. You can only view your own completion trends.');
             }
 
             const trends = await AnalyticsService.getUserCompletionTrends(userId, days);
@@ -200,8 +214,13 @@ class AnalyticsController {
     static async updateAnalyticsConfig(req, res) {
         try {
             const groupId = assertUuid(req.params.groupId, 'groupId');
-            const { config } = req.body || {};
 
+            // Only team leaders can modify analytics configuration (checked before looking at the body)
+            if (!(await AnalyticsController._checkTeamAccess(req.user.userId, groupId))) {
+                throw leaderOnly('Access denied. Only team leaders can modify analytics configuration.');
+            }
+
+            const { config } = req.body || {};
             if (!config || typeof config !== 'object' || Array.isArray(config)) {
                 throw new AppError('VALIDATION_ERROR', 'Group ID and configuration data are required', 400);
             }
@@ -212,12 +231,6 @@ class AnalyticsController {
             const retention = config.data_retention_days;
             if (retention !== undefined && !(Number.isInteger(retention) && retention >= 1 && retention <= 3650)) {
                 throw new AppError('VALIDATION_ERROR', 'data_retention_days must be an integer between 1 and 3650', 400);
-            }
-
-            // Only team leaders can modify analytics configuration
-            const hasAccess = await AnalyticsController._checkTeamAccess(req.user.userId, groupId);
-            if (!hasAccess) {
-                throw leaderOnly('Access denied. Only team leaders can modify analytics configuration.');
             }
 
             // Update analytics configuration
@@ -243,9 +256,10 @@ class AnalyticsController {
         try {
             const groupId = assertUuid(req.params.groupId, 'groupId');
 
-            const hasAccess = await AnalyticsController._checkMembership(req.user.userId, groupId);
+            // Same rule as /team, /workload and /expertise, whose data the dashboard aggregates
+            const hasAccess = await AnalyticsController._checkTeamAccess(req.user.userId, groupId);
             if (!hasAccess) {
-                throw new AppError('NOT_GROUP_MEMBER', 'Access denied. You must be a team member to view this dashboard.', 403);
+                throw leaderOnly('Access denied. Only team leaders can view the team dashboard.');
             }
 
             const [teamAnalytics, workloadDistribution, expertiseRankings] = await Promise.all([
@@ -366,14 +380,21 @@ class AnalyticsController {
         try {
             const { groupId, taskCategory, taskDescription } = req.body || {};
 
-            if (!groupId || !taskCategory || !taskDescription) {
-                throw new AppError('VALIDATION_ERROR', 'Group ID, task category, and task description are required', 400);
-            }
+            // Membership first (only the group id is needed for it), then the rest of the body
             assertUuid(groupId, 'groupId');
-
             const hasAccess = await AnalyticsController._checkMembership(req.user.userId, groupId);
             if (!hasAccess) {
                 throw new AppError('NOT_GROUP_MEMBER', 'Access denied. You must be a team member to get recommendations.', 403);
+            }
+
+            if (!taskCategory || !taskDescription) {
+                throw new AppError('VALIDATION_ERROR', 'Group ID, task category, and task description are required', 400);
+            }
+            if (!TASK_CATEGORIES.includes(taskCategory)) {
+                throw new AppError('VALIDATION_ERROR', `taskCategory must be one of ${TASK_CATEGORIES.join(', ')}`, 400);
+            }
+            if (typeof taskDescription !== 'string' || taskDescription.length > MAX_TASK_DESCRIPTION) {
+                throw new AppError('VALIDATION_ERROR', `taskDescription must be text of at most ${MAX_TASK_DESCRIPTION} characters`, 400);
             }
 
             const recommendations = await AnalyticsController._getRecommendationsFromAgent(
@@ -392,30 +413,11 @@ class AnalyticsController {
         }
     }
 
-    /**
-     * Batch update user metrics (maintenance endpoint)
-     * POST /api/analytics/batch-update
-     * Recomputes metrics for every user, so the router throttles it globally.
-     */
-    static async batchUpdateMetrics(req, res) {
-        try {
-            const result = await AnalyticsService.batchUpdateUserMetrics();
-
-            res.status(200).json({
-                success: true,
-                message: 'Batch metrics update completed',
-                data: result
-            });
-
-        } catch (error) {
-            fail(res, error, 'Failed to update metrics');
-        }
-    }
-    
     // Private helper methods for access control
-    
+    // (the metrics batch runs from AnalyticsBatchJob; it is no longer exposed over HTTP)
+
     /**
-     * Check if user has access to team analytics (is team leader)
+     * Check if the user is a member of the group
      * Requirement 6.4: Proper access controls and data privacy compliance
      */
     static async _checkMembership(requesterId, groupId) {
@@ -430,63 +432,11 @@ class AnalyticsController {
         return null;
     }
 
-    // Team leader = the group admin or a member holding a role whose name contains "leader".
-    // The admin already controls roles, so counting them as leader grants nothing new.
+    // Team leader of this group = its admin or a member holding a role whose name contains "leader".
     static async _checkTeamAccess(requesterId, groupId) {
-        if (await AccessModel.isGroupAdmin(requesterId, groupId)) {
-            return true;
-        }
-        const query = `
-            SELECT ugr.gr_id, gr.gr_name
-            FROM dbo.UserGroupRoles ugr
-            JOIN dbo.GroupRoles gr ON ugr.gr_id = gr.gr_id
-            WHERE ugr.uid = @requesterId AND ugr.gid = @groupId
-        `;
-
-        const params = [
-            { name: 'requesterId', type: TYPES.UniqueIdentifier, value: requesterId },
-            { name: 'groupId', type: TYPES.UniqueIdentifier, value: groupId }
-        ];
-
-        const result = await execReadCommand(query, params);
-
-        return Array.isArray(result) &&
-               result.some(role => role.gr_name && role.gr_name.toLowerCase().includes('leader'));
+        return AccessModel.isGroupLeader(requesterId, groupId);
     }
-    
-    /**
-     * Check if user has access to another user's analytics
-     */
-    static async _checkUserAccess(requesterId, targetUserId) {
-        // Users can always access their own data
-        if (sameId(requesterId, targetUserId)) {
-            return true;
-        }
 
-        // Requester leads (admin or "leader" role) some group the target user is a member of
-        const query = `
-            SELECT TOP 1 target.gid
-            FROM dbo.UserGroups target
-            WHERE target.uid = @targetUserId
-              AND (
-                    EXISTS (SELECT 1 FROM dbo.Groups g
-                            WHERE g.gid = target.gid AND g.adminId = @requesterId)
-                 OR EXISTS (SELECT 1 FROM dbo.UserGroupRoles ugr
-                            JOIN dbo.GroupRoles gr ON ugr.gr_id = gr.gr_id
-                            WHERE ugr.gid = target.gid AND ugr.uid = @requesterId
-                              AND gr.gr_name LIKE '%leader%')
-              )
-        `;
-
-        const params = [
-            { name: 'requesterId', type: TYPES.UniqueIdentifier, value: requesterId },
-            { name: 'targetUserId', type: TYPES.UniqueIdentifier, value: targetUserId }
-        ];
-
-        const result = await execReadCommand(query, params);
-        return Array.isArray(result) && result.length > 0;
-    }
-    
     /**
      * Get analytics configuration for a group
      */
@@ -557,7 +507,7 @@ class AnalyticsController {
                 track_capacity        = @track_capacity,
                 data_retention_days   = @data_retention_days,
                 privacy_mode          = @privacy_mode,
-                updated_at            = GETDATE()
+                updated_at            = SYSDATETIMEOFFSET()
             WHEN NOT MATCHED THEN INSERT
                 (gid, analytics_enabled, track_completion_time, track_success_rate,
                  track_workload, track_expertise, track_capacity, data_retention_days, privacy_mode)
@@ -567,84 +517,6 @@ class AnalyticsController {
         `, params);
 
         return await AnalyticsController._getGroupAnalyticsConfig(groupId);
-    }
-    
-    /**
-     * Get mock dashboard data for demo/testing purposes
-     */
-    static _getMockDashboardData(groupId) {
-        const teamData = {
-            'test-group-456': { // Development Team
-                team_analytics: {
-                    total_members: 5,
-                    active_tasks: 14,
-                    completion_rate: 87.25,
-                    avg_response_time: 2.15
-                },
-                workload_distribution: [
-                    { name: 'Sarah Chen', workload: 4, capacity: 5, utilization: 80 },
-                    { name: 'Marcus Johnson', workload: 3, capacity: 5, utilization: 60 },
-                    { name: 'Elena Rodriguez', workload: 5, capacity: 6, utilization: 83 },
-                    { name: 'David Kim', workload: 2, capacity: 4, utilization: 50 },
-                    { name: 'Alex Thompson', workload: 3, capacity: 5, utilization: 60 }
-                ],
-                expertise_rankings: [
-                    { category: 'Frontend', expert: 'Sarah Chen', score: 94 },
-                    { category: 'Backend', expert: 'Marcus Johnson', score: 89 },
-                    { category: 'Database', expert: 'Elena Rodriguez', score: 91 },
-                    { category: 'Testing', expert: 'David Kim', score: 86 }
-                ]
-            },
-            'test-group-789': { // Design Team
-                team_analytics: {
-                    total_members: 4,
-                    active_tasks: 9,
-                    completion_rate: 92.50,
-                    avg_response_time: 1.75
-                },
-                workload_distribution: [
-                    { name: 'Maya Patel', workload: 3, capacity: 4, utilization: 75 },
-                    { name: 'James Wilson', workload: 2, capacity: 5, utilization: 40 },
-                    { name: 'Zoe Martinez', workload: 4, capacity: 5, utilization: 80 },
-                    { name: 'Ryan Foster', workload: 1, capacity: 3, utilization: 33 }
-                ],
-                expertise_rankings: [
-                    { category: 'UI Design', expert: 'Maya Patel', score: 96 },
-                    { category: 'UX Research', expert: 'James Wilson', score: 88 },
-                    { category: 'Prototyping', expert: 'Zoe Martinez', score: 92 },
-                    { category: 'Visual Design', expert: 'Maya Patel', score: 94 }
-                ]
-            },
-            'test-group-123': { // QA Team
-                team_analytics: {
-                    total_members: 6,
-                    active_tasks: 18,
-                    completion_rate: 89.75,
-                    avg_response_time: 1.95
-                },
-                workload_distribution: [
-                    { name: 'Lisa Wang', workload: 4, capacity: 5, utilization: 80 },
-                    { name: 'Tom Anderson', workload: 3, capacity: 4, utilization: 75 },
-                    { name: 'Priya Sharma', workload: 5, capacity: 6, utilization: 83 },
-                    { name: 'Jake Miller', workload: 2, capacity: 5, utilization: 40 },
-                    { name: 'Nina Kowalski', workload: 3, capacity: 4, utilization: 75 },
-                    { name: 'Carlos Mendez', workload: 4, capacity: 5, utilization: 80 }
-                ],
-                expertise_rankings: [
-                    { category: 'Automation', expert: 'Lisa Wang', score: 93 },
-                    { category: 'Manual Testing', expert: 'Tom Anderson', score: 87 },
-                    { category: 'Performance', expert: 'Priya Sharma', score: 90 },
-                    { category: 'Security Testing', expert: 'Carlos Mendez', score: 85 }
-                ]
-            }
-        };
-
-        const currentTeam = teamData[groupId] || teamData['test-group-456'];
-        
-        return {
-            ...currentTeam,
-            updated_at: new Date().toISOString()
-        };
     }
     
     /**
@@ -704,11 +576,12 @@ class AnalyticsController {
 
 // Mounted by app.js at /api/analytics behind requireAuth + apiLimiter.
 // Each handler performs its own authorization, so they stay safe if reused elsewhere.
-const batchLimiter = createLimiter({
-    windowMs: 15 * 60 * 1000,
-    limit: 1,
-    keyGenerator: () => 'analytics-batch-update',
-    message: 'A batch update already ran recently, please try again later.',
+// Every call becomes an LLM request on the shared Python link.
+const recommendationsLimiter = createLimiter({
+    windowMs: 60 * 1000,
+    limit: 10,
+    keyByUser: true,
+    message: 'Too many recommendation requests, please try again in a minute.',
 });
 
 const router = express.Router();
@@ -720,10 +593,9 @@ router.get('/expertise/:groupId', AnalyticsController.getCategoryExpertiseRankin
 router.get('/config/:groupId', AnalyticsController.getAnalyticsConfig);
 router.put('/config/:groupId', AnalyticsController.updateAnalyticsConfig);
 router.get('/dashboard/:groupId', AnalyticsController.getDashboardData);
-router.post('/recommendations', AnalyticsController.getTaskRecommendations);
+router.post('/recommendations', recommendationsLimiter, AnalyticsController.getTaskRecommendations);
 router.post('/assignment', AnalyticsController.recordTaskAssignment);
 router.post('/completion', AnalyticsController.recordTaskCompletion);
-router.post('/batch-update', batchLimiter, AnalyticsController.batchUpdateMetrics);
 
 AnalyticsController.router = router;
 

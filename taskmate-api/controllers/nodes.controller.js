@@ -4,6 +4,14 @@ const NodesModel = require('./../models/nodes.model');
 const AccessModel = require('./../models/access.model');
 const { AppError, sendError } = require('../helpers/errors');
 const { requireGroupMember, requireResourceMember, assertUuid, sameId } = require('../middleware/groupAccess');
+const validate = require('../middleware/validate');
+
+// Mirrors the Nodes columns (name NVARCHAR(25), description NVARCHAR(1000), date DATE).
+const nodeTextFields = (body) => ({
+    name: validate.text(body.name, 'name', { max: 25, required: true }),
+    description: validate.text(body.description, 'description', { max: 1000 }) ?? '',
+    date: validate.dateTime(body.date, 'date', { required: true }),
+});
 
 // GET / (every node of every group) was removed: the frontend never used it and it leaked other groups' data.
 
@@ -44,11 +52,15 @@ nodesRoute.get('/group/:gid', requireGroupMember('gid'), async (req, res) => {
 // Create a new node. Importing a task reuses its tid as nid, so a client-supplied nid is
 // only accepted if it is not a task of some other group.
 nodesRoute.post('/', requireGroupMember('gid'), async (req, res) => {
-    const { name, description, date, completed, x_pos, y_pos } = req.body;
-    const percentage = req.body.percentage === undefined ? 0 : req.body.percentage;
     const gid = req.groupId;
 
     try {
+        const { name, description, date } = nodeTextFields(req.body);
+        const completed = validate.bit(req.body.completed, 'completed') ?? false;
+        const percentage = validate.integer(req.body.percentage, 'percentage', { min: 0, max: 100 }) ?? 0;
+        const x_pos = validate.number(req.body.x_pos, 'x_pos', { required: true });
+        const y_pos = validate.number(req.body.y_pos, 'y_pos', { required: true });
+
         let nid;
         if (req.body.nid) {
             nid = assertUuid(req.body.nid, 'nid');
@@ -93,8 +105,8 @@ nodesRoute.post('/', requireGroupMember('gid'), async (req, res) => {
 //update a node
 nodesRoute.put('/:id/', nodeMember, async (req, res) => {
     const nid = req.resourceId;
-    const { name, description, date } = req.body;
     try {
+        const { name, description, date } = nodeTextFields(req.body);
         await NodesModel.updateNode({
             nid,
             name,
@@ -114,8 +126,9 @@ nodesRoute.put('/:id/', nodeMember, async (req, res) => {
 //update a node's coordinates
 nodesRoute.put('/:id/coords', nodeMember, async (req, res) => {
     const nid = req.resourceId;
-    const { x_pos, y_pos } = req.body;
     try {
+        const x_pos = validate.number(req.body.x_pos, 'x_pos', { required: true });
+        const y_pos = validate.number(req.body.y_pos, 'y_pos', { required: true });
         await NodesModel.updateNodeCoords({
             nid,
             x_pos,
@@ -134,8 +147,8 @@ nodesRoute.put('/:id/coords', nodeMember, async (req, res) => {
 //update a node's percentage
 nodesRoute.put('/:id/percentage', nodeMember, async (req, res) => {
     const nid = req.resourceId;
-    const { percentage } = req.body;
     try {
+        const percentage = validate.integer(req.body.percentage, 'percentage', { min: 0, max: 100, required: true });
         await NodesModel.updateNodePercentage({
             nid,
             percentage
@@ -153,8 +166,8 @@ nodesRoute.put('/:id/percentage', nodeMember, async (req, res) => {
 // Update a node's complete status
 nodesRoute.put('/:id/toggleComplete', nodeMember, async (req, res) => {
     const nid = req.resourceId;
-    const { completed } = req.body;
     try {
+        const completed = validate.bit(req.body.completed, 'completed', { required: true });
         await NodesModel.updateNodeCompleted({
             nid,
             completed

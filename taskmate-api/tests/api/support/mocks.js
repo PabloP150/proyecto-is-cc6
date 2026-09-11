@@ -59,6 +59,7 @@ function registerMocks() {
     jest.mock('../../../models/access.model', () => ({
         isGroupMember: jest.fn(),
         isGroupAdmin: jest.fn(),
+        isGroupLeader: jest.fn(),
         resolveGroupId: jest.fn(),
     }), maybeVirtual('models/access.model'));
     jest.mock('../../../services/analyticsContext', () => ({ buildTeamContext: jest.fn() }), maybeVirtual('services/analyticsContext'));
@@ -146,6 +147,8 @@ function applyDefaults() {
 
     m.access.isGroupMember.mockImplementation(async (uid, gid) => (MEMBERS[norm(gid)] || []).includes(norm(uid)));
     m.access.isGroupAdmin.mockImplementation(async (uid, gid) => ADMINS[norm(gid)] === norm(uid));
+    // Leader = admin (tests that need a member with a "leader" role override this).
+    m.access.isGroupLeader.mockImplementation(async (uid, gid) => ADMINS[norm(gid)] === norm(uid));
     // Upper-cased like SQL Server returns GUIDs, to exercise case-insensitive comparisons.
     m.access.resolveGroupId.mockImplementation(async (kind, id) => {
         const gid = (RESOURCES[kind] || {})[norm(id)];

@@ -1,4 +1,5 @@
 const WebSocket = require('ws');
+const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const SessionManager = require('./SessionManager');
 const UserSession = require('./UserSession');
@@ -7,13 +8,23 @@ const { verifyAccessToken } = require('../helpers/tokens');
 const { AppError, isAppError } = require('../helpers/errors');
 const { isAllowedOrigin } = require('../middleware/cors');
 
+const MAX_PAYLOAD_BYTES = 64 * 1024;
+const TOKEN_EXPIRED_CLOSE_CODE = 4001;
+const MAX_TIMER_MS = 2 ** 31 - 1; // setTimeout limit
+
+const rejectUpgrade = (socket, status) => {
+    socket.write(`HTTP/1.1 ${status}\r\nConnection: close\r\n\r\n`);
+    socket.destroy();
+};
+
 class WebSocketServer {
     constructor(server) {
         this.sessionManager = new SessionManager();
         this.insightsClients = new Map(); // Store clients for the /insights endpoint
         
-        // Create WebSocket server without a specific path
-        this.wss = new WebSocket.Server({ noServer: true });
+        // Create WebSocket server without a specific path. Client messages are small JSON commands;
+        // the 100 MiB default would let one client exhaust memory and flood the shared Python link.
+        this.wss = new WebSocket.Server({ noServer: true, maxPayload: MAX_PAYLOAD_BYTES });
 
         // Handle server upgrades to route connections
         server.on('upgrade', this.handleUpgrade.bind(this));
@@ -24,13 +35,19 @@ class WebSocketServer {
     }
 
     handleUpgrade(request, socket, head) {
-        const url = new URL(request.url, `http://${request.headers.host}`);
+        // Fixed base: the Host header is attacker-controlled and `new URL` throws on values like '%'.
+        let url;
+        try {
+            url = new URL(request.url, 'http://localhost');
+        } catch {
+            rejectUpgrade(socket, '400 Bad Request');
+            return;
+        }
         const pathname = url.pathname;
-        
+
         // Browsers always send Origin on WebSocket handshakes; reject pages from other sites.
         if (!isAllowedOrigin(request.headers.origin)) {
-            socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
-            socket.destroy();
+            rejectUpgrade(socket, '403 Forbidden');
             return;
         }
 
@@ -43,12 +60,12 @@ class WebSocketServer {
             userId = verifyAccessToken(token).userId;
         } catch (error) {
             console.log(`WebSocket upgrade rejected for ${pathname}: ${error.message}`);
-            socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
-            socket.destroy();
+            rejectUpgrade(socket, '401 Unauthorized');
             return;
         }
 
         request.userId = userId; // Attach userId to the request for later use
+        request.tokenExpiresAt = jwt.decode(token).exp * 1000; // verified above; access tokens always carry exp
 
         if (pathname === '/chat') {
             this.wss.handleUpgrade(request, socket, head, (ws) => {
@@ -60,7 +77,7 @@ class WebSocketServer {
             });
         } else {
             console.log(`No handler for WebSocket path: ${pathname}`);
-            socket.destroy();
+            rejectUpgrade(socket, '404 Not Found');
         }
     }
 
@@ -68,6 +85,12 @@ class WebSocketServer {
         this.wss.on('connection', (ws, req, connectionType) => {
             ws.isAlive = true;
             ws.on('pong', () => { ws.isAlive = true; });
+
+            // The token was only checked at the handshake: end the session when it expires.
+            const ttl = Math.min(Math.max(req.tokenExpiresAt - Date.now(), 0), MAX_TIMER_MS);
+            const expiryTimer = setTimeout(() => ws.close(TOKEN_EXPIRED_CLOSE_CODE, 'Token expired'), ttl);
+            expiryTimer.unref();
+            ws.on('close', () => clearTimeout(expiryTimer));
 
             if (connectionType === 'chat') {
                 this.handleChatConnection(ws, req);
@@ -85,7 +108,6 @@ class WebSocketServer {
     async handleChatConnection(ws, req) {
         try {
             const userId = req.userId;
-            console.log(`Chat WebSocket connection established for user: ${userId}`);
             const session = await this.sessionManager.connect(ws, userId);
 
             ws.on('message', async (data) => {
@@ -99,7 +121,6 @@ class WebSocketServer {
             });
 
             ws.on('close', () => {
-                console.log(`Chat WebSocket connection closed for user: ${userId}`);
                 this.sessionManager.disconnect(ws);
             });
 
@@ -118,7 +139,6 @@ class WebSocketServer {
     handleInsightsConnection(ws, req) {
         const userId = req.userId;
         const clientId = uuidv4();
-        console.log(`Insights WebSocket connection established for user: ${userId} (Client ID: ${clientId})`);
 
         this.insightsClients.set(clientId, { ws, userId });
 
@@ -166,7 +186,6 @@ class WebSocketServer {
         });
 
         ws.on('close', () => {
-            console.log(`Insights WebSocket connection closed for user: ${userId}`);
             llmService.removeListener(clientId, llmListener);
             this.insightsClients.delete(clientId);
         });
@@ -178,10 +197,10 @@ class WebSocketServer {
         });
     }
 
-    // Same rules as the /chat analytics path (shared helper): a real group (UUID) requires membership
-    // and gets the server-built team_context; demo ids such as `test-group-*` go through as-is.
+    // Same rules as the /chat analytics path (shared helper, per action): team data for a real group
+    // requires a team leader and gets the server-built team_context; demo ids (`test-group-*`) go through as-is.
     async buildInsightsRequest(request, userId, clientId) {
-        const data = await UserSession.prepareAnalyticsData(userId, request.data);
+        const data = await UserSession.prepareAnalyticsData(userId, request.data, request.action);
 
         return {
             requestId: request.requestId,

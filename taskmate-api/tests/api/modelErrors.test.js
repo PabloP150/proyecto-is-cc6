@@ -52,14 +52,6 @@ describe('POST /api/tasks/:tid/trash', () => {
         m.integration.onTaskDeletion.mockRejectedValue(new Error('metrics down'));
         expect((await call('post', `/api/tasks/${TASK_A}/trash`, undefined, BOB)).status).toBe(200);
     });
-
-    test('legacy POST /api/delete + DELETE /api/tasks/:id still work', async () => {
-        const archived = await call('post', '/api/delete', { gid: GROUP_A, tid: TASK_A, name: 'n' }, BOB);
-        expect(archived.status).toBe(200);
-        const removed = await call('delete', `/api/tasks/${TASK_A}`, undefined, BOB);
-        expect(removed.status).toBe(200);
-        expect(removed.body).toEqual({ rowCount: 1 });
-    });
 });
 
 describe('model AppErrors pass through sendError unchanged', () => {

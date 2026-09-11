@@ -7,7 +7,6 @@ const request = require('supertest');
 const app = require('../app');
 
 const { ALICE, BOB, EVE, GROUP_A, TASK_A, TASK_B, DONE_A, UNKNOWN } = ids;
-const LEADER_ROLE = [{ gr_id: ids.ROLE_A, gr_name: 'Team Leader' }];
 
 let m;
 beforeEach(() => { m = applyDefaults(); });
@@ -30,20 +29,37 @@ describe('GET /api/analytics/user/:userId (ownership)', () => {
         expect(m.execQuery.execReadCommand).not.toHaveBeenCalled();
     });
 
-    test("another user's analytics are 403 unless the caller leads one of their groups", async () => {
-        const denied = await get(`/api/analytics/user/${ALICE}`, BOB);
-        expect(denied.status).toBe(403);
-        expect(denied.body.code).toBe('NOT_GROUP_ADMIN');
-        expect(m.analytics.getUserAnalyticsSummary).not.toHaveBeenCalled();
+    test("another member's analytics: only via a group the caller leads, scoped to that group", async () => {
+        m.analytics.getTeamAnalyticsSummary.mockResolvedValue({
+            group_id: GROUP_A,
+            team_members: [{ user_id: BOB.toUpperCase(), username: 'bob', active_tasks: 2, completed_tasks: 1 }],
+            updated_at: '2026-09-11T00:00:00.000Z',
+        });
 
-        m.execQuery.execReadCommand.mockResolvedValue([{ gid: GROUP_A }]);
-        const allowed = await get(`/api/analytics/user/${BOB}`, ALICE);
-        expect(allowed.status).toBe(200);
-        const params = m.execQuery.execReadCommand.mock.calls.at(-1)[1];
-        expect(params).toEqual(expect.arrayContaining([
-            expect.objectContaining({ name: 'requesterId', value: ALICE }),
-            expect.objectContaining({ name: 'targetUserId', value: BOB }),
-        ]));
+        const res = await get(`/api/analytics/user/${BOB}?groupId=${GROUP_A}`, ALICE);
+        expect(res.status).toBe(200);
+        expect(res.body.data).toEqual({
+            group_id: GROUP_A, user_id: BOB.toUpperCase(), username: 'bob', active_tasks: 2, completed_tasks: 1,
+            updated_at: '2026-09-11T00:00:00.000Z',
+        });
+        expect(m.analytics.getTeamAnalyticsSummary).toHaveBeenCalledWith(GROUP_A);
+        // The cross-group summary is never used for someone else
+        expect(m.analytics.getUserAnalyticsSummary).not.toHaveBeenCalled();
+    });
+
+    test('without groupId → 400; non-leader → 403; target outside the group → 404', async () => {
+        m.analytics.getTeamAnalyticsSummary.mockResolvedValue({ team_members: [{ user_id: ALICE }] });
+
+        expect((await get(`/api/analytics/user/${BOB}`, ALICE)).status).toBe(400);
+
+        const notLeader = await get(`/api/analytics/user/${ALICE}?groupId=${GROUP_A}`, BOB);
+        expect(notLeader.status).toBe(403);
+        expect(notLeader.body.code).toBe('NOT_GROUP_ADMIN');
+
+        // Leading some group gives nothing about users who are not in it
+        const outsider = await get(`/api/analytics/user/${EVE}?groupId=${GROUP_A}`, ALICE);
+        expect(outsider.status).toBe(404);
+        expect(m.analytics.getUserAnalyticsSummary).not.toHaveBeenCalled();
     });
 
     test('malformed user id → 400', async () => {
@@ -52,9 +68,11 @@ describe('GET /api/analytics/user/:userId (ownership)', () => {
 });
 
 describe('GET /api/analytics/trends/:userId', () => {
-    test('the ?requesterId bypass is gone: identity comes from the token', async () => {
+    test('trends are self-only: the ?requesterId bypass is gone and leaders are refused too', async () => {
         const res = await get(`/api/analytics/trends/${ALICE}?requesterId=${ALICE}`, BOB);
         expect(res.status).toBe(403);
+        const leader = await get(`/api/analytics/trends/${BOB}`, ALICE);
+        expect(leader.status).toBe(403);
         expect(m.analytics.getUserCompletionTrends).not.toHaveBeenCalled();
     });
 
@@ -65,8 +83,9 @@ describe('GET /api/analytics/trends/:userId', () => {
     });
 });
 
-describe('leader-only endpoints (team, workload, expertise, config)', () => {
+describe('leader-only endpoints (team, workload, expertise, config, dashboard)', () => {
     const LEADER_PATHS = [
+        `/api/analytics/dashboard/${GROUP_A}`,
         `/api/analytics/team/${GROUP_A}`,
         `/api/analytics/workload/${GROUP_A}`,
         `/api/analytics/expertise/${GROUP_A}`,
@@ -86,8 +105,8 @@ describe('leader-only endpoints (team, workload, expertise, config)', () => {
         expect((await get(path, ALICE)).status).toBe(200);
     });
 
-    test('a member holding a "leader" role is a leader', async () => {
-        m.execQuery.execReadCommand.mockResolvedValue(LEADER_ROLE);
+    test('a member holding a "leader" role is a leader (access.model.isGroupLeader)', async () => {
+        m.access.isGroupLeader.mockImplementation(async (uid) => uid === BOB);
         m.analytics.getTeamAnalyticsSummary.mockResolvedValue({ team_members: [] });
         const res = await get(`/api/analytics/team/${GROUP_A}`, BOB);
         expect(res.status).toBe(200);
@@ -101,6 +120,10 @@ describe('leader-only endpoints (team, workload, expertise, config)', () => {
         const forged = await request(app).put(`/api/analytics/config/${GROUP_A}`).set(bearer(BOB))
             .send({ requesterId: ALICE, config: { analytics_enabled: false } });
         expect(forged.status).toBe(403);
+        // Authorization comes before body validation: a non-leader learns nothing from a bad body
+        const badBody = await request(app).put(`/api/analytics/config/${GROUP_A}`).set(bearer(BOB))
+            .send({ config: { privacy_mode: 'everyone' } });
+        expect(badBody.status).toBe(403);
         expect(m.execQuery.execWriteCommand).not.toHaveBeenCalled();
 
         const missing = await request(app).put(`/api/analytics/config/${GROUP_A}`).set(bearer(ALICE)).send({});
@@ -146,12 +169,12 @@ describe('leader-only endpoints (team, workload, expertise, config)', () => {
 });
 
 describe('GET /api/analytics/dashboard/:groupId', () => {
-    test('members get the dashboard with the same shape as before', async () => {
+    test('leaders get the dashboard with the same shape as before', async () => {
         m.analytics.getTeamAnalyticsSummary.mockResolvedValue({ team_members: [] });
         m.analytics.getWorkloadDistribution.mockResolvedValue({ workload_distribution: [] });
         m.analytics.getCategoryExpertiseRankings.mockResolvedValue({ frontend: [] });
 
-        const res = await get(`/api/analytics/dashboard/${GROUP_A}`, BOB);
+        const res = await get(`/api/analytics/dashboard/${GROUP_A}`, ALICE);
         expect(res.status).toBe(200);
         expect(res.body).toEqual({
             success: true,
@@ -164,11 +187,14 @@ describe('GET /api/analytics/dashboard/:groupId', () => {
         });
     });
 
-    test('non-members 403, malformed id 400', async () => {
-        const denied = await get(`/api/analytics/dashboard/${GROUP_A}`, EVE);
-        expect(denied.status).toBe(403);
-        expect(denied.body.code).toBe('NOT_GROUP_MEMBER');
-        expect((await get('/api/analytics/dashboard/test-group-456', BOB)).status).toBe(400);
+    test('plain members and outsiders 403 NOT_GROUP_ADMIN (workload/expertise are leader data), malformed id 400', async () => {
+        for (const userId of [BOB, EVE]) {
+            const denied = await get(`/api/analytics/dashboard/${GROUP_A}`, userId);
+            expect(denied.status).toBe(403);
+            expect(denied.body.code).toBe('NOT_GROUP_ADMIN');
+        }
+        expect(m.analytics.getWorkloadDistribution).not.toHaveBeenCalled();
+        expect((await get('/api/analytics/dashboard/test-group-456', ALICE)).status).toBe(400);
     });
 });
 
@@ -197,10 +223,26 @@ describe('POST /api/analytics/recommendations', () => {
         expect(sent.data).toMatchObject({ group_id: GROUP_A, task_category: 'backend', team_context: TEAM_CONTEXT });
     });
 
-    test('non-members 403, missing fields 400', async () => {
+    test('membership is checked before the body; then fields are validated', async () => {
         expect((await post('/api/analytics/recommendations', body, EVE)).status).toBe(403);
+        expect((await post('/api/analytics/recommendations', { groupId: GROUP_A }, EVE)).status).toBe(403);
         expect((await post('/api/analytics/recommendations', { groupId: GROUP_A }, BOB)).status).toBe(400);
+        expect((await post('/api/analytics/recommendations', { ...body, taskCategory: 'cooking' }, BOB)).status).toBe(400);
+        expect((await post('/api/analytics/recommendations', { ...body, taskDescription: 'x'.repeat(2001) }, BOB)).status).toBe(400);
+        expect((await post('/api/analytics/recommendations', { taskCategory: 'backend' }, BOB)).status).toBe(400);
         expect(m.llm.send).not.toHaveBeenCalled();
+    });
+
+    test('quota: 10 requests per minute per user', async () => {
+        m.llm.send.mockImplementation(async (message) => {
+            setImmediate(() => m.llm.emit(message.sessionId, { event: 'analytics_response', data: {} }));
+        });
+        for (let i = 0; i < 10; i++) {
+            expect((await post('/api/analytics/recommendations', body, ALICE)).status).toBe(200);
+        }
+        const limited = await post('/api/analytics/recommendations', body, ALICE);
+        expect(limited.status).toBe(429);
+        expect(limited.body.code).toBe('RATE_LIMITED');
     });
 
     test('send() resolving false fails immediately instead of waiting for the 30 s timeout', async () => {
@@ -248,11 +290,8 @@ describe('manual assignment / completion records', () => {
     });
 });
 
-test('POST /api/analytics/batch-update is throttled globally', async () => {
-    const first = await post('/api/analytics/batch-update', {}, ALICE);
-    expect(first.status).toBe(200);
-    const second = await post('/api/analytics/batch-update', {}, BOB);
-    expect(second.status).toBe(429);
-    expect(second.body.code).toBe('RATE_LIMITED');
-    expect(m.analytics.batchUpdateUserMetrics).toHaveBeenCalledTimes(1);
+test('POST /api/analytics/batch-update is no longer exposed', async () => {
+    const res = await post('/api/analytics/batch-update', {}, ALICE);
+    expect(res.status).toBe(404);
+    expect(m.analytics.batchUpdateUserMetrics).not.toHaveBeenCalled();
 });
