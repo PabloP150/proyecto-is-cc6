@@ -293,20 +293,25 @@ class AnalyticsController {
         try {
             const { taskId, userId, groupId, category } = req.body || {};
 
-            if (!taskId || !userId || !groupId) {
+            // Membership is checked before the rest of the body so non-members learn nothing from validation errors.
+            if (!groupId) {
+                throw new AppError('VALIDATION_ERROR', 'Task ID, User ID, and Group ID are required', 400);
+            }
+            assertUuid(groupId, 'groupId');
+            if (!(await AnalyticsController._checkMembership(req.user.userId, groupId))) {
+                throw new AppError('NOT_GROUP_MEMBER', 'Access denied. You must be a team member.', 403);
+            }
+
+            if (!taskId || !userId) {
                 throw new AppError('VALIDATION_ERROR', 'Task ID, User ID, and Group ID are required', 400);
             }
             assertUuid(taskId, 'taskId');
             assertUuid(userId, 'userId');
-            assertUuid(groupId, 'groupId');
             if (category !== undefined && !TASK_CATEGORIES.includes(category)) {
                 throw new AppError('VALIDATION_ERROR', `category must be one of ${TASK_CATEGORIES.join(', ')}`, 400);
             }
 
-            // Caller must belong to the group; the task must be in it and the assignee (a target user) a member of it.
-            if (!(await AnalyticsController._checkMembership(req.user.userId, groupId))) {
-                throw new AppError('NOT_GROUP_MEMBER', 'Access denied. You must be a team member.', 403);
-            }
+            // The task must be in the group and the assignee (a target user) a member of it.
             const [taskGroup, assigneeIsMember] = await Promise.all([
                 AccessModel.resolveGroupId('task', taskId),
                 AccessModel.isGroupMember(userId, groupId),

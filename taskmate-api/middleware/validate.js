@@ -9,13 +9,14 @@ const invalid = (message) => {
 const isMissing = (value) => value === undefined || value === null || value === '';
 
 // NVARCHAR(n) counts UTF-16 code units, which is exactly String#length.
-const text = (value, name, { max, required = false } = {}) => {
+const text = (value, name, { max, required = false, pattern, patternMessage } = {}) => {
     if (isMissing(value) || (required && typeof value === 'string' && !value.trim())) {
         if (required) invalid(`${name} is required`);
         return value === '' ? '' : undefined;
     }
     if (typeof value !== 'string') invalid(`${name} must be text`);
     if (max !== undefined && value.length > max) invalid(`${name} must be at most ${max} characters`);
+    if (pattern && !pattern.test(value)) invalid(patternMessage || `${name} has an invalid format`);
     return value;
 };
 

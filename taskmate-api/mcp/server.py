@@ -21,12 +21,18 @@ SECRET_HEADER = 'x-mcp-secret'
 MAX_MESSAGE_CHARS = int(os.getenv('MCP_MAX_MESSAGE_CHARS', 1024 * 1024))
 WS_MAX_SIZE = 4 * 1024 * 1024
 POLICY_VIOLATION = 1008
+MIN_SECRET_LENGTH = 32
+# Same rule as the API's JWT_SECRET: a guessable value is as good as no secret.
+PLACEHOLDER_SECRET_RE = re.compile(r'change[-_ ]?me|your[-_ ]?secret|secret[-_ ]?key|placeholder|example|replace[-_ ]?me', re.I)
 
 
 def resolve_shared_secret(env) -> Optional[str]:
     """Returns the shared secret Node must present; refuses to run without one unless explicitly allowed."""
     secret = env.get('MCP_SHARED_SECRET')
     if secret:
+        if len(secret) < MIN_SECRET_LENGTH or PLACEHOLDER_SECRET_RE.search(secret):
+            raise RuntimeError(f"MCP_SHARED_SECRET must be a random value of at least {MIN_SECRET_LENGTH} "
+                               "characters (not a placeholder). Refusing to start the MCP server.")
         return secret
     if env.get('MCP_ALLOW_NO_SECRET') == '1':
         logger.warning("MCP_SHARED_SECRET is not set and MCP_ALLOW_NO_SECRET=1: the WebSocket is unauthenticated.")

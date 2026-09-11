@@ -7,11 +7,16 @@ const { requireGroupMember, requireGroupAdmin, requireResourceInGroup } = requir
 const { mapConstraintError } = require('../middleware/errorHandler');
 const validate = require('../middleware/validate');
 
-// Mirrors GroupRoles (gr_name NVARCHAR(40) NOT NULL, gr_color NVARCHAR(20), gr_icon NVARCHAR(40)).
+// Mirrors GroupRoles (gr_name NVARCHAR(40) NOT NULL, gr_color VARCHAR(20), gr_icon VARCHAR(40)).
+// Color and icon are ASCII columns: a hex color from the picker and a Material icon name.
 const roleFields = (body) => ({
     gr_name: validate.text(body.gr_name, 'gr_name', { max: 40, required: true }),
-    gr_color: validate.text(body.gr_color, 'gr_color', { max: 20 }),
-    gr_icon: validate.text(body.gr_icon, 'gr_icon', { max: 40 }),
+    gr_color: validate.text(body.gr_color, 'gr_color', {
+        max: 20, pattern: /^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/, patternMessage: 'gr_color must be a hex color such as #1976d2',
+    }),
+    gr_icon: validate.text(body.gr_icon, 'gr_icon', {
+        max: 40, pattern: /^[a-z0-9_]+$/, patternMessage: 'gr_icon must be a Material icon name (a-z, 0-9, _)',
+    }),
 });
 
 const router = express.Router();

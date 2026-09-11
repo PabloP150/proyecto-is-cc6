@@ -30,6 +30,21 @@ function assertStrongJwtSecret(secret = process.env.JWT_SECRET) {
     }
 }
 
+// Delivery rows double as webhook replay protection (id + payload hash), so they are kept for a while
+// and pruned once a day. A floor of 30 days keeps that protection meaningful.
+function webhookRetentionDays(value = process.env.WEBHOOK_DELIVERY_RETENTION_DAYS) {
+    const days = Number(value);
+    return Number.isInteger(days) && days >= 30 ? days : 90;
+}
+
+function scheduleWebhookDeliveryPurge() {
+    const { purgeDeliveries } = require('./models/github.model');
+    const purge = () => purgeDeliveries(webhookRetentionDays())
+        .catch((err) => console.error('Failed to purge old webhook deliveries:', err.message));
+    purge();
+    setInterval(purge, 24 * 60 * 60 * 1000).unref();
+}
+
 // HTTP server + the single WebSocket server (/chat and /insights) on the same port.
 function createServer() {
     assertStrongJwtSecret();
@@ -56,6 +71,7 @@ if (require.main === module) {
                 console.log(`WebSocket server available at ws://localhost:${API_PORT}/chat and /insights`);
                 // Periodic metrics recompute (opt-in via ANALYTICS_BATCH_ENABLED=true).
                 require('./services/AnalyticsBatchJob').start();
+                scheduleWebhookDeliveryPurge();
             });
         })
         .catch(err => {
@@ -64,4 +80,4 @@ if (require.main === module) {
         });
 }
 
-module.exports = { app, createServer, assertStrongJwtSecret };
+module.exports = { app, createServer, assertStrongJwtSecret, webhookRetentionDays };

@@ -71,6 +71,7 @@ describe('UserSession', () => {
         projectService.addPlanToGroup.mockResolvedValue({ taskIds: ['t1'], nodeIds: ['n1'] });
         UserSession.lastAnalysisByUser.clear();
         UserSession.chatWindowByUser.clear();
+        UserSession.analyticsWindowByUser.clear();
         ws = mockWebSocket();
         session = new UserSession(UID, ws);
     });
@@ -421,6 +422,16 @@ describe('UserSession', () => {
             await session.handleMessage({ type: 'analytics', action: 'get_user_analytics', requestId: 'u3', data: { user_id: OTHER, group_id: GID } });
             expect(lastOfType(ws, 'analytics_error')).toMatchObject({ error: 'NOT_GROUP_MEMBER', requestId: 'u3' });
             expect(pythonRequests()).toHaveLength(1);
+        });
+
+        test('more than 10 analytics requests per minute → RATE_LIMITED, nothing reaches Python', async () => {
+            for (let i = 1; i <= 10; i += 1) {
+                await session.handleMessage({ type: 'analytics', action: 'get_user_analytics', requestId: `r${i}`, data: { user_id: UID } });
+            }
+            expect(pythonRequests()).toHaveLength(10);
+            await session.handleMessage({ type: 'analytics', action: 'get_user_analytics', requestId: 'r11', data: { user_id: UID } });
+            expect(lastOfType(ws, 'analytics_error')).toMatchObject({ error: 'RATE_LIMITED', requestId: 'r11' });
+            expect(pythonRequests()).toHaveLength(10);
         });
 
         test('unknown actions are rejected', async () => {

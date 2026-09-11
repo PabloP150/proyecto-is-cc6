@@ -224,7 +224,19 @@ def test_without_a_secret_the_server_refuses_to_start_unless_allowed():
     with pytest.raises(RuntimeError):
         server.resolve_shared_secret({"MCP_SHARED_SECRET": "", "MCP_ALLOW_NO_SECRET": "true"})
     assert server.resolve_shared_secret({"MCP_ALLOW_NO_SECRET": "1"}) is None
-    assert server.resolve_shared_secret({"MCP_SHARED_SECRET": "s", "MCP_ALLOW_NO_SECRET": "1"}) == "s"
+    assert server.resolve_shared_secret({"MCP_SHARED_SECRET": TEST_SHARED_SECRET, "MCP_ALLOW_NO_SECRET": "1"}) == TEST_SHARED_SECRET
+
+
+@pytest.mark.parametrize("weak", [
+    "s",
+    "a" * 31,
+    "change-me-to-a-long-random-string",
+    "your-secret-value-that-is-long-enough-to-pass",
+    "this-is-just-an-example-but-it-is-long-enough",
+])
+def test_weak_or_placeholder_secrets_are_rejected(weak):
+    with pytest.raises(RuntimeError):
+        server.resolve_shared_secret({"MCP_SHARED_SECRET": weak})
 
 
 def test_allow_no_secret_mode_still_rejects_browsers(agent, monkeypatch):

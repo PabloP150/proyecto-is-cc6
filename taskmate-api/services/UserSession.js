@@ -20,6 +20,8 @@ const MAX_INSTRUCTIONS = 500;
 const MAX_CHAT_MESSAGE = 4000;
 const CHAT_WINDOW_MS = 60 * 1000;
 const CHAT_MESSAGES_PER_WINDOW = 20;
+// Each analytics request is an LLM call, so it gets the same budget as the REST recommendations route.
+const ANALYTICS_REQUESTS_PER_WINDOW = 10;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CLIENT_ID_RE = /^[A-Za-z0-9_.:-]{1,100}$/;
 const DEMO_GROUP_RE = /^test-group-[A-Za-z0-9_-]+$/;
@@ -64,6 +66,7 @@ const PASSTHROUGH_ANALYSIS_CODES = new Set(['LLM_TIMEOUT', 'LLM_RATE_LIMIT', 'LL
 // Per user (not per session): a reconnect or a second tab does not reset these limits.
 const lastAnalysisByUser = new Map();
 const chatWindowByUser = new Map();
+const analyticsWindowByUser = new Map();
 
 const isUuid = (value) => typeof value === 'string' && UUID_RE.test(value);
 const sameId = (a, b) => typeof a === 'string' && typeof b === 'string' && a.toLowerCase() === b.toLowerCase();
@@ -78,20 +81,23 @@ const cooldownRemainingSec = (userId, now = Date.now()) => {
     return last && now - last < ANALYSIS_COOLDOWN_MS ? Math.ceil((ANALYSIS_COOLDOWN_MS - (now - last)) / 1000) : 0;
 };
 
-// Fixed window per user; returns seconds to wait, or 0 when the message may go through.
-const takeChatSlot = (userId, now = Date.now()) => {
-    if (chatWindowByUser.size > 1000) {
-        for (const [uid, w] of chatWindowByUser) if (now - w.start >= CHAT_WINDOW_MS) chatWindowByUser.delete(uid);
+// Fixed window per user; returns seconds to wait, or 0 when the request may go through.
+const takeSlot = (windows, limit, userId, now = Date.now()) => {
+    if (windows.size > 1000) {
+        for (const [uid, w] of windows) if (now - w.start >= CHAT_WINDOW_MS) windows.delete(uid);
     }
-    let window = chatWindowByUser.get(userId);
+    let window = windows.get(userId);
     if (!window || now - window.start >= CHAT_WINDOW_MS) {
         window = { start: now, count: 0 };
-        chatWindowByUser.set(userId, window);
+        windows.set(userId, window);
     }
-    if (window.count >= CHAT_MESSAGES_PER_WINDOW) return Math.ceil((CHAT_WINDOW_MS - (now - window.start)) / 1000);
+    if (window.count >= limit) return Math.ceil((CHAT_WINDOW_MS - (now - window.start)) / 1000);
     window.count += 1;
     return 0;
 };
+
+const takeChatSlot = (userId, now) => takeSlot(chatWindowByUser, CHAT_MESSAGES_PER_WINDOW, userId, now);
+const takeAnalyticsSlot = (userId, now) => takeSlot(analyticsWindowByUser, ANALYTICS_REQUESTS_PER_WINDOW, userId, now);
 
 const deriveProjectName = (plan, originalMessage) => {
     const data = (plan && (plan.recommendations || plan)) || {};
@@ -107,6 +113,10 @@ const requireLeader = async (userId, groupId) => {
 // Client-sent team_context is never trusted; the real one is only built for group leaders.
 // Without `action` (legacy callers) the strictest rule applies: any real group needs a leader.
 const prepareAnalyticsData = async (userId, rawData, action) => {
+    const retryAfterSec = takeAnalyticsSlot(userId);
+    if (retryAfterSec > 0) {
+        throw new AppError('RATE_LIMITED', 'Too many analytics requests, please wait', 429, { retryAfterSec });
+    }
     const data = isPlainObject(rawData) ? { ...rawData } : {};
     delete data.team_context;
     const groupId = data.group_id || data.groupId;
@@ -686,6 +696,7 @@ class UserSession {
 UserSession.prepareAnalyticsData = prepareAnalyticsData;
 UserSession.lastAnalysisByUser = lastAnalysisByUser;
 UserSession.chatWindowByUser = chatWindowByUser;
+UserSession.analyticsWindowByUser = analyticsWindowByUser;
 UserSession.REQUEST_TIMEOUT_MS = REQUEST_TIMEOUT_MS;
 UserSession.ANALYSIS_TIMEOUT_MS = ANALYSIS_TIMEOUT_MS;
 UserSession.PLAN_TTL_MS = PLAN_TTL_MS;

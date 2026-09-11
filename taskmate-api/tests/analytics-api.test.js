@@ -272,6 +272,8 @@ describe('manual assignment / completion records', () => {
         expect(m.analytics.recordTaskAssignment).toHaveBeenCalledWith(TASK_A, BOB, GROUP_A, 'backend');
 
         expect((await post('/api/analytics/assignment', { taskId: TASK_A, userId: BOB, groupId: GROUP_A }, EVE)).status).toBe(403);
+        // A non-member learns nothing from validation: an incomplete body is still refused with 403.
+        expect((await post('/api/analytics/assignment', { taskId: TASK_A, groupId: GROUP_A }, EVE)).status).toBe(403);
         expect((await post('/api/analytics/assignment', { taskId: TASK_B, userId: BOB, groupId: GROUP_A }, ALICE)).status).toBe(404);
         expect((await post('/api/analytics/assignment', { taskId: TASK_A, userId: EVE, groupId: GROUP_A }, ALICE)).status).toBe(400);
         expect((await post('/api/analytics/assignment', { taskId: '123', userId: BOB, groupId: GROUP_A }, ALICE)).status).toBe(400);

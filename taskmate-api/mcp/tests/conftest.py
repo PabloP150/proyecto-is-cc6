@@ -4,7 +4,7 @@ import sys
 # Must happen before llm_service/server are imported: the tests never use real secrets or reach Groq.
 os.environ["GROQ_API_KEY"] = "gsk_test_dummy_key_not_real"
 os.environ.pop("LLM_API_KEY", None)
-TEST_SHARED_SECRET = "test-shared-secret"
+TEST_SHARED_SECRET = "3f9c1a7e5b2d4c6e8a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f"
 os.environ["MCP_SHARED_SECRET"] = TEST_SHARED_SECRET
 os.environ.pop("MCP_ALLOW_NO_SECRET", None)
 AUTH_HEADERS = {"X-MCP-Secret": TEST_SHARED_SECRET}

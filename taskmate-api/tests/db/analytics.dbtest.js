@@ -105,4 +105,27 @@ describe('analytics on top of the fact table', () => {
         expect(byUid[member.uid].expertise_by_category.frontend).toEqual({ expertise_score: 0, success_rate_percentage: 50 });
         expect(byUid[user.uid].expertise_by_category.backend).toEqual({ expertise_score: expect.any(Number), success_rate_percentage: 50 });
     });
+
+    it('buildTeamContext only uses the group\'s own data, so adding someone to a group exposes nothing else', async () => {
+        const member = await h.createUser('xgrp');
+        const own = await h.createGroup(member.uid);
+        const busy = await h.createTask(own);
+        await h.assignTask(member.uid, busy, own);
+        const done = await h.createTask(own);
+        await h.assignTask(member.uid, done, own);
+        await tasksModel.completeTask(done);
+
+        const outsider = await h.createUser('ldr');
+        const other = await h.createGroup(outsider.uid);
+        await h.addMember(member.uid, other);
+
+        const { team_members: inOther } = await buildTeamContext(other);
+        const seen = inOther.find(t => String(t.uid).toLowerCase() === member.uid);
+        expect(seen.current_workload).toBe(0);
+        CATEGORIES.forEach(cat => expect(seen.expertise_by_category[cat]).toEqual({ expertise_score: 0, success_rate_percentage: 50 }));
+
+        const { team_members: [inOwn] } = await buildTeamContext(own);
+        expect(inOwn.current_workload).toBe(1);
+        expect(Object.values(inOwn.expertise_by_category).some(e => e.success_rate_percentage === 100)).toBe(true);
+    });
 });

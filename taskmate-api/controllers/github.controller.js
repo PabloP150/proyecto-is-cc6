@@ -46,10 +46,15 @@ const queryString = (req, name) => {
 
 const createGithubRouter = ({ auth = requireAuth } = {}) => {
     const router = express.Router();
-    const installLimiter = createLimiter({ windowMs: 60 * 1000, limit: 10 });
-    const browseLimiter = createLimiter({ windowMs: 60 * 1000, limit: 90 });
-    const branchLimiter = createLimiter({ windowMs: 60 * 1000, limit: 20 });
-    const syncLimiter = createLimiter({ windowMs: 30 * 1000, limit: 1, message: 'Sync is limited to once every 30 seconds.' });
+    // All limits are per user (these routes run after auth). The hourly browse cap keeps one member from
+    // draining the installation's shared GitHub budget (githubApp.js) for every other group on it.
+    const installLimiter = createLimiter({ windowMs: 60 * 1000, limit: 10, keyByUser: true });
+    const browseLimiter = [
+        createLimiter({ windowMs: 60 * 1000, limit: 60, keyByUser: true }),
+        createLimiter({ windowMs: 60 * 60 * 1000, limit: 600, keyByUser: true }),
+    ];
+    const branchLimiter = createLimiter({ windowMs: 60 * 1000, limit: 20, keyByUser: true });
+    const syncLimiter = createLimiter({ windowMs: 30 * 1000, limit: 1, keyByUser: true, message: 'Sync is limited to once every 30 seconds.' });
 
     router.use(auth);
 

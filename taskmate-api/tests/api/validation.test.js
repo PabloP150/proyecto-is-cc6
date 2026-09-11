@@ -120,9 +120,19 @@ describe('group roles', () => {
     });
 
     test('limits are inclusive and non-Latin-1 names are fine', async () => {
-        const res = await send('post', rolesPath, { gr_name: 'Líder 队长', gr_color: '#'.padEnd(20, 'f'), gr_icon: 'i'.repeat(40) }, ALICE);
+        const res = await send('post', rolesPath, { gr_name: 'Líder 队长', gr_color: '#1976d2ff', gr_icon: 'i'.repeat(40) }, ALICE);
         expect(res.status).toBe(201);
         expect(m.groupRoles.addGroupRole).toHaveBeenCalledWith(expect.objectContaining({ gr_name: 'Líder 队长', gid: GROUP_A }));
+    });
+
+    test.each([
+        [{ gr_name: 'Dev', gr_icon: '⭐' }, /gr_icon must be a Material icon name/],
+        [{ gr_name: 'Dev', gr_icon: 'Star Icon' }, /gr_icon must be a Material icon name/],
+        [{ gr_name: 'Dev', gr_color: 'red' }, /gr_color must be a hex color/],
+        [{ gr_name: 'Dev', gr_color: '#12345' }, /gr_color must be a hex color/],
+    ])('icons and colors are ASCII columns: %p → 400', async (body, message) => {
+        await expect400('post', rolesPath, body, ALICE, message);
+        expect(m.groupRoles.addGroupRole).not.toHaveBeenCalled();
     });
 
     test('PUT roles requires gr_name too', async () => {

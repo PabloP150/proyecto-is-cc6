@@ -70,5 +70,9 @@ echo "Applying migrations..."
 DB_HOST=localhost DB_NAME="$DB_NAME" MIGRATE_USER=SA SQLCMD="$SQLCMD" \
     "$APP_DIR/migrations/run-migrations.sh" || fail "migrations failed"
 
+# db_datawriter covers every table; the migration log must only change through migrations (SA).
+sa -d "$DB_NAME" -Q "IF OBJECT_ID(N'dbo.SchemaMigrations', N'U') IS NOT NULL DENY INSERT, UPDATE, DELETE ON dbo.SchemaMigrations TO [$APP_LOGIN];" \
+    || fail "could not protect dbo.SchemaMigrations"
+
 echo "Setup complete. Keeping container running."
 wait "$SQL_PID"
