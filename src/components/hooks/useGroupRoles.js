@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api/client';
+import { sameId } from '../../utils/ids';
 
 /**
  * Hook para gestionar roles de grupo y asignaciones de roles a usuarios.
@@ -71,11 +72,11 @@ export default function useGroupRoles(groupId) {
     if (!groupId || !roleId) return;
     setLoading(true);
     const prevRoles = roles;
-    setRoles(r => r.map(role => role.gr_id === roleId ? { ...role, ...roleData, gr_id: roleId } : role));
+    setRoles(r => r.map(role => sameId(role.gr_id, roleId) ? { ...role, ...roleData, gr_id: roleId } : role));
     try {
       const payload = await api.put(`/api/grouproles/groups/${groupId}/roles/${roleId}`, roleData);
       if (payload && payload.role) {
-        setRoles(r => r.map(role => role.gr_id === roleId ? { ...role, ...payload.role } : role));
+        setRoles(r => r.map(role => sameId(role.gr_id, roleId) ? { ...role, ...payload.role } : role));
       }
     } catch (err) {
       setRoles(prevRoles);

@@ -2,6 +2,7 @@
 import { Box, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, Slider, Typography } from '@mui/material';
 import Button from './ui/Button';
 import TextField from './ui/TextField';
+import { LIMITS, limitProps } from '../constants/limits';
 
 const SLIDER_MARKS = [0, 25, 50, 75, 100].map(v => ({ value: v, label: `${v}%` }));
 
@@ -74,6 +75,7 @@ export default function Dialogos({
             fullWidth
             value={nombreLista}
             onChange={(e) => setNombreLista(e.target.value)}
+            {...limitProps(nombreLista, LIMITS.listName)}
             sx={{ mt: 2 }}
           />
         </DialogContent>
@@ -121,6 +123,7 @@ export default function Dialogos({
               name="nombre"
               value={nombre}
               onChange={(e) => setNombre(e.target.value)}
+              {...limitProps(nombre, LIMITS.taskName)}
               InputLabelProps={{ shrink: true }}
             />
             <TextField
@@ -132,6 +135,7 @@ export default function Dialogos({
               value={descripcion}
               onChange={(e) => setDescripcion(e.target.value)}
               placeholder="You can leave this empty"
+              {...limitProps(descripcion, LIMITS.taskDescription)}
               InputLabelProps={{ shrink: true }}
             />
             <TextField
@@ -224,6 +228,7 @@ export default function Dialogos({
             type="text"
             value={recordatorioEditar?.name || ''}
             onChange={(e) => setRecordatorioEditar({ ...recordatorioEditar, name: e.target.value })}
+            {...limitProps(recordatorioEditar?.name, LIMITS.taskName)}
             InputLabelProps={{ shrink: true }}
           />
           <TextField
@@ -235,6 +240,7 @@ export default function Dialogos({
             value={recordatorioEditar?.description || ''}
             onChange={(e) => setRecordatorioEditar({ ...recordatorioEditar, description: e.target.value })}
             placeholder="Leave blank if not needed"
+            {...limitProps(recordatorioEditar?.description, LIMITS.taskDescription)}
             InputLabelProps={{ shrink: true }}
           />
           <TextField

@@ -1,9 +1,8 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { api } from '../../api/client';
 import { GroupContext } from '../GroupContext';
 import ListaRecordatorios from '../ListaRecordatorios';
 import Recordatorios from '../Recordatorios';
-import { TASKS_CHANGED_EVENT } from '../github/githubUtils';
 import useTaskLinks from '../github/useTaskLinks';
 
 jest.mock('../../api/client', () => ({
@@ -12,8 +11,6 @@ jest.mock('../../api/client', () => ({
   errorMessage: (err, fallback) => err?.message || fallback,
 }));
 jest.mock('../github/useTaskLinks', () => ({ __esModule: true, default: jest.fn() }));
-// Its own member fetch is irrelevant here.
-jest.mock('../SeleccionarPersona', () => ({ __esModule: true, default: () => null }));
 
 const TASK = {
   tid: 't1',
@@ -47,8 +44,6 @@ const renderTasks = async () => {
   );
   await screen.findByText('Escribir informe');
 };
-
-const taskFetches = () => api.get.mock.calls.filter(([path]) => path.startsWith('/api/tasks?gid=')).length;
 
 beforeEach(() => {
   localStorage.clear();
@@ -103,23 +98,6 @@ describe('Recordatorios — GitHub actions', () => {
     fireEvent.click(screen.getByRole('button', { name: 'delete' }));
     await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
     expect(api.post).toHaveBeenCalledWith('/api/tasks/t1/trash');
-  });
-
-  it('reloads tasks and links when an AI plan is saved for this group', async () => {
-    const refresh = mockLinks();
-    await renderTasks();
-    const before = taskFetches();
-
-    act(() => {
-      window.dispatchEvent(new CustomEvent(TASKS_CHANGED_EVENT, { detail: { groupId: 'other' } }));
-    });
-    expect(taskFetches()).toBe(before);
-
-    act(() => {
-      window.dispatchEvent(new CustomEvent(TASKS_CHANGED_EVENT, { detail: { groupId: 'G1' } }));
-    });
-    await waitFor(() => expect(taskFetches()).toBe(before + 1));
-    expect(refresh).toHaveBeenCalled();
   });
 });
 

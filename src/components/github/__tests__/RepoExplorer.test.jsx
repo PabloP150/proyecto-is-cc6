@@ -147,4 +147,47 @@ describe('RepoExplorer', () => {
     await waitFor(() => expect(getTree).toHaveBeenCalledTimes(2));
     expect(await within(tree()).findByRole('button', { name: 'src' })).toBeInTheDocument();
   });
+
+  describe('README images', () => {
+    const renderComponents = async () => {
+      renderExplorer();
+      await screen.findByTestId('markdown-render');
+      return mockMarkdownCalls[mockMarkdownCalls.length - 1].components;
+    };
+
+    it('loads images only from GitHub hosts', async () => {
+      const { img: Img } = await renderComponents();
+      render(
+        <>
+          <Img src="https://raw.githubusercontent.com/acme/app/main/logo.png" alt="logo" />
+          <Img src="https://user-images.githubusercontent.com/1/shot.png" alt="shot" />
+          <Img src="https://evil.example/pixel.gif" alt="pixel" />
+        </>
+      );
+      expect(screen.getByRole('img', { name: 'logo' })).toHaveAttribute('src', 'https://raw.githubusercontent.com/acme/app/main/logo.png');
+      expect(screen.getByRole('img', { name: 'shot' })).toBeInTheDocument();
+      expect(screen.queryByRole('img', { name: 'pixel' })).not.toBeInTheDocument();
+      expect(screen.getByRole('link', { name: '[Imagen: pixel]' })).toHaveAttribute('href', 'https://evil.example/pixel.gif');
+    });
+
+    it('resolves relative images to the repository raw URL', async () => {
+      const { img: Img } = await renderComponents();
+      render(<Img src="docs/diagram.png" alt="diagram" />);
+      expect(screen.getByRole('img', { name: 'diagram' })).toHaveAttribute('src', 'https://github.com/acme/app/raw/main/docs/diagram.png');
+    });
+
+    it('never nests a link for an external image inside a link (badges)', async () => {
+      const { a: A, img: Img } = await renderComponents();
+      render(
+        <div data-testid="badge">
+          <A href="https://ci.example/build">
+            <Img src="https://img.shields.io/badge/build-passing-green" alt="build" />
+          </A>
+        </div>
+      );
+      const badge = within(screen.getByTestId('badge'));
+      expect(badge.getByRole('link', { name: '[Imagen: build]' })).toHaveAttribute('href', 'https://ci.example/build');
+      expect(badge.getAllByRole('link')).toHaveLength(1);
+    });
+  });
 });

@@ -60,3 +60,6 @@ export const getTaskLinks = (gid, { signal } = {}) =>
 
 export const syncGroup = (gid, { signal } = {}) =>
   request(`/groups/${seg(gid)}/sync`, { method: 'POST', signal });
+
+export const setAiAnalysis = (gid, enabled, { signal } = {}) =>
+  request(`/groups/${seg(gid)}/ai-analysis`, { method: 'PUT', body: { enabled: Boolean(enabled) }, signal });

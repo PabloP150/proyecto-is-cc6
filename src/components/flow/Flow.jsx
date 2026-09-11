@@ -12,6 +12,7 @@ import '@xyflow/react/dist/style.css';
 import { Alert, Snackbar } from '@mui/material';
 import { useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { api, errorMessage } from '../../api/client';
+import { LIMITS } from '../../constants/limits';
 import { GroupContext } from '../GroupContext';
 import CustomConnectionLine from './CustomConnectionLine';
 import CustomNode from './CustomNode';
@@ -322,6 +323,8 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
           name="name"
           value={nodeData.name}
           onChange={handleInputChange}
+          maxLength={LIMITS.nodeName}
+          aria-label="Milestone name"
           placeholder="Enter milestone name"
           style={{
             padding: '5px',

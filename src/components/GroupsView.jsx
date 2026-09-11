@@ -13,6 +13,7 @@ import useGroupRoles from './hooks/useGroupRoles';
 import Button from './ui/Button';
 import Card from './ui/Card';
 import UserRolesChips from './UserRolesChips';
+import { sameId } from '../utils/ids';
 
 const UseButton = styled(Button)(({ theme, selected }) => ({
   marginLeft: theme.spacing(1),
@@ -74,7 +75,7 @@ function GroupsView() {
   }, []);
 
   // Solo cargamos roles cuando el grupo está realmente "en uso" (selectedGroupId coincide)
-  const groupId = (selectedGroup && selectedGroupId === selectedGroup.gid && showDetails) ? selectedGroup.gid : null;
+  const groupId = (selectedGroup && sameId(selectedGroupId, selectedGroup.gid) && showDetails) ? selectedGroup.gid : null;
   const {
     roles,
     userRolesMap,
@@ -119,7 +120,7 @@ function GroupsView() {
     const storedGroupId = localStorage.getItem('selectedGroupId');
     const storedShow = localStorage.getItem('showGroupDetails') === '1';
     if (!storedGroupId) return;
-    const groupToSelect = list.find(g => g.gid === storedGroupId);
+    const groupToSelect = list.find(g => sameId(g.gid, storedGroupId));
     if (groupToSelect) {
       setSelectedGroupId(groupToSelect.gid);
       setSelectedGroupName(groupToSelect.name);
@@ -156,7 +157,7 @@ function GroupsView() {
   const handleGroupClick = useCallback((group) => {
     setSelectedGroup(group);      // Mostrar nombre
     // Si este grupo ya está en uso y showDetails persistido, mantener detalles.
-    const persistShow = localStorage.getItem('showGroupDetails') === '1' && localStorage.getItem('selectedGroupId') === String(group.gid);
+    const persistShow = localStorage.getItem('showGroupDetails') === '1' && sameId(localStorage.getItem('selectedGroupId'), group.gid);
     setShowDetails(persistShow);
     if (!persistShow) setMembers([]);
   }, []);
@@ -248,7 +249,7 @@ function GroupsView() {
     if (!uid) return;
 
     // Si el admin intenta eliminarse a sí mismo, usar leaveGroup (con transferencia de admin)
-    if (uid === userId) {
+    if (sameId(uid, userId)) {
       setOpenDeleteUser(false);
       setUsernameToDelete('');
       await handleLeaveGroup();
@@ -257,7 +258,7 @@ function GroupsView() {
 
     try {
       await api.del('/api/groups/remove-member', { body: { uid, gid: selectedGroup.gid } });
-      setMembers(prev => prev.filter(m => m.uid !== uid));
+      setMembers(prev => prev.filter(m => !sameId(m.uid, uid)));
       setOpenDeleteUser(false);
       setUsernameToDelete('');
       notify('Member removed');
@@ -277,7 +278,7 @@ function GroupsView() {
       await api.del('/api/groups/leave', { body: { uid: userId, gid: selectedGroup.gid } });
       // En cualquier caso (transferred/deleted/left), el usuario ya no pertenece al grupo
       const leftGid = selectedGroup.gid;
-      if (selectedGroupId === leftGid) {
+      if (sameId(selectedGroupId, leftGid)) {
         setSelectedGroupId(null);
         setSelectedGroupName('');
         localStorage.removeItem('showGroupDetails');
@@ -286,7 +287,7 @@ function GroupsView() {
       setMembers([]);
       setShowDetails(false);
       // Quitar el grupo de la lista de inmediato (sin esperar al fetch)
-      setGroups(prev => prev.filter(g => g.gid !== leftGid));
+      setGroups(prev => prev.filter(g => !sameId(g.gid, leftGid)));
       cargarGrupos();
     } catch (err) {
       notifyError(err, 'Could not leave the group');
@@ -302,7 +303,7 @@ function GroupsView() {
     }
     try {
       await api.del('/api/groups/delete', { body: { gid: selectedGroup.gid, adminId: userId } });
-      setGroups(prev => prev.filter(g => g.gid !== selectedGroup.gid));
+      setGroups(prev => prev.filter(g => !sameId(g.gid, selectedGroup.gid)));
       setSelectedGroup(null);
       setSelectedGroupId(null);
       setMembers([]);
@@ -413,10 +414,10 @@ function GroupsView() {
                         borderRadius: 2,
                         marginBottom: 1,
                         transition: 'all 0.3s cubic-bezier(.4,2,.3,1)',
-                        background: selectedGroupId === group.gid 
+                        background: sameId(selectedGroupId, group.gid) 
                           ? 'rgba(59, 130, 246, 0.15)' 
                           : 'transparent',
-                        border: selectedGroupId === group.gid 
+                        border: sameId(selectedGroupId, group.gid) 
                           ? '1px solid rgba(59, 130, 246, 0.3)' 
                           : '1px solid transparent',
                         '&:hover': {
@@ -432,12 +433,12 @@ function GroupsView() {
                           display: '-webkit-box',
                           WebkitLineClamp: 2,
                           WebkitBoxOrient: 'vertical',
-                          fontWeight: selectedGroupId === group.gid ? 600 : 400,
+                          fontWeight: sameId(selectedGroupId, group.gid) ? 600 : 400,
                         }} title={group.name}>
                           {group.name}
                         </Typography>
                       </Box>
-                      <UseButton selected={selectedGroupId === group.gid} onClick={(e) => { e.stopPropagation(); handleUseGroup(group); }}>Use</UseButton>
+                      <UseButton selected={sameId(selectedGroupId, group.gid)} onClick={(e) => { e.stopPropagation(); handleUseGroup(group); }}>Use</UseButton>
                     </ListItem>
                   ))
                 )}
@@ -455,7 +456,7 @@ function GroupsView() {
                 }
               }}
             >
-              {selectedGroup && showDetails && selectedGroupId === selectedGroup.gid ? (
+              {selectedGroup && showDetails && sameId(selectedGroupId, selectedGroup.gid) ? (
                 <>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, flexWrap: { xs: 'wrap', sm: 'nowrap' }, mb: 3 }}>
                     <Typography
@@ -479,7 +480,7 @@ function GroupsView() {
                       {selectedGroup.name}
                     </Typography>
                     <Box sx={{ display: 'flex', gap: 1.5, flexShrink: 0, flexWrap: 'wrap', justifyContent: { xs: 'flex-start', md: 'flex-end' } }}>
-                      {selectedGroup.adminId === localStorage.getItem('userId') ? (
+                      {sameId(selectedGroup.adminId, localStorage.getItem('userId')) ? (
                         <>
                           {members.length > 1 && (
                             <Button variant="primary" onClick={() => setOpenDeleteUser(true)} sx={{
@@ -539,7 +540,7 @@ function GroupsView() {
                         <Box display="flex" alignItems="center" gap={1}>
                           <Typography sx={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: 0.5 }}>
                             {member.username}
-                            {selectedGroup.adminId === member.uid ? (
+                            {sameId(selectedGroup.adminId, member.uid) ? (
                               <Typography 
                                 component="span" 
                                 sx={{ 
@@ -600,10 +601,10 @@ function GroupsView() {
                               </Typography>
                             )}
                           </Typography>
-                          <UserRolesChips roles={(userRolesMap[member.uid] || []).map(rid => roles.find(r => r.gr_id === rid)).filter(Boolean)} />
+                          <UserRolesChips roles={(userRolesMap[member.uid] || []).map(rid => roles.find(r => sameId(r.gr_id, rid))).filter(Boolean)} />
                         </Box>
                         {/* Botón para asignar/editar roles, visible para todos si el usuario es admin del grupo */}
-                        {selectedGroup.adminId === localStorage.getItem('userId') && (
+                        {sameId(selectedGroup.adminId, localStorage.getItem('userId')) && (
                           <Button
                             variant="outline"
                             size="small"
@@ -623,11 +624,11 @@ function GroupsView() {
 
                   {/* Group Roles Panel - igual que Members */}
                   <Box mb={3}>
-                    {(roles && roles.length > 0) || (selectedGroup.adminId === localStorage.getItem('userId')) ? (
+                    {(roles && roles.length > 0) || (sameId(selectedGroup.adminId, localStorage.getItem('userId'))) ? (
                       // Si hay roles o el usuario es líder, mostramos el panel completo (maneja su propio estado vacío y botón New Role)
                       <GroupRolesPanel
                         groupId={selectedGroup.gid}
-                        isLeader={selectedGroup.adminId === localStorage.getItem('userId')}
+                        isLeader={sameId(selectedGroup.adminId, localStorage.getItem('userId'))}
                         roles={roles}
                         createRole={createRole}
                         updateRole={updateRole}

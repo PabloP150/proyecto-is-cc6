@@ -49,6 +49,12 @@ describe('RepoSelection', () => {
     expect(linkRepository).toHaveBeenCalledWith('G1', { selectionId: 'sel-1', repoId: 22 });
   });
 
+  it('shows which GitHub account is connecting', async () => {
+    getSelection.mockResolvedValue({ ...SELECTION, githubLogin: 'octocat' });
+    renderSelection();
+    expect(await screen.findByText('Conectando como @octocat')).toBeInTheDocument();
+  });
+
   it('explains an expired selection', async () => {
     getSelection.mockRejectedValue(Object.assign(new Error('404'), { code: 'SELECTION_NOT_FOUND', status: 404 }));
     const onCancel = jest.fn();

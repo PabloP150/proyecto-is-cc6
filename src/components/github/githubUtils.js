@@ -1,8 +1,5 @@
 // Shared helpers for the GitHub UI: safe URLs, readable errors, dates and ids.
 
-// Window event fired when tasks were created outside the task page (e.g. an AI plan was saved).
-export const TASKS_CHANGED_EVENT = 'taskmate:tasks-changed';
-
 const ERROR_MESSAGES = {
   VALIDATION_ERROR: 'La solicitud no es válida.',
   UNAUTHENTICATED: 'Tu sesión expiró. Inicia sesión de nuevo.',
@@ -26,6 +23,8 @@ const ERROR_MESSAGES = {
   GITHUB_RATE_LIMITED: 'Se alcanzó el límite de uso de la API de GitHub. Inténtalo más tarde.',
   DB_BUSY: 'El servidor está ocupado. Inténtalo de nuevo en unos segundos.',
   INTERNAL_ERROR: 'Ocurrió un error inesperado en el servidor.',
+  GITHUB_NOT_CONFIGURED: 'La integración con GitHub no está configurada en el servidor.',
+  AI_ANALYSIS_DISABLED: 'El análisis con IA está desactivado para este repositorio. Un administrador puede activarlo en la página GitHub.',
 };
 
 // Codes the OAuth/installation callback may put in ?status=error&code=<CODE>.
@@ -104,9 +103,7 @@ export function blobUrl(repoUrl, ref, path, kind = 'blob') {
   return `${repoUrl}/${kind}/${encodePath(ref)}/${encodePath(path)}`;
 }
 
-// GUIDs come uppercase from SQL Server and lowercase from uuid(); compare case-insensitively.
-export const normalizeId = (id) => (id === undefined || id === null ? '' : String(id).toLowerCase());
-export const sameId = (a, b) => normalizeId(a) !== '' && normalizeId(a) === normalizeId(b);
+export { normalizeId, sameId } from '../../utils/ids';
 
 export function getCurrentUserId() {
   try {

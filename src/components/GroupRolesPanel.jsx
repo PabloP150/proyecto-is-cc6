@@ -5,6 +5,7 @@ import { Alert, Box, Button, Chip, CircularProgress, Dialog, IconButton, Snackba
 import { useCallback, useMemo, useState } from 'react';
 import RoleForm from './RoleForm';
 import useGroupRoles from './hooks/useGroupRoles';
+import { errorMessage } from '../api/client';
 // Helpers de color (fuera del styled para evitar recrearlos en cada invocación)
 const adjustColor = (hex, amt) => {
   let h = hex?.replace('#','') || '1976d2';
@@ -70,7 +71,7 @@ const GroupRolesPanel = ({ groupId, isLeader, roles: externalRoles, createRole: 
       await deleteRole(role.gr_id);
       setSnackbar({ open: true, message: 'Rol eliminado', severity: 'success' });
     } catch (e) {
-      setSnackbar({ open: true, message: 'Error al eliminar rol', severity: 'error' });
+      setSnackbar({ open: true, message: errorMessage(e, 'Error al eliminar rol'), severity: 'error' });
     }
   }, [deleteRole]);
 
@@ -89,7 +90,7 @@ const GroupRolesPanel = ({ groupId, isLeader, roles: externalRoles, createRole: 
       }
       setOpenForm(false);
     } catch (e) {
-      setSnackbar({ open: true, message: 'Error al guardar rol', severity: 'error' });
+      setSnackbar({ open: true, message: errorMessage(e, 'Error al guardar rol'), severity: 'error' });
     } finally {
       setFormLoading(false);
       setEditingRole(null);

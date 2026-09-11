@@ -2,7 +2,6 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import ChatPage from '../ChatPage';
 import { GroupContext } from '../GroupContext';
-import { TASKS_CHANGED_EVENT } from '../github/githubUtils';
 
 jest.mock('react-markdown', () => ({ __esModule: true, default: (props) => <div>{props.children}</div> }));
 jest.mock('rehype-raw', () => ({ __esModule: true, default: function rehypeRaw() {} }));
@@ -121,8 +120,6 @@ describe('ChatPage — GitHub project analysis', () => {
   });
 
   it('runs an analysis, shows progress and confirms the plan once', () => {
-    const listener = jest.fn();
-    window.addEventListener(TASKS_CHANGED_EVENT, listener);
     renderChat();
     selectProject('Equipo Web');
     receive({ type: 'context', groupId: 'G1', groupName: 'Equipo Web', repo: { fullName: 'acme/web', defaultBranch: 'main' } });
@@ -151,9 +148,6 @@ describe('ChatPage — GitHub project analysis', () => {
 
     receive({ type: 'repo_plan_saved', planId: 'plan-1', groupId: 'G1', created: { tasks: 1, milestones: 0 }, content: 'Plan guardado' });
     expect(screen.getByTestId('repo-plan-compact')).toHaveTextContent('Plan guardado en «Equipo Web»: 1 tarea creada y 0 hitos.');
-    expect(listener).toHaveBeenCalledTimes(1);
-    expect(listener.mock.calls[0][0].detail).toEqual({ groupId: 'G1' });
-    window.removeEventListener(TASKS_CHANGED_EVENT, listener);
   });
 
   it('discards a plan and marks it discarded', () => {
@@ -191,7 +185,7 @@ describe('ChatPage — GitHub project analysis', () => {
     expect(request.instructions).toBe('');
     receive({ type: 'error', code: 'LLM_TIMEOUT', requestId: request.requestId, message: 'El análisis tardó demasiado.' });
     expect(screen.queryByText('Preparando el análisis del repositorio…')).not.toBeInTheDocument();
-    expect(screen.getByRole('alert')).toHaveTextContent('El análisis tardó demasiado.');
+    expect(screen.getByRole('alert')).toHaveTextContent('La IA tardó demasiado en responder.');
     expect(screen.getByRole('button', { name: 'Analizar repositorio' })).toBeEnabled();
   });
 
@@ -216,5 +210,90 @@ describe('ChatPage — GitHub project analysis', () => {
     });
     expect(screen.getByTestId('repo-plan-compact')).toHaveTextContent('Plan guardado');
     expect(screen.queryByText('Plan guardado: 1 tareas y 0 hitos.')).not.toBeInTheDocument();
+  });
+
+  describe('limits, errors and timeouts', () => {
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('caps chat messages at 4000 characters with a counter', () => {
+      renderChat();
+      const input = screen.getByRole('textbox', { name: 'Mensaje' });
+      expect(input).toHaveAttribute('maxLength', '4000');
+      fireEvent.change(input, { target: { value: 'hola' } });
+      expect(screen.getByText('4/4000')).toBeInTheDocument();
+    });
+
+    it('caps analysis instructions at 500 characters', () => {
+      renderChat();
+      selectProject('Equipo Web');
+      expect(screen.getByRole('textbox', { name: 'Instrucciones para el análisis' })).toHaveAttribute('maxLength', '500');
+      expect(screen.getByText('0/500')).toBeInTheDocument();
+    });
+
+    it.each([
+      [{ code: 'MESSAGE_TOO_LONG', message: 'too long' }, 'El mensaje es demasiado largo: el máximo es 4000 caracteres.'],
+      [{ code: 'RATE_LIMITED', message: 'slow down', retryAfterSec: 12 }, 'Vas muy rápido: espera un momento antes de volver a intentarlo. Podrás reintentar en 12 s.'],
+      [{ code: 'LLM_TIMEOUT', message: 'timeout' }, 'La IA tardó demasiado en responder. Inténtalo de nuevo.'],
+    ])('shows a friendly message for %o', (error, text) => {
+      renderChat();
+      receive({ type: 'error', ...error });
+      expect(screen.getByRole('alert')).toHaveTextContent(text);
+    });
+
+    it('stops the typing indicator after ~100 s without any reply', () => {
+      jest.useFakeTimers();
+      renderChat();
+      fireEvent.change(screen.getByRole('textbox', { name: 'Mensaje' }), { target: { value: 'hola' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Enviar mensaje' }));
+      expect(screen.getByText('AI is typing...')).toBeInTheDocument();
+
+      act(() => { jest.advanceTimersByTime(99000); });
+      expect(screen.getByText('AI is typing...')).toBeInTheDocument();
+
+      act(() => { jest.advanceTimersByTime(2000); });
+      expect(screen.queryByText('AI is typing...')).not.toBeInTheDocument();
+      expect(screen.getByRole('alert')).toHaveTextContent('No llegó respuesta a tiempo');
+    });
+
+    it('restarts the wait on analysis progress updates', () => {
+      jest.useFakeTimers();
+      renderChat();
+      selectProject('Equipo Web');
+      fireEvent.click(screen.getByRole('button', { name: 'Analizar repositorio' }));
+      const [request] = sentOfType('repo_analysis');
+
+      act(() => { jest.advanceTimersByTime(90000); });
+      receive({ type: 'repo_analysis_status', requestId: request.requestId, stage: 'analyzing' });
+      act(() => { jest.advanceTimersByTime(90000); });
+      expect(screen.getByText(/La IA está analizando el repositorio/)).toBeInTheDocument();
+    });
+
+    it('disables the analysis when the repository does not allow AI analysis', () => {
+      renderChat();
+      selectProject('Equipo Web');
+      receive({ type: 'context', groupId: 'G1', groupName: 'Equipo Web', repo: { fullName: 'acme/web', defaultBranch: 'main', aiAnalysisEnabled: false } });
+      expect(screen.getByRole('button', { name: 'Analizar repositorio' })).toBeDisabled();
+      expect(screen.getByText(/El análisis con IA está desactivado para este proyecto/)).toBeInTheDocument();
+    });
+
+    it('explains AI_ANALYSIS_DISABLED and blocks further analyses', () => {
+      renderChat();
+      selectProject('Equipo Web');
+      receive({ type: 'context', groupId: 'G1', groupName: 'Equipo Web', repo: { fullName: 'acme/web', defaultBranch: 'main' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Analizar repositorio' }));
+      const [request] = sentOfType('repo_analysis');
+
+      receive({ type: 'error', code: 'AI_ANALYSIS_DISABLED', requestId: request.requestId, message: 'disabled' });
+      expect(screen.getByRole('alert')).toHaveTextContent('El análisis con IA está desactivado para este proyecto');
+      expect(screen.getByRole('button', { name: 'Analizar repositorio' })).toBeDisabled();
+    });
+
+    it('explains a connection closed for an oversized message (1009)', () => {
+      renderChat();
+      act(() => { mockWsOptions.onClose({ code: 1009 }); });
+      expect(screen.getByRole('alert')).toHaveTextContent('El mensaje es demasiado grande');
+    });
   });
 });

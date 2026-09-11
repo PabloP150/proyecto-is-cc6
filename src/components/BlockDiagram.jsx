@@ -1,5 +1,6 @@
 import './BlockDiagram.css';
 import { api, errorMessage } from '../api/client';
+import { LIMITS } from '../constants/limits';
 import {
   Alert,
   Typography,
@@ -151,7 +152,7 @@ function BlockDiagram() {
                   <form style={{ display: 'flex', flexDirection: 'column' }} onSubmit={handleSubmit}>
                     <label>
                       Milestone Name:
-                      <input type="text" name="name" value={selectedNode.name} onChange={handleInputChange} />
+                      <input type="text" name="name" value={selectedNode.name} onChange={handleInputChange} maxLength={LIMITS.nodeName} />
                     </label>
                     <label>
                       Milestone Description:

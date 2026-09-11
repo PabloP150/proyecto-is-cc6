@@ -343,4 +343,36 @@ describe('useWebSocket', () => {
       expect(onClose).toHaveBeenCalled();
     });
   });
+
+  describe('Server close codes', () => {
+    it('logs out instead of reconnecting when the token expired (4001)', () => {
+      const onUnauthorized = jest.fn();
+      window.addEventListener('taskmate:unauthorized', onUnauthorized);
+      const { result } = renderHook(() => useWebSocket(mockUrl, mockToken, { autoConnect: true }));
+      flushConnect();
+      act(() => { lastSocket().simulateOpen(); });
+
+      act(() => { lastSocket().close(4001, 'Token expired'); });
+      act(() => { jest.advanceTimersByTime(60000); });
+
+      expect(onUnauthorized).toHaveBeenCalledTimes(1);
+      expect(instances).toHaveLength(1);
+      expect(result.current.error).toBe('La sesión expiró. Inicia sesión de nuevo.');
+      window.removeEventListener('taskmate:unauthorized', onUnauthorized);
+    });
+
+    it('reports an oversized message (1009) and reconnects', () => {
+      const onClose = jest.fn();
+      const { result } = renderHook(() => useWebSocket(mockUrl, mockToken, { autoConnect: true, onClose }));
+      flushConnect();
+      act(() => { lastSocket().simulateOpen(); });
+
+      act(() => { lastSocket().close(1009, 'Message too big'); });
+      expect(onClose).toHaveBeenCalledWith(expect.objectContaining({ code: 1009 }));
+      expect(result.current.error).toMatch(/demasiado grande/);
+
+      act(() => { jest.advanceTimersByTime(5000); });
+      expect(instances).toHaveLength(2);
+    });
+  });
 });

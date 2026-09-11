@@ -1,7 +1,6 @@
 import { ThemeProvider } from '@mui/material/styles';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
-import { apiFetch } from '../../../api/client';
 import * as github from '../../../api/github';
 import theme from '../../../theme/theme';
 import { GroupContext } from '../../GroupContext';
@@ -11,7 +10,6 @@ import { assignLocation } from '../githubUtils';
 jest.mock('react-markdown', () => ({ __esModule: true, default: () => null }));
 jest.mock('remark-gfm', () => ({ __esModule: true, default: () => {} }));
 jest.mock('rehype-sanitize', () => ({ __esModule: true, default: () => {} }));
-jest.mock('../../../api/client', () => ({ apiFetch: jest.fn() }));
 jest.mock('../../../api/github', () => ({
   install: jest.fn(),
   getSelection: jest.fn(),
@@ -23,6 +21,7 @@ jest.mock('../../../api/github', () => ({
   getReadme: jest.fn(),
   getCommits: jest.fn(),
   syncGroup: jest.fn(),
+  setAiAnalysis: jest.fn(),
 }));
 jest.mock('../githubUtils', () => ({ ...jest.requireActual('../githubUtils'), assignLocation: jest.fn() }));
 
@@ -41,7 +40,13 @@ const REPO = {
   connectedByUsername: 'pablo',
   htmlUrl: 'https://github.com/acme/app',
   installation: { accountLogin: 'acme-org', suspended: false },
+  aiAnalysisEnabled: true,
 };
+
+const groupsFor = (adminId = 'U1') => [
+  { gid: 'G1', name: 'Equipo Web', adminId },
+  { gid: 'G2', name: 'Equipo Móvil', adminId: 'U1' },
+];
 
 function LocationProbe() {
   const location = useLocation();
@@ -53,12 +58,15 @@ function ChatProbe() {
   return <div data-testid="chat">{location.state && location.state.analyzeGroupId}</div>;
 }
 
-const showPage = ({ url = '/github', ctx = {} } = {}) => {
+const showPage = ({ url = '/github', ctx = {}, adminId = 'U1' } = {}) => {
+  const groups = groupsFor(adminId);
   const value = {
     selectedGroupId: 'G1',
     setSelectedGroupId: jest.fn(),
     selectedGroupName: 'Equipo Web',
     setSelectedGroupName: jest.fn(),
+    groups,
+    refreshGroups: jest.fn().mockResolvedValue(groups),
     ...ctx,
   };
   render(
@@ -84,47 +92,39 @@ const showPage = ({ url = '/github', ctx = {} } = {}) => {
   return value;
 };
 
-const mockGroups = (adminId = 'U1') =>
-  apiFetch.mockResolvedValue({ groups: [{ gid: 'G1', name: 'Equipo Web', adminId }] });
-
 beforeEach(() => {
   jest.clearAllMocks();
   localStorage.clear();
   localStorage.setItem('userId', 'U1');
-  mockGroups();
   github.getRepository.mockResolvedValue(null);
   github.getCommits.mockResolvedValue([]);
 });
 
 describe('GitHubPage', () => {
   it('asks to pick a group when none is selected', async () => {
-    showPage({ ctx: { selectedGroupId: null, selectedGroupName: '' } });
+    const ctx = showPage({ ctx: { selectedGroupId: null, selectedGroupName: '' } });
     expect(screen.getByText('Selecciona un grupo')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Ir a Grupos' })).toHaveAttribute('href', '/groups');
-    await waitFor(() => expect(apiFetch).toHaveBeenCalled());
+    await waitFor(() => expect(ctx.refreshGroups).toHaveBeenCalled());
     expect(github.getRepository).not.toHaveBeenCalled();
   });
 
-  it('restores the group from localStorage when the context is empty', async () => {
-    localStorage.setItem('selectedGroupId', 'G1');
-    localStorage.setItem('selectedGroupName', 'Equipo Web');
-    const ctx = showPage({ ctx: { selectedGroupId: null, selectedGroupName: '' } });
-    await waitFor(() => expect(github.getRepository).toHaveBeenCalledWith('G1', expect.any(Object)));
-    expect(ctx.setSelectedGroupId).toHaveBeenCalledWith('G1');
-    expect(ctx.setSelectedGroupName).toHaveBeenCalledWith('Equipo Web');
+  it('uses the GroupContext groups (refreshed once) instead of its own request', async () => {
+    const ctx = showPage();
+    expect(await screen.findByRole('button', { name: /Conectar repositorio/ })).toBeInTheDocument();
+    expect(ctx.refreshGroups).toHaveBeenCalledTimes(1);
+    expect(github.getRepository).toHaveBeenCalledWith('G1', expect.any(Object));
   });
 
   it('lets the admin connect a repository', async () => {
     showPage();
     expect(await screen.findByRole('button', { name: /Conectar repositorio/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Ya instalé la App/ })).toBeInTheDocument();
-    expect(apiFetch).toHaveBeenCalledWith('/api/groups/user-groups?uid=U1', expect.any(Object));
     expect(screen.getByRole('tab', { name: 'Archivos' })).toBeDisabled();
   });
 
   it('tells non-admins that only the admin can connect', async () => {
-    mockGroups('U2');
-    showPage();
+    showPage({ adminId: 'U2' });
     expect(await screen.findByText('Solo el administrador del grupo puede conectar un repositorio.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Conectar repositorio/ })).not.toBeInTheDocument();
   });
@@ -171,7 +171,7 @@ describe('GitHubPage', () => {
     expect(screen.getByText(/pablo/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Desconectar' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Sincronizar PRs/ })).toBeEnabled();
-    const consent = screen.getByText(/Groq/);
+    const consent = screen.getAllByText(/Groq/).find((el) => el.id === 'gh-ai-consent');
     expect(consent).toHaveTextContent('Nunca se envía el código fuente');
     expect(screen.getByRole('button', { name: /Analizar con IA/ })).toHaveAttribute('aria-describedby', consent.id);
     expect(screen.getByRole('tab', { name: 'Archivos' })).toBeEnabled();
@@ -196,10 +196,10 @@ describe('GitHubPage', () => {
 
   it('syncs pull requests and explains the rate limit', async () => {
     github.getRepository.mockResolvedValue(REPO);
-    github.syncGroup.mockResolvedValueOnce({ checked: 3, updated: 1 });
+    github.syncGroup.mockResolvedValueOnce({ branchesChecked: 4, pullRequestsFound: 3, updated: 1 });
     showPage();
     fireEvent.click(await screen.findByRole('button', { name: /Sincronizar PRs/ }));
-    expect(await screen.findByText('Sincronización completa: 3 PR revisados, 1 actualizados.')).toBeInTheDocument();
+    expect(await screen.findByText('Sincronización completa: 4 ramas revisadas, 3 PR encontrados, 1 actualizados.')).toBeInTheDocument();
 
     github.syncGroup.mockRejectedValueOnce(Object.assign(new Error('429'), { code: 'RATE_LIMITED', status: 429 }));
     fireEvent.click(screen.getByRole('button', { name: /Sincronizar PRs/ }));
@@ -249,6 +249,59 @@ describe('GitHubPage', () => {
       showPage({ url: `/github?status=error&code=${encodeURIComponent(code)}` });
       expect(await screen.findByText(text)).toBeInTheDocument();
       await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent(/^\/github$/));
+    });
+  });
+
+  it('selects the callback group (gid) before showing the repository selection', async () => {
+    github.getSelection.mockResolvedValue({ gid: 'G2', githubLogin: 'octo', repos: [{ repoId: 1, fullName: 'acme/web', isPrivate: false }] });
+    const ctx = showPage({ url: '/github?status=select&selection=sel-1&gid=G2' });
+    await waitFor(() => expect(ctx.setSelectedGroupId).toHaveBeenCalledWith('G2'));
+    expect(ctx.setSelectedGroupName).toHaveBeenCalledWith('Equipo Móvil');
+    expect(await screen.findByText('Conectando como @octo')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent(/^\/github$/));
+  });
+
+  describe('AI analysis permission', () => {
+    it('lets the admin enable it and then allows the analysis', async () => {
+      github.getRepository.mockResolvedValue({ ...REPO, aiAnalysisEnabled: false });
+      github.setAiAnalysis.mockResolvedValue({ aiAnalysisEnabled: true });
+      showPage();
+      const analyze = await screen.findByRole('button', { name: /Analizar con IA/ });
+      expect(analyze).toBeDisabled();
+      expect(screen.getByText(/Actívalo con «Permitir análisis con IA»/)).toBeInTheDocument();
+
+      const toggle = screen.getByRole('checkbox', { name: 'Permitir análisis con IA' });
+      expect(toggle).not.toBeChecked();
+      fireEvent.click(toggle);
+
+      await waitFor(() => expect(github.setAiAnalysis).toHaveBeenCalledWith('G1', true));
+      await waitFor(() => expect(screen.getByRole('button', { name: /Analizar con IA/ })).toBeEnabled());
+      expect(screen.getByRole('checkbox', { name: 'Permitir análisis con IA' })).toBeChecked();
+    });
+
+    it('explains what is sent to Groq next to the toggle', async () => {
+      github.getRepository.mockResolvedValue(REPO);
+      showPage();
+      await screen.findByRole('checkbox', { name: 'Permitir análisis con IA' });
+      expect(screen.getAllByText(/Groq/).length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('shows the state to non-admins without a toggle', async () => {
+      github.getRepository.mockResolvedValue({ ...REPO, aiAnalysisEnabled: false });
+      showPage({ adminId: 'U2' });
+      expect(await screen.findByText('Análisis con IA: desactivado')).toBeInTheDocument();
+      expect(screen.queryByRole('checkbox', { name: 'Permitir análisis con IA' })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Analizar con IA/ })).toBeDisabled();
+      expect(screen.getByText(/Pide al administrador del grupo que lo active/)).toBeInTheDocument();
+    });
+
+    it('keeps the toggle state when saving fails', async () => {
+      github.getRepository.mockResolvedValue({ ...REPO, aiAnalysisEnabled: false });
+      github.setAiAnalysis.mockRejectedValue(Object.assign(new Error('403'), { code: 'NOT_GROUP_ADMIN', status: 403 }));
+      showPage();
+      fireEvent.click(await screen.findByRole('checkbox', { name: 'Permitir análisis con IA' }));
+      expect(await screen.findByText('Solo el administrador del grupo puede hacer esto.')).toBeInTheDocument();
+      expect(screen.getByRole('checkbox', { name: 'Permitir análisis con IA' })).not.toBeChecked();
     });
   });
 });

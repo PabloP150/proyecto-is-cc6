@@ -4,24 +4,15 @@ import PersonIcon from '@mui/icons-material/Person';
 import { GroupContext } from './GroupContext';
 import Switch from '@mui/material/Switch';
 import { api, errorMessage } from '../api/client';
+import { sameId } from '../utils/ids';
 
-const SeleccionarPersona = ({ tid }) => {
+// `members` is loaded once per group by the task page and passed down: fetching it here
+// (one request per task card) tripped the API rate limit on large lists.
+const SeleccionarPersona = ({ tid, members = [] }) => {
   const { selectedGroupId } = useContext(GroupContext);
-  const [members, setMembers] = useState([]);
   const [anchorEl, setAnchorEl] = useState(null);
   const [selectedMembers, setSelectedMembers] = useState([]);
   const [errorMsg, setErrorMsg] = useState('');
-
-  useEffect(() => {
-    if (!selectedGroupId) return;
-    const controller = new AbortController();
-
-    api.get(`/api/groups/${selectedGroupId}/members`, { signal: controller.signal })
-      .then(data => setMembers(data?.members || []))
-      .catch(err => { if (err?.name !== 'AbortError') setErrorMsg(errorMessage(err, 'Error al cargar los miembros')); });
-
-    return () => controller.abort();
-  }, [selectedGroupId]);
 
   useEffect(() => {
     const cargarEstado = async () => {
@@ -43,8 +34,8 @@ const SeleccionarPersona = ({ tid }) => {
 
   // Optimista: cambia el switch de inmediato y lo revierte si el servidor rechaza el cambio.
   const handleSelect = async (member) => {
-    const isSelected = selectedMembers.includes(member.uid);
-    setSelectedMembers(prev => isSelected ? prev.filter(m => m !== member.uid) : [...prev, member.uid]);
+    const isSelected = selectedMembers.some(uid => sameId(uid, member.uid));
+    setSelectedMembers(prev => isSelected ? prev.filter(m => !sameId(m, member.uid)) : [...prev, member.uid]);
     try {
       if (isSelected) {
         await api.del(`/api/usertask?uid=${encodeURIComponent(member.uid)}&tid=${encodeURIComponent(tid)}`, {
@@ -54,7 +45,7 @@ const SeleccionarPersona = ({ tid }) => {
         await api.post('/api/usertask', { uid: member.uid, tid, completed: true });
       }
     } catch (err) {
-      setSelectedMembers(prev => isSelected ? [...prev, member.uid] : prev.filter(m => m !== member.uid));
+      setSelectedMembers(prev => isSelected ? [...prev, member.uid] : prev.filter(m => !sameId(m, member.uid)));
       setErrorMsg(errorMessage(err, isSelected ? 'Error al quitar la asignación' : 'Error al asignar el usuario'));
     }
   };
@@ -70,6 +61,7 @@ const SeleccionarPersona = ({ tid }) => {
   return (
     <>
       <IconButton
+        aria-label="Assign user"
         onClick={handleClick}
         sx={{
           color: 'white',
@@ -152,7 +144,7 @@ const MemberRow = ({ member, selectedMembers, onToggle }) => {
       onClick={() => onToggle(member)}
     >
       <Switch
-        checked={selectedMembers.includes(member.uid)}
+        checked={selectedMembers.some(uid => sameId(uid, member.uid))}
         onChange={() => onToggle(member)}
         onClick={(e) => e.stopPropagation()}
         name={member.username}

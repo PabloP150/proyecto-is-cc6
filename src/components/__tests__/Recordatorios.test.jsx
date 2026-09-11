@@ -202,3 +202,43 @@ describe('Recordatorios — deleting a task', () => {
     expect(screen.queryByText('Task deleted')).not.toBeInTheDocument();
   });
 });
+
+describe('Recordatorios — members and validation', () => {
+  const TASKS = [TASK, { ...TASK, tid: 't2', name: 'Revisar PR' }, { ...TASK, tid: 't3', name: 'Diseñar API' }];
+
+  beforeEach(() => {
+    localStorage.clear();
+    api.post.mockReset();
+    api.get.mockReset().mockImplementation((path) => {
+      if (path.startsWith('/api/tasks?gid=')) return Promise.resolve({ data: TASKS });
+      if (path === '/api/groups/g1/members') return Promise.resolve({ members: [{ uid: 'U1', username: 'ana' }] });
+      if (path.startsWith('/api/usertask?tid=')) return Promise.resolve({ data: [] });
+      return Promise.resolve({ data: [] });
+    });
+  });
+
+  it('loads the group members once for every task card', async () => {
+    await renderTasks();
+    await screen.findByText('Diseñar API');
+    const memberFetches = api.get.mock.calls.filter(([path]) => path.includes('/members'));
+    expect(memberFetches).toHaveLength(1);
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Assign user' })[1]);
+    expect(await screen.findByText('ana')).toBeInTheDocument();
+    expect(api.get.mock.calls.filter(([path]) => path.includes('/members'))).toHaveLength(1);
+  });
+
+  it('shows the server validation message when creating a task fails', async () => {
+    api.post.mockRejectedValue(new ApiError('name must be at most 25 characters', { status: 400, code: 'VALIDATION_ERROR' }));
+    await renderTasks();
+
+    fireEvent.click(screen.getByRole('button', { name: /add task/i }));
+    fireEvent.change(screen.getByLabelText(/Task Name/, { selector: 'input' }), { target: { value: 'Tarea nueva' } });
+    fireEvent.change(screen.getByLabelText(/Deadline/, { selector: 'input' }), { target: { value: '2026-10-01' } });
+    fireEvent.mouseDown(screen.getByLabelText(/Select List/));
+    fireEvent.click(await screen.findByRole('option', { name: 'Trabajo' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add Task' }));
+
+    expect(await screen.findByText('name must be at most 25 characters')).toBeInTheDocument();
+  });
+});

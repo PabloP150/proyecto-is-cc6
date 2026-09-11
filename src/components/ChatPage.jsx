@@ -26,12 +26,14 @@ import rehypeSanitize from 'rehype-sanitize';
 import remarkGfm from 'remark-gfm';
 import { errorMessage, getAuthToken } from '../api/client';
 import useWebSocket from '../hooks/useWebSocket';
+import { WS_CLOSE_MESSAGE_TOO_BIG } from '../constants/ws';
 import ThemeProvider from '../theme/ThemeProvider';
 import { WS_BASE } from '../config';
 import { GroupContext } from './GroupContext';
 import ChatProjectSelector from './github/ChatProjectSelector';
 import RepoPlanCard from './github/RepoPlanCard';
-import { TASKS_CHANGED_EVENT, isAbortError, sameId } from './github/githubUtils';
+import { isAbortError, sameId } from './github/githubUtils';
+import { LIMITS } from '../constants/limits';
 import './ChatPage.css';
 
 // rehype-sanitize must run after rehype-raw: raw HTML from the model is parsed first and then
@@ -68,7 +70,22 @@ const toChatMessage = (raw, id = nextMessageId()) => {
     return { ...raw, id, content, timestamp: raw.timestamp ? new Date(raw.timestamp) : new Date() };
 };
 
-const MAX_INSTRUCTIONS = 500;
+const MAX_INSTRUCTIONS = LIMITS.analysisInstructions;
+const MAX_MESSAGE = LIMITS.chatMessage;
+// Client-side fallback: stop waiting if the server sends nothing at all for this long.
+export const REPLY_TIMEOUT_MS = 100000;
+const CHAT_ERROR_MESSAGES = {
+    MESSAGE_TOO_LONG: `El mensaje es demasiado largo: el máximo es ${LIMITS.chatMessage} caracteres.`,
+    RATE_LIMITED: 'Vas muy rápido: espera un momento antes de volver a intentarlo.',
+    LLM_TIMEOUT: 'La IA tardó demasiado en responder. Inténtalo de nuevo.',
+    AI_ANALYSIS_DISABLED: 'El análisis con IA está desactivado para este proyecto. Un administrador del grupo puede activarlo en la página GitHub («Permitir análisis con IA»).',
+};
+const friendlyError = (data) => {
+    const base = CHAT_ERROR_MESSAGES[data.code];
+    if (!base) return null;
+    const wait = Number(data.retryAfterSec);
+    return Number.isFinite(wait) && wait > 0 ? `${base} Podrás reintentar en ${Math.ceil(wait)} s.` : base;
+};
 const ANALYSIS_STAGE_TEXT = {
     fetching_repo: 'Leyendo el repositorio en GitHub…',
     analyzing: 'La IA está analizando el repositorio (puede tardar hasta un minuto y medio)…',
@@ -178,7 +195,7 @@ function ChatPage() {
         const newUserId = userIdOf(newUser);
         setUser(newUser);
         setToken(newToken);
-        if (currentUserId && newUserId && currentUserId !== newUserId) {
+        if (currentUserId && newUserId && !sameId(currentUserId, newUserId)) {
             setHasReceivedHistory(false);
             setInitialMessageShown(false);
             setMessages([]);
@@ -236,9 +253,6 @@ function ChatPage() {
                     const status = PLAN_EVENT_STATUS[data.type];
                     setMessages(prev => updatePlan(prev, data.planId, { status, created: data.created }));
                     setBusyPlanId(prev => (prev === data.planId ? null : prev));
-                    if (status === 'saved') {
-                        window.dispatchEvent(new CustomEvent(TASKS_CHANGED_EVENT, { detail: { groupId: data.groupId } }));
-                    }
                     return;
                 }
 
@@ -263,7 +277,12 @@ function ChatPage() {
                     if (data.requestId) {
                         setAnalysis(prev => (prev && prev.requestId === data.requestId ? null : prev));
                     }
+                    if (data.code === 'AI_ANALYSIS_DISABLED') {
+                        setProjectRepo(prev => (prev ? { ...prev, aiAnalysisEnabled: false } : prev));
+                    }
                     const errorMsg = toChatMessage(data);
+                    const friendly = friendlyError(data);
+                    if (friendly) errorMsg.content = friendly;
                     if (!errorMsg.content.trim()) errorMsg.content = 'Something went wrong while processing your request.';
                     setMessages(prev => [...prev, errorMsg]);
                     setIsTyping(false);
@@ -289,11 +308,19 @@ function ChatPage() {
             onOpen: () => {
                 // debug ws: conectado
             },
-            onClose: () => {
+            onClose: (event) => {
                 // A reply that arrives while disconnected comes back through history_restore.
                 setIsTyping(false);
                 setAnalysis(null);
                 setBusyPlanId(null);
+                if (event?.code === WS_CLOSE_MESSAGE_TOO_BIG) {
+                    setMessages(prev => [...prev, {
+                        id: nextMessageId('error'),
+                        type: 'error',
+                        content: 'El mensaje es demasiado grande para enviarlo. Acórtalo e inténtalo de nuevo.',
+                        timestamp: new Date(),
+                    }]);
+                }
             }
         }
     );
@@ -406,12 +433,30 @@ function ChatPage() {
         }
     }, [token, hasReceivedHistory, initialMessageShown, messages.length]);
 
+    // The repo may be missing (null) or have the AI permission switched off by the group admin.
+    const aiDisabled = Boolean(projectRepo && projectRepo.aiAnalysisEnabled === false);
+    const analysisBlocked = projectRepo === null || aiDisabled;
+    const inputLimit = projectId ? MAX_INSTRUCTIONS : MAX_MESSAGE;
+    const waiting = isTyping || Boolean(analysis);
+
+    // Fallback when the server never answers (lost reply, stuck service): any status update or
+    // reply restarts the wait because it changes `analysis`/`isTyping`.
+    useEffect(() => {
+        if (!waiting) return undefined;
+        const timer = setTimeout(() => {
+            setIsTyping(false);
+            setAnalysis(null);
+            pushError('No llegó respuesta a tiempo. Si llega más tarde aparecerá aquí; también puedes intentarlo de nuevo.');
+        }, REPLY_TIMEOUT_MS);
+        return () => clearTimeout(timer);
+    }, [waiting, analysis, pushError]);
+
     const handleSendMessage = async (e) => {
         e.preventDefault();
 
         // With a project selected the input carries optional instructions for a repo analysis.
         if (projectId) {
-            if (!isConnected || analysis || projectRepo === null) return;
+            if (!isConnected || analysis || analysisBlocked) return;
             const instructions = inputMessage.trim().slice(0, MAX_INSTRUCTIONS);
             const group = (groups || []).find(g => sameId(g.gid, projectId));
             setMessages(prev => [...prev, {
@@ -425,7 +470,7 @@ function ChatPage() {
             return;
         }
 
-        if (!inputMessage.trim() || !isConnected) return;
+        if (!inputMessage.trim() || !isConnected || inputMessage.trim().length > MAX_MESSAGE) return;
 
         const userMessage = {
             id: nextMessageId('user'),
@@ -512,7 +557,9 @@ function ChatPage() {
                             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
                                 {projectRepo === null
                                     ? 'Este proyecto no tiene un repositorio conectado. Conéctalo desde la página GitHub o elige «Nuevo proyecto».'
-                                    : 'El mensaje se usará como instrucciones para analizar el repositorio. Se envía a Groq solo la estructura, el README, las dependencias, los commits y los issues; nunca el código fuente.'}
+                                    : aiDisabled
+                                        ? CHAT_ERROR_MESSAGES.AI_ANALYSIS_DISABLED
+                                        : 'El mensaje se usará como instrucciones para analizar el repositorio. Se envía a Groq solo la estructura, el README, las dependencias, los commits y los issues; nunca el código fuente.'}
                             </Typography>
                         )}
                         {!token && (
@@ -668,7 +715,7 @@ function ChatPage() {
                             ))}
 
                             {/* Typing Indicator */}
-                            {(isTyping || analysis) && (
+                            {waiting && (
                                 <ListItem
                                     sx={{
                                         display: 'flex',
@@ -744,7 +791,15 @@ function ChatPage() {
                             placeholder={projectId
                                 ? 'Instrucciones opcionales para el análisis (p. ej. «prioriza las pruebas»)…'
                                 : 'Type your message here...'}
-                            inputProps={projectId ? { maxLength: MAX_INSTRUCTIONS, 'aria-label': 'Instrucciones para el análisis' } : { 'aria-label': 'Mensaje' }}
+                            inputProps={{
+                                maxLength: inputLimit,
+                                'aria-label': projectId ? 'Instrucciones para el análisis' : 'Mensaje',
+                                'aria-describedby': 'chat-input-counter',
+                            }}
+                            helperText={
+                                <span id="chat-input-counter">{`${inputMessage.length}/${inputLimit}`}</span>
+                            }
+                            FormHelperTextProps={{ sx: { textAlign: 'right', m: 0, mt: 0.5 } }}
                             variant="outlined"
                             className="chat-input"
                             sx={{
@@ -758,8 +813,8 @@ function ChatPage() {
                             type="submit"
                             aria-label={projectId ? 'Analizar repositorio' : 'Enviar mensaje'}
                             disabled={projectId
-                                ? Boolean(analysis) || projectRepo === null || !isConnected
-                                : !inputMessage.trim() || isTyping}
+                                ? Boolean(analysis) || analysisBlocked || !isConnected
+                                : !inputMessage.trim() || isTyping || inputMessage.trim().length > MAX_MESSAGE}
                             sx={{
                                 bgcolor: 'primary.main',
                                 color: 'white',

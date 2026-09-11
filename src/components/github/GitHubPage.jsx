@@ -3,9 +3,8 @@ import GitHubIcon from '@mui/icons-material/GitHub';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import SyncIcon from '@mui/icons-material/Sync';
 import { Alert, Box, Chip, CircularProgress, Container, Snackbar, Tab, Tabs, Typography } from '@mui/material';
-import { useCallback, useContext, useEffect, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-dom';
-import { apiFetch } from '../../api/client';
 import { getRepository, syncGroup } from '../../api/github';
 import { GroupContext } from '../GroupContext';
 import Button from '../ui/Button';
@@ -13,7 +12,7 @@ import Card from '../ui/Card';
 import CommitList from './CommitList';
 import RepoExplorer from './RepoExplorer';
 import RepoSelection from './RepoSelection';
-import RepositoryPanel from './RepositoryPanel';
+import RepositoryPanel, { AI_CONSENT_TEXT } from './RepositoryPanel';
 import {
   callbackErrorMessage,
   errorMessage,
@@ -26,17 +25,6 @@ import {
 const PENDING_MESSAGE =
   'La instalación quedó pendiente: un propietario de la organización debe aprobarla en GitHub. ' +
   'Cuando la apruebe, vuelve aquí y pulsa «Ya instalé la App».';
-
-function readStoredGroup() {
-  try {
-    return {
-      id: localStorage.getItem('selectedGroupId') || null,
-      name: localStorage.getItem('selectedGroupName') || '',
-    };
-  } catch {
-    return { id: null, name: '' };
-  }
-}
 
 function CenteredStatus({ children }) {
   return (
@@ -65,48 +53,49 @@ function GroupPrompt({ title, message }) {
 
 /** Route /github: repository connection, file explorer, commits, PR sync and AI analysis. */
 export default function GitHubPage() {
-  const { selectedGroupId, setSelectedGroupId, selectedGroupName, setSelectedGroupName } = useContext(GroupContext) || {};
+  // GroupContext restores the selected group from storage and owns the user's group list.
+  const {
+    selectedGroupId: gid,
+    setSelectedGroupId,
+    selectedGroupName,
+    setSelectedGroupName,
+    groups: contextGroups,
+    refreshGroups,
+  } = useContext(GroupContext) || {};
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const uid = getCurrentUserId();
-  const stored = readStoredGroup();
-  const gid = selectedGroupId || stored.id;
 
   const [notice, setNotice] = useState(null);
   const [selectionId, setSelectionId] = useState(null);
-  const [groupsState, setGroupsState] = useState({ loading: true, error: null, groups: [] });
+  const [groupsState, setGroupsState] = useState({ loading: true, error: null });
   const [repoState, setRepoState] = useState({ gid: null, loading: true, error: null, repo: null });
   const [repoVersion, setRepoVersion] = useState(0);
   const [tab, setTab] = useState('repo');
   const [syncing, setSyncing] = useState(false);
   const [toast, setToast] = useState(null);
 
+  const groups = useMemo(() => (Array.isArray(contextGroups) ? contextGroups : []), [contextGroups]);
+
   const selectGroup = useCallback(
     (id, name) => {
       if (setSelectedGroupId) setSelectedGroupId(id);
       if (setSelectedGroupName) setSelectedGroupName(name || '');
-      try {
-        localStorage.setItem('selectedGroupId', id);
-        localStorage.setItem('selectedGroupName', name || '');
-      } catch {
-        // Storage may be unavailable (private mode); the context still holds the group.
-      }
     },
     [setSelectedGroupId, setSelectedGroupName]
   );
 
-  // Reloads (and the GitHub redirect back here) start with an empty context.
-  useEffect(() => {
-    if (!selectedGroupId && stored.id && setSelectedGroupId) {
-      setSelectedGroupId(stored.id);
-      if (setSelectedGroupName) setSelectedGroupName(stored.name);
-    }
-  }, [selectedGroupId, stored.id, stored.name, setSelectedGroupId, setSelectedGroupName]);
-
-  // Result of the install/authorize callback: ?status=connected|select|pending|error&selection&code.
+  // Result of the install/authorize callback: ?status=select&selection=<id>&gid=<gid> (older
+  // backends also sent connected|pending|error&code). The callback's group is selected first so
+  // the repository ends up linked to the group the admin started from.
   useEffect(() => {
     const status = searchParams.get('status');
     if (!status) return;
+    const callbackGid = searchParams.get('gid');
+    if (callbackGid && !sameId(callbackGid, gid)) {
+      const target = groups.find((g) => sameId(g.gid, callbackGid));
+      selectGroup(target ? target.gid : callbackGid, target ? target.name : '');
+    }
     if (status === 'select' && searchParams.get('selection')) {
       setSelectionId(searchParams.get('selection'));
       setNotice(null);
@@ -118,25 +107,25 @@ export default function GitHubPage() {
       setNotice({ severity: 'error', message: callbackErrorMessage(searchParams.get('code')) });
     }
     setSearchParams({}, { replace: true });
+    // Only the query string drives this; `gid`/`groups` are read at that moment on purpose.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, setSearchParams]);
 
+  // Fresh list (admin changes, new groups); the context may be empty after a reload.
   useEffect(() => {
-    if (!uid) {
-      setGroupsState({ loading: false, error: null, groups: [] });
+    if (!uid || !refreshGroups) {
+      setGroupsState({ loading: false, error: null });
       return undefined;
     }
     const controller = new AbortController();
-    apiFetch(`/api/groups/user-groups?uid=${encodeURIComponent(uid)}`, { signal: controller.signal })
-      .then((res) => {
-        const groups = res && Array.isArray(res.groups) ? res.groups : [];
-        setGroupsState({ loading: false, error: null, groups });
-      })
+    refreshGroups({ signal: controller.signal })
+      .then(() => setGroupsState({ loading: false, error: null }))
       .catch((err) => {
         if (isAbortError(err)) return;
-        setGroupsState({ loading: false, error: errorMessage(err, 'No se pudieron cargar tus grupos.'), groups: [] });
+        setGroupsState({ loading: false, error: errorMessage(err, 'No se pudieron cargar tus grupos.') });
       });
     return () => controller.abort();
-  }, [uid]);
+  }, [uid, refreshGroups]);
 
   useEffect(() => {
     if (!gid) return undefined;
@@ -153,15 +142,22 @@ export default function GitHubPage() {
 
   const reloadRepo = useCallback(() => setRepoVersion((v) => v + 1), []);
 
-  const { groups } = groupsState;
   const group = groups.find((g) => sameId(g.gid, gid)) || null;
   const isAdmin = Boolean(group && uid && sameId(group.adminId, uid));
-  const groupName = (group && group.name) || selectedGroupName || stored.name || '';
+  const groupName = (group && group.name) || selectedGroupName || '';
+
+  // A group selected from the callback's gid before the list arrived has no name yet.
+  useEffect(() => {
+    if (group && group.name && setSelectedGroupName && selectedGroupName !== group.name) {
+      setSelectedGroupName(group.name);
+    }
+  }, [group, selectedGroupName, setSelectedGroupName]);
   const repoCurrent = repoState.gid && sameId(repoState.gid, gid);
   const repo = repoCurrent ? repoState.repo : null;
   const repoLoading = !repoCurrent || repoState.loading;
   const suspended = Boolean(repo && ((repo.installation && repo.installation.suspended) || repo.suspendedAt));
   const usable = Boolean(repo) && !suspended;
+  const aiEnabled = Boolean(repo && repo.aiAnalysisEnabled === true);
   const groupMissing = Boolean(gid) && !groupsState.loading && !groupsState.error && !group;
 
   useEffect(() => {
@@ -184,9 +180,12 @@ export default function GitHubPage() {
     setSyncing(true);
     try {
       const result = (await syncGroup(gid)) || {};
+      const count = (value) => Number(value) || 0;
       setToast({
         severity: 'success',
-        message: `Sincronización completa: ${Number(result.checked) || 0} PR revisados, ${Number(result.updated) || 0} actualizados.`,
+        message:
+          `Sincronización completa: ${count(result.branchesChecked)} ramas revisadas, ` +
+          `${count(result.pullRequestsFound)} PR encontrados, ${count(result.updated)} actualizados.`,
       });
     } catch (err) {
       const limited = err && err.code === 'RATE_LIMITED';
@@ -201,7 +200,13 @@ export default function GitHubPage() {
     }
   };
 
+  const updateRepo = useCallback(
+    (patch) => setRepoState((prev) => (prev.repo ? { ...prev, repo: { ...prev.repo, ...patch } } : prev)),
+    []
+  );
+
   const handleAnalyze = () => {
+    if (!aiEnabled) return;
     selectGroup(gid, groupName);
     navigate('/chat', { state: { analyzeGroupId: gid } });
   };
@@ -259,10 +264,16 @@ export default function GitHubPage() {
                 {repoState.error}
               </Alert>
             ) : (
-              <RepositoryPanel gid={gid} repo={repo} isAdmin={isAdmin} onUnlinked={() => {
-                setToast({ open: true, severity: 'success', message: 'Repositorio desconectado del grupo.' });
-                reloadRepo();
-              }} />
+              <RepositoryPanel
+                gid={gid}
+                repo={repo}
+                isAdmin={isAdmin}
+                onRepoChange={updateRepo}
+                onUnlinked={() => {
+                  setToast({ open: true, severity: 'success', message: 'Repositorio desconectado del grupo.' });
+                  reloadRepo();
+                }}
+              />
             ))}
           {tab === 'files' && usable && <RepoExplorer gid={gid} repo={repo} />}
           {tab === 'commits' && usable && (
@@ -296,15 +307,25 @@ export default function GitHubPage() {
               <Button variant="ghost" size="small" startIcon={syncing ? <CircularProgress size={16} color="inherit" /> : <SyncIcon />} onClick={handleSync} disabled={syncing}>
                 Sincronizar PRs
               </Button>
-              <Button variant="accent" size="small" startIcon={<AutoAwesomeIcon />} onClick={handleAnalyze} aria-describedby="gh-ai-consent">
+              <Button
+                variant="accent"
+                size="small"
+                startIcon={<AutoAwesomeIcon />}
+                onClick={handleAnalyze}
+                disabled={!aiEnabled}
+                aria-describedby="gh-ai-consent"
+              >
                 Analizar con IA
               </Button>
             </Box>
             <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'flex-start' }}>
               <InfoOutlinedIcon sx={{ fontSize: 16, mt: '2px', color: 'text.secondary' }} aria-hidden />
               <Typography id="gh-ai-consent" variant="caption" color="text.secondary">
-                Al analizar con IA se envía a Groq (el proveedor de IA) solo la estructura de archivos, el README, los
-                archivos de dependencias, los commits y los issues recientes. Nunca se envía el código fuente.
+                {aiEnabled
+                  ? AI_CONSENT_TEXT
+                  : isAdmin
+                    ? 'El análisis con IA está desactivado. Actívalo con «Permitir análisis con IA» en la pestaña Repositorio.'
+                    : 'El análisis con IA está desactivado para este repositorio. Pide al administrador del grupo que lo active.'}
               </Typography>
             </Box>
           </Box>

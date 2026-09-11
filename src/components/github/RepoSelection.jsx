@@ -1,3 +1,4 @@
+import GitHubIcon from '@mui/icons-material/GitHub';
 import LockIcon from '@mui/icons-material/Lock';
 import PublicIcon from '@mui/icons-material/Public';
 import {
@@ -61,6 +62,7 @@ export default function RepoSelection({ selectionId, groups, onLinked, onCancel 
   const repos = selection ? selection.repos : [];
   const group = selection && Array.isArray(groups) ? groups.find((g) => sameId(g.gid, selection.gid)) : null;
   const groupName = group && group.name ? String(group.name) : '';
+  const githubLogin = selection && typeof selection.githubLogin === 'string' ? selection.githubLogin : '';
 
   const handleLink = async () => {
     const chosen = repos.find((r) => String(r.repoId) === repoId);
@@ -86,9 +88,16 @@ export default function RepoSelection({ selectionId, groups, onLinked, onCancel 
         Elige el repositorio
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        La GitHub App tiene acceso a varios repositorios. Elige el que quieres vincular
-        {groupName ? ` al grupo «${groupName}»` : ' a este grupo'}.
+        Elige el repositorio que quieres vincular{groupName ? ` al grupo «${groupName}»` : ' a este grupo'}.
       </Typography>
+      {githubLogin && (
+        <Chip
+          size="small"
+          icon={<GitHubIcon />}
+          label={`Conectando como @${githubLogin}`}
+          sx={{ mb: 2, background: 'rgba(59, 130, 246, 0.15)', border: '1px solid rgba(59, 130, 246, 0.35)' }}
+        />
+      )}
 
       {loading && (
         <Box role="status" sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 2 }}>

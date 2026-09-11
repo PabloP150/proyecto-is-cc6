@@ -83,7 +83,7 @@ const ordenarRecordatorios = (recordatorios, orden) => {
   }
 };
 
-const ListaRecordatorios = memo(function ListaRecordatorios({ listas, handleEliminar, handleCompletar, handleEditar, filtro, handleEliminarLista, orden, setOrden, handleVaciarCompletados, handleVaciarEliminados, getTaskLink, repoConnected = false, onTaskLinkChange }) {
+const ListaRecordatorios = memo(function ListaRecordatorios({ listas, handleEliminar, handleCompletar, handleEditar, filtro, handleEliminarLista, orden, setOrden, handleVaciarCompletados, handleVaciarEliminados, getTaskLink, repoConnected = false, onTaskLinkChange, members }) {
   const fadeTimerRef = useRef(null);
   // Snackbar state
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
@@ -478,7 +478,7 @@ const ListaRecordatorios = memo(function ListaRecordatorios({ listas, handleElim
                          <Box sx={{ display: 'flex', flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 1, mt: 2 }}>
                            <Tooltip title="Assign user" arrow>
                              <span>
-                               <SeleccionarPersona tid={recordatorio.tid} />
+                               <SeleccionarPersona tid={recordatorio.tid} members={members} />
                              </span>
                            </Tooltip>
                            <Tooltip title="Edit task" arrow>

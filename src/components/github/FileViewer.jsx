@@ -1,7 +1,7 @@
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import WrapTextIcon from '@mui/icons-material/WrapText';
 import { Alert, Box, CircularProgress, FormControlLabel, Switch, Typography } from '@mui/material';
-import { useMemo, useState } from 'react';
+import { createContext, useContext, useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeSanitize from 'rehype-sanitize';
 import remarkGfm from 'remark-gfm';
@@ -38,6 +38,33 @@ const markdownSx = {
 
 const ABSOLUTE_RE = /^[a-z][a-z0-9+.-]*:/i;
 
+// README images may only load from GitHub hosts (no tracking pixels / third-party requests).
+export function isGitHubImageUrl(url) {
+  try {
+    const { protocol, hostname } = new URL(url);
+    return protocol === 'https:' && (hostname === 'github.com' || hostname === 'githubusercontent.com' || hostname.endsWith('.githubusercontent.com'));
+  } catch {
+    return false;
+  }
+}
+
+// Lets an image know it is already inside a link, so it never renders a nested <a>.
+const InsideLink = createContext(false);
+
+function MarkdownImage({ src, alt, title }) {
+  const insideLink = useContext(InsideLink);
+  if (isGitHubImageUrl(src)) {
+    return <img src={src} alt={alt || ''} title={title} loading="lazy" referrerPolicy="no-referrer" />;
+  }
+  const label = alt ? `[Imagen: ${alt}]` : '[Imagen externa]';
+  if (insideLink || typeof src !== 'string' || !/^https?:\/\//i.test(src)) return <span title={title}>{label}</span>;
+  return (
+    <a href={src} target="_blank" rel="noopener noreferrer" title="Imagen alojada fuera de GitHub: se abre en otra pestaña">
+      {label}
+    </a>
+  );
+}
+
 function resolveUrl(href, base) {
   if (!href || ABSOLUTE_RE.test(href) || href.startsWith('#') || !base) return href;
   try {
@@ -56,13 +83,11 @@ function MarkdownView({ content, linkBase, imageBase }) {
         const external = typeof target === 'string' && /^https?:/i.test(target);
         return (
           <a href={target} {...rest} {...(external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>
-            {children}
+            <InsideLink.Provider value>{children}</InsideLink.Provider>
           </a>
         );
       },
-      img: ({ node, src, alt, ...rest }) => (
-        <img src={resolveUrl(src, imageBase)} alt={alt || ''} loading="lazy" referrerPolicy="no-referrer" {...rest} />
-      ),
+      img: ({ src, alt, title }) => <MarkdownImage src={resolveUrl(src, imageBase)} alt={alt} title={title} />,
     }),
     [linkBase, imageBase]
   );

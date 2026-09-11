@@ -12,11 +12,13 @@ import {
   DialogContent,
   DialogContentText,
   DialogTitle,
+  FormControlLabel,
   Link,
+  Switch,
   Typography,
 } from '@mui/material';
 import { useState } from 'react';
-import { install, unlinkRepository } from '../../api/github';
+import { install, setAiAnalysis, unlinkRepository } from '../../api/github';
 import Button from '../ui/Button';
 import Card from '../ui/Card';
 import { assignLocation, errorMessage, formatDateTime, isGitHubUrl, repoHtmlUrl, staticCardSx } from './githubUtils';
@@ -34,11 +36,59 @@ function InfoRow({ label, children }) {
   );
 }
 
+export const AI_CONSENT_TEXT =
+  'Al analizar con IA se envía a Groq (el proveedor de IA) la estructura de archivos, el README, los archivos ' +
+  'de dependencias, los commits y los issues recientes del repositorio. Nunca se envía el código fuente.';
+
+function AiAnalysisSetting({ gid, enabled, isAdmin, onChange }) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  const handleToggle = async (event) => {
+    const next = event.target.checked;
+    setSaving(true);
+    setError(null);
+    try {
+      const data = await setAiAnalysis(gid, next);
+      if (onChange) onChange(data && typeof data.aiAnalysisEnabled === 'boolean' ? data.aiAnalysisEnabled : next);
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo cambiar el permiso de análisis con IA.'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Box sx={{ mb: 2, p: 2, borderRadius: 2, border: '1px solid rgba(255, 255, 255, 0.1)', background: 'rgba(15, 23, 42, 0.35)' }}>
+      {isAdmin ? (
+        <FormControlLabel
+          control={<Switch checked={enabled} onChange={handleToggle} disabled={saving} />}
+          label="Permitir análisis con IA"
+        />
+      ) : (
+        <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+          Análisis con IA: {enabled ? 'permitido' : 'desactivado'}
+        </Typography>
+      )}
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+        {AI_CONSENT_TEXT}
+        {!isAdmin && ' Solo el administrador del grupo puede cambiar este permiso.'}
+      </Typography>
+      {error && (
+        <Alert severity="error" sx={{ mt: 1 }}>
+          {error}
+        </Alert>
+      )}
+    </Box>
+  );
+}
+
 /**
- * Connection status of the group's repository plus admin-only Conectar/Desconectar.
- * Props: gid, repo (getRepository data | null), isAdmin, onUnlinked().
+ * Connection status of the group's repository plus admin-only Conectar/Desconectar and the
+ * "Permitir análisis con IA" permission.
+ * Props: gid, repo (getRepository data | null), isAdmin, onUnlinked(), onRepoChange(patch).
  */
-export default function RepositoryPanel({ gid, repo, isAdmin, onUnlinked }) {
+export default function RepositoryPanel({ gid, repo, isAdmin, onUnlinked, onRepoChange }) {
   const [connecting, setConnecting] = useState(null);
   const [actionError, setActionError] = useState(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -151,6 +201,13 @@ export default function RepositoryPanel({ gid, repo, isAdmin, onUnlinked }) {
           ramas; pide a quien la instaló que la reactive en GitHub.
         </Alert>
       )}
+
+      <AiAnalysisSetting
+        gid={gid}
+        enabled={repo.aiAnalysisEnabled === true}
+        isAdmin={isAdmin}
+        onChange={(aiAnalysisEnabled) => onRepoChange && onRepoChange({ aiAnalysisEnabled })}
+      />
 
       <Box component="dl" sx={{ m: 0, mb: 2 }}>
         <InfoRow label="Rama por defecto">

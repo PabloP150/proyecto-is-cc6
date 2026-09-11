@@ -2,6 +2,7 @@ import EmojiEmotionsIcon from '@mui/icons-material/EmojiEmotions';
 import PaletteIcon from '@mui/icons-material/Palette';
 import { Autocomplete, Box, Button, InputAdornment, Popper, Stack, styled, TextField, Typography } from '@mui/material';
 import { useState } from 'react';
+import { LIMITS, limitProps } from '../constants/limits';
 
 const ICON_OPTIONS = [
   // Productividad y gestión
@@ -84,6 +85,7 @@ const RoleForm = ({ initialData = {}, onSubmit, onCancel, loading }) => {
           onChange={e => setName(e.target.value)}
           required
           autoFocus
+          {...limitProps(name, LIMITS.roleName)}
         />
         {/* Description removed */}
         <TextField

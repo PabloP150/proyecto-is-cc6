@@ -59,11 +59,11 @@ describe('ChatPage', () => {
   it('renders error messages with their code instead of dropping them', () => {
     renderChat();
 
-    receive({ type: 'error', code: 'RATE_LIMITED', message: 'Espera un minuto' });
+    receive({ type: 'error', code: 'ANALYSIS_IN_PROGRESS', message: 'Ya hay un análisis en curso.' });
 
     const alert = screen.getByRole('alert');
-    expect(alert).toHaveTextContent('Espera un minuto');
-    expect(alert).toHaveTextContent('Code: RATE_LIMITED');
+    expect(alert).toHaveTextContent('Ya hay un análisis en curso.');
+    expect(alert).toHaveTextContent('Code: ANALYSIS_IN_PROGRESS');
   });
 
   it('runs rehype-sanitize after rehype-raw and enables remark-gfm for assistant markdown', () => {

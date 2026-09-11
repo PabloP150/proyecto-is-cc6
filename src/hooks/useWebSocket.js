@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { UNAUTHORIZED_EVENT } from '../api/client';
+import { WS_CLOSE_MESSAGE_TOO_BIG, WS_CLOSE_TOKEN_EXPIRED } from '../constants/ws';
 
 /**
  * Custom hook for WebSocket connection management with automatic reconnection
@@ -130,6 +132,19 @@ const useWebSocket = (url, token, options = {}) => {
         setConnectionStatus('Disconnected');
         callbacksRef.current.onClose(event);
         clearHeartbeat(); // Stop heartbeat on close
+
+        // Reconnecting with the same expired token would just fail again: log out instead
+        // (App listens to the unauthorized event and sends the user to the login page).
+        if (event.code === WS_CLOSE_TOKEN_EXPIRED) {
+          shouldReconnect.current = false;
+          setError('La sesión expiró. Inicia sesión de nuevo.');
+          setConnectionStatus('Failed');
+          window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT, { detail: { source: 'websocket', code: 'TOKEN_EXPIRED' } }));
+          return;
+        }
+        if (event.code === WS_CLOSE_MESSAGE_TOO_BIG) {
+          setError('El mensaje era demasiado grande y el servidor cerró la conexión.');
+        }
 
         // Attempt reconnection if enabled and not a clean close
         if (shouldReconnect.current && event.code !== 1000 && reconnectAttempts.current < maxReconnectAttempts) {

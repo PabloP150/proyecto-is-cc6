@@ -15,7 +15,6 @@ import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { api, errorMessage } from '../api/client';
 import BarraLateral from './BarraLateral';
 import Dialogos from './Dialogos';
-import { TASKS_CHANGED_EVENT } from './github/githubUtils';
 import useTaskLinks from './github/useTaskLinks';
 import { GroupContext } from './GroupContext'; // Importa el contexto
 import ListaRecordatorios from './ListaRecordatorios';
@@ -23,6 +22,7 @@ import ListaRecordatorios from './ListaRecordatorios';
 import theme from '../theme/theme';
 import Button from './ui/Button';
 import Card from './ui/Card';
+import { sameId } from '../utils/ids';
 
 
 
@@ -38,7 +38,7 @@ const organizarTareasEnListas = (tareas) => {
 // Duración de la animación de completar/eliminar antes de quitar la tarjeta de la lista.
 const COMPLETE_ANIMATION_MS = 3000;
 
-const sameTask = (r, tid) => String(r.tid || r.id) === String(tid);
+const sameTask = (r, tid) => sameId(r.tid || r.id, tid);
 const mapTask = (listas, tid, fn) => listas.map(l => (
   l.recordatorios.some(r => sameTask(r, tid))
     ? { ...l, recordatorios: l.recordatorios.map(r => (sameTask(r, tid) ? fn(r) : r)) }
@@ -145,16 +145,19 @@ export default function Recordatorios() {
     return () => controller.abort();
   }, [cargarTareas, cargarCompletados]);
 
+  // Members are loaded once per group and shared by every task card's assignee menu.
+  const [members, setMembers] = useState([]);
   useEffect(() => {
-    const onTasksChanged = (event) => {
-      const gid = event?.detail?.groupId;
-      if (gid && String(gid).toLowerCase() !== String(selectedGroupId || '').toLowerCase()) return;
-      cargarTareas();
-      refreshTaskLinks();
-    };
-    window.addEventListener(TASKS_CHANGED_EVENT, onTasksChanged);
-    return () => window.removeEventListener(TASKS_CHANGED_EVENT, onTasksChanged);
-  }, [selectedGroupId, cargarTareas, refreshTaskLinks]);
+    if (!selectedGroupId) {
+      setMembers([]);
+      return undefined;
+    }
+    const controller = new AbortController();
+    api.get(`/api/groups/${selectedGroupId}/members`, { signal: controller.signal })
+      .then(data => setMembers(Array.isArray(data?.members) ? data.members : []))
+      .catch(err => notifyError(err, 'Could not load the group members'));
+    return () => controller.abort();
+  }, [selectedGroupId, notifyError]);
 
   // Cargar eliminados solo cuando el filtro sea 'deleted'
   useEffect(() => {
@@ -643,6 +646,7 @@ export default function Recordatorios() {
               getTaskLink={getTaskLink}
               repoConnected={repoConnected}
               onTaskLinkChange={refreshTaskLinks}
+              members={members}
             />}
             {(deleteListSuccess || deleteListError) && (
               <Box

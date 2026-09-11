@@ -30,6 +30,7 @@ const AnalyticsDashboard = () => {
     const [analyticsResponse, setAnalyticsResponse] = useState(null);
     const [analyticsLoading, setAnalyticsLoading] = useState(false);
     const [loadError, setLoadError] = useState('');
+    const [leaderOnly, setLeaderOnly] = useState(false);
 
     const [token] = useState(getAuthToken);
 
@@ -123,6 +124,7 @@ const AnalyticsDashboard = () => {
         }
 
         setLoading(true);
+        setLeaderOnly(false);
 
         try {
             const json = await api.get(`/api/analytics/dashboard/${selectedGroupId}`, { signal });
@@ -172,6 +174,13 @@ const AnalyticsDashboard = () => {
 
         } catch (error) {
             if (error.name === 'AbortError') return;
+            // The dashboard is leader-only: that is an expected state, not an error.
+            if (error.code === 'NOT_GROUP_ADMIN') {
+                setLeaderOnly(true);
+                setLoadError('');
+                setAnalytics(null);
+                return;
+            }
             setLoadError(errorMessage(error, 'Could not load analytics'));
             setAnalytics({
                 team_analytics: { total_members: 0, active_tasks: 0, completion_rate: 0 },
@@ -229,6 +238,27 @@ const AnalyticsDashboard = () => {
                     }}></div>
                     <div className="loading-text" style={{ fontSize: '18px', fontWeight: '500', color: 'white' }}>
                         Loading analytics data...
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (leaderOnly) {
+        return (
+            <div className="analytics-dashboard">
+                <div className="dashboard-header">
+                    <h1>Team Analytics Dashboard</h1>
+                </div>
+                <div role="status" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '400px' }}>
+                    <div style={{ color: 'white', textAlign: 'center', maxWidth: 520 }}>
+                        <div style={{ fontSize: '20px', fontWeight: 600, marginBottom: 8 }}>
+                            Solo líderes del equipo
+                        </div>
+                        <div style={{ fontSize: '16px', opacity: 0.8 }}>
+                            El panel de analíticas está disponible únicamente para el líder del grupo. Pide a tu líder
+                            que revise las métricas o cambia a un grupo que administres.
+                        </div>
                     </div>
                 </div>
             </div>
@@ -352,14 +382,11 @@ const MetricCard = React.memo(({ title, value, icon, color }) => (
 ));
 
 const WorkloadChart = React.memo(({ data, selectedRole }) => {
-    // Ensure data is an array
-    const workloadData = Array.isArray(data) ? data : [];
-
-    // Filter data by selected role if not 'all'
-    const filteredData = useMemo(
-        () => selectedRole === 'all' ? workloadData : workloadData.filter(member => member.role === selectedRole),
-        [workloadData, selectedRole]
-    );
+    // Filter data by selected role if not 'all' (data may be missing: treat it as empty)
+    const filteredData = useMemo(() => {
+        const workloadData = Array.isArray(data) ? data : [];
+        return selectedRole === 'all' ? workloadData : workloadData.filter(member => member.role === selectedRole);
+    }, [data, selectedRole]);
 
     return (
         <div className="workload-chart">

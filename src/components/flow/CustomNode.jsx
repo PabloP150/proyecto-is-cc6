@@ -65,7 +65,7 @@ export default function CustomNode({ data, id }) {
   }
 
   return (
-    <div className={`customNode ${data.percentage==100 ? 'completed' : ''}`}
+    <div className={`customNode ${Number(data.percentage) === 100 ? 'completed' : ''}`}
       style={{
         width: '11em',
         backgroundColor: '#F5F5F5',
@@ -145,7 +145,7 @@ export default function CustomNode({ data, id }) {
             zIndex: '1000',
           }}
         >
-          {data.percentage==100 ? '✓ Completed' : ''}
+          {Number(data.percentage) === 100 ? '✓ Completed' : ''}
         </div>
 
         {/* Connection handles */}
