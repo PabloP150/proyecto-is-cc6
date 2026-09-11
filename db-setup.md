@@ -1,135 +1,75 @@
-# Automated SQL Server Setup with a Custom User
+# SQL Server en Docker para TaskMate
 
-This guide explains how to create a custom Docker image for SQL Server that automatically creates a database and a dedicated user for your application. This avoids using the `SA` user in your application.
+La imagen de SQL Server se construye con los archivos de `taskmate-api/`:
 
-## 1. Create Setup Files
+| Archivo | Qué hace |
+|---------|----------|
+| `Dockerfile` | SQL Server 2019 + `mssql-tools`; copia el esquema base, las migraciones y `setup-db.sh` |
+| `setup-db.sh` | Arranque idempotente: crea la BD y el login de la app si no existen, crea el esquema base solo la primera vez, aplica las migraciones pendientes y protege `dbo.SchemaMigrations` |
+| `taskmate_tables.sql` | Esquema base (versión 0) |
+| `migrations/NNN_*.sql` | Cambios posteriores, versionados, con su `.down.sql`; se registran en `dbo.SchemaMigrations` |
 
-In your `taskmate-api` directory, create the following three files:
-
-### `Dockerfile`
-
-This file defines the custom Docker image.
-
-```dockerfile
-FROM mcr.microsoft.com/mssql/server:2019-latest
-
-USER root
-
-# Install dependencies and mssql-tools
-RUN apt-get update
-RUN apt-get install -y curl apt-transport-https gnupg
-RUN curl -sSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > /etc/apt/trusted.gpg.d/microsoft.gpg
-RUN echo "deb [arch=amd64] https://packages.microsoft.com/ubuntu/20.04/prod focal main" > /etc/apt/sources.list.d/mssql-release.list
-RUN apt-get update
-RUN ACCEPT_EULA=Y apt-get install -y mssql-tools unixodbc-dev
-
-RUN mkdir -p /usr/src/app
-WORKDIR /usr/src/app
-
-COPY setup-db.sh .
-COPY setup.sql .
-COPY taskmate_tables.sql .
-
-RUN chmod +x setup-db.sh
-RUN chown -R 10001:0 /usr/src/app
-
-USER mssql
-
-CMD ["/bin/bash", "./setup-db.sh"]
-```
-
-### `setup.sql`
-
-This SQL script creates the database and the new user.
-
-```sql
-CREATE DATABASE [taskmate-db];
-GO
-
-USE [taskmate-db];
-GO
-
-CREATE LOGIN sqladmin WITH PASSWORD = \'$(DB_PASSWORD)\';
-GO
-
-CREATE USER sqladmin FOR LOGIN sqladmin;
-GO
-
-ALTER ROLE db_owner ADD MEMBER sqladmin;
-GO
-
--- Grant control to the user to allow it to create tables
-GRANT CONTROL ON DATABASE::[taskmate-db] TO sqladmin;
-GO
-```
-
-### `setup-db.sh`
-
-This shell script orchestrates the setup process inside the container.
+## 1. Construir la imagen
 
 ```bash
-#!/bin/bash
-
-echo "Starting SQL Server..."
-/opt/mssql/bin/sqlservr &
-
-echo "Waiting for SQL Server to be ready..."
-sleep 30
-
-echo "Replacing password placeholder..."
-sed -i "s/\$\(DB_PASSWORD\)/$DB_PASSWORD/g" /usr/src/app/setup.sql
-
-echo "Running setup script to create database and user..."
-/opt/mssql-tools/bin/sqlcmd -S localhost -U SA -P "$SA_PASSWORD" -d master -i /usr/src/app/setup.sql
-if [ $? -ne 0 ]; then
-  echo "Error: Failed to execute setup.sql"
-  exit 1
-fi
-
-echo "Running script to create tables..."
-/opt/mssql-tools/bin/sqlcmd -S localhost -U sqladmin -P "$DB_PASSWORD" -d taskmate-db -i /usr/src/app/taskmate_tables.sql
-if [ $? -ne 0 ]; then
-  echo "Error: Failed to execute taskmate_tables.sql"
-  exit 1
-fi
-
-echo "Setup complete. Keeping container running."
-wait
+cd taskmate-api
+docker build -t taskmate-sql .
 ```
 
-## 2. Build the Docker Image
-
-Navigate to the `taskmate-api` directory in your terminal and run the following command to build the Docker image:
+## 2. Crear el contenedor
 
 ```bash
-docker build -t custom-sql-server .
+docker run -d --name taskmate-sql \
+  -e ACCEPT_EULA=Y \
+  -e SA_PASSWORD='<password-fuerte-para-sa>' \
+  -e DB_PASSWORD='<password-fuerte-para-la-app>' \
+  -p 1433:1433 taskmate-sql
+docker logs -f taskmate-sql   # esperar "Setup complete. Keeping container running."
 ```
 
-## 3. Run the Custom Docker Container
+En Macs con Apple Silicon agrega `--platform linux/amd64` (la imagen es amd64).
 
-Now, run your custom Docker image. You need to provide two passwords as environment variables:
+Qué deja listo el primer arranque:
+- La BD `taskmate-db` y el login `sqladmin` con **mínimo privilegio**: solo `db_datareader` + `db_datawriter` (no puede cambiar el esquema ni escribir en `dbo.SchemaMigrations`).
+- El esquema base y las migraciones 001–005, aplicadas como `SA`.
 
-*   `SA_PASSWORD`: A password for the `SA` user (still required for the initial setup).
-*   `DB_PASSWORD`: The password for your new `sqladmin`.
+Los reinicios posteriores no repiten nada: cada paso se salta si ya está hecho.
 
-```bash
-docker run -e "ACCEPT_EULA=Y" -e "SA_PASSWORD=Pswrd123" -e "DB_PASSWORD=Pswrd123" -p 1433:1433 --name custom-sql1 -d custom-sql-server
-```
+## 3. Configurar `.env`
 
-Replace `YourSAPassword` and `YourAppUserPassword` with strong passwords.
+En la `.env` de la raíz (plantilla completa en `taskmate-api/.env.example`):
 
-## 4. Update Your `.env` File
-
-Finally, update the `.env` file in your `taskmate-api` directory to use the new `sqladmin` and its password:
-
-```
+```env
 DB_SERVER=localhost
-DB_USERNAME=sqladmin
-DB_PASSWORD=YourAppUserPassword
-DB_NAME=taskmate-db
 DB_PORT=1433
+DB_NAME=taskmate-db
+DB_USERNAME=sqladmin                  # la API nunca usa sa
+DB_PASSWORD=<password-de-la-app>
+MIGRATION_DB_USERNAME=sa              # solo para npm run db:migrate
+MIGRATION_DB_PASSWORD=<password-de-sa>
 ```
 
-## 5. Restart Your Backend Server
+## 4. Migrar una BD que ya existía
 
-Restart your `taskmate-api` server. It will now connect to the database using the dedicated `sqladmin`.
+Los contenedores creados antes de la Fase 3 no tienen las migraciones. Para aplicarlas sin perder datos:
+
+1. **Respalda los triggers actuales.** La migración 003 los reemplaza por la versión del repositorio, y la BD de desarrollo podría tener una versión distinta:
+   ```bash
+   read -s "SA_PW?Contraseña SA: "; echo     # zsh (en bash: read -s -p "Contraseña SA: " SA_PW; echo)
+   docker exec -i -e SQLCMDPASSWORD="$SA_PW" taskmate-sql /opt/mssql-tools/bin/sqlcmd -S localhost -U SA \
+     -d taskmate-db -h -1 -y 0 -Q "SET NOCOUNT ON; SELECT name, OBJECT_DEFINITION(object_id) FROM sys.triggers" \
+     > "$HOME/triggers-backup.sql"
+   ```
+2. **Aplica las migraciones** (idempotentes; las ya aplicadas se saltan):
+   ```bash
+   cd taskmate-api && MIGRATION_DB_USERNAME=sa MIGRATION_DB_PASSWORD="$SA_PW" npm run db:migrate
+   unset SA_PW
+   ```
+   Paso a paso completo: [docs/fase-03-integracion-github/GUIA-GITHUB-APP.md](docs/fase-03-integracion-github/GUIA-GITHUB-APP.md#7-migrar-la-bd-de-desarrollo).
+3. **Opcional: baja los privilegios del login de la app.** En contenedores antiguos `sqladmin` es `db_owner`. Ejecuta como `SA` las mismas sentencias que `setup-db.sh` (sección "Least privilege") o crea el contenedor de nuevo con la imagen actual.
+
+Estado y reversión (desde `taskmate-api/`): `node migrations/runner.js status` lista las migraciones aplicadas; `node migrations/runner.js down` revierte la última (`--steps N` o `--to <versión>` para más). La reversión de la 005 convierte los textos a `VARCHAR` y pierde los caracteres fuera de Latin-1.
+
+## 5. BD desechable para pruebas
+
+Las pruebas de integración (`npm run test:db`) crean y borran datos. Úsalas siempre contra un contenedor aparte, por ejemplo en el puerto 14333. Los pasos exactos están en [docs/fase-03-integracion-github/README.md](docs/fase-03-integracion-github/README.md#cómo-reproducir--verificar).

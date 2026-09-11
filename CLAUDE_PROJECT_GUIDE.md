@@ -26,7 +26,7 @@ chatear con un asistente IA (Groq/Llama) que genera planes completos, y ver anal
 ### Puertos
 - **3000** → Frontend React (`npm start`)
 - **9000** → Backend Node.js (`npm run start:api` desde raíz, o `node taskmate-api/server.js`)
-- **8001** → Python MCP Server (`cd taskmate-api/mcp && uvicorn server:app --port 8001`)
+- **8001** → Python MCP Server, solo `127.0.0.1` (`cd taskmate-api/mcp && ./venv/bin/python -m uvicorn server:app --host 127.0.0.1 --port 8001`; requiere `MCP_SHARED_SECRET`)
 
 ---
 
@@ -126,9 +126,9 @@ proyecto-is-cc6/
 - **Registro** (`POST /api/users`): bcrypt hash (salt 10), crea usuario + grupo personal automático
 - **Login** (`POST /api/users/login`): bcrypt compare, JWT firmado (userId, username, 24h)
 - **Almacenamiento frontend**: `localStorage.setItem('user', JSON.stringify({uid, token}))` + `localStorage.setItem('token', token)`
-- **REST auth**: header `Authorization: Bearer <token>` → `auth.middleware.js` → `req.user = {userId, username}`
-- **WebSocket auth**: token en query param `ws://localhost:9000/chat?token=<JWT>`
-- **JWT_SECRET env**: fallback inseguro `'your-jwt-secret-key-change-in-production'` si no hay .env
+- **REST auth** (desde la Fase 3, en **todas** las rutas salvo registro y login): header `Authorization: Bearer <token>` → `auth.middleware.js` → `req.user = {userId, username}`; el usuario que actúa siempre sale del token y la membresía/admin del grupo se verifica en `middleware/groupAccess.js`
+- **WebSocket auth**: token en query param `ws://localhost:9000/chat?token=<JWT>`; se valida también el `Origin` y el socket se cierra (código 4001) cuando el token expira
+- **JWT_SECRET env**: obligatorio, ≥32 caracteres aleatorios y sin valores de ejemplo (la API no arranca si no cumple); los tokens llevan `typ: 'access'`
 
 ---
 
@@ -502,10 +502,17 @@ DB_TRUST_SERVER_CERT=true     # false para Azure SQL
 
 # Servidor
 API_PORT=9000
-JWT_SECRET=tu-secreto-aqui    # ⚠️ CAMBIAR EN PRODUCCIÓN
+JWT_SECRET=<32+ caracteres aleatorios>   # la API no arranca con valores cortos o de ejemplo
+FRONTEND_URL=http://localhost:3000       # origen exacto permitido (CORS, WebSocket, callback de GitHub)
 
-# LLM / Python MCP
-LLM_WEBSOCKET_URL=ws://localhost:8001/ws
+# LLM / Python MCP (Groq)
+LLM_WEBSOCKET_URL=ws://127.0.0.1:8001/ws
+GROQ_API_KEY=<api-key>
+MCP_SHARED_SECRET=<32+ caracteres aleatorios>   # el mismo para Node y Python
+
+# Migraciones (el login de la app solo lee/escribe datos) y GitHub App: ver taskmate-api/.env.example
+MIGRATION_DB_USERNAME=sa
+MIGRATION_DB_PASSWORD=<password-de-sa>
 
 # Analytics
 ANALYTICS_ENABLED=true
@@ -543,7 +550,7 @@ node taskmate-api/server.js
 # Terminal 3 — Python MCP Server (puerto 8001) — REQUERIDO para el chat con IA
 cd /Users/pablopineda/Downloads/proyecto-is-cc6/taskmate-api/mcp
 source venv/bin/activate         # activar virtualenv
-uvicorn server:app --host 0.0.0.0 --port 8001 --reload
+uvicorn server:app --host 127.0.0.1 --port 8001 --ws-max-size 4194304 --reload   # requiere MCP_SHARED_SECRET en .env
 
 # Tests del backend
 cd taskmate-api && npm test
@@ -557,16 +564,20 @@ npm test
 
 ## 11. PROBLEMAS CONOCIDOS Y LIMITACIONES
 
-| # | Problema | Archivo | Impacto |
+Estado tras la Fase 3 (11 sep 2026). Detalle de lo corregido y de los riesgos residuales en
+`docs/fase-03-integracion-github/README.md` y `docs/fase-03-integracion-github/SEGURIDAD-Y-BASE-DE-DATOS.md`.
+
+| # | Problema | Archivo | Estado |
 |---|---------|---------|---------|
-| 1 | **Analytics config NO persiste en DB** | analytics.controller.js | Siempre retorna defaults hardcodeados |
-| 2 | **Access control DESACTIVADO** | analytics.controller.js `getDashboardData`, `getTaskRecommendations` | Cualquiera puede ver cualquier grupo |
-| 3 | **Mock data hardcodeado** | analytics.controller.js `_getMockDashboardData` | Solo 3 grupos fake: test-group-456, test-group-789, test-group-123 |
-| 4 | **JWT_SECRET con fallback** | user.controller.js, WebSocketServer.js | 'your-jwt-secret-key-change-in-production' si no hay .env |
-| 5 | **Python MCP debe correr manual** | — | Si no está activo, chat/analytics falla. LLMService reintenta cada 5s |
-| 6 | **AnalyticsAgent usa subprocess** | mcp/agents/analytics_agent.py | Intenta llamar Node.js via subprocess, con fallback a mock |
-| 7 | **onTaskDeletion marca 'failed'** | AnalyticsIntegration.js | Llama `recordTaskCompletion(false)` en lugar de marcar 'reassigned' |
-| 8 | **Sin rollback en ProjectService** | services/ProjectService.js | Si falla a mitad de crear un proyecto, quedan datos parciales |
+| 1 | Analytics config no persistía en DB | analytics.controller.js | ✅ Corregido: tabla `AnalyticsConfig` (migración 001) con validación |
+| 2 | Access control desactivado | analytics.controller.js | ✅ Corregido: JWT en todas las rutas; dashboard y datos de equipo solo para líderes |
+| 3 | Mock data hardcodeado | analytics.controller.js | ✅ Corregido: `_getMockDashboardData` eliminado; el mock de Python solo queda para los grupos demo `test-group-*` |
+| 4 | JWT_SECRET con fallback | server.js, helpers/tokens.js | ✅ Corregido: obligatorio, ≥32 caracteres, sin valores de ejemplo |
+| 5 | Python MCP debe correr aparte | — | Sigue igual (lo arranca `start.sh`); ahora exige `MCP_SHARED_SECRET` y solo escucha en 127.0.0.1 |
+| 6 | AnalyticsAgent usaba subprocess | mcp/agents/analytics_agent.py | ✅ Corregido: Node envía `team_context` real (acotado al grupo) |
+| 7 | onTaskDeletion marcaba 'failed' | AnalyticsIntegration.js | Por diseño: borrar = 'failed'; quitar la asignación = 'reassigned' |
+| 8 | Sin rollback en ProjectService | services/ProjectService.js | ✅ Corregido: todo en una transacción (`helpers/transaction.js`) |
+| 9 | Estado en memoria (flujos de GitHub, planes pendientes, límites) | services/github, UserSession.js | Nuevo: la API debe correr como una sola instancia |
 
 ---
 

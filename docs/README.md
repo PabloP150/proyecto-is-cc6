@@ -10,7 +10,7 @@ Bienvenido a la documentación de desarrollo de TaskMate. Este repositorio docum
 |---|------|-------------|-------------------|--------|---------------|
 | 1 | Entornos, Repositorio e Infraestructura CI | Media | 21-25 ago | ✅ Completo | [Link](fase-01-entornos-repositorio-ci/README.md) |
 | 2 | Optimización y Mejora del Rendimiento | Alta | 21 ago-4 sep | ✅ Completo | [Link](fase-02-optimizacion-rendimiento/README.md) |
-| 3 | Integración con GitHub | Alta | 5-8 sep | ⏳ Planificada | — |
+| 3 | Integración con GitHub | Alta | 5-8 sep (real: 10-11 sep) | ✅ Completo | [Link](fase-03-integracion-github/README.md) |
 | 4 | Pipeline CI/CD | Media | 5-8 sep | ⏳ Planificada | — |
 | 5 | Testing Automático Integral | Alta | 5-8 sep | ⏳ Planificada | — |
 | 6 | SonarQube & Code Quality | Media | 5-8 sep | ⏳ Planificada | — |
@@ -27,13 +27,17 @@ docs/
 ├── _TEMPLATE-FASE.md                            # Plantilla reutilizable
 ├── fase-01-entornos-repositorio-ci/
 │   └── README.md                                # Capítulo Fase 1
-└── fase-02-optimizacion-rendimiento/
-    ├── README.md                                # Capítulo Fase 2 (principal)
-    ├── TABLA-COMPARATIVA-RAPIDA.md              # Reference card
-    ├── ANALISIS-DETALLADO-IMPACTO.md            # Deep dive técnico
-    ├── RESUMEN-VISUAL.md                        # Diagramas ASCII
-    ├── CODIGO-LADO-A-LADO.md                    # Código antes/después
-    └── COMO-LEER-ESTA-DOCUMENTACION.md          # Guía de navegación
+├── fase-02-optimizacion-rendimiento/
+│   ├── README.md                                # Capítulo Fase 2 (principal)
+│   ├── TABLA-COMPARATIVA-RAPIDA.md              # Reference card
+│   ├── ANALISIS-DETALLADO-IMPACTO.md            # Deep dive técnico
+│   ├── RESUMEN-VISUAL.md                        # Diagramas ASCII
+│   ├── CODIGO-LADO-A-LADO.md                    # Código antes/después
+│   └── COMO-LEER-ESTA-DOCUMENTACION.md          # Guía de navegación
+└── fase-03-integracion-github/
+    ├── README.md                                # Capítulo Fase 3 (principal)
+    ├── GUIA-GITHUB-APP.md                       # Registrar la GitHub App, .env, smee, checklist E2E
+    └── SEGURIDAD-Y-BASE-DE-DATOS.md             # Modelo de seguridad, diseño de BD, riesgos residuales
 ```
 
 ---
@@ -70,12 +74,13 @@ docs/
 ### ✅ Completado
 - **Fase 1:** Estructura de monorepo, CI inicial, documentación base
 - **Fase 2:** 7 optimizaciones implementadas, 6 documentos técnicos, benchmarks reales
+- **Fase 3:** GitHub dentro de TaskMate (conectar repo, explorador, rama por tarea, progreso automático por PR, la IA propone las siguientes tareas) + corrección de todos los problemas existentes detectados (ACID/3FN, JWT en todas las rutas, servidor de IA autenticado, XSS)
 
-**Global:** -71% latencia | -97.5% operaciones BD | -65% bundle size
+**Global:** -71% latencia | -97.5% operaciones BD | -65% bundle size | de 52 pruebas fallando a 1151 pasando
 
 ### ⏳ Próximas (Ordenadas)
-1. Fase 3: Integración GitHub (Pablo Pineda)
-2. Fases 4-8: CI/CD, testing, SonarQube, colisión de archivos, go-live (Christian Martínez + Pablo)
+1. Fases 4-8: CI/CD, testing, SonarQube, colisión de archivos (se apoya en los datos de ramas y PRs de la Fase 3), go-live (Christian Martínez + Pablo)
+2. Pendientes de la Fase 3 para usarla con GitHub real: registrar la GitHub App y migrar la BD de desarrollo ([guía](fase-03-integracion-github/GUIA-GITHUB-APP.md))
 
 ---
 
@@ -83,15 +88,16 @@ docs/
 
 ```
 Ago 2026                Sep 2026
-21  25  28   4   5  8  15  20  30
-|   |   |    |   |  |
-F1  F1  F2   F2  F3-F8
-✅  ✅  ✅   ✅  ⏳
+21  25  28   4   5  8  10 11  15  20  30
+|   |   |    |   |  |  |  |
+F1  F1  F2   F2  F4-F8 F3 F3
+✅  ✅  ✅   ✅  ⏳    ✅ ✅
 ```
 
 **F1:** Infraestructura (25 ago)  
 **F2:** Optimizaciones (4 sep — retroactivo, documentado 28 ago)  
-**F3-F8:** Integración, CI/CD, testing, go-live (5-8 sep)
+**F3:** Integración con GitHub (planificada 5-8 sep; realizada 10-11 sep)  
+**F4-F8:** CI/CD, testing, SonarQube, colisión de archivos, go-live (planificadas 5-8 sep, pendientes)
 
 ---
 
@@ -139,4 +145,4 @@ Cada fase sigue esta plantilla: [_TEMPLATE-FASE.md](_TEMPLATE-FASE.md)
 ---
 
 **Documento generado:** 31 ago 2026  
-**Última actualización:** 31 ago 2026
+**Última actualización:** 11 sep 2026
