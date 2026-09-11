@@ -286,6 +286,7 @@ Recomendación: instala la App **desde TaskMate** («Conectar repositorio») par
 | Síntoma | Causa probable | Qué hacer |
 |---------|----------------|-----------|
 | La API no arranca: `FATAL: JWT_SECRET must be a random value of at least 32 characters` | `JWT_SECRET` corto o de ejemplo | `openssl rand -base64 48` y reiniciar |
+| `start.sh`: «el puerto 8001 está ocupado por …, que no es de TaskMate» | Otro programa (p. ej. otro proyecto en Docker) usa ese puerto; el script ya no mata procesos ajenos | En `.env`: `MCP_PORT=8011` y `LLM_WEBSOCKET_URL=ws://127.0.0.1:8011/ws` (o `API_PORT` si el choque es en 9000) |
 | El servidor de IA no arranca: `MCP_SHARED_SECRET is not set` o `must be a random value of at least 32 characters` | Falta el secreto compartido o es débil | `openssl rand -hex 32` en la `.env` que lee Python (paso 6) |
 | Log de la API: `[LLMService] The AI service rejected the connection (403); check MCP_SHARED_SECRET.` y el chat dice «El servicio de IA no está disponible» | `MCP_SHARED_SECRET` distinto entre Node y Python (o una variable exportada en la terminal pisa la `.env`) | Mismo valor en ambos procesos; reiniciar los dos. Python registra `Rejected an unauthorized WebSocket connection` |
 | El chat no conecta y la consola del navegador muestra errores CORS | `FRONTEND_URL` no coincide exactamente con el origen (`http://localhost:3000` ≠ `http://127.0.0.1:3000`; sin rutas) | Corregir `FRONTEND_URL` y reiniciar la API. Los *handshakes* WebSocket de otro origen reciben 403 |
