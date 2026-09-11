@@ -1,20 +1,29 @@
 // controllers/complete.controller.js
+// Legacy, non-atomic completion kept for compatibility; new clients use POST /api/tasks/:tid/complete.
 const completeRoute = require('express').Router();
 const CompleteModel = require('./../models/complete.model');
+const AccessModel = require('./../models/access.model');
 const AnalyticsIntegration = require('../services/AnalyticsIntegration');
+const { AppError, sendError } = require('../helpers/errors');
+const { requireGroupMember, assertUuid, sameId } = require('../middleware/groupAccess');
 
-
-completeRoute.post('/', async (req, res) => {
+completeRoute.post('/', requireGroupMember('gid'), async (req, res) => {
     const {
-        tid,
-        gid,
         name,
         description,
         percentage,
         datetime
     } = req.body;
+    const gid = req.groupId;
 
     try {
+        const tid = assertUuid(req.body.tid, 'tid');
+        // The UI may already have deleted the task; if it still exists it must be in this group.
+        const taskGroup = await AccessModel.resolveGroupId('task', tid);
+        if (taskGroup && !sameId(taskGroup, gid)) {
+            throw new AppError('VALIDATION_ERROR', 'tid belongs to another group', 400);
+        }
+
         const result = await CompleteModel.addComplete({
             tid,
             gid,
@@ -34,30 +43,26 @@ completeRoute.post('/', async (req, res) => {
 
         res.status(200).json({ data: { rowCount: result, tid } });
     } catch (error) {
-        res.status(500).json({ error: error.message || 'Internal server error' });
+        sendError(res, error);
     }
 });
 
-completeRoute.get('/:gid', async (req, res) => {
-    const { gid } = req.params;
+completeRoute.get('/:gid', requireGroupMember('gid'), async (req, res) => {
     try {
-        const data = await CompleteModel.getCompletados(gid);
+        const data = await CompleteModel.getCompletados(req.groupId);
         res.status(200).json({ data });
     } catch (error) {
-        res.status(500).json({ error: error.message || 'Internal server error' });
+        sendError(res, error);
     }
 });
 
-completeRoute.delete('/:gid', async (req, res) => {
-    const { gid } = req.params;
+completeRoute.delete('/:gid', requireGroupMember('gid'), async (req, res) => {
     try {
-        await CompleteModel.deleteAll(gid);
+        await CompleteModel.deleteAll(req.groupId);
         res.status(200).json({ message: 'Todos los completados han sido vaciados' });
     } catch (error) {
-        res.status(500).json({ error: error.message || 'Internal server error' });
+        sendError(res, error);
     }
 });
-
-
 
 module.exports = completeRoute;
