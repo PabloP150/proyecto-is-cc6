@@ -1,11 +1,11 @@
-jest.mock('../../models/access.model', () => ({ isGroupAdmin: jest.fn(), isGroupMember: jest.fn() }), { virtual: true });
+jest.mock('../../models/access.model', () => ({ isGroupAdmin: jest.fn(), isGroupMember: jest.fn() }));
 jest.mock('../../models/github.model', () => ({
     upsertInstallation: jest.fn(),
     upsertRepository: jest.fn(),
     linkGroupRepository: jest.fn(),
     getGroupRepository: jest.fn(),
-}), { virtual: true });
-jest.mock('../../helpers/transaction', () => ({ withTransaction: jest.fn(), isFkViolation: jest.fn() }), { virtual: true });
+}));
+jest.mock('../../helpers/transaction', () => ({ withTransaction: jest.fn(), isFkViolation: jest.fn() }));
 
 const jwt = require('jsonwebtoken');
 const accessModel = require('../../models/access.model');
@@ -46,6 +46,8 @@ const repo = (id, name) => ({ id, name, full_name: `octo/${name}`, private: id %
 
 const githubRoutes = ({ repos = [repo(500, 'demo')], installations = [{ id: 77 }], tokenBody } = {}) => ({
     'POST /login/oauth/access_token': { body: tokenBody || { access_token: 'ghu_user', token_type: 'bearer' } },
+    'GET /user': { body: { login: 'octocat' } },
+    'DELETE /applications/Iv1.client/token': { status: 204 },
     'GET /user/installations': { body: { total_count: installations.length, installations } },
     'GET /user/installations/77/repositories': { body: { total_count: repos.length, repositories: repos } },
     'GET /user/installations/88/repositories': { body: { total_count: 1, repositories: [repo(900, 'other')] } },
@@ -115,7 +117,7 @@ describe('handleCallback — state', () => {
     test('replayed state → INVALID_STATE the second time', async () => {
         useFakeGitHub(githubRoutes());
         const state = newState();
-        expect(parse(await installFlow.handleCallback({ state, code: 'c', installation_id: '77' })).status).toBe('connected');
+        expect(parse(await installFlow.handleCallback({ state, code: 'c', installation_id: '77' })).status).toBe('select');
         const again = parse(await installFlow.handleCallback({ state, code: 'c', installation_id: '77' }));
         expect(again).toMatchObject({ status: 'error', code: 'INVALID_STATE' });
     });
@@ -129,17 +131,48 @@ describe('handleCallback — state', () => {
 });
 
 describe('handleCallback — flow', () => {
-    test('single repo → exchanges the code, verifies the installation, links, redirects connected', async () => {
+    test('single repo → still a selection (never auto-linked), user token revoked', async () => {
         const fetchImpl = useFakeGitHub(githubRoutes());
         const r = parse(await installFlow.handleCallback({ state: newState(), code: 'abc', installation_id: '77', setup_action: 'install' }));
-        expect(r).toMatchObject({ origin: 'http://localhost:3000', path: '/github', status: 'connected', gid: GID });
+        expect(r).toMatchObject({ origin: 'http://localhost:3000', path: '/github', status: 'select', gid: GID });
+        expect(githubModel.linkGroupRepository).not.toHaveBeenCalled();
+        expect(transaction.withTransaction).not.toHaveBeenCalled();
+        expect(installFlow.getSelection(r.selection, UID)).toEqual({
+            gid: GID, githubLogin: 'octocat', repos: [{ repoId: 500, fullName: 'octo/demo', isPrivate: true }],
+        });
+
         const exchange = fetchImpl.calls.find((c) => c.path === '/login/oauth/access_token');
         expect(exchange.body).toEqual({ client_id: 'Iv1.client', client_secret: 'client-secret', code: 'abc' });
         const listRepos = fetchImpl.calls.find((c) => c.path === '/user/installations/77/repositories');
         expect(listRepos.headers.Authorization).toBe('Bearer ghu_user');
+        const revoke = fetchImpl.calls.find((c) => c.method === 'DELETE' && c.path === '/applications/Iv1.client/token');
+        expect(revoke.body).toEqual({ access_token: 'ghu_user' });
+        expect(revoke.headers.Authorization).toBe(`Basic ${Buffer.from('Iv1.client:client-secret').toString('base64')}`);
+        expect(fetchImpl.calls.indexOf(revoke)).toBeGreaterThan(fetchImpl.calls.indexOf(listRepos));
+    });
+
+    test('linking a selection upserts installation + repo and links it for flow.uid', async () => {
+        useFakeGitHub(githubRoutes());
+        const r = parse(await installFlow.handleCallback({ state: newState(), code: 'abc', installation_id: '77' }));
+        await installFlow.completeSelection({ gid: GID, uid: UID, selectionId: r.selection, repoId: 500 });
         expect(githubModel.upsertInstallation).toHaveBeenCalledWith({ installationId: 77, accountLogin: 'octo', accountType: 'Organization', suspendedAt: null }, { tx: TX });
         expect(githubModel.upsertRepository).toHaveBeenCalledWith({ repoId: 500, installationId: 77, name: 'demo', defaultBranch: 'main', isPrivate: true }, { tx: TX });
         expect(githubModel.linkGroupRepository).toHaveBeenCalledWith({ gid: GID, repoId: 500, connectedBy: UID }, { tx: TX });
+    });
+
+    test('a failed revocation is only logged and never blocks the flow', async () => {
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        useFakeGitHub({ ...githubRoutes(), 'DELETE /applications/Iv1.client/token': { status: 500 } });
+        const r = parse(await installFlow.handleCallback({ state: newState(), code: 'abc', installation_id: '77' }));
+        expect(r.status).toBe('select');
+        expect(warn.mock.calls.flat().join(' ')).not.toContain('ghu_user');
+        warn.mockRestore();
+    });
+
+    test('the user token is revoked even when listing fails', async () => {
+        const fetchImpl = useFakeGitHub(githubRoutes({ installations: [{ id: 88 }] }));
+        await installFlow.handleCallback({ state: newState(), code: 'abc', installation_id: '77' });
+        expect(fetchImpl.calls.some((c) => c.method === 'DELETE' && c.path === '/applications/Iv1.client/token')).toBe(true);
     });
 
     test('user is no longer admin at callback time → NOT_GROUP_ADMIN before exchanging the code', async () => {
@@ -196,7 +229,7 @@ describe('handleCallback — flow', () => {
     test('unexpected errors redirect with INTERNAL_ERROR and no details', async () => {
         useFakeGitHub(githubRoutes());
         const spy = jest.spyOn(console, 'error').mockImplementation(() => {});
-        transaction.withTransaction.mockRejectedValue(new Error('Login failed for user sa'));
+        accessModel.isGroupAdmin.mockRejectedValue(new Error('Login failed for user sa'));
         const redirect = await installFlow.handleCallback({ state: newState(), code: 'abc', installation_id: '77' });
         expect(parse(redirect)).toMatchObject({ status: 'error', code: 'INTERNAL_ERROR' });
         expect(redirect).not.toMatch(/Login failed/);
@@ -218,6 +251,7 @@ describe('selections', () => {
         expect(githubModel.linkGroupRepository).not.toHaveBeenCalled();
         expect(installFlow.getSelection(id, UID)).toEqual({
             gid: GID,
+            githubLogin: 'octocat',
             repos: [{ repoId: 500, fullName: 'octo/demo', isPrivate: true }, { repoId: 501, fullName: 'octo/two', isPrivate: false }],
         });
     });

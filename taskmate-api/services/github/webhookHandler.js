@@ -1,9 +1,10 @@
+const crypto = require('crypto');
 const { AppError, isAppError, sendError } = require('../../helpers/errors');
 const githubModel = require('../../models/github.model');
 const transaction = require('../../helpers/transaction');
 const { githubApp, PERMISSIONS } = require('./githubApp');
 const { verifyWebhookSignature } = require('./webhookSignature');
-const { isForkPullRequest, applyPullRequestInTx } = require('./pullRequestProcessor');
+const { isForkPullRequest, applyPullRequestInTx, notifyCompletion } = require('./pullRequestProcessor');
 
 const RESPONSE_DEADLINE_MS = 8 * 1000;
 const MAX_ADDED_REPOS = 50;
@@ -103,10 +104,13 @@ const handlePullRequest = async (deliveryId, payload) => {
     if (isForkPullRequest(pr, repository.id)) return ignore(deliveryId);
 
     const repo = repositoryRecord(repository, installation.id);
-    return inTransaction(deliveryId, async (tx) => {
+    let outcome = null;
+    const status = await inTransaction(deliveryId, async (tx) => {
         await githubModel.upsertRepository(repo, { tx });
-        await applyPullRequestInTx(pr, { repoId: repo.repoId, defaultBranch: repo.defaultBranch }, { tx });
+        outcome = await applyPullRequestInTx(pr, { repoId: repo.repoId, defaultBranch: repo.defaultBranch }, { tx });
     });
+    if (status === 'processed' && outcome) notifyCompletion(outcome.completion);
+    return status;
 };
 
 const route = async (delivery) => {
@@ -128,8 +132,10 @@ const processDelivery = async (delivery) => {
     }
 };
 
+const isPlainObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+
 // Expects req.body to be the raw Buffer (mount with express.raw before express.json).
-const createWebhookHandler = ({ deadlineMs = RESPONSE_DEADLINE_MS } = {}) => async (req, res) => {
+const handleWebhook = async (req, res, deadlineMs) => {
     const rawBody = req.body;
     if (!verifyWebhookSignature(rawBody, req.get('x-hub-signature-256'))) {
         return sendError(res, new AppError('UNAUTHENTICATED', 'Invalid webhook signature', 401));
@@ -146,17 +152,19 @@ const createWebhookHandler = ({ deadlineMs = RESPONSE_DEADLINE_MS } = {}) => asy
     try {
         payload = JSON.parse(rawBody.toString('utf8'));
     } catch {
+        payload = undefined;
+    }
+    // A validly signed `null`, array or scalar is still not a GitHub event.
+    if (!isPlainObject(payload)) {
         return sendError(res, new AppError('VALIDATION_ERROR', 'Invalid JSON payload', 400));
     }
     const action = typeof payload.action === 'string' ? payload.action : null;
-    const installationId = payload.installation && payload.installation.id ? Number(payload.installation.id) : null;
+    const installationId = isPlainObject(payload.installation) && payload.installation.id ? Number(payload.installation.id) : null;
+    // X-GitHub-Delivery is not covered by the signature, so replays are also detected by body hash.
+    const payloadSha256 = crypto.createHash('sha256').update(rawBody).digest('hex');
 
-    try {
-        const { duplicate } = await githubModel.beginDelivery({ deliveryId, event, action, installationId });
-        if (duplicate) return res.status(200).json({ status: 'duplicate' });
-    } catch (err) {
-        return sendError(res, err);
-    }
+    const { duplicate } = await githubModel.beginDelivery({ deliveryId, event, action, installationId, payloadSha256 });
+    if (duplicate) return res.status(200).json({ status: 'duplicate' });
 
     let timer;
     const deadline = new Promise((resolve) => {
@@ -172,6 +180,14 @@ const createWebhookHandler = ({ deadlineMs = RESPONSE_DEADLINE_MS } = {}) => asy
         return res.status(500).json({ success: false, error: 'Webhook processing failed', code: 'INTERNAL_ERROR' });
     }
     return res.status(200).json({ status: outcome });
+};
+
+const createWebhookHandler = ({ deadlineMs = RESPONSE_DEADLINE_MS } = {}) => async (req, res) => {
+    try {
+        await handleWebhook(req, res, deadlineMs);
+    } catch (err) {
+        if (!res.headersSent) sendError(res, err);
+    }
 };
 
 module.exports = {

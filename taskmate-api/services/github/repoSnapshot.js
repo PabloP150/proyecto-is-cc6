@@ -134,12 +134,16 @@ const pickManifests = (entries) => entries
     .sort((a, b) => a.path.split('/').length - b.path.split('/').length || a.path.localeCompare(b.path))
     .slice(0, LIMITS.manifests);
 
+// Errors that only mean "this optional section is unavailable" (no README, no Issues permission…).
+// Anything else — rate limit, suspension, missing config, unexpected errors — aborts the analysis.
+const SOFT_ERRORS = new Set(['FILE_NOT_FOUND', 'FILE_TOO_LARGE', 'VALIDATION_ERROR', 'NOT_FOUND', 'REPO_NOT_ACCESSIBLE', 'GITHUB_ERROR']);
+
 const optional = async (promise, fallback) => {
     try {
         return await promise;
     } catch (err) {
-        if (isAppError(err) && ['GITHUB_RATE_LIMITED', 'INSTALLATION_SUSPENDED'].includes(err.code)) throw err;
-        return fallback;
+        if (isAppError(err) && SOFT_ERRORS.has(err.code)) return fallback;
+        throw err;
     }
 };
 
@@ -171,10 +175,11 @@ const enforceBudget = (snapshot, budget) => {
 };
 
 // Never includes source file contents: only paths, README, manifest excerpts, commits and issues.
+// Metadata and tree are mandatory: without them the AI would plan on an empty snapshot.
 const buildRepoSnapshot = async (repo) => {
     const [meta, tree, readme, commits, issues] = await Promise.all([
-        optional(repoService.getRepoMeta(repo), {}),
-        optional(repoService.getTreeForRepo(repo), { entries: [] }),
+        repoService.getRepoMeta(repo),
+        repoService.getTreeForRepo(repo),
         optional(repoService.getReadmeForRepo(repo), null),
         optional(repoService.getCommitsForRepo(repo, { perPage: LIMITS.commits }), []),
         optional(fetchOpenIssues(repo), []),

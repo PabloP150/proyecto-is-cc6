@@ -32,6 +32,7 @@ const route = (handler) => async (req, res) => {
 
 const formatRepository = (repo) => (repo ? {
     ...repo,
+    aiAnalysisEnabled: repo.aiAnalysisEnabled === true,
     htmlUrl: `https://github.com/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}`,
     installation: { accountLogin: repo.owner, suspended: Boolean(repo.suspendedAt) },
 } : null);
@@ -78,6 +79,18 @@ const createGithubRouter = ({ auth = requireAuth } = {}) => {
     router.delete('/groups/:gid/repository', requireGroupAdmin('gid'), route(async (req, res) => {
         await githubModel.unlinkGroupRepository(req.groupId);
         res.status(204).end();
+    }));
+
+    // Opt-in per group: repository content is only sent to the AI provider once an admin enables it.
+    router.put('/groups/:gid/ai-analysis', requireGroupAdmin('gid'), route(async (req, res) => {
+        const enabled = req.body && req.body.enabled;
+        if (typeof enabled !== 'boolean') throw new AppError('VALIDATION_ERROR', 'enabled must be a boolean', 400);
+        const result = await githubModel.setAiAnalysisEnabled(req.groupId, enabled);
+        if (result === false || result === 0 || result === null) {
+            throw new AppError('REPO_NOT_CONNECTED', 'This group has no connected repository', 409);
+        }
+        const value = result && typeof result === 'object' && typeof result.aiAnalysisEnabled === 'boolean' ? result.aiAnalysisEnabled : enabled;
+        res.json({ data: { aiAnalysisEnabled: value } });
     }));
 
     router.get('/groups/:gid/tree', requireGroupMember('gid'), browseLimiter, route(async (req, res) => {

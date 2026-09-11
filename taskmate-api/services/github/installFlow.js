@@ -141,19 +141,25 @@ const handleCallback = async (query = {}) => {
         if (!code) throw new AppError('VALIDATION_ERROR', 'Missing authorization code', 400);
 
         const userToken = await oauth.exchangeCodeForUserToken(code);
-        const options = await collectRepoOptions(userToken, installationIdParam);
+        let githubLogin;
+        let options;
+        try {
+            githubLogin = await oauth.getAuthenticatedLogin(userToken);
+            options = await collectRepoOptions(userToken, installationIdParam);
+        } finally {
+            await oauth.revokeUserToken(userToken);
+        }
 
         if (options.length === 0) {
             throw new AppError('NO_REPOSITORIES', 'No repository is accessible to this user', 404);
         }
-        if (options.length === 1) {
-            await linkRepository({ gid: flow.gid, uid: flow.uid, option: options[0] });
-            return buildRedirect({ status: 'connected', gid: flow.gid });
-        }
+        // Never linked here, even with a single repo: the state proves who *started* the flow, not
+        // which browser finished it. Linking needs POST /groups/:gid/repository with flow.uid's token.
         const selectionId = crypto.randomBytes(32).toString('base64url');
         selections.set(selectionId, {
             gid: flow.gid,
             uid: flow.uid,
+            githubLogin,
             repos: new Map(options.map((option) => [option.repoId, option])),
         });
         return buildRedirect({ status: 'select', selection: selectionId, gid: flow.gid });
@@ -177,6 +183,7 @@ const getSelection = (selectionId, uid) => {
     const selection = readSelection(selectionId, uid);
     return {
         gid: selection.gid,
+        githubLogin: selection.githubLogin,
         repos: [...selection.repos.values()].map(({ repoId, fullName, isPrivate }) => ({ repoId, fullName, isPrivate })),
     };
 };

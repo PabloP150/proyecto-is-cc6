@@ -66,6 +66,7 @@ const useFakeGitHub = (routes) => {
     githubApp.options = { appId: '12345', privateKey: testKeys().base64 };
     githubApp.tokenCache.clear();
     githubApp.inflight.clear();
+    githubApp.budgets.clear();
     githubApp.appJwt = null;
     return fetchImpl;
 };

@@ -2,7 +2,7 @@ jest.mock('../../models/access.model', () => ({
     isGroupMember: jest.fn(),
     isGroupAdmin: jest.fn(),
     resolveGroupId: jest.fn(),
-}), { virtual: true });
+}));
 jest.mock('../../models/github.model', () => ({
     getGroupRepository: jest.fn(),
     unlinkGroupRepository: jest.fn(),
@@ -12,9 +12,11 @@ jest.mock('../../models/github.model', () => ({
     findTaskByBranch: jest.fn(),
     upsertRepository: jest.fn(),
     applyPullRequest: jest.fn(),
-}), { virtual: true });
-jest.mock('../../helpers/transaction', () => ({ withTransaction: jest.fn(), isFkViolation: jest.fn() }), { virtual: true });
+    setAiAnalysisEnabled: jest.fn(),
+}));
+jest.mock('../../helpers/transaction', () => ({ withTransaction: jest.fn(), isFkViolation: jest.fn() }));
 jest.mock('../../models/tasks.model', () => ({ getTask: jest.fn(), completeTask: jest.fn() }));
+jest.mock('../../services/AnalyticsIntegration', () => ({ onTaskCompletion: jest.fn() }));
 
 const express = require('express');
 const request = require('supertest');
@@ -115,12 +117,36 @@ describe('repository endpoints', () => {
         const res = await as(request(app).get(`/api/github/groups/${GID}/repository`));
         expect(res.status).toBe(200);
         expect(res.body.data).toMatchObject({
-            repoId: 500, fullName: 'octo/demo', htmlUrl: 'https://github.com/octo/demo',
+            repoId: 500, fullName: 'octo/demo', htmlUrl: 'https://github.com/octo/demo', aiAnalysisEnabled: false,
             installation: { accountLogin: 'octo', suspended: false },
         });
+        githubModel.getGroupRepository.mockResolvedValue({ ...REPO, aiAnalysisEnabled: true });
+        const enabled = await as(request(app).get(`/api/github/groups/${GID}/repository`));
+        expect(enabled.body.data.aiAnalysisEnabled).toBe(true);
         githubModel.getGroupRepository.mockResolvedValue(null);
         const none = await as(request(app).get(`/api/github/groups/${GID}/repository`));
         expect(none.body).toEqual({ data: null });
+    });
+
+    test('PUT ai-analysis (admin) toggles the opt-in', async () => {
+        githubModel.setAiAnalysisEnabled.mockResolvedValue(true);
+        const res = await as(request(app).put(`/api/github/groups/${GID}/ai-analysis`).send({ enabled: true }));
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual({ data: { aiAnalysisEnabled: true } });
+        expect(githubModel.setAiAnalysisEnabled).toHaveBeenCalledWith(GID, true);
+    });
+
+    test('PUT ai-analysis validates, requires admin and a connected repo', async () => {
+        const bad = await as(request(app).put(`/api/github/groups/${GID}/ai-analysis`).send({ enabled: 'yes' }));
+        expect(bad.status).toBe(400);
+        githubModel.setAiAnalysisEnabled.mockResolvedValue(false);
+        const none = await as(request(app).put(`/api/github/groups/${GID}/ai-analysis`).send({ enabled: false }));
+        expect(none.status).toBe(409);
+        expect(none.body.code).toBe('REPO_NOT_CONNECTED');
+        accessModel.isGroupAdmin.mockResolvedValue(false);
+        const member = await as(request(app).put(`/api/github/groups/${GID}/ai-analysis`).send({ enabled: true }));
+        expect(member.status).toBe(403);
+        expect(member.body.code).toBe('NOT_GROUP_ADMIN');
     });
 
     test('DELETE repository → 204', async () => {
@@ -222,7 +248,7 @@ describe('branch and sync', () => {
         });
         const first = await as(request(app).post(`/api/github/groups/${GID}/sync`));
         expect(first.status).toBe(200);
-        expect(first.body.data).toEqual({ checked: 0, updated: 0 });
+        expect(first.body.data).toEqual({ branchesChecked: 0, pullRequestsFound: 0, updated: 0 });
         const second = await as(request(app).post(`/api/github/groups/${GID}/sync`));
         expect(second.status).toBe(429);
         expect(second.body.code).toBe('RATE_LIMITED');

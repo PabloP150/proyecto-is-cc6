@@ -2,9 +2,10 @@
 jest.mock('ws', () => {
     const { EventEmitter } = require('events');
     class FakeWebSocket extends EventEmitter {
-        constructor(url) {
+        constructor(url, protocols, options) {
             super();
             this.url = url;
+            this.options = options;
             this.readyState = FakeWebSocket.CONNECTING;
             this.sent = [];
             FakeWebSocket.instances.push(this);
@@ -125,6 +126,79 @@ describe('LLMService', () => {
 
     test('socket errors are not re-emitted (no process crash)', () => {
         expect(() => WebSocket.instances[0].emit('error', new Error('ECONNREFUSED'))).not.toThrow();
+    });
+
+    test('sends the shared secret header when MCP_SHARED_SECRET is set', () => {
+        const previous = process.env.MCP_SHARED_SECRET;
+        process.env.MCP_SHARED_SECRET = 'shh-test-secret';
+        try {
+            const other = new LLMService({ url: 'ws://python.test/ws' });
+            expect(WebSocket.instances[WebSocket.instances.length - 1].options.headers).toEqual({ 'X-MCP-Secret': 'shh-test-secret' });
+            other.close();
+            delete process.env.MCP_SHARED_SECRET;
+            const plain = new LLMService({ url: 'ws://python.test/ws' });
+            expect(WebSocket.instances[WebSocket.instances.length - 1].options.headers).toEqual({});
+            plain.close();
+        } finally {
+            if (previous === undefined) delete process.env.MCP_SHARED_SECRET;
+            else process.env.MCP_SHARED_SECRET = previous;
+        }
+    });
+
+    test('when the Python link drops, every pending request gets an error event at once', async () => {
+        const a = jest.fn();
+        const b = jest.fn();
+        service.on('s1', a);
+        service.on('s2', b);
+        WebSocket.instances[0].open();
+        await service.send({ requestId: 'r1', sessionId: 's1', method: 'handle_user_message' });
+        await service.send({ requestId: 'r2', sessionId: 's2', type: 'analytics' });
+        await service.send({ requestId: 'r3', sessionId: 's1', method: 'x' });
+        service.handleMessage(JSON.stringify({ event: 'response', requestId: 'r3', sessionId: 's1', data: { content: 'ok' } }));
+        a.mockClear();
+
+        WebSocket.instances[0].readyState = WebSocket.CLOSED;
+        WebSocket.instances[0].emit('close');
+        expect(a).toHaveBeenCalledTimes(1);
+        expect(a).toHaveBeenCalledWith(expect.objectContaining({ event: 'error', requestId: 'r1', sessionId: 's1', error: { code: 'LLM_ERROR', message: expect.any(String) } }));
+        expect(b).toHaveBeenCalledWith(expect.objectContaining({ event: 'error', requestId: 'r2' }));
+        expect(service.inflight.size).toBe(0);
+    });
+
+    test('notifications sent with expectReply:false are not tracked', async () => {
+        WebSocket.instances[0].open();
+        await service.send({ requestId: 'n1', sessionId: 's1', method: 'save_plan_result' }, { expectReply: false });
+        expect(service.inflight.size).toBe(0);
+    });
+
+    test('a rejected handshake (403) is logged once and retried with exponential back-off', () => {
+        jest.useFakeTimers();
+        try {
+            const fail = (ws) => {
+                ws.emit('error', new Error('Unexpected server response: 403'));
+                ws.readyState = WebSocket.CLOSED;
+                ws.emit('close');
+            };
+            fail(WebSocket.instances[0]);
+            jest.advanceTimersByTime(5000);
+            expect(WebSocket.instances).toHaveLength(2);
+            fail(WebSocket.instances[1]);
+            jest.advanceTimersByTime(5000);
+            expect(WebSocket.instances).toHaveLength(2);
+            jest.advanceTimersByTime(5000);
+            expect(WebSocket.instances).toHaveLength(3);
+            fail(WebSocket.instances[2]);
+            const rejections = console.error.mock.calls.filter(([msg]) => String(msg).includes('403'));
+            expect(rejections).toHaveLength(1);
+            expect(String(rejections[0][0])).toContain('MCP_SHARED_SECRET');
+
+            jest.advanceTimersByTime(20000);
+            WebSocket.instances[3].open();
+            expect(service.reconnectDelay).toBe(5000);
+            expect(service.failureStreak).toBe(0);
+        } finally {
+            jest.useRealTimers();
+        }
     });
 
     test('close() stops reconnecting', () => {

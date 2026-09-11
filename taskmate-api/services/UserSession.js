@@ -11,20 +11,34 @@ const { AppError, isAppError } = require('../helpers/errors');
 const { buildRepoSnapshot, buildExisting } = require('./github/repoSnapshot');
 const { sanitizePlan, planToText, localToday, PLAN_LIMITS } = require('./github/repoPlan');
 
-const ANALYSIS_TIMEOUT_MS = 90 * 1000;
+const REQUEST_TIMEOUT_MS = 90 * 1000;
+const ANALYSIS_TIMEOUT_MS = REQUEST_TIMEOUT_MS;
 const ANALYSIS_COOLDOWN_MS = 60 * 1000;
 const PLAN_TTL_MS = 30 * 60 * 1000;
 const MAX_PENDING_PLANS = 5;
 const MAX_INSTRUCTIONS = 500;
+const MAX_CHAT_MESSAGE = 4000;
+const CHAT_WINDOW_MS = 60 * 1000;
+const CHAT_MESSAGES_PER_WINDOW = 20;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CLIENT_ID_RE = /^[A-Za-z0-9_.:-]{1,100}$/;
+const DEMO_GROUP_RE = /^test-group-[A-Za-z0-9_-]+$/;
 // Not stored in chatHistory (history_restore would replay them).
 const TRANSIENT_TYPES = new Set(['pong', 'context', 'repo_analysis_status']);
+
+// Same rule as the REST analytics endpoints: team-level data only for group leaders.
+const TEAM_ANALYTICS_ACTIONS = new Set([
+    'get_task_assignment_recommendations', 'get_team_analytics', 'get_workload_distribution',
+    'get_expertise_rankings', 'record_task_assignment', 'record_task_completion',
+]);
+const USER_ANALYTICS_ACTIONS = new Set(['get_user_analytics']);
 
 const ERROR_MESSAGES = {
     VALIDATION_ERROR: 'Solicitud inválida.',
     NOT_GROUP_MEMBER: 'No eres miembro de ese proyecto.',
+    NOT_GROUP_ADMIN: 'Solo los líderes del equipo pueden ver esos datos.',
     REPO_NOT_CONNECTED: 'El proyecto no tiene un repositorio de GitHub conectado.',
+    AI_ANALYSIS_DISABLED: 'El análisis con IA está desactivado para este proyecto; un administrador puede activarlo.',
     INSTALLATION_SUSPENDED: 'La instalación de la GitHub App está suspendida.',
     REPO_NOT_ACCESSIBLE: 'La GitHub App ya no tiene acceso al repositorio.',
     REPO_EMPTY: 'El repositorio está vacío.',
@@ -33,7 +47,8 @@ const ERROR_MESSAGES = {
     GITHUB_NOT_CONFIGURED: 'La integración con GitHub no está configurada.',
     ANALYSIS_IN_PROGRESS: 'Ya hay un análisis en curso.',
     RATE_LIMITED: 'Espera un minuto antes de pedir otro análisis.',
-    LLM_TIMEOUT: 'El análisis tardó demasiado. Intenta de nuevo.',
+    MESSAGE_TOO_LONG: `El mensaje es demasiado largo (máximo ${MAX_CHAT_MESSAGE} caracteres).`,
+    LLM_TIMEOUT: 'La IA tardó demasiado en responder. Intenta de nuevo.',
     LLM_RATE_LIMIT: 'El servicio de IA está ocupado. Intenta de nuevo en unos segundos.',
     LLM_INVALID_OUTPUT: 'La IA devolvió un plan inválido. Intenta de nuevo.',
     LLM_ERROR: 'El servicio de IA no está disponible en este momento.',
@@ -43,14 +58,17 @@ const ERROR_MESSAGES = {
     SAVE_FAILED: 'No se pudo guardar el plan.',
     INTERNAL_ERROR: 'Ocurrió un error inesperado.',
 };
-const PASSTHROUGH_ANALYSIS_CODES = new Set(['LLM_TIMEOUT', 'LLM_RATE_LIMIT', 'LLM_INVALID_OUTPUT', 'LLM_ERROR']);
+const CHAT_RATE_LIMITED_MESSAGE = 'Estás enviando mensajes muy rápido; espera un momento.';
+const PASSTHROUGH_ANALYSIS_CODES = new Set(['LLM_TIMEOUT', 'LLM_RATE_LIMIT', 'LLM_INVALID_OUTPUT', 'LLM_ERROR', 'MESSAGE_TOO_LONG']);
 
-// Per user (not per session): a reconnect or a second tab does not reset the cooldown.
+// Per user (not per session): a reconnect or a second tab does not reset these limits.
 const lastAnalysisByUser = new Map();
+const chatWindowByUser = new Map();
 
 const isUuid = (value) => typeof value === 'string' && UUID_RE.test(value);
 const sameId = (a, b) => typeof a === 'string' && typeof b === 'string' && a.toLowerCase() === b.toLowerCase();
-const clientRequestIdOf = (value) => (typeof value === 'string' && CLIENT_ID_RE.test(value) ? value : uuidv4());
+const isPlainObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+const clientRequestIdOf = (value) => (typeof value === 'string' && CLIENT_ID_RE.test(value) ? value : null);
 
 const cooldownRemainingSec = (userId, now = Date.now()) => {
     if (lastAnalysisByUser.size > 1000) {
@@ -60,22 +78,59 @@ const cooldownRemainingSec = (userId, now = Date.now()) => {
     return last && now - last < ANALYSIS_COOLDOWN_MS ? Math.ceil((ANALYSIS_COOLDOWN_MS - (now - last)) / 1000) : 0;
 };
 
+// Fixed window per user; returns seconds to wait, or 0 when the message may go through.
+const takeChatSlot = (userId, now = Date.now()) => {
+    if (chatWindowByUser.size > 1000) {
+        for (const [uid, w] of chatWindowByUser) if (now - w.start >= CHAT_WINDOW_MS) chatWindowByUser.delete(uid);
+    }
+    let window = chatWindowByUser.get(userId);
+    if (!window || now - window.start >= CHAT_WINDOW_MS) {
+        window = { start: now, count: 0 };
+        chatWindowByUser.set(userId, window);
+    }
+    if (window.count >= CHAT_MESSAGES_PER_WINDOW) return Math.ceil((CHAT_WINDOW_MS - (now - window.start)) / 1000);
+    window.count += 1;
+    return 0;
+};
+
 const deriveProjectName = (plan, originalMessage) => {
     const data = (plan && (plan.recommendations || plan)) || {};
     return String(data.project_name || `Project: ${originalMessage || ''}`).slice(0, 25);
 };
 
-// Client-sent team_context is never trusted; the real one is only built for members.
-const prepareAnalyticsData = async (userId, rawData) => {
-    const data = rawData && typeof rawData === 'object' && !Array.isArray(rawData) ? { ...rawData } : {};
+const requireLeader = async (userId, groupId) => {
+    if (!(await accessModel.isGroupLeader(userId, groupId))) {
+        throw new AppError('NOT_GROUP_ADMIN', 'Only team leaders can view team analytics', 403);
+    }
+};
+
+// Client-sent team_context is never trusted; the real one is only built for group leaders.
+// Without `action` (legacy callers) the strictest rule applies: any real group needs a leader.
+const prepareAnalyticsData = async (userId, rawData, action) => {
+    const data = isPlainObject(rawData) ? { ...rawData } : {};
     delete data.team_context;
     const groupId = data.group_id || data.groupId;
-    if (isUuid(groupId)) {
-        if (!(await accessModel.isGroupMember(userId, groupId))) {
-            throw new AppError('NOT_GROUP_MEMBER', 'You are not a member of this group', 403);
-        }
-        data.team_context = await buildTeamContext(groupId);
+
+    if (action !== undefined && !TEAM_ANALYTICS_ACTIONS.has(action) && !USER_ANALYTICS_ACTIONS.has(action)) {
+        throw new AppError('VALIDATION_ERROR', 'Unknown analytics action', 400);
     }
+    if (USER_ANALYTICS_ACTIONS.has(action)) {
+        const target = data.user_id || data.userId;
+        if (target === undefined || target === null || sameId(String(target), String(userId))) return data;
+        if (!isUuid(String(target)) || !isUuid(groupId)) throw new AppError('VALIDATION_ERROR', 'user_id and group_id must be valid UUIDs', 400);
+        await requireLeader(userId, groupId);
+        if (!(await accessModel.isGroupMember(String(target), groupId))) {
+            throw new AppError('NOT_GROUP_MEMBER', 'The user is not a member of this group', 403);
+        }
+        return data;
+    }
+    if (!isUuid(groupId)) {
+        // Demo groups (`test-group-*`) keep using the Python mock data.
+        if (groupId === undefined || groupId === null || DEMO_GROUP_RE.test(String(groupId))) return data;
+        throw new AppError('VALIDATION_ERROR', 'group_id must be a valid UUID', 400);
+    }
+    await requireLeader(userId, groupId);
+    data.team_context = await buildTeamContext(groupId);
     return data;
 };
 
@@ -90,9 +145,12 @@ class UserSession {
         this.lastActivity = new Date();
         this.chatHistory = []; // Store chat messages
         this.maxHistorySize = 100; // Limit history to prevent memory issues
-        this.context = null;
         this.analysis = null;
         this.pendingPlans = new Map();
+        // requestId sent to Python -> { kind: 'chat' | 'analytics', clientRequestId, timer }
+        this.pendingRequests = new Map();
+        // Set only while Python is waiting for the user to confirm a project plan (save_plan gate).
+        this.awaitingPlanConfirmation = false;
 
         this.initialize();
     }
@@ -112,7 +170,7 @@ class UserSession {
     // The new message types are routed before the `user` early return below.
     handleMessage(message) {
         this.lastActivity = new Date();
-        if (!message || typeof message !== 'object') return undefined;
+        if (!isPlainObject(message)) return undefined;
 
         switch (message.type) {
             case 'ping':
@@ -133,8 +191,25 @@ class UserSession {
         }
 
         // Handle regular chat messages
-        if (message.type !== 'user' || !message.content) {
+        if (message.type !== 'user' || typeof message.content !== 'string' || !message.content.trim()) {
             return undefined;
+        }
+        return this.run(this.handleUserMessage(message));
+    }
+
+    run(promise) {
+        return promise.catch((error) => this.sendErrorFrom(error));
+    }
+
+    async handleUserMessage(message) {
+        const requestId = uuidv4();
+        const clientRequestId = clientRequestIdOf(message.requestId) || requestId;
+        if (message.content.length > MAX_CHAT_MESSAGE) {
+            return this.sendError('MESSAGE_TOO_LONG', { requestId: clientRequestId });
+        }
+        const retryAfterSec = takeChatSlot(this.userId);
+        if (retryAfterSec > 0) {
+            return this.sendError('RATE_LIMITED', { requestId: clientRequestId, retryAfterSec, message: CHAT_RATE_LIMITED_MESSAGE, content: CHAT_RATE_LIMITED_MESSAGE });
         }
 
         // Store user message in history
@@ -144,36 +219,58 @@ class UserSession {
             timestamp: new Date()
         });
 
-        const request = {
-            requestId: uuidv4(),
+        this.trackRequest(requestId, 'chat', clientRequestId);
+        const sent = await this.llmService.send({
+            requestId,
             sessionId: this.sessionId,
             method: 'handle_user_message', // All user messages from the client go to this single method
             params: {
                 message: message.content,
                 context: { userId: this.userId }
             }
-        };
-
-        return this.run(this.llmService.send(request).then((sent) => {
-            if (!sent) this.sendError('LLM_ERROR');
-        }));
+        });
+        if (!sent) this.failRequest(requestId, 'LLM_ERROR');
+        return undefined;
     }
 
-    run(promise) {
-        return promise.catch((error) => this.sendErrorFrom(error));
+    // Every request to Python gets an answer for the client: Python's, an error, or LLM_TIMEOUT.
+    trackRequest(requestId, kind, clientRequestId) {
+        this.clearRequest(requestId);
+        const timer = setTimeout(() => this.failRequest(requestId, 'LLM_TIMEOUT'), REQUEST_TIMEOUT_MS);
+        if (timer.unref) timer.unref();
+        this.pendingRequests.set(requestId, { kind, clientRequestId, timer });
+    }
+
+    clearRequest(requestId) {
+        const pending = requestId ? this.pendingRequests.get(requestId) : null;
+        if (!pending) return null;
+        clearTimeout(pending.timer);
+        this.pendingRequests.delete(requestId);
+        return pending;
+    }
+
+    failRequest(requestId, code) {
+        const pending = this.clearRequest(requestId);
+        if (!pending) return;
+        if (pending.kind === 'analytics') {
+            this.sendMessage({ type: 'analytics_error', error: code, requestId: pending.clientRequestId, timestamp: new Date() });
+        } else {
+            this.sendError(code, { requestId: pending.clientRequestId });
+        }
     }
 
     async handleAnalyticsMessage(message) {
-        const requestId = typeof message.requestId === 'string' ? message.requestId.slice(0, 100) : uuidv4();
+        const requestId = clientRequestIdOf(message.requestId) || uuidv4();
         let data;
         try {
-            data = await prepareAnalyticsData(this.userId, message.data);
+            data = await prepareAnalyticsData(this.userId, message.data, message.action);
         } catch (error) {
-            if (!isAppError(error)) console.error('Failed to build the analytics team context:', error.message);
+            if (!isAppError(error)) console.error('Failed to prepare the analytics request:', error.message);
             this.sendMessage({ type: 'analytics_error', error: isAppError(error) ? error.code : 'ANALYTICS_ERROR', requestId, timestamp: new Date() });
             return;
         }
 
+        this.trackRequest(requestId, 'analytics', requestId);
         const sent = await this.llmService.send({
             requestId,
             sessionId: this.sessionId,
@@ -181,9 +278,7 @@ class UserSession {
             action: message.action,
             data
         });
-        if (!sent) {
-            this.sendMessage({ type: 'analytics_error', error: 'LLM_ERROR', requestId, timestamp: new Date() });
-        }
+        if (!sent) this.failRequest(requestId, 'LLM_ERROR');
     }
 
     async loadMemberGroup(groupId) {
@@ -191,30 +286,29 @@ class UserSession {
         if (!(await accessModel.isGroupMember(this.userId, groupId))) {
             throw new AppError('NOT_GROUP_MEMBER', 'You are not a member of this group', 403);
         }
-        const groups = await groupModel.getGroupsByUserId(this.userId);
-        const group = (groups || []).find((g) => sameId(String(g.gid), groupId));
-        return { groupId, groupName: group ? group.name : null };
+        const group = await groupModel.getGroupById(groupId);
+        if (!group) throw new AppError('NOT_GROUP_MEMBER', 'You are not a member of this group', 403);
+        return { groupId, groupName: group.name };
     }
 
     async handleSetContext(message) {
         const groupId = message.groupId === undefined || message.groupId === '' ? null : message.groupId;
         if (groupId === null) {
-            this.context = null;
             this.sendMessage({ type: 'context', groupId: null, groupName: null, repo: null });
             return;
         }
         const group = await this.loadMemberGroup(groupId);
         const repo = await githubModel.getGroupRepository(groupId);
-        this.context = {
+        this.sendMessage({
+            type: 'context',
             groupId,
             groupName: group.groupName,
-            repo: repo ? { fullName: repo.fullName, defaultBranch: repo.defaultBranch } : null,
-        };
-        this.sendMessage({ type: 'context', ...this.context });
+            repo: repo ? { fullName: repo.fullName, defaultBranch: repo.defaultBranch, aiAnalysisEnabled: repo.aiAnalysisEnabled === true } : null,
+        });
     }
 
     async handleRepoAnalysis(message) {
-        const clientRequestId = clientRequestIdOf(message.requestId);
+        const clientRequestId = clientRequestIdOf(message.requestId) || uuidv4();
         const fail = (code, extra = {}) => this.sendError(code, { requestId: clientRequestId, ...extra });
 
         const { groupId } = message;
@@ -227,14 +321,23 @@ class UserSession {
         // Claimed synchronously so a second request in flight sees ANALYSIS_IN_PROGRESS.
         const analysis = { requestId: uuidv4(), clientRequestId, groupId, groupName: null, existingTaskNames: [], timer: null };
         this.analysis = analysis;
+        let releaseCooldown = null;
         try {
             const group = await this.loadMemberGroup(groupId);
             analysis.groupName = group.groupName;
             const repo = await githubModel.getGroupRepository(groupId);
             if (!repo) throw new AppError('REPO_NOT_CONNECTED', 'This group has no connected repository', 409);
             if (repo.suspendedAt) throw new AppError('INSTALLATION_SUSPENDED', 'The GitHub App installation is suspended', 409);
+            if (repo.aiAnalysisEnabled !== true) throw new AppError('AI_ANALYSIS_DISABLED', 'AI analysis is disabled for this group', 409);
 
+            // The cooldown is claimed now and given back if nothing reaches the AI provider.
+            const previous = lastAnalysisByUser.get(this.userId);
             lastAnalysisByUser.set(this.userId, Date.now());
+            releaseCooldown = () => {
+                if (previous === undefined) lastAnalysisByUser.delete(this.userId);
+                else lastAnalysisByUser.set(this.userId, previous);
+            };
+
             this.sendMessage({ type: 'repo_analysis_status', requestId: clientRequestId, stage: 'fetching_repo' });
             const [snapshot, tasks, nodes] = await Promise.all([
                 buildRepoSnapshot(repo),
@@ -261,8 +364,12 @@ class UserSession {
                     existing: buildExisting(tasks || [], nodes || []),
                 },
             });
-            if (!sent) this.finishAnalysis(analysis, { code: 'LLM_ERROR' });
+            if (!sent) {
+                releaseCooldown();
+                this.finishAnalysis(analysis, { code: 'LLM_ERROR' });
+            }
         } catch (error) {
+            if (releaseCooldown) releaseCooldown();
             this.finishAnalysis(analysis, { error });
         }
         return undefined;
@@ -285,7 +392,7 @@ class UserSession {
         if (!analysis || response.requestId !== analysis.requestId) return;
 
         if (response.event === 'repo_analysis_error') {
-            const error = response.error && typeof response.error === 'object' ? response.error : {};
+            const error = isPlainObject(response.error) ? response.error : {};
             const code = PASSTHROUGH_ANALYSIS_CODES.has(error.code) ? error.code : 'ANALYSIS_FAILED';
             this.finishAnalysis(analysis, { code, retryAfterSec: Number(error.retryAfterSec) });
             return;
@@ -364,22 +471,31 @@ class UserSession {
     }
 
     async forwardResponseToClient(response) {
-        if (!response || typeof response !== 'object') return;
+        if (!isPlainObject(response)) return;
         const { event } = response;
-        const data = response.data || {};
+        const data = isPlainObject(response.data) ? response.data : {};
 
         if (event === 'repo_analysis_plan' || event === 'repo_analysis_error') {
             this.handleAnalysisReply(response);
         } else if (event === 'response') {
             // LLM failures in the chat arrive here as friendly text (data.error carries the code).
-            this.sendMessage({ type: 'assistant', content: data.content, timestamp: new Date() });
+            const pending = this.clearRequest(response.requestId);
+            this.awaitingPlanConfirmation = data.awaiting_confirmation === true;
+            const message = { type: 'assistant', content: data.content, timestamp: new Date() };
+            if (pending) message.requestId = pending.clientRequestId;
+            this.sendMessage(message);
         } else if (event === 'response_chunk') {
-            this.sendMessage({ type: 'assistant_chunk', content: response.data, timestamp: new Date() });
+            const content = typeof response.data === 'string' ? response.data : data.content;
+            if (typeof content === 'string' && content) {
+                this.sendMessage({ type: 'assistant_chunk', content, timestamp: new Date() });
+            }
         } else if (event === 'response_stream_end') {
             // The stream end event can be used to signify the end of a stream on the client.
         } else if (event === 'save_plan') {
-            await this.saveProjectPlan(data);
+            this.clearRequest(response.requestId);
+            await this.saveProjectPlan(response.requestId, data);
         } else if (event === 'analytics_response') {
+            this.clearRequest(response.requestId);
             this.sendMessage({
                 type: 'analytics_response',
                 data: response.data,
@@ -387,22 +503,39 @@ class UserSession {
                 timestamp: new Date()
             });
         } else if (event === 'analytics_error') {
-            this.sendMessage({
-                type: 'analytics_error',
-                error: response.error,
-                requestId: response.requestId,
-                timestamp: new Date()
-            });
+            this.clearRequest(response.requestId);
+            const code = typeof response.code === 'string' ? response.code : 'ANALYTICS_ERROR';
+            this.sendMessage({ type: 'analytics_error', error: code, code, requestId: response.requestId, timestamp: new Date() });
         } else if (event === 'error' || response.error) {
-            if (this.analysis && response.requestId && response.requestId === this.analysis.requestId) {
-                this.finishAnalysis(this.analysis, { code: 'ANALYSIS_FAILED' });
-            } else {
-                this.sendError('LLM_ERROR');
-            }
+            this.handlePythonError(response);
         }
     }
 
-    async saveProjectPlan(data) {
+    // Python's error text never reaches the client, only a known code (default LLM_ERROR).
+    handlePythonError(response) {
+        const code = typeof response.code === 'string' ? response.code
+            : (isPlainObject(response.error) && typeof response.error.code === 'string' ? response.error.code : null);
+        const knownCode = code && PASSTHROUGH_ANALYSIS_CODES.has(code) ? code : null;
+        if (this.analysis && response.requestId && response.requestId === this.analysis.requestId) {
+            this.finishAnalysis(this.analysis, { code: knownCode || 'ANALYSIS_FAILED' });
+        } else if (response.requestId && this.pendingRequests.has(response.requestId)) {
+            this.failRequest(response.requestId, knownCode || 'LLM_ERROR');
+        } else {
+            this.sendError(knownCode || 'LLM_ERROR');
+        }
+    }
+
+    // Python only asks to save after it showed a plan awaiting confirmation; any other save_plan
+    // is refused. Python always gets the outcome back (it keeps the plan until then).
+    async saveProjectPlan(pythonRequestId, data) {
+        const requestId = pythonRequestId || uuidv4();
+        if (!this.awaitingPlanConfirmation) {
+            console.warn(`Ignored save_plan for user ${this.userId}: no project plan was awaiting confirmation`);
+            await this.notifySaveResult(requestId, { success: false, errorCode: 'PLAN_NOT_EXPECTED' });
+            return;
+        }
+        this.awaitingPlanConfirmation = false;
+
         let result;
         try {
             result = await projectService.createProjectFromPlan(data.plan, data.original_message, this.userId);
@@ -420,9 +553,15 @@ class UserSession {
                 groupName,
                 timestamp: new Date()
             });
+            await this.notifySaveResult(requestId, { success: true, groupId: result.groupId, groupName });
         } else {
             this.sendError('SAVE_FAILED', { content: 'No se pudo crear el proyecto.' });
+            await this.notifySaveResult(requestId, { success: false, errorCode: 'SAVE_FAILED' });
         }
+    }
+
+    notifySaveResult(requestId, params) {
+        return this.llmService.send({ requestId, sessionId: this.sessionId, method: 'save_plan_result', params }, { expectReply: false });
     }
 
     sendError(code, extra = {}) {
@@ -534,6 +673,8 @@ class UserSession {
         if (this.analysis) clearTimeout(this.analysis.timer);
         this.analysis = null;
         this.pendingPlans.clear();
+        for (const pending of this.pendingRequests.values()) clearTimeout(pending.timer);
+        this.pendingRequests.clear();
 
         if (this.websocket && this.websocket.readyState === 1) {
             this.websocket.close(1000, 'Session cleanup');
@@ -544,6 +685,8 @@ class UserSession {
 
 UserSession.prepareAnalyticsData = prepareAnalyticsData;
 UserSession.lastAnalysisByUser = lastAnalysisByUser;
+UserSession.chatWindowByUser = chatWindowByUser;
+UserSession.REQUEST_TIMEOUT_MS = REQUEST_TIMEOUT_MS;
 UserSession.ANALYSIS_TIMEOUT_MS = ANALYSIS_TIMEOUT_MS;
 UserSession.PLAN_TTL_MS = PLAN_TTL_MS;
 

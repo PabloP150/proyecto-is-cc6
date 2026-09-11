@@ -1,4 +1,4 @@
-jest.mock('../../models/github.model', () => ({ getGroupRepository: jest.fn() }), { virtual: true });
+jest.mock('../../models/github.model', () => ({ getGroupRepository: jest.fn() }));
 
 const snapshotService = require('../../services/github/repoSnapshot');
 const { useFakeGitHub, tokenRoute, REPO } = require('./helpers/fakeGitHub');
@@ -90,17 +90,34 @@ describe('buildRepoSnapshot', () => {
         expect(issuesMint.body.permissions).toEqual({ contents: 'read', issues: 'read' });
     });
 
-    test('an empty repository still produces a (small) snapshot', async () => {
+    test.each([
+        ['empty repository', { 'GET /repos/octo/demo/commits': { status: 409, body: { message: 'Git Repository is empty.' } } }, 'REPO_EMPTY'],
+        ['repository no longer accessible', { 'GET /repos/octo/demo': { status: 404 } }, 'REPO_NOT_ACCESSIBLE'],
+        ['tree unavailable', { [`GET /repos/octo/demo/git/trees/${'t'.repeat(40)}`]: { status: 404 } }, 'REPO_NOT_ACCESSIBLE'],
+    ])('%s → the snapshot fails with %s (no plan on an empty snapshot)', async (_label, overrides, code) => {
+        useFakeGitHub({ ...routes(), ...overrides });
+        await expect(buildRepoSnapshot({ ...REPO })).rejects.toMatchObject({ code });
+    });
+
+    test('GitHub App not configured → GITHUB_NOT_CONFIGURED propagates', async () => {
+        useFakeGitHub(routes());
+        const { githubApp } = require('../../services/github/githubApp');
+        githubApp.options = { appId: '1', privateKey: 'bm90LWEta2V5' };
+        await expect(buildRepoSnapshot({ ...REPO })).rejects.toMatchObject({ code: 'GITHUB_NOT_CONFIGURED' });
+    });
+
+    test('optional sections degrade: no README and no Issues permission', async () => {
         useFakeGitHub({
             ...routes(),
-            'GET /repos/octo/demo/commits': { status: 409, body: { message: 'Git Repository is empty.' } },
             'GET /repos/octo/demo/readme': { status: 404 },
-            'GET /repos/octo/demo/issues': { body: [] },
+            'POST /app/installations/77/access_tokens': (call) => (call.body.permissions.issues
+                ? { status: 422, body: { message: 'The permissions requested are not granted to this installation.' } }
+                : tokenRoute('ghs_snap')(call)),
         });
         const snapshot = await buildRepoSnapshot({ ...REPO });
-        expect(snapshot.tree).toEqual([]);
-        expect(snapshot.commits).toEqual([]);
         expect(snapshot.readme).toBe('');
+        expect(snapshot.issues).toEqual([]);
+        expect(snapshot.tree.length).toBeGreaterThan(0);
     });
 
     test('a GitHub rate limit aborts the snapshot', async () => {

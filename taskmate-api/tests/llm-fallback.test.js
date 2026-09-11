@@ -31,10 +31,10 @@ jest.mock('ws', () => {
     return FakeWebSocket;
 });
 jest.mock('../services/ProjectService', () => ({ createProjectFromPlan: jest.fn(), addPlanToGroup: jest.fn() }));
-jest.mock('../services/analyticsContext', () => ({ buildTeamContext: jest.fn() }), { virtual: true });
-jest.mock('../models/access.model', () => ({ isGroupMember: jest.fn() }), { virtual: true });
-jest.mock('../models/group.model', () => ({ getGroupsByUserId: jest.fn() }));
-jest.mock('../models/github.model', () => ({ getGroupRepository: jest.fn() }), { virtual: true });
+jest.mock('../services/analyticsContext', () => ({ buildTeamContext: jest.fn() }));
+jest.mock('../models/access.model', () => ({ isGroupMember: jest.fn(), isGroupLeader: jest.fn() }));
+jest.mock('../models/group.model', () => ({ getGroupById: jest.fn() }));
+jest.mock('../models/github.model', () => ({ getGroupRepository: jest.fn() }));
 jest.mock('../models/tasks.model', () => ({ getTasksByGroupId: jest.fn() }));
 jest.mock('../models/nodes.model', () => ({ getNodesByGroupId: jest.fn() }));
 jest.mock('../services/github/repoSnapshot', () => ({
@@ -77,13 +77,15 @@ describe('LLM fallback (Node side)', () => {
         llmService.connect();
 
         accessModel.isGroupMember.mockResolvedValue(true);
-        groupModel.getGroupsByUserId.mockResolvedValue([{ gid: GID, name: 'Demo' }]);
-        githubModel.getGroupRepository.mockResolvedValue({ gid: GID, repoId: 1, fullName: 'o/r', defaultBranch: 'main', suspendedAt: null });
+        accessModel.isGroupLeader.mockResolvedValue(true);
+        groupModel.getGroupById.mockResolvedValue({ gid: GID, name: 'Demo' });
+        githubModel.getGroupRepository.mockResolvedValue({ gid: GID, repoId: 1, fullName: 'o/r', defaultBranch: 'main', suspendedAt: null, aiAnalysisEnabled: true });
         tasksModel.getTasksByGroupId.mockResolvedValue([]);
         nodesModel.getNodesByGroupId.mockResolvedValue([]);
         buildRepoSnapshot.mockResolvedValue({ repo: {}, tree: [], readme: '', manifests: [], commits: [], issues: [] });
         buildTeamContext.mockResolvedValue({ team_members: [] });
         UserSession.lastAnalysisByUser.clear();
+        UserSession.chatWindowByUser.clear();
 
         ws = clientSocket();
         session = new UserSession(UID, ws);
@@ -101,7 +103,7 @@ describe('LLM fallback (Node side)', () => {
         });
 
         test('an analytics request ends in analytics_error', async () => {
-            await session.handleMessage({ type: 'analytics', action: 'x', requestId: 'a1', data: { group_id: GID } });
+            await session.handleMessage({ type: 'analytics', action: 'get_team_analytics', requestId: 'a1', data: { group_id: GID } });
             expect(lastOfType(ws, 'analytics_error')).toMatchObject({ error: 'LLM_ERROR', requestId: 'a1' });
         });
 
@@ -164,6 +166,23 @@ describe('LLM fallback (Node side)', () => {
             fromPython({ event: 'response', sessionId: session.sessionId, requestId: 'r', data: { content: 'El asistente está saturado, intenta en un momento.', error: { code: 'LLM_RATE_LIMIT', retryAfterSec: 10 } } });
             await flush();
             expect(lastOfType(ws, 'assistant')).toMatchObject({ content: 'El asistente está saturado, intenta en un momento.' });
+        });
+
+        test('the link drops mid-request → the pending chat gets LLM_ERROR immediately', async () => {
+            await session.handleMessage({ type: 'user', content: 'hola', requestId: 'c-1' });
+            pythonSocket().readyState = WebSocket.CLOSED;
+            pythonSocket().emit('close');
+            await flush();
+            expect(lastOfType(ws, 'error')).toMatchObject({ code: 'LLM_ERROR', requestId: 'c-1' });
+        });
+
+        test('the link drops mid-analysis → LLM_ERROR for the analysis', async () => {
+            await session.handleMessage({ type: 'repo_analysis', requestId: 'c1', groupId: GID });
+            pythonSocket().readyState = WebSocket.CLOSED;
+            pythonSocket().emit('close');
+            await flush();
+            expect(lastOfType(ws, 'error')).toMatchObject({ code: 'LLM_ERROR', requestId: 'c1' });
+            expect(session.analysis).toBeNull();
         });
 
         test('an untyped Python error becomes a generic LLM_ERROR without internals', async () => {

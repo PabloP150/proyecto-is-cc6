@@ -1,5 +1,5 @@
 const { AppError } = require('../../helpers/errors');
-const { githubApp, USER_AGENT } = require('./githubApp');
+const { githubApp, USER_AGENT, API_BASE, API_VERSION } = require('./githubApp');
 
 const OAUTH_TOKEN_URL = 'https://github.com/login/oauth/access_token';
 const MAX_INSTALLATIONS = 10;
@@ -39,6 +39,39 @@ const exchangeCodeForUserToken = async (code) => {
     return data.access_token;
 };
 
+const getAuthenticatedLogin = async (userToken) => {
+    const { data } = await githubApp.request({ token: userToken }, 'GET', '/user');
+    if (!data || typeof data.login !== 'string') throw oauthError();
+    return data.login;
+};
+
+// Best effort: the token is useless to TaskMate after the callback, so it is revoked at once.
+// Failures are only logged (never the token itself) and never block the flow.
+const revokeUserToken = async (userToken) => {
+    const clientId = process.env.GITHUB_APP_CLIENT_ID;
+    const clientSecret = process.env.GITHUB_APP_CLIENT_SECRET;
+    if (!userToken || !clientId || !clientSecret) return false;
+    try {
+        const res = await githubApp.fetch(`${API_BASE}/applications/${encodeURIComponent(clientId)}/token`, {
+            method: 'DELETE',
+            headers: {
+                Accept: 'application/vnd.github+json',
+                'X-GitHub-Api-Version': API_VERSION,
+                'User-Agent': USER_AGENT,
+                'Content-Type': 'application/json',
+                Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`,
+            },
+            body: JSON.stringify({ access_token: userToken }),
+            signal: AbortSignal.timeout(githubApp.timeoutMs),
+        });
+        if (res.status !== 204 && !res.ok) console.warn(`GitHub user token revocation answered ${res.status}`);
+        return res.status === 204 || res.ok;
+    } catch (error) {
+        console.warn('GitHub user token revocation failed:', error && error.name);
+        return false;
+    }
+};
+
 const listUserInstallations = (userToken) =>
     githubApp.paginate({ token: userToken }, '/user/installations', { itemsKey: 'installations', maxItems: MAX_INSTALLATIONS * 10 });
 
@@ -51,6 +84,8 @@ const listUserInstallationRepos = (userToken, installationId) =>
 
 module.exports = {
     exchangeCodeForUserToken,
+    getAuthenticatedLogin,
+    revokeUserToken,
     listUserInstallations,
     listUserInstallationRepos,
     MAX_INSTALLATIONS,

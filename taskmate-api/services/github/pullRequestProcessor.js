@@ -1,5 +1,6 @@
 const githubModel = require('../../models/github.model');
 const tasksModel = require('../../models/tasks.model');
+const AnalyticsIntegration = require('../AnalyticsIntegration');
 
 const MAX_TITLE = 256;
 
@@ -37,4 +38,12 @@ const applyPullRequestInTx = async (pr, { repoId, defaultBranch }, { tx }) => {
     return { state: applied && applied.state, changed: Boolean(applied && applied.changed), completion };
 };
 
-module.exports = { isForkPullRequest, toPullRequestRecord, applyPullRequestInTx };
+// Same hook as POST /api/tasks/:tid/complete; call only after the transaction committed.
+const notifyCompletion = (completion) => {
+    if (!completion || completion.status !== 'completed') return;
+    Promise.resolve()
+        .then(() => AnalyticsIntegration.onTaskCompletion(completion.tid, true, { percentage: 100 }))
+        .catch((error) => console.error('Analytics tracking failed for task completion:', error && error.message));
+};
+
+module.exports = { isForkPullRequest, toPullRequestRecord, applyPullRequestInTx, notifyCompletion };

@@ -9,6 +9,9 @@ const REQUEST_TIMEOUT_MS = 10 * 1000;
 const TOKEN_REFRESH_MARGIN_MS = 5 * 60 * 1000;
 const APP_JWT_TTL_S = 9 * 60;
 const APP_JWT_BACKDATE_S = 60;
+// Installation tokens allow 5000 requests/h; TaskMate keeps headroom below that.
+const DEFAULT_HOURLY_BUDGET = 4000;
+const HOUR_MS = 60 * 60 * 1000;
 
 // Minimal permission sets requested for installation tokens (the App must have at least these).
 const PERMISSIONS = Object.freeze({
@@ -96,8 +99,9 @@ const normalizeRepoIds = (repoIds) => {
 };
 
 class GitHubApp {
-    constructor({ appId, privateKey, fetchImpl, now, apiBase = API_BASE, timeoutMs = REQUEST_TIMEOUT_MS } = {}) {
-        this.options = { appId, privateKey };
+    constructor({ appId, privateKey, fetchImpl, now, apiBase = API_BASE, timeoutMs = REQUEST_TIMEOUT_MS, hourlyBudget } = {}) {
+        this.options = { appId, privateKey, hourlyBudget };
+        this.budgets = new Map();
         this.fetchImpl = fetchImpl || null;
         this.now = now || (() => Date.now());
         this.apiBase = apiBase;
@@ -190,6 +194,34 @@ class GitHubApp {
         }
     }
 
+    _hourlyBudget() {
+        return Number(this.options.hourlyBudget) || Number(process.env.GITHUB_INSTALLATION_HOURLY_BUDGET) || DEFAULT_HOURLY_BUDGET;
+    }
+
+    _refill(installationId) {
+        const capacity = this._hourlyBudget();
+        const now = this.now();
+        const bucket = this.budgets.get(installationId) || { tokens: capacity, updatedAt: now };
+        bucket.tokens = Math.min(capacity, bucket.tokens + ((now - bucket.updatedAt) * capacity) / HOUR_MS);
+        bucket.updatedAt = now;
+        this.budgets.set(installationId, bucket);
+        return bucket;
+    }
+
+    // Requests TaskMate may still make with this installation right now (token bucket).
+    availableBudget(installationId) {
+        return Math.floor(this._refill(Number(installationId)).tokens);
+    }
+
+    _takeBudget(installationId) {
+        const bucket = this._refill(Number(installationId));
+        if (bucket.tokens < 1) {
+            const retryAfterSec = Math.max(1, Math.ceil(((1 - bucket.tokens) * HOUR_MS) / this._hourlyBudget() / 1000));
+            throw new AppError('GITHUB_RATE_LIMITED', 'GitHub request budget exhausted, try again later', 503, { retryAfterSec });
+        }
+        bucket.tokens -= 1;
+    }
+
     invalidateInstallation(installationId) {
         const id = Number(installationId);
         for (const [key, entry] of this.tokenCache) {
@@ -236,6 +268,7 @@ class GitHubApp {
     // auth: {installationId} | {token} (user token) | {app: true}. Returns {status, data, headers}.
     async request(auth, method, path, options = {}) {
         const { query, body, repoIds, permissions, allowStatus = [], notFoundCode, tokenMint = false, retried = false } = options;
+        if (auth && auth.installationId !== undefined) this._takeBudget(auth.installationId);
         const headers = {
             Accept: 'application/vnd.github+json',
             'X-GitHub-Api-Version': API_VERSION,

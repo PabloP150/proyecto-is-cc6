@@ -3,7 +3,7 @@ jest.mock('../../models/github.model', () => ({
     getTaskBranch: jest.fn(),
     insertTaskBranch: jest.fn(),
     findTaskByBranch: jest.fn(),
-}), { virtual: true });
+}));
 jest.mock('../../models/tasks.model', () => ({ getTask: jest.fn() }));
 
 const githubModel = require('../../models/github.model');

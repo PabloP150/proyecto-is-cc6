@@ -203,6 +203,26 @@ describe('GitHubApp — request / paginate / errors', () => {
         expect(calls).toBe(2);
     });
 
+    test('per-installation budget: exhausted → GITHUB_RATE_LIMITED with retryAfterSec, refills over time', async () => {
+        let nowMs = Date.now();
+        const { app } = createTestApp({ ...base, 'GET /repos/o/r': { body: {} } }, { now: () => nowMs, hourlyBudget: 3 });
+        for (let i = 0; i < 3; i += 1) await app.request({ installationId: 1 }, 'GET', '/repos/o/r');
+        expect(app.availableBudget(1)).toBe(0);
+        await expect(app.request({ installationId: 1 }, 'GET', '/repos/o/r'))
+            .rejects.toMatchObject({ code: 'GITHUB_RATE_LIMITED', status: 503, details: { retryAfterSec: expect.any(Number) } });
+        expect(app.availableBudget(2)).toBe(3);
+        nowMs += 20 * 60 * 1000;
+        expect(app.availableBudget(1)).toBe(1);
+        await expect(app.request({ installationId: 1 }, 'GET', '/repos/o/r')).resolves.toBeTruthy();
+    });
+
+    test('user and app requests do not use the installation budget', async () => {
+        const { app } = createTestApp({ 'GET /user': { body: { login: 'x' } } }, { hourlyBudget: 1 });
+        await app.request({ token: 'u' }, 'GET', '/user');
+        await app.request({ token: 'u' }, 'GET', '/user');
+        expect(app.availableBudget(1)).toBe(1);
+    });
+
     test('refuses absolute URLs to other hosts', async () => {
         const { app } = createTestApp({});
         await expect(app.request({ token: 'x' }, 'GET', 'https://evil.example.com/x')).rejects.toMatchObject({ code: 'GITHUB_ERROR' });

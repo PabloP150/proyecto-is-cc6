@@ -5,10 +5,10 @@ jest.mock('../services/LLMService', () => {
     return emitter;
 });
 jest.mock('../services/ProjectService', () => ({ createProjectFromPlan: jest.fn(), addPlanToGroup: jest.fn() }));
-jest.mock('../services/analyticsContext', () => ({ buildTeamContext: jest.fn() }), { virtual: true });
-jest.mock('../models/access.model', () => ({ isGroupMember: jest.fn(), isGroupAdmin: jest.fn() }), { virtual: true });
-jest.mock('../models/group.model', () => ({ getGroupsByUserId: jest.fn() }));
-jest.mock('../models/github.model', () => ({ getGroupRepository: jest.fn() }), { virtual: true });
+jest.mock('../services/analyticsContext', () => ({ buildTeamContext: jest.fn() }));
+jest.mock('../models/access.model', () => ({ isGroupMember: jest.fn(), isGroupAdmin: jest.fn(), isGroupLeader: jest.fn() }));
+jest.mock('../models/group.model', () => ({ getGroupById: jest.fn() }));
+jest.mock('../models/github.model', () => ({ getGroupRepository: jest.fn() }));
 jest.mock('../models/tasks.model', () => ({ getTasksByGroupId: jest.fn() }));
 jest.mock('../models/nodes.model', () => ({ getNodesByGroupId: jest.fn() }));
 jest.mock('../services/github/repoSnapshot', () => ({
@@ -62,13 +62,15 @@ describe('UserSession', () => {
         llmService.removeAllListeners();
         llmService.send.mockResolvedValue(true);
         accessModel.isGroupMember.mockResolvedValue(true);
-        groupModel.getGroupsByUserId.mockResolvedValue([{ gid: GID.toUpperCase(), name: 'Mi proyecto', adminId: UID }]);
-        githubModel.getGroupRepository.mockResolvedValue({ gid: GID, repoId: 500, fullName: 'octo/demo', defaultBranch: 'main', suspendedAt: null });
+        accessModel.isGroupLeader.mockResolvedValue(true);
+        groupModel.getGroupById.mockResolvedValue({ gid: GID.toUpperCase(), name: 'Mi proyecto', adminId: UID });
+        githubModel.getGroupRepository.mockResolvedValue({ gid: GID, repoId: 500, fullName: 'octo/demo', defaultBranch: 'main', suspendedAt: null, aiAnalysisEnabled: true });
         tasksModel.getTasksByGroupId.mockResolvedValue([{ name: 'Existing task', list: 'To Do', percentage: 0 }]);
         nodesModel.getNodesByGroupId.mockResolvedValue([]);
         buildRepoSnapshot.mockResolvedValue(SNAPSHOT);
         projectService.addPlanToGroup.mockResolvedValue({ taskIds: ['t1'], nodeIds: ['n1'] });
         UserSession.lastAnalysisByUser.clear();
+        UserSession.chatWindowByUser.clear();
         ws = mockWebSocket();
         session = new UserSession(UID, ws);
     });
@@ -92,7 +94,6 @@ describe('UserSession', () => {
         test('initializes and listens to its own session id', () => {
             expect(session.userId).toBe(UID);
             expect(session.websocket).toBe(ws);
-            expect(session.context).toBeNull();
             expect(llmService.listenerCount(session.sessionId)).toBe(1);
         });
 
@@ -157,6 +158,7 @@ describe('UserSession', () => {
 
         test('save_plan → project_created with the name, not the GUID', async () => {
             projectService.createProjectFromPlan.mockResolvedValue({ success: true, groupId: 'AAAA-GUID' });
+            session.awaitingPlanConfirmation = true;
             llmService.emit(session.sessionId, { event: 'save_plan', sessionId: session.sessionId, requestId: 'r', data: { plan: { project_name: 'Tienda online' }, original_message: 'x' } });
             await new Promise((r) => setImmediate(r));
             const msg = lastOfType(ws, 'system');
@@ -166,6 +168,7 @@ describe('UserSession', () => {
 
         test('save_plan failure → SAVE_FAILED error', async () => {
             projectService.createProjectFromPlan.mockResolvedValue({ success: false, error: 'Database error' });
+            session.awaitingPlanConfirmation = true;
             llmService.emit(session.sessionId, { event: 'save_plan', sessionId: session.sessionId, data: { plan: {}, original_message: 'x' } });
             await new Promise((r) => setImmediate(r));
             expect(lastOfType(ws, 'error')).toMatchObject({ code: 'SAVE_FAILED' });
@@ -176,7 +179,7 @@ describe('UserSession', () => {
         test('member → context with repo info', async () => {
             await session.handleMessage({ type: 'set_context', groupId: GID });
             expect(lastOfType(ws, 'context')).toEqual({
-                type: 'context', groupId: GID, groupName: 'Mi proyecto', repo: { fullName: 'octo/demo', defaultBranch: 'main' }, timestamp: expect.any(String),
+                type: 'context', groupId: GID, groupName: 'Mi proyecto', repo: { fullName: 'octo/demo', defaultBranch: 'main', aiAnalysisEnabled: true }, timestamp: expect.any(String),
             });
             expect(accessModel.isGroupMember).toHaveBeenCalledWith(UID, GID);
         });
@@ -185,7 +188,6 @@ describe('UserSession', () => {
             accessModel.isGroupMember.mockResolvedValue(false);
             await session.handleMessage({ type: 'set_context', groupId: GID });
             expect(lastOfType(ws, 'error')).toMatchObject({ code: 'NOT_GROUP_MEMBER' });
-            expect(session.context).toBeNull();
         });
 
         test('null clears the context; invalid ids are rejected', async () => {
@@ -389,21 +391,57 @@ describe('UserSession', () => {
     });
 
     describe('analytics', () => {
-        test('adds the real team_context for members and drops the client one', async () => {
+        test('adds the real team_context for group leaders and drops the client one', async () => {
             buildTeamContext.mockResolvedValue({ team_members: [{ uid: UID }] });
             await session.handleMessage({ type: 'analytics', action: 'get_task_assignment_recommendations', requestId: 'a1', data: { group_id: GID, team_context: { team_members: ['forged'] } } });
+            expect(accessModel.isGroupLeader).toHaveBeenCalledWith(UID, GID);
             expect(pythonRequests()[0]).toMatchObject({ type: 'analytics', requestId: 'a1', data: { group_id: GID, team_context: { team_members: [{ uid: UID }] } } });
         });
 
-        test('non-members get analytics_error NOT_GROUP_MEMBER', async () => {
-            accessModel.isGroupMember.mockResolvedValue(false);
-            await session.handleMessage({ type: 'analytics', action: 'x', requestId: 'a2', data: { group_id: GID } });
-            expect(lastOfType(ws, 'analytics_error')).toMatchObject({ error: 'NOT_GROUP_MEMBER', requestId: 'a2' });
+        test.each([
+            ['get_task_assignment_recommendations'], ['get_team_analytics'], ['get_workload_distribution'], ['get_expertise_rankings'],
+        ])('team-level %s requires a group leader', async (action) => {
+            accessModel.isGroupLeader.mockResolvedValue(false);
+            await session.handleMessage({ type: 'analytics', action, requestId: 'a2', data: { group_id: GID } });
+            expect(lastOfType(ws, 'analytics_error')).toMatchObject({ error: 'NOT_GROUP_ADMIN', requestId: 'a2' });
+            expect(accessModel.isGroupLeader).toHaveBeenCalledWith(UID, GID);
+            expect(buildTeamContext).not.toHaveBeenCalled();
             expect(pythonRequests()).toHaveLength(0);
         });
 
+        test('own user analytics need no leader; another user\'s need leader + membership', async () => {
+            accessModel.isGroupLeader.mockResolvedValue(false);
+            await session.handleMessage({ type: 'analytics', action: 'get_user_analytics', requestId: 'u1', data: { user_id: UID } });
+            expect(pythonRequests()).toHaveLength(1);
+            const OTHER = '33333333-3333-4333-8333-333333333333';
+            await session.handleMessage({ type: 'analytics', action: 'get_user_analytics', requestId: 'u2', data: { user_id: OTHER, group_id: GID } });
+            expect(lastOfType(ws, 'analytics_error')).toMatchObject({ error: 'NOT_GROUP_ADMIN', requestId: 'u2' });
+            accessModel.isGroupLeader.mockResolvedValue(true);
+            accessModel.isGroupMember.mockResolvedValue(false);
+            await session.handleMessage({ type: 'analytics', action: 'get_user_analytics', requestId: 'u3', data: { user_id: OTHER, group_id: GID } });
+            expect(lastOfType(ws, 'analytics_error')).toMatchObject({ error: 'NOT_GROUP_MEMBER', requestId: 'u3' });
+            expect(pythonRequests()).toHaveLength(1);
+        });
+
+        test('unknown actions are rejected', async () => {
+            await session.handleMessage({ type: 'analytics', action: 'drop_everything', requestId: 'a9', data: {} });
+            expect(lastOfType(ws, 'analytics_error')).toMatchObject({ error: 'VALIDATION_ERROR' });
+        });
+
+        test('legacy callers without an action get the strictest rule', async () => {
+            accessModel.isGroupLeader.mockResolvedValue(false);
+            await expect(UserSession.prepareAnalyticsData(UID, { group_id: GID })).rejects.toMatchObject({ code: 'NOT_GROUP_ADMIN' });
+        });
+
+        test('no answer within 90 s → analytics_error LLM_TIMEOUT', async () => {
+            jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] });
+            await session.handleMessage({ type: 'analytics', action: 'get_team_analytics', requestId: 'a5', data: { group_id: GID } });
+            jest.advanceTimersByTime(UserSession.REQUEST_TIMEOUT_MS);
+            expect(lastOfType(ws, 'analytics_error')).toMatchObject({ error: 'LLM_TIMEOUT', requestId: 'a5' });
+        });
+
         test('demo groups keep using the Python mock (no team_context)', async () => {
-            await session.handleMessage({ type: 'analytics', action: 'x', requestId: 'a3', data: { group_id: 'test-group-456', team_context: {} } });
+            await session.handleMessage({ type: 'analytics', action: 'get_team_analytics', requestId: 'a3', data: { group_id: 'test-group-456', team_context: {} } });
             expect(pythonRequests()[0].data).toEqual({ group_id: 'test-group-456' });
             expect(buildTeamContext).not.toHaveBeenCalled();
         });
@@ -412,6 +450,139 @@ describe('UserSession', () => {
             llmService.emit(session.sessionId, { event: 'analytics_response', sessionId: session.sessionId, requestId: 'a4', data: { success: true, no_data: true } });
             await new Promise((r) => setImmediate(r));
             expect(lastOfType(ws, 'analytics_response')).toMatchObject({ requestId: 'a4', data: { no_data: true } });
+        });
+    });
+
+    describe('chat limits and timeouts', () => {
+        test('content over 4000 chars → MESSAGE_TOO_LONG, nothing sent', async () => {
+            await session.handleMessage({ type: 'user', content: 'x'.repeat(4001), requestId: 'm1' });
+            expect(lastOfType(ws, 'error')).toMatchObject({ code: 'MESSAGE_TOO_LONG', requestId: 'm1' });
+            expect(pythonRequests()).toHaveLength(0);
+            expect(session.chatHistory.some((m) => m.type === 'user')).toBe(false);
+        });
+
+        test('non-string or blank content is ignored', async () => {
+            await session.handleMessage({ type: 'user', content: { $gt: '' } });
+            await session.handleMessage({ type: 'user', content: '   ' });
+            expect(pythonRequests()).toHaveLength(0);
+        });
+
+        test('more than 20 messages per minute → RATE_LIMITED (per user, across sessions)', async () => {
+            for (let i = 0; i < 20; i += 1) await session.handleMessage({ type: 'user', content: `m${i}` });
+            const other = new UserSession(UID, mockWebSocket());
+            await other.handleMessage({ type: 'user', content: 'one more', requestId: 'm21' });
+            expect(sent(other.websocket).pop()).toMatchObject({ code: 'RATE_LIMITED', requestId: 'm21', retryAfterSec: expect.any(Number) });
+            expect(pythonRequests()).toHaveLength(20);
+            other.cleanup();
+        });
+
+        test('no answer within 90 s → LLM_TIMEOUT with the client requestId', async () => {
+            jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] });
+            await session.handleMessage({ type: 'user', content: 'hola', requestId: 'c-9' });
+            jest.advanceTimersByTime(UserSession.REQUEST_TIMEOUT_MS);
+            expect(lastOfType(ws, 'error')).toMatchObject({ code: 'LLM_TIMEOUT', requestId: 'c-9' });
+        });
+
+        test('a matching response clears the timeout and carries the requestId', async () => {
+            jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] });
+            await session.handleMessage({ type: 'user', content: 'hola', requestId: 'c-10' });
+            const { requestId } = pythonRequests()[0];
+            llmService.emit(session.sessionId, { event: 'response', requestId, sessionId: session.sessionId, data: { content: 'hey' } });
+            await new Promise((r) => setImmediate(r));
+            jest.advanceTimersByTime(UserSession.REQUEST_TIMEOUT_MS);
+            expect(lastOfType(ws, 'assistant')).toMatchObject({ content: 'hey', requestId: 'c-10' });
+            expect(lastOfType(ws, 'error')).toBeUndefined();
+        });
+
+        test('connection lost while waiting → LLM_ERROR for that request', async () => {
+            await session.handleMessage({ type: 'user', content: 'hola', requestId: 'c-11' });
+            const { requestId } = pythonRequests()[0];
+            llmService.emit(session.sessionId, { event: 'error', sessionId: session.sessionId, requestId, connectionLost: true, error: { code: 'LLM_ERROR', message: 'lost' } });
+            await new Promise((r) => setImmediate(r));
+            expect(lastOfType(ws, 'error')).toMatchObject({ code: 'LLM_ERROR', requestId: 'c-11' });
+            expect(session.pendingRequests.size).toBe(0);
+        });
+
+        test('assistant_chunk only forwards text content', async () => {
+            llmService.emit(session.sessionId, { event: 'response_chunk', sessionId: session.sessionId, data: { content: 'par' } });
+            llmService.emit(session.sessionId, { event: 'response_chunk', sessionId: session.sessionId, data: { weird: true } });
+            await new Promise((r) => setImmediate(r));
+            const chunks = sent(ws).filter((m) => m.type === 'assistant_chunk');
+            expect(chunks).toEqual([expect.objectContaining({ content: 'par' })]);
+        });
+    });
+
+    describe('save_plan gate', () => {
+        const emit = async (msg) => {
+            llmService.emit(session.sessionId, { sessionId: session.sessionId, ...msg });
+            await new Promise((r) => setImmediate(r));
+        };
+        const saveResults = () => llmService.send.mock.calls.filter(([m]) => m.method === 'save_plan_result');
+
+        test('save_plan without a plan awaiting confirmation is refused and reported to Python', async () => {
+            await emit({ event: 'save_plan', requestId: 'sp1', data: { plan: { project_name: 'X' }, original_message: 'x' } });
+            expect(projectService.createProjectFromPlan).not.toHaveBeenCalled();
+            expect(saveResults()).toEqual([[
+                { requestId: 'sp1', sessionId: session.sessionId, method: 'save_plan_result', params: { success: false, errorCode: 'PLAN_NOT_EXPECTED' } },
+                { expectReply: false },
+            ]]);
+        });
+
+        test('after a response awaiting confirmation, save_plan persists and reports success', async () => {
+            projectService.createProjectFromPlan.mockResolvedValue({ success: true, groupId: 'G-1' });
+            await emit({ event: 'response', requestId: 'r1', data: { content: 'Plan listo, ¿lo guardo?', awaiting_confirmation: true } });
+            await emit({ event: 'save_plan', requestId: 'sp2', data: { plan: { project_name: 'Tienda' }, original_message: 'x' } });
+            expect(projectService.createProjectFromPlan).toHaveBeenCalledTimes(1);
+            expect(saveResults()[0][0]).toEqual({
+                requestId: 'sp2', sessionId: session.sessionId, method: 'save_plan_result', params: { success: true, groupId: 'G-1', groupName: 'Tienda' },
+            });
+            await emit({ event: 'save_plan', requestId: 'sp3', data: { plan: { project_name: 'Tienda' } } });
+            expect(projectService.createProjectFromPlan).toHaveBeenCalledTimes(1);
+        });
+
+        test('a failed save is reported to Python as failed', async () => {
+            projectService.createProjectFromPlan.mockResolvedValue({ success: false, error: 'db' });
+            session.awaitingPlanConfirmation = true;
+            await emit({ event: 'save_plan', requestId: 'sp4', data: { plan: {} } });
+            expect(saveResults()[0][0].params).toEqual({ success: false, errorCode: 'SAVE_FAILED' });
+            expect(lastOfType(ws, 'error')).toMatchObject({ code: 'SAVE_FAILED' });
+        });
+
+        test('the flag is cleared by the next response without awaiting_confirmation', async () => {
+            await emit({ event: 'response', data: { content: 'plan', awaiting_confirmation: true } });
+            await emit({ event: 'response', data: { content: '¿Qué cambiamos?' } });
+            await emit({ event: 'save_plan', requestId: 'sp5', data: { plan: {} } });
+            expect(projectService.createProjectFromPlan).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('repo analysis opt-in and cooldown', () => {
+        test('AI analysis disabled for the group → AI_ANALYSIS_DISABLED, cooldown untouched', async () => {
+            githubModel.getGroupRepository.mockResolvedValue({ gid: GID, repoId: 500, fullName: 'octo/demo', defaultBranch: 'main', aiAnalysisEnabled: false });
+            await session.handleMessage({ type: 'repo_analysis', requestId: 'c1', groupId: GID });
+            expect(lastOfType(ws, 'error')).toMatchObject({ code: 'AI_ANALYSIS_DISABLED', requestId: 'c1' });
+            expect(buildRepoSnapshot).not.toHaveBeenCalled();
+            expect(UserSession.lastAnalysisByUser.has(UID)).toBe(false);
+        });
+
+        test('snapshot failure → proper GitHub error and the cooldown is given back', async () => {
+            const { AppError } = require('../helpers/errors');
+            buildRepoSnapshot.mockRejectedValue(new AppError('REPO_EMPTY', 'empty', 409));
+            await session.handleMessage({ type: 'repo_analysis', requestId: 'c1', groupId: GID });
+            expect(lastOfType(ws, 'error')).toMatchObject({ code: 'REPO_EMPTY', requestId: 'c1' });
+            expect(UserSession.lastAnalysisByUser.has(UID)).toBe(false);
+            expect(pythonRequests()).toHaveLength(0);
+            buildRepoSnapshot.mockResolvedValue(SNAPSHOT);
+            await session.handleMessage({ type: 'repo_analysis', requestId: 'c2', groupId: GID });
+            expect(pythonRequests()).toHaveLength(1);
+        });
+
+        test('Python MESSAGE_TOO_LONG on an analysis passes through', async () => {
+            await session.handleMessage({ type: 'repo_analysis', requestId: 'c1', groupId: GID });
+            const request = pythonRequests()[0];
+            llmService.emit(session.sessionId, { event: 'repo_analysis_error', requestId: request.requestId, sessionId: session.sessionId, error: { code: 'MESSAGE_TOO_LONG', message: 'x' } });
+            await new Promise((r) => setImmediate(r));
+            expect(lastOfType(ws, 'error')).toMatchObject({ code: 'MESSAGE_TOO_LONG' });
         });
     });
 });

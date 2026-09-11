@@ -1,4 +1,4 @@
-jest.mock('../../models/github.model', () => ({ getGroupRepository: jest.fn() }), { virtual: true });
+jest.mock('../../models/github.model', () => ({ getGroupRepository: jest.fn() }));
 
 const githubModel = require('../../models/github.model');
 const repoService = require('../../services/github/repoService');

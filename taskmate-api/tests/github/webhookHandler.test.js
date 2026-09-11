@@ -8,15 +8,18 @@ jest.mock('../../models/github.model', () => ({
     upsertRepository: jest.fn(),
     applyPullRequest: jest.fn(),
     findTaskByBranch: jest.fn(),
-}), { virtual: true });
-jest.mock('../../helpers/transaction', () => ({ withTransaction: jest.fn(), isFkViolation: jest.fn() }), { virtual: true });
+}));
+jest.mock('../../helpers/transaction', () => ({ withTransaction: jest.fn(), isFkViolation: jest.fn() }));
 jest.mock('../../models/tasks.model', () => ({ completeTask: jest.fn() }));
+jest.mock('../../services/AnalyticsIntegration', () => ({ onTaskCompletion: jest.fn() }));
 
+const crypto = require('crypto');
 const express = require('express');
 const request = require('supertest');
 const githubModel = require('../../models/github.model');
 const transaction = require('../../helpers/transaction');
 const tasksModel = require('../../models/tasks.model');
+const AnalyticsIntegration = require('../../services/AnalyticsIntegration');
 const { githubApp } = require('../../services/github/githubApp');
 const { createWebhookHandler } = require('../../services/github/webhookHandler');
 const { signWebhookPayload } = require('../../services/github/webhookSignature');
@@ -81,7 +84,16 @@ beforeEach(() => {
     githubModel.applyPullRequest.mockResolvedValue({ state: 'merged', changed: true, becameMerged: true });
     githubModel.findTaskByBranch.mockResolvedValue({ tid: 'T1', gid: 'G1' });
     tasksModel.completeTask.mockResolvedValue({ status: 'completed' });
+    AnalyticsIntegration.onTaskCompletion.mockResolvedValue({ success: true });
 });
+
+const sendRaw = (app, event, rawText) => request(app)
+    .post('/api/github/webhook')
+    .set('Content-Type', 'application/json')
+    .set('X-GitHub-Event', event)
+    .set('X-GitHub-Delivery', DELIVERY)
+    .set('X-Hub-Signature-256', signWebhookPayload(Buffer.from(rawText), SECRET))
+    .send(rawText);
 
 describe('signature', () => {
     test('invalid signature → 401 and nothing recorded', async () => {
@@ -106,6 +118,21 @@ describe('signature', () => {
     });
 });
 
+test.each([['null'], ['[]'], ['"text"'], ['42']])('a validly signed %s body → 400, no crash', async (raw) => {
+    const res = await sendRaw(buildApp(), 'pull_request', raw);
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('VALIDATION_ERROR');
+    expect(githubModel.beginDelivery).not.toHaveBeenCalled();
+});
+
+test('beginDelivery failure → error response, no unhandled rejection', async () => {
+    const spy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    githubModel.beginDelivery.mockRejectedValue(new Error('db down'));
+    const res = await send(buildApp(), 'pull_request', prPayload());
+    expect(res.status).toBe(500);
+    spy.mockRestore();
+});
+
 test('ping → 200 pong without touching the DB', async () => {
     const res = await send(buildApp(), 'ping', { zen: 'Keep it logically awesome.' });
     expect(res.status).toBe(200);
@@ -118,7 +145,8 @@ describe('pull_request', () => {
         const res = await send(buildApp(), 'pull_request', prPayload());
         expect(res.status).toBe(200);
         expect(res.body.status).toBe('processed');
-        expect(githubModel.beginDelivery).toHaveBeenCalledWith({ deliveryId: DELIVERY, event: 'pull_request', action: 'closed', installationId: 77 });
+        const bodyHash = crypto.createHash('sha256').update(JSON.stringify(prPayload())).digest('hex');
+        expect(githubModel.beginDelivery).toHaveBeenCalledWith({ deliveryId: DELIVERY, event: 'pull_request', action: 'closed', installationId: 77, payloadSha256: bodyHash });
         expect(githubModel.upsertRepository).toHaveBeenCalledWith(
             { repoId: 500, installationId: 77, name: 'demo', defaultBranch: 'main', isPrivate: true }, { tx: TX },
         );
@@ -129,6 +157,24 @@ describe('pull_request', () => {
         expect(githubModel.findTaskByBranch).toHaveBeenCalledWith(500, 'tm/add-auth-abcdef12', { tx: TX });
         expect(tasksModel.completeTask).toHaveBeenCalledWith('T1', { tx: TX, source: 'github_pr' });
         expect(githubModel.finishDelivery).toHaveBeenCalledWith(DELIVERY, 'processed', { tx: TX });
+        await new Promise((r) => setImmediate(r));
+        expect(AnalyticsIntegration.onTaskCompletion).toHaveBeenCalledWith('T1', true, { percentage: 100 });
+    });
+
+    test('analytics is only notified after a committed completion, and its failure is harmless', async () => {
+        const spy = jest.spyOn(console, 'error').mockImplementation(() => {});
+        AnalyticsIntegration.onTaskCompletion.mockRejectedValue(new Error('analytics down'));
+        const res = await send(buildApp(), 'pull_request', prPayload());
+        expect(res.status).toBe(200);
+        await new Promise((r) => setImmediate(r));
+        expect(AnalyticsIntegration.onTaskCompletion).toHaveBeenCalledTimes(1);
+
+        AnalyticsIntegration.onTaskCompletion.mockClear();
+        tasksModel.completeTask.mockResolvedValue({ status: 'already_completed' });
+        await send(buildApp(), 'pull_request', prPayload());
+        await new Promise((r) => setImmediate(r));
+        expect(AnalyticsIntegration.onTaskCompletion).not.toHaveBeenCalled();
+        spy.mockRestore();
     });
 
     test('merged into a non-default branch → PR stored, task not completed', async () => {
