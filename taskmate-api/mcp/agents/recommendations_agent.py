@@ -35,7 +35,8 @@ class RecommendationsAgent:
             '"considerations":{"risks":[],"requirements":[],"success_criteria":[]}}}'
         )
 
-    async def handle(self, message: str, phase: str = 'final_plan', context: dict = None):
+    async def handle(self, message: str, phase: str = 'final_plan', context: dict = None) -> dict:
+        """Returns the parsed plan. Raises llm_service.LLMError subclasses (LLMInvalidOutputError for bad JSON)."""
         clarifications = context.get('clarifications', '') if context else ''
         prompt = self._build_comprehensive_plan_prompt(message, clarifications)
-        return await llm_service.generate(prompt, max_tokens=llm_service.MAX_TOKENS_PLAN)
+        return await llm_service.generate_json(prompt, max_tokens=llm_service.MAX_TOKENS_PLAN)

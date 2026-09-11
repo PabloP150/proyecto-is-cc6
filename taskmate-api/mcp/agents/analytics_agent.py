@@ -1,130 +1,105 @@
 import json
-import sys
-import os
-import subprocess
-
-# Add the parent directory to path to import services
-sys.path.append(os.path.join(os.path.dirname(__file__), '../../'))
+import logging
+from datetime import datetime, timezone
 
 import llm_service
 
+logger = logging.getLogger(__name__)
+
+CATEGORIES = ("frontend", "backend", "database", "testing", "general")
+NO_DATA_MESSAGE = "No analytics data is available for this group yet."
+
+# Demo groups used by the frontend showcase; every other group needs a real team_context from Node.
+DEMO_TEAMS = {
+    "test-group-456": [  # Development Team
+        {"uid": "dev_user1", "username": "Sarah Chen"},
+        {"uid": "dev_user2", "username": "Marcus Johnson"},
+        {"uid": "dev_user3", "username": "Elena Rodriguez"},
+        {"uid": "dev_user4", "username": "David Kim"},
+        {"uid": "dev_user5", "username": "Alex Thompson"},
+        {"uid": "dev_user6", "username": "Pedro Silva"},
+        {"uid": "dev_user7", "username": "Oscar Martinez"},
+        {"uid": "dev_user8", "username": "Maria Garcia"}
+    ],
+    "test-group-789": [  # Design Team
+        {"uid": "design_user1", "username": "Maya Patel"},
+        {"uid": "design_user2", "username": "James Wilson"},
+        {"uid": "design_user3", "username": "Zoe Martinez"},
+        {"uid": "design_user4", "username": "Ryan Foster"},
+        {"uid": "design_user5", "username": "Ana Rodriguez"},
+        {"uid": "design_user6", "username": "Luis Chen"},
+        {"uid": "design_user7", "username": "Sofia Kim"}
+    ],
+    "test-group-123": [  # QA Team
+        {"uid": "qa_user1", "username": "Lisa Wang"},
+        {"uid": "qa_user2", "username": "Tom Anderson"},
+        {"uid": "qa_user3", "username": "Priya Sharma"},
+        {"uid": "qa_user4", "username": "Jake Miller"},
+        {"uid": "qa_user5", "username": "Nina Kowalski"},
+        {"uid": "qa_user6", "username": "Carlos Mendez"},
+        {"uid": "qa_user7", "username": "Alex Johnson"},
+        {"uid": "qa_user8", "username": "Diana Lopez"},
+        {"uid": "qa_user9", "username": "Kevin Park"}
+    ],
+}
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _number(value, default):
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return default
+    return int(number) if number.is_integer() else number
+
+
 class AnalyticsAgent:
-    def __init__(self):
-        self.analytics_service = None
-        self.use_real_analytics = True  # Temporarily disabled to use diverse mock data
-        self._initialize_analytics_service()
-    
-    def _initialize_analytics_service(self):
-        """Initialize the real AnalyticsService from Node.js"""
-        try:
-            # For now, we'll use a hybrid approach - real service calls when possible
-            # This will be enhanced when we integrate with the Node.js service
-            print("Analytics Agent initialized with hybrid analytics support")
-        except Exception as e:
-            print(f"Warning: Could not initialize real AnalyticsService: {e}")
-            self.use_real_analytics = False
+    def _members_from_context(self, team_context):
+        """Normalizes Node's buildTeamContext() payload into member dicts with metrics."""
+        members = []
+        for raw in team_context.get("team_members") or []:
+            if not isinstance(raw, dict) or not raw.get("uid"):
+                continue
+            expertise = {}
+            raw_expertise = raw.get("expertise_by_category")
+            if isinstance(raw_expertise, dict):
+                for category in CATEGORIES:
+                    values = raw_expertise.get(category)
+                    if isinstance(values, dict):
+                        expertise[category] = {
+                            "expertise_score": _number(values.get("expertise_score"), 0),
+                            "success_rate_percentage": _number(values.get("success_rate_percentage"), 50),
+                        }
+            members.append({
+                "uid": str(raw["uid"]),
+                "username": str(raw.get("username") or raw["uid"]),
+                "workload": _number(raw.get("current_workload"), 0),
+                "capacity": _number(raw.get("historical_capacity"), 0),
+                "expertise": expertise,
+            })
+        return members
 
-    async def _get_team_members(self, group_id):
-        """Get team members for a group - integrates with real database when possible"""
-        try:
-            if self.use_real_analytics:
-                # Call Node.js service to get real team members
-                result = await self._call_node_service('getTeamMembers', {'group_id': group_id})
-                if result and result.get('success'):
-                    return result.get('team_members', [])
-        except Exception as e:
-            print(f"Failed to get real team members: {e}")
-        
-        # Fallback to mock data - updated to match frontend teams
-        if group_id == "test-group-456":  # Development Team
-            mock_team_members = [
-                {"uid": "dev_user1", "username": "Sarah Chen"},
-                {"uid": "dev_user2", "username": "Marcus Johnson"},
-                {"uid": "dev_user3", "username": "Elena Rodriguez"},
-                {"uid": "dev_user4", "username": "David Kim"},
-                {"uid": "dev_user5", "username": "Alex Thompson"},
-                {"uid": "dev_user6", "username": "Pedro Silva"},
-                {"uid": "dev_user7", "username": "Oscar Martinez"},
-                {"uid": "dev_user8", "username": "Maria Garcia"}
-            ]
-        elif group_id == "test-group-789":  # Design Team
-            mock_team_members = [
-                {"uid": "design_user1", "username": "Maya Patel"},
-                {"uid": "design_user2", "username": "James Wilson"},
-                {"uid": "design_user3", "username": "Zoe Martinez"},
-                {"uid": "design_user4", "username": "Ryan Foster"},
-                {"uid": "design_user5", "username": "Ana Rodriguez"},
-                {"uid": "design_user6", "username": "Luis Chen"},
-                {"uid": "design_user7", "username": "Sofia Kim"}
-            ]
-        elif group_id == "test-group-123":  # QA Team
-            mock_team_members = [
-                {"uid": "qa_user1", "username": "Lisa Wang"},
-                {"uid": "qa_user2", "username": "Tom Anderson"},
-                {"uid": "qa_user3", "username": "Priya Sharma"},
-                {"uid": "qa_user4", "username": "Jake Miller"},
-                {"uid": "qa_user5", "username": "Nina Kowalski"},
-                {"uid": "qa_user6", "username": "Carlos Mendez"},
-                {"uid": "qa_user7", "username": "Alex Johnson"},
-                {"uid": "qa_user8", "username": "Diana Lopez"},
-                {"uid": "qa_user9", "username": "Kevin Park"}
-            ]
-        else:
-            # Default fallback
-            mock_team_members = [
-                {"uid": "test_user1", "username": "Sarah Chen"},
-                {"uid": "test_user2", "username": "Marcus Johnson"},
-                {"uid": "test_user3", "username": "Elena Rodriguez"},
-                {"uid": "test_user4", "username": "David Kim"},
-                {"uid": "test_user5", "username": "Alex Thompson"}
-            ]
-        
-        print(f"Using mock team members for group {group_id}")
-        return mock_team_members
-    
-    async def _call_node_service(self, method, params):
-        """Call Node.js AnalyticsService methods via subprocess"""
-        script_path = os.path.join(os.path.dirname(__file__), '../../analytics_bridge.js')
-        if not os.path.exists(script_path):
-            print(f"[AnalyticsAgent] analytics_bridge.js not found, skipping {method}")
-            return None
+    def _resolve_team(self, data):
+        """Returns (members, data_source): real team_context, demo mock data, or no data at all."""
+        team_context = data.get("team_context")
+        if isinstance(team_context, dict) and isinstance(team_context.get("team_members"), list):
+            return self._members_from_context(team_context), "real"
+        group_id = data.get("group_id")
+        if group_id in DEMO_TEAMS:
+            members = []
+            for member in DEMO_TEAMS[group_id]:
+                workload, expertise, capacity = self._get_mock_analytics_data(member["uid"])
+                members.append({**member, "workload": workload, "capacity": capacity, "expertise": expertise})
+            return members, "mock"
+        return [], "none"
 
-        cmd = ['node', script_path, method, json.dumps(params)]
-        try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-            if result.returncode == 0:
-                return json.loads(result.stdout)
-            print(f"[AnalyticsAgent] {method} failed (exit {result.returncode}): {result.stderr.strip()}")
-            return None
-        except subprocess.TimeoutExpired:
-            print(f"[AnalyticsAgent] {method} timed out after 10s")
-            return None
-        except FileNotFoundError:
-            print(f"[AnalyticsAgent] 'node' not found in PATH, cannot call {method}")
-            return None
-        except json.JSONDecodeError as e:
-            print(f"[AnalyticsAgent] {method} returned invalid JSON: {e}")
-            return None
-        except Exception as e:
-            print(f"[AnalyticsAgent] Unexpected error calling {method}: {type(e).__name__}: {e}")
-            return None
-    
-    async def _get_real_analytics_data(self, user_id):
-        """Get real analytics data from AnalyticsService"""
-        try:
-            if self.use_real_analytics:
-                result = await self._call_node_service('getUserAnalyticsSummary', {'user_id': user_id})
-                if result and result.get('success'):
-                    analytics = result.get('analytics', {})
-                    return (
-                        analytics.get('current_workload', 0),
-                        analytics.get('expertise_by_category', {}),
-                        analytics.get('historical_capacity', 3)
-                    )
-        except Exception as e:
-            print(f"Failed to get real analytics for user {user_id}: {e}")
-        
-        return None
+    @staticmethod
+    def _no_data(group_id, **empty):
+        return {"success": True, "group_id": group_id, "data_source": "none", "no_data": True,
+                "message": NO_DATA_MESSAGE, **empty}
 
     def _get_mock_analytics_data(self, user_id):
         mock_data = {
@@ -431,68 +406,37 @@ class AnalyticsAgent:
             task_category = data.get("task_category", "general")
             task_description = data.get("task_description", "")
             
-            if not group_id:
+            if not group_id and not isinstance(data.get("team_context"), dict):
                 return {"success": False, "error": "group_id is required"}
-        
-            try:
-                team_members = await self._get_team_members(group_id)
-            except Exception as e:
-                return {"success": False, "error": f"Failed to get team members: {str(e)}"}
-            
+
+            team_members, data_source = self._resolve_team(data)
             if not team_members:
-                return {"success": False, "error": "No team members found"}
+                return self._no_data(group_id, recommendations=[], suggested_plan=None,
+                                     task_category=task_category, base_scores=[])
             
             # Phase 1: Calculate base scores using deterministic analytics (fast, reliable)
             base_scores = []
             for member in team_members:
-                try:
-                    # Try to get real analytics data first
-                    real_data = await self._get_real_analytics_data(member["uid"])
-                    if real_data:
-                        workload, expertise, capacity = real_data
-                        print(f"Using real analytics for {member['username']}")
-                    else:
-                        # Fallback to mock data
-                        workload, expertise, capacity = self._get_mock_analytics_data(member["uid"])
-                        print(f"Using mock analytics for {member['username']}")
-                    
-                    # Calculate deterministic base score using the 5 core metrics
-                    base_score = self._calculate_base_score(workload, expertise, capacity, task_category)
-                    
-                    base_scores.append({
-                        "user_id": member["uid"],
-                        "username": member["username"],
-                        "base_score": base_score,
-                        "metrics": {
-                            "workload": workload,
-                            "expertise": expertise.get(task_category, {}),
-                            "capacity": capacity,
-                            "data_source": "real" if real_data else "mock"
-                        }
-                    })
-                except Exception as e:
-                    print(f"Analytics failed for user {member.get('username', 'unknown')}: {e}")
-                    # Fallback to safe defaults
-                    base_scores.append({
-                        "user_id": member["uid"],
-                        "username": member["username"],
-                        "base_score": 50,  # Neutral default score
-                        "metrics": {
-                            "workload": 0,
-                            "expertise": {},
-                            "capacity": 3,
-                            "data_source": "default"
-                        }
-                    })
+                workload, expertise, capacity = member["workload"], member["expertise"], member["capacity"]
+                base_scores.append({
+                    "user_id": member["uid"],
+                    "username": member["username"],
+                    "base_score": self._calculate_base_score(workload, expertise, capacity, task_category),
+                    "metrics": {
+                        "workload": workload,
+                        "expertise": expertise.get(task_category, {}),
+                        "capacity": capacity,
+                        "data_source": data_source
+                    }
+                })
             
             # Phase 2: Enhance with LLM for contextual intelligence (adaptive, nuanced)
             try:
                 enhanced_recommendations, suggested_plan = await self._enhance_with_llm(
                     base_scores, task_description, task_category, data
                 )
-                print("Successfully enhanced recommendations with LLM")
             except Exception as e:
-                print(f"LLM enhancement failed, using fallback: {e}")
+                logger.warning("LLM enhancement failed, using deterministic fallback: %s", type(e).__name__)
                 # Graceful fallback to deterministic recommendations
                 enhanced_recommendations = self._create_fallback_recommendations(base_scores, task_category)
                 suggested_plan = {
@@ -507,11 +451,12 @@ class AnalyticsAgent:
                 "recommendations": enhanced_recommendations[:3],
                 "suggested_plan": suggested_plan,
                 "task_category": task_category,
+                "data_source": data_source,
                 "base_scores": [{"username": item["username"], "base_score": item["base_score"]} for item in base_scores]
             }
             
         except Exception as e:
-            print(f"Analytics recommendation error: {e}")
+            logger.exception("Analytics recommendation error")
             return {"success": False, "error": f"Analytics error: {str(e)}"}
 
     def _calculate_base_score(self, workload, expertise, capacity, task_category):
@@ -654,32 +599,28 @@ Respond with JSON in this exact format:
   }}
 }}"""
 
-        # Generate LLM response
-        llm_response = await llm_service.generate(prompt)
-        
-        # Parse LLM response
-        try:
-            llm_data = json.loads(llm_response)
-        except json.JSONDecodeError as e:
-            print(f"LLM JSON parsing failed: {e}")
-            print(f"Raw response: {llm_response}")
-            raise Exception("LLM returned invalid JSON")
-        
+        # JSON mode; raises llm_service.LLMError subclasses, handled by the caller's fallback.
+        llm_data = await llm_service.generate_json(prompt)
+        llm_recs = llm_data.get("recommendations")
+        if not isinstance(llm_recs, list):
+            raise llm_service.LLMInvalidOutputError("recommendations is not a list")
+
         # Merge LLM insights with base data
         enhanced_recommendations = []
         for base_item in base_scores:
             # Find corresponding LLM recommendation
-            llm_rec = next((r for r in llm_data["recommendations"] 
-                          if r["username"] == base_item["username"]), None)
-            
+            llm_rec = next((r for r in llm_recs
+                          if isinstance(r, dict) and r.get("username") == base_item["username"]
+                          and isinstance(r.get("adjusted_score"), (int, float))), None)
+
             if llm_rec:
                 enhanced_recommendations.append({
                     "user_id": base_item["user_id"],
                     "username": base_item["username"],
                     "score": llm_rec["adjusted_score"],
                     "base_score": base_item["base_score"],
-                    "confidence_level": llm_rec["confidence_level"],
-                    "reasoning": llm_rec["reasoning"],
+                    "confidence_level": llm_rec.get("confidence_level", "medium"),
+                    "reasoning": llm_rec.get("reasoning", "Based on analytics data"),
                     "development_opportunity": llm_rec.get("development_opportunity"),
                     "metrics": base_item["metrics"]
                 })
@@ -698,11 +639,13 @@ Respond with JSON in this exact format:
         enhanced_recommendations.sort(key=lambda x: x["score"], reverse=True)
         
         # Add suggested plan from LLM
-        suggested_plan = llm_data.get("suggested_plan", {
-            "primary_assignee": enhanced_recommendations[0]["username"] if enhanced_recommendations else "N/A",
-            "plan_type": "solo",
-            "rationale": "Default assignment to highest scoring team member"
-        })
+        suggested_plan = llm_data.get("suggested_plan")
+        if not isinstance(suggested_plan, dict):
+            suggested_plan = {
+                "primary_assignee": enhanced_recommendations[0]["username"] if enhanced_recommendations else "N/A",
+                "plan_type": "solo",
+                "rationale": "Default assignment to highest scoring team member"
+            }
         
         return enhanced_recommendations, suggested_plan
 
@@ -752,58 +695,26 @@ Respond with JSON in this exact format:
         return "; ".join(reasons)
 
     async def _record_task_assignment(self, data: dict):
-        """Record a new task assignment using real AnalyticsService when available."""
+        """Assignments are recorded by the TaskMate API itself; this only validates and acknowledges."""
         try:
             task_id = data.get("task_id")
             user_id = data.get("user_id")
             group_id = data.get("group_id")
-            task_category = data.get("task_category", "general")
             
             if not all([task_id, user_id, group_id]):
                 return {"success": False, "error": "task_id, user_id, and group_id are required"}
             
-            # Try to use real AnalyticsService
-            if self.use_real_analytics:
-                result = await self._call_node_service('recordTaskAssignment', {
-                    'task_id': task_id,
-                    'user_id': user_id,
-                    'group_id': group_id,
-                    'category': task_category
-                })
-                
-                if result and result.get('success'):
-                    print(f"Real: Recorded task assignment - Task: {task_id}, User: {user_id}, Category: {task_category}")
-                    return {"success": True, "message": "Task assignment recorded", "method": "real"}
-            
-            # Fallback to mock recording
-            print(f"Mock: Recording task assignment - Task: {task_id}, User: {user_id}, Category: {task_category}")
             return {"success": True, "message": "Task assignment recorded (mock)", "method": "mock"}
             
         except Exception as e:
             return {"success": False, "error": f"Failed to record assignment: {str(e)}"}
 
     async def _record_task_completion(self, data: dict):
-        """Record task completion using real AnalyticsService when available."""
+        """Completions are recorded by the TaskMate API itself; this only validates and acknowledges."""
         try:
-            task_id = data.get("task_id")
-            success = data.get("success", True)
-            
-            if not task_id:
+            if not data.get("task_id"):
                 return {"success": False, "error": "task_id is required"}
             
-            # Try to use real AnalyticsService
-            if self.use_real_analytics:
-                result = await self._call_node_service('recordTaskCompletion', {
-                    'task_id': task_id,
-                    'success': success
-                })
-                
-                if result and result.get('success'):
-                    print(f"Real: Recorded task completion - Task: {task_id}, Success: {success}")
-                    return {"success": True, "message": "Task completion recorded", "method": "real"}
-            
-            # Fallback to mock recording
-            print(f"Mock: Recording task completion - Task: {task_id}, Success: {success}")
             return {"success": True, "message": "Task completion recorded (mock)", "method": "mock"}
             
         except Exception as e:
@@ -816,34 +727,31 @@ Respond with JSON in this exact format:
             
             if not user_id:
                 return {"success": False, "error": "user_id is required"}
-            
-            # Try to get real analytics data
-            real_data = await self._get_real_analytics_data(user_id)
-            if real_data:
-                workload, expertise, capacity = real_data
-                summary = {
-                    "current_workload": workload,
-                    "expertise_by_category": expertise,
-                    "historical_capacity": capacity,
-                    "data_source": "real",
-                    "updated_at": "2025-01-16T12:00:00Z"
-                }
-                print(f"Retrieved real analytics for user {user_id}")
-            else:
-                # Fallback to mock data
+
+            team_members, data_source = self._resolve_team(data)
+            member = next((m for m in team_members if m["uid"] == str(user_id)), None)
+            if member is None and data_source == "none" and self._is_demo_user(user_id):
                 workload, expertise, capacity = self._get_mock_analytics_data(user_id)
-                summary = {
-                    "current_workload": workload,
-                    "expertise_by_category": expertise,
-                    "historical_capacity": capacity,
-                    "data_source": "mock",
-                    "updated_at": "2025-01-16T12:00:00Z"
-                }
-                print(f"Using mock analytics for user {user_id}")
-            
+                member = {"workload": workload, "expertise": expertise, "capacity": capacity}
+                data_source = "mock"
+            if member is None:
+                return {"success": True, "analytics": None, "data_source": "none", "no_data": True,
+                        "message": "No analytics data is available for this user yet."}
+
+            summary = {
+                "current_workload": member["workload"],
+                "expertise_by_category": member["expertise"],
+                "historical_capacity": member["capacity"],
+                "data_source": data_source,
+                "updated_at": _utc_now_iso()
+            }
             return {"success": True, "analytics": summary}
         except Exception as e:
             return {"success": False, "error": f"Failed to get analytics: {str(e)}"}
+
+    @staticmethod
+    def _is_demo_user(user_id) -> bool:
+        return any(member["uid"] == user_id for team in DEMO_TEAMS.values() for member in team)
 
     async def _test_recommendations(self, data: dict):
         """Test recommendations with mock data (for testing purposes)."""
@@ -975,7 +883,7 @@ Respond with JSON in this exact format:
                     base_scores, task_description, task_category, data
                 )
             except Exception as e:
-                print(f"LLM enhancement failed in test: {e}")
+                logger.warning("LLM enhancement failed in test: %s", type(e).__name__)
                 enhanced_recommendations = self._create_fallback_recommendations(base_scores, task_category)
                 suggested_plan = {
                     "primary_assignee": enhanced_recommendations[0]["username"] if enhanced_recommendations else "N/A",
@@ -1001,28 +909,16 @@ Respond with JSON in this exact format:
             
             if not group_id:
                 return {"success": False, "error": "group_id is required"}
-            
-            # Try to get real team analytics
-            if self.use_real_analytics:
-                result = await self._call_node_service('getTeamAnalyticsSummary', {'group_id': group_id})
-                if result and result.get('success'):
-                    return result
-            
-            # Fallback to mock team analytics
-            team_members = await self._get_team_members(group_id)
+
+            team_members, data_source = self._resolve_team(data)
+            if not team_members:
+                return self._no_data(group_id, team_analytics=[])
+
             team_analytics = []
-            
             for member in team_members:
-                workload, expertise, capacity = self._get_mock_analytics_data(member["uid"])
-                
-                # Calculate overall performance score
-                overall_score = 0
-                total_categories = 0
-                for category, data in expertise.items():
-                    overall_score += data.get("expertise_score", 0)
-                    total_categories += 1
-                
-                avg_expertise = overall_score / total_categories if total_categories > 0 else 0
+                workload, expertise, capacity = member["workload"], member["expertise"], member["capacity"]
+                scores = [values.get("expertise_score", 0) for values in expertise.values()]
+                avg_expertise = sum(scores) / len(scores) if scores else 0
                 
                 team_analytics.append({
                     "user_id": member["uid"],
@@ -1038,7 +934,7 @@ Respond with JSON in this exact format:
                 "success": True,
                 "group_id": group_id,
                 "team_analytics": team_analytics,
-                "data_source": "mock"
+                "data_source": data_source
             }
             
         except Exception as e:
@@ -1051,20 +947,14 @@ Respond with JSON in this exact format:
             
             if not group_id:
                 return {"success": False, "error": "group_id is required"}
-            
-            # Try to get real workload distribution
-            if self.use_real_analytics:
-                result = await self._call_node_service('getWorkloadDistribution', {'group_id': group_id})
-                if result and result.get('success'):
-                    return result
-            
-            # Fallback to mock workload distribution
-            team_members = await self._get_team_members(group_id)
+
+            team_members, data_source = self._resolve_team(data)
+            if not team_members:
+                return self._no_data(group_id, workload_distribution=[])
+
             workload_distribution = []
-            
             for member in team_members:
-                workload, expertise, capacity = self._get_mock_analytics_data(member["uid"])
-                
+                workload, capacity = member["workload"], member["capacity"]
                 utilization = (workload / capacity * 100) if capacity > 0 else 0
                 
                 # Determine status based on utilization
@@ -1095,7 +985,7 @@ Respond with JSON in this exact format:
                 "success": True,
                 "group_id": group_id,
                 "workload_distribution": workload_distribution,
-                "data_source": "mock"
+                "data_source": data_source
             }
             
         except Exception as e:
@@ -1109,25 +999,19 @@ Respond with JSON in this exact format:
             
             if not group_id:
                 return {"success": False, "error": "group_id is required"}
-            
-            # Try to get real expertise rankings
-            if self.use_real_analytics:
-                result = await self._call_node_service('getCategoryExpertiseRankings', {
-                    'group_id': group_id,
-                    'category': category
-                })
-                if result and result.get('success'):
-                    return result
-            
-            # Fallback to mock expertise rankings
-            team_members = await self._get_team_members(group_id)
-            
+
+            team_members, data_source = self._resolve_team(data)
+            if not team_members:
+                if category:
+                    return self._no_data(group_id, category=category, rankings=[])
+                return self._no_data(group_id, expertise_rankings={cat: [] for cat in CATEGORIES})
+
             if category:
                 # Single category rankings
                 rankings = []
                 for member in team_members:
-                    workload, expertise, capacity = self._get_mock_analytics_data(member["uid"])
-                    category_data = expertise.get(category, {})
+                    workload, capacity = member["workload"], member["capacity"]
+                    category_data = member["expertise"].get(category, {})
                     
                     rankings.append({
                         "user_id": member["uid"],
@@ -1146,36 +1030,32 @@ Respond with JSON in this exact format:
                     "group_id": group_id,
                     "category": category,
                     "rankings": rankings,
-                    "data_source": "mock"
+                    "data_source": data_source
                 }
-            else:
-                # All categories rankings
-                categories = ["frontend", "backend", "database", "testing", "general"]
-                all_rankings = {}
+
+            # All categories rankings
+            all_rankings = {}
+            for cat in CATEGORIES:
+                rankings = []
+                for member in team_members:
+                    category_data = member["expertise"].get(cat, {})
+                    rankings.append({
+                        "user_id": member["uid"],
+                        "username": member["username"],
+                        "expertise_score": category_data.get("expertise_score", 0),
+                        "success_rate": category_data.get("success_rate_percentage", 0)
+                    })
                 
-                for cat in categories:
-                    rankings = []
-                    for member in team_members:
-                        workload, expertise, capacity = self._get_mock_analytics_data(member["uid"])
-                        category_data = expertise.get(cat, {})
-                        
-                        rankings.append({
-                            "user_id": member["uid"],
-                            "username": member["username"],
-                            "expertise_score": category_data.get("expertise_score", 0),
-                            "success_rate": category_data.get("success_rate_percentage", 0)
-                        })
-                    
-                    # Sort by expertise score
-                    rankings.sort(key=lambda x: x["expertise_score"], reverse=True)
-                    all_rankings[cat] = rankings
-                
-                return {
-                    "success": True,
-                    "group_id": group_id,
-                    "expertise_rankings": all_rankings,
-                    "data_source": "mock"
-                }
+                # Sort by expertise score
+                rankings.sort(key=lambda x: x["expertise_score"], reverse=True)
+                all_rankings[cat] = rankings
+            
+            return {
+                "success": True,
+                "group_id": group_id,
+                "expertise_rankings": all_rankings,
+                "data_source": data_source
+            }
             
         except Exception as e:
             return {"success": False, "error": f"Failed to get expertise rankings: {str(e)}"}
