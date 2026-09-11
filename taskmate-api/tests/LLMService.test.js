@@ -1,301 +1,142 @@
-const LLMService = require('../services/LLMService');
-const axios = require('axios');
+// The module exports a connected singleton; `ws` is replaced so no socket is ever opened.
+jest.mock('ws', () => {
+    const { EventEmitter } = require('events');
+    class FakeWebSocket extends EventEmitter {
+        constructor(url) {
+            super();
+            this.url = url;
+            this.readyState = FakeWebSocket.CONNECTING;
+            this.sent = [];
+            FakeWebSocket.instances.push(this);
+        }
 
-// Mock axios
-jest.mock('axios');
-const mockedAxios = axios;
+        send(data) {
+            this.sent.push(data);
+        }
+
+        close() {
+            this.readyState = FakeWebSocket.CLOSED;
+            this.emit('close');
+        }
+
+        open() {
+            this.readyState = FakeWebSocket.OPEN;
+            this.emit('open');
+        }
+    }
+    FakeWebSocket.CONNECTING = 0;
+    FakeWebSocket.OPEN = 1;
+    FakeWebSocket.CLOSING = 2;
+    FakeWebSocket.CLOSED = 3;
+    FakeWebSocket.instances = [];
+    return FakeWebSocket;
+});
+
+const WebSocket = require('ws');
+const llmSingleton = require('../services/LLMService');
+
+const { LLMService } = llmSingleton;
 
 describe('LLMService', () => {
-  let llmService;
-  let originalEnv;
+    let service;
 
-  beforeEach(() => {
-    // Store original environment
-    originalEnv = process.env;
-    
-    // Set up test environment
-    process.env = {
-      ...originalEnv,
-      LLM_API_KEY: 'test-api-key',
-      LLM_BASE_URL: 'https://api.openai.com/v1',
-      LLM_MODEL: 'gpt-3.5-turbo',
-      LLM_MAX_TOKENS: '500',
-      LLM_TEMPERATURE: '0.5'
-    };
-
-    // Mock axios.create
-    mockedAxios.create = jest.fn(() => ({
-      post: jest.fn()
-    }));
-
-    llmService = new LLMService();
-  });
-
-  afterEach(() => {
-    // Restore original environment
-    process.env = originalEnv;
-    jest.clearAllMocks();
-  });
-
-  describe('constructor', () => {
-    it('should initialize with environment variables', () => {
-      expect(llmService.apiKey).toBe('test-api-key');
-      expect(llmService.baseUrl).toBe('https://api.openai.com/v1');
-      expect(llmService.model).toBe('gpt-3.5-turbo');
-      expect(llmService.maxTokens).toBe(500);
-      expect(llmService.temperature).toBe(0.5);
+    beforeEach(() => {
+        jest.spyOn(console, 'log').mockImplementation(() => {});
+        jest.spyOn(console, 'warn').mockImplementation(() => {});
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        WebSocket.instances.length = 0;
+        service = new LLMService({ url: 'ws://python.test/ws', connectTimeoutMs: 50 });
     });
 
-    it('should use default values when environment variables are not set', () => {
-      delete process.env.LLM_BASE_URL;
-      delete process.env.LLM_MODEL;
-      delete process.env.LLM_MAX_TOKENS;
-      delete process.env.LLM_TEMPERATURE;
-
-      const service = new LLMService();
-      expect(service.baseUrl).toBe('https://api.openai.com/v1');
-      expect(service.model).toBe('gpt-3.5-turbo');
-      expect(service.maxTokens).toBe(1000);
-      expect(service.temperature).toBe(0.7);
+    afterEach(() => {
+        service.close();
     });
 
-    it('should warn when API key is not configured', () => {
-      const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
-      delete process.env.LLM_API_KEY;
-
-      new LLMService();
-      expect(consoleSpy).toHaveBeenCalledWith('LLM_API_KEY not configured. LLM service will use fallback responses.');
-      
-      consoleSpy.mockRestore();
+    test('the module exports a ready-to-use instance and the class', () => {
+        expect(llmSingleton).toBeInstanceOf(LLMService);
+        expect(typeof llmSingleton.send).toBe('function');
+        expect(typeof llmSingleton.on).toBe('function');
     });
-  });
 
-  describe('generateResponse', () => {
-    it('should generate response successfully', async () => {
-      const mockResponse = {
-        data: {
-          choices: [{
-            message: {
-              content: 'This is a test response from the AI.'
-            }
-          }]
+    test('connects to the configured URL on construction', () => {
+        expect(WebSocket.instances).toHaveLength(1);
+        expect(WebSocket.instances[0].url).toBe('ws://python.test/ws');
+    });
+
+    test('send waits for the connection and serializes the message', async () => {
+        const pending = service.send({ sessionId: 's1', method: 'x' });
+        WebSocket.instances[0].open();
+        await expect(pending).resolves.toBe(true);
+        expect(JSON.parse(WebSocket.instances[0].sent[0])).toEqual({ sessionId: 's1', method: 'x' });
+    });
+
+    test('ensureConnected rejects with LLM_UNAVAILABLE after the timeout (no hang)', async () => {
+        await expect(service.ensureConnected(20)).rejects.toMatchObject({ code: 'LLM_UNAVAILABLE' });
+        expect(service.listenerCount('ready')).toBe(0);
+    });
+
+    test('send resolves false (never rejects) when Python is down', async () => {
+        await expect(service.send({ sessionId: 's1' })).resolves.toBe(false);
+    });
+
+    test('concurrent sends share one pending connection', async () => {
+        const a = service.send({ n: 1 });
+        const b = service.send({ n: 2 });
+        expect(service.listenerCount('ready')).toBe(1);
+        WebSocket.instances[0].open();
+        await expect(Promise.all([a, b])).resolves.toEqual([true, true]);
+        expect(WebSocket.instances[0].sent).toHaveLength(2);
+    });
+
+    test('routes incoming messages by sessionId', () => {
+        const listener = jest.fn();
+        service.on('session-abc', listener);
+        service.handleMessage(JSON.stringify({ sessionId: 'session-abc', event: 'response', data: { content: 'hi' } }));
+        expect(listener).toHaveBeenCalledWith({ sessionId: 'session-abc', event: 'response', data: { content: 'hi' } });
+    });
+
+    test('ignores invalid JSON and messages without a sessionId', () => {
+        const listener = jest.fn();
+        service.on('undefined', listener);
+        expect(() => service.handleMessage('{not json')).not.toThrow();
+        expect(() => service.handleMessage(JSON.stringify({ event: 'response' }))).not.toThrow();
+        expect(listener).not.toHaveBeenCalled();
+    });
+
+    test('reconnects after the socket closes', () => {
+        jest.useFakeTimers();
+        try {
+            WebSocket.instances[0].open();
+            WebSocket.instances[0].readyState = WebSocket.CLOSED;
+            WebSocket.instances[0].emit('close');
+            expect(WebSocket.instances).toHaveLength(1);
+            jest.advanceTimersByTime(5000);
+            expect(WebSocket.instances).toHaveLength(2);
+        } finally {
+            jest.useRealTimers();
         }
-      };
-
-      llmService.httpClient.post.mockResolvedValue(mockResponse);
-
-      const result = await llmService.generateResponse('Hello, AI!');
-      expect(result).toBe('This is a test response from the AI.');
-      expect(llmService.httpClient.post).toHaveBeenCalledWith('/chat/completions', expect.any(Object));
     });
 
-    it('should include user context in system prompt', async () => {
-      const mockResponse = {
-        data: {
-          choices: [{
-            message: {
-              content: 'Response with context'
-            }
-          }]
+    test('ensureConnected reconnects immediately when the socket is closed', () => {
+        WebSocket.instances[0].readyState = WebSocket.CLOSED;
+        service.ensureConnected(20).catch(() => {});
+        expect(WebSocket.instances).toHaveLength(2);
+    });
+
+    test('socket errors are not re-emitted (no process crash)', () => {
+        expect(() => WebSocket.instances[0].emit('error', new Error('ECONNREFUSED'))).not.toThrow();
+    });
+
+    test('close() stops reconnecting', () => {
+        jest.useFakeTimers();
+        try {
+            const ws = WebSocket.instances[0];
+            service.close();
+            jest.advanceTimersByTime(10000);
+            expect(ws.readyState).toBe(WebSocket.CLOSED);
+            expect(WebSocket.instances).toHaveLength(1);
+        } finally {
+            jest.useRealTimers();
         }
-      };
-
-      const context = {
-        tasks: [
-          { title: 'Complete project', description: 'Finish the TaskMate app', completed: false },
-          { title: 'Review code', completed: true }
-        ],
-        groups: [
-          { name: 'Development Team', description: 'Main dev group' }
-        ]
-      };
-
-      llmService.httpClient.post.mockResolvedValue(mockResponse);
-
-      await llmService.generateResponse('What are my tasks?', context);
-
-      const callArgs = llmService.httpClient.post.mock.calls[0][1];
-      const systemMessage = callArgs.messages[0].content;
-      
-      expect(systemMessage).toContain('Complete project');
-      expect(systemMessage).toContain('Review code');
-      expect(systemMessage).toContain('Development Team');
     });
-
-    it('should return fallback response when API key is missing', async () => {
-      delete process.env.LLM_API_KEY;
-      const serviceWithoutKey = new LLMService();
-
-      const result = await serviceWithoutKey.generateResponse('Help me with tasks');
-      expect(result).toContain('tasks');
-      expect(result).toContain('TaskMate');
-    });
-
-    it('should handle API errors gracefully', async () => {
-      const error = new Error('API Error');
-      error.response = { status: 500 };
-      
-      llmService.httpClient.post.mockRejectedValue(error);
-
-      const result = await llmService.generateResponse('Hello');
-      expect(result).toContain('temporarily unavailable');
-    });
-
-    it('should handle timeout errors', async () => {
-      const error = new Error('Timeout');
-      error.code = 'ETIMEDOUT';
-      
-      llmService.httpClient.post.mockRejectedValue(error);
-
-      const result = await llmService.generateResponse('Hello');
-      expect(result).toContain('delays');
-    });
-
-    it('should handle authentication errors', async () => {
-      const error = new Error('Unauthorized');
-      error.response = { status: 401 };
-      
-      llmService.httpClient.post.mockRejectedValue(error);
-
-      const result = await llmService.generateResponse('Hello');
-      expect(result).toContain('trouble connecting');
-    });
-
-    it('should handle rate limiting errors', async () => {
-      const error = new Error('Rate Limited');
-      error.response = { status: 429 };
-      
-      llmService.httpClient.post.mockRejectedValue(error);
-
-      const result = await llmService.generateResponse('Hello');
-      expect(result).toContain('lot of requests');
-    });
-
-    it('should handle invalid response format', async () => {
-      const mockResponse = {
-        data: {
-          choices: []
-        }
-      };
-
-      llmService.httpClient.post.mockResolvedValue(mockResponse);
-
-      const result = await llmService.generateResponse('Hello');
-      expect(result).toContain('unable to process');
-    });
-  });
-
-  describe('_buildSystemPrompt', () => {
-    it('should build basic system prompt without context', () => {
-      const prompt = llmService._buildSystemPrompt({});
-      expect(prompt).toContain('TaskMate');
-      expect(prompt).toContain('task management');
-    });
-
-    it('should include tasks in system prompt', () => {
-      const context = {
-        tasks: [
-          { title: 'Task 1', description: 'Description 1', completed: false },
-          { title: 'Task 2', completed: true }
-        ]
-      };
-
-      const prompt = llmService._buildSystemPrompt(context);
-      expect(prompt).toContain('Task 1');
-      expect(prompt).toContain('Task 2');
-      expect(prompt).toContain('(completed)');
-    });
-
-    it('should include groups in system prompt', () => {
-      const context = {
-        groups: [
-          { name: 'Group 1', description: 'Description 1' },
-          { name: 'Group 2' }
-        ]
-      };
-
-      const prompt = llmService._buildSystemPrompt(context);
-      expect(prompt).toContain('Group 1');
-      expect(prompt).toContain('Group 2');
-    });
-  });
-
-  describe('_buildRequestPayload', () => {
-    it('should build correct request payload', () => {
-      const systemPrompt = 'System prompt';
-      const userMessage = 'User message';
-
-      const payload = llmService._buildRequestPayload(systemPrompt, userMessage);
-
-      expect(payload).toEqual({
-        model: 'gpt-3.5-turbo',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userMessage }
-        ],
-        max_tokens: 500,
-        temperature: 0.5,
-        stream: false
-      });
-    });
-  });
-
-  describe('_getFallbackResponse', () => {
-    it('should provide task-related fallback for task queries', () => {
-      const response = llmService._getFallbackResponse('How do I manage my tasks?');
-      expect(response).toContain('tasks');
-      expect(response).toContain('TaskMate');
-    });
-
-    it('should provide group-related fallback for group queries', () => {
-      const response = llmService._getFallbackResponse('Tell me about groups');
-      expect(response).toContain('Groups');
-      expect(response).toContain('collaborate');
-    });
-
-    it('should provide help fallback for help queries', () => {
-      const response = llmService._getFallbackResponse('I need help');
-      expect(response).toContain('help');
-      expect(response).toContain('TaskMate');
-    });
-
-    it('should provide generic fallback for other queries', () => {
-      const response = llmService._getFallbackResponse('Random question');
-      expect(response).toContain('unable to process');
-    });
-  });
-
-  describe('testConnection', () => {
-    it('should return true for successful connection', async () => {
-      const mockResponse = {
-        data: {
-          choices: [{
-            message: {
-              content: 'Test response'
-            }
-          }]
-        }
-      };
-
-      llmService.httpClient.post.mockResolvedValue(mockResponse);
-
-      const result = await llmService.testConnection();
-      expect(result).toBe(true);
-    });
-
-    it('should return false when API key is missing', async () => {
-      delete process.env.LLM_API_KEY;
-      const serviceWithoutKey = new LLMService();
-
-      const result = await serviceWithoutKey.testConnection();
-      expect(result).toBe(false);
-    });
-
-    it('should return false on connection error', async () => {
-      llmService.httpClient.post.mockRejectedValue(new Error('Connection failed'));
-
-      const result = await llmService.testConnection();
-      expect(result).toBe(false);
-    });
-  });
 });

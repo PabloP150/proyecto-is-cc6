@@ -1,5 +1,7 @@
 const UserSession = require('./UserSession');
 
+const SESSION_RETENTION_MS = 60 * 60 * 1000;
+
 class SessionManager {
     constructor() {
         this.activeSessions = new Map(); // WebSocket -> Session mapping
@@ -62,15 +64,18 @@ class SessionManager {
                 session.markDisconnected();
                 
                 // Set a timeout to clean up the session if user doesn't reconnect
+                const previousTimer = this.cleanupTimers.get(session.userId);
+                if (previousTimer) clearTimeout(previousTimer);
                 const timer = setTimeout(() => {
+                    this.cleanupTimers.delete(session.userId);
                     // Only clean up if the session is still disconnected and hasn't been replaced
                     if (session.isDisconnected() && this.userSessions.get(session.userId) === session) {
-                        console.log(`Cleaning up session for user ${session.userId} after timeout`);
                         this.userSessions.delete(session.userId);
-                        this.cleanupTimers.delete(session.userId);
                         session.cleanup();
                     }
-                }, 60 * 60 * 1000); // 1 hour timeout
+                }, SESSION_RETENTION_MS);
+                // A preserved session must not keep the process alive on shutdown.
+                if (timer.unref) timer.unref();
                 this.cleanupTimers.set(session.userId, timer);
                 
                 console.log(`Active WebSocket sessions: ${this.activeSessions.size}, Preserved user sessions: ${this.userSessions.size}`);
@@ -93,8 +98,10 @@ class SessionManager {
     }
 
     cleanup() {
+        for (const timer of this.cleanupTimers.values()) clearTimeout(timer);
+        this.cleanupTimers.clear();
         // Clean up all sessions
-        for (const [userId, session] of this.userSessions) {
+        for (const session of this.userSessions.values()) {
             try {
                 session.cleanup();
             } catch (cleanupError) {
@@ -131,5 +138,7 @@ class SessionManager {
         return false;
     }
 }
+
+SessionManager.SESSION_RETENTION_MS = SESSION_RETENTION_MS;
 
 module.exports = SessionManager;

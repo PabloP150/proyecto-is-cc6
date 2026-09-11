@@ -1,551 +1,177 @@
 /**
- * LLM Fallback Scenarios and Error Handling Tests
- * Tests requirement 7.2: Test LLM fallback scenarios and error handling
+ * LLM fallback: how the Node side behaves when the Python AI service is down, silent,
+ * busy or returns garbage. Real LLMService + real UserSession; only the socket and the DB are fake.
  */
+jest.mock('ws', () => {
+    const { EventEmitter } = require('events');
+    class FakeWebSocket extends EventEmitter {
+        constructor(url) {
+            super();
+            this.url = url;
+            this.readyState = FakeWebSocket.CONNECTING;
+            this.sent = [];
+            FakeWebSocket.instances.push(this);
+        }
 
-class LLMFallbackTest {
-    
-    constructor() {
-        this.testResults = {
-            passed: 0,
-            failed: 0,
-            errors: []
-        };
-    }
-    
-    /**
-     * Test LLM availability scenarios
-     */
-    async testLLMAvailability() {
-        console.log('\n=== Testing LLM Availability Scenarios ===');
-        
-        // Test 1: LLM service unavailable
-        console.log('\n1. Testing LLM service unavailable scenario...');
-        try {
-            const mockAnalyticsData = [
-                {
-                    user_id: '87654321-4321-4321-4321-210987654321',
-                    username: 'john_doe',
-                    base_score: 75,
-                    metrics: {
-                        workload: 2,
-                        expertise: { frontend: { expertise_score: 85, success_rate_percentage: 90 } },
-                        capacity: 5
-                    }
-                }
-            ];
-            
-            // Simulate LLM service failure
-            const fallbackRecommendations = await this.simulateLLMFailure(mockAnalyticsData, 'frontend');
-            
-            if (fallbackRecommendations && fallbackRecommendations.length > 0) {
-                console.log('✅ LLM fallback working correctly');
-                console.log('Fallback recommendations generated:', fallbackRecommendations.length);
-                this.testResults.passed++;
-            } else {
-                console.log('❌ LLM fallback failed');
-                this.testResults.failed++;
-                this.testResults.errors.push('LLM fallback failed to generate recommendations');
-            }
-        } catch (error) {
-            console.log('❌ LLM fallback test error:', error.message);
-            this.testResults.failed++;
-            this.testResults.errors.push(`LLM fallback error: ${error.message}`);
+        send(data) {
+            this.sent.push(JSON.parse(data));
         }
-        
-        // Test 2: LLM timeout scenario
-        console.log('\n2. Testing LLM timeout scenario...');
-        try {
-            const timeoutResult = await this.simulateLLMTimeout();
-            
-            if (timeoutResult.fallback_used) {
-                console.log('✅ LLM timeout handled with fallback');
-                this.testResults.passed++;
-            } else {
-                console.log('❌ LLM timeout not handled properly');
-                this.testResults.failed++;
-                this.testResults.errors.push('LLM timeout not handled');
-            }
-        } catch (error) {
-            console.log('❌ LLM timeout test error:', error.message);
-            this.testResults.failed++;
-            this.testResults.errors.push(`LLM timeout error: ${error.message}`);
+
+        close() {
+            this.readyState = FakeWebSocket.CLOSED;
+            this.emit('close');
         }
-        
-        // Test 3: Invalid LLM response handling
-        console.log('\n3. Testing invalid LLM response handling...');
-        try {
-            const invalidResponseResult = await this.simulateInvalidLLMResponse();
-            
-            if (invalidResponseResult.handled_gracefully) {
-                console.log('✅ Invalid LLM response handled gracefully');
-                this.testResults.passed++;
-            } else {
-                console.log('❌ Invalid LLM response not handled properly');
-                this.testResults.failed++;
-                this.testResults.errors.push('Invalid LLM response not handled');
-            }
-        } catch (error) {
-            console.log('❌ Invalid LLM response test error:', error.message);
-            this.testResults.failed++;
-            this.testResults.errors.push(`Invalid LLM response error: ${error.message}`);
+
+        open() {
+            this.readyState = FakeWebSocket.OPEN;
+            this.emit('open');
         }
     }
-    
-    /**
-     * Test fallback recommendation quality
-     */
-    async testFallbackQuality() {
-        console.log('\n\n=== Testing Fallback Recommendation Quality ===');
-        
-        // Test 1: Deterministic scoring consistency
-        console.log('\n1. Testing deterministic scoring consistency...');
-        try {
-            const testData = {
-                user_id: '87654321-4321-4321-4321-210987654321',
-                username: 'john_doe',
-                metrics: {
-                    workload: 2,
-                    expertise: { frontend: { expertise_score: 85, success_rate_percentage: 90 } },
-                    capacity: 5
-                }
-            };
-            
-            // Run scoring multiple times to ensure consistency
-            const scores = [];
-            for (let i = 0; i < 5; i++) {
-                const score = this.calculateDeterministicScore(testData.metrics, 'frontend');
-                scores.push(score);
-            }
-            
-            const allScoresEqual = scores.every(score => score === scores[0]);
-            
-            if (allScoresEqual) {
-                console.log('✅ Deterministic scoring is consistent');
-                console.log(`Consistent score: ${scores[0]}`);
-                this.testResults.passed++;
-            } else {
-                console.log('❌ Deterministic scoring is inconsistent');
-                console.log('Scores:', scores);
-                this.testResults.failed++;
-                this.testResults.errors.push('Deterministic scoring inconsistent');
-            }
-        } catch (error) {
-            console.log('❌ Deterministic scoring test error:', error.message);
-            this.testResults.failed++;
-            this.testResults.errors.push(`Deterministic scoring error: ${error.message}`);
-        }
-        
-        // Test 2: Fallback reasoning quality
-        console.log('\n2. Testing fallback reasoning quality...');
-        try {
-            const testMetrics = {
-                workload: 1,
-                expertise: { frontend: { expertise_score: 90, success_rate_percentage: 95 } },
-                capacity: 4
-            };
-            
-            const reasoning = this.generateFallbackReasoning(testMetrics, 'frontend');
-            
-            if (reasoning && reasoning.length > 10 && reasoning.includes('frontend')) {
-                console.log('✅ Fallback reasoning quality acceptable');
-                console.log('Generated reasoning:', reasoning);
-                this.testResults.passed++;
-            } else {
-                console.log('❌ Fallback reasoning quality poor');
-                console.log('Generated reasoning:', reasoning);
-                this.testResults.failed++;
-                this.testResults.errors.push('Poor fallback reasoning quality');
-            }
-        } catch (error) {
-            console.log('❌ Fallback reasoning test error:', error.message);
-            this.testResults.failed++;
-            this.testResults.errors.push(`Fallback reasoning error: ${error.message}`);
-        }
-        
-        // Test 3: Edge case handling
-        console.log('\n3. Testing edge case handling...');
-        try {
-            const edgeCases = [
-                { workload: 0, expertise: {}, capacity: 0 }, // No data
-                { workload: 10, expertise: { frontend: { expertise_score: 0, success_rate_percentage: 0 } }, capacity: 1 }, // Overloaded
-                { workload: 1, expertise: { frontend: { expertise_score: 100, success_rate_percentage: 100 } }, capacity: 10 } // Perfect
-            ];
-            
-            let edgeCasesHandled = 0;
-            
-            for (const edgeCase of edgeCases) {
-                try {
-                    const score = this.calculateDeterministicScore(edgeCase, 'frontend');
-                    if (typeof score === 'number' && score >= 0 && score <= 100) {
-                        edgeCasesHandled++;
-                    }
-                } catch (err) {
-                    console.log('Edge case error:', err.message);
-                }
-            }
-            
-            if (edgeCasesHandled === edgeCases.length) {
-                console.log('✅ All edge cases handled properly');
-                this.testResults.passed++;
-            } else {
-                console.log(`❌ Only ${edgeCasesHandled}/${edgeCases.length} edge cases handled`);
-                this.testResults.failed++;
-                this.testResults.errors.push('Edge cases not handled properly');
-            }
-        } catch (error) {
-            console.log('❌ Edge case test error:', error.message);
-            this.testResults.failed++;
-            this.testResults.errors.push(`Edge case error: ${error.message}`);
-        }
-    }
-    
-    /**
-     * Test error recovery mechanisms
-     */
-    async testErrorRecovery() {
-        console.log('\n\n=== Testing Error Recovery Mechanisms ===');
-        
-        // Test 1: Partial data recovery
-        console.log('\n1. Testing partial data recovery...');
-        try {
-            const partialData = [
-                { user_id: '1', username: 'user1', base_score: 80, metrics: { workload: 1, capacity: 5 } },
-                { user_id: '2', username: 'user2', base_score: null, metrics: null }, // Corrupted data
-                { user_id: '3', username: 'user3', base_score: 70, metrics: { workload: 2, capacity: 4 } }
-            ];
-            
-            const recoveredRecommendations = this.recoverFromPartialData(partialData);
-            
-            if (recoveredRecommendations.length >= 2) { // Should recover at least 2 valid entries
-                console.log('✅ Partial data recovery successful');
-                console.log(`Recovered ${recoveredRecommendations.length} recommendations from ${partialData.length} entries`);
-                this.testResults.passed++;
-            } else {
-                console.log('❌ Partial data recovery failed');
-                this.testResults.failed++;
-                this.testResults.errors.push('Partial data recovery failed');
-            }
-        } catch (error) {
-            console.log('❌ Partial data recovery error:', error.message);
-            this.testResults.failed++;
-            this.testResults.errors.push(`Partial data recovery error: ${error.message}`);
-        }
-        
-        // Test 2: Graceful degradation
-        console.log('\n2. Testing graceful degradation...');
-        try {
-            const degradationResult = await this.testGracefulDegradation();
-            
-            if (degradationResult.degraded_gracefully) {
-                console.log('✅ Graceful degradation working');
-                console.log('Degradation level:', degradationResult.degradation_level);
-                this.testResults.passed++;
-            } else {
-                console.log('❌ Graceful degradation failed');
-                this.testResults.failed++;
-                this.testResults.errors.push('Graceful degradation failed');
-            }
-        } catch (error) {
-            console.log('❌ Graceful degradation test error:', error.message);
-            this.testResults.failed++;
-            this.testResults.errors.push(`Graceful degradation error: ${error.message}`);
-        }
-        
-        // Test 3: Error logging and monitoring
-        console.log('\n3. Testing error logging and monitoring...');
-        try {
-            const loggingResult = this.testErrorLogging();
-            
-            if (loggingResult.logged_properly) {
-                console.log('✅ Error logging working correctly');
-                this.testResults.passed++;
-            } else {
-                console.log('❌ Error logging not working properly');
-                this.testResults.failed++;
-                this.testResults.errors.push('Error logging failed');
-            }
-        } catch (error) {
-            console.log('❌ Error logging test error:', error.message);
-            this.testResults.failed++;
-            this.testResults.errors.push(`Error logging error: ${error.message}`);
-        }
-    }
-    
-    // Helper methods for testing
-    
-    /**
-     * Simulate LLM service failure
-     */
-    async simulateLLMFailure(analyticsData, taskCategory) {
-        // Simulate what happens when LLM service is unavailable
-        try {
-            // This would normally call the LLM service, but we simulate failure
-            throw new Error('LLM service unavailable');
-        } catch (error) {
-            // Fallback to deterministic recommendations
-            console.log('LLM service failed, using fallback...');
-            
-            return analyticsData.map(item => ({
-                user_id: item.user_id,
-                username: item.username,
-                score: item.base_score,
-                reasoning: this.generateFallbackReasoning(item.metrics, taskCategory),
-                fallback_used: true,
-                metrics: item.metrics
-            }));
-        }
-    }
-    
-    /**
-     * Simulate LLM timeout
-     */
-    async simulateLLMTimeout() {
-        return new Promise((resolve) => {
-            // Simulate timeout after 100ms
-            setTimeout(() => {
-                resolve({
-                    fallback_used: true,
-                    reason: 'LLM service timeout',
-                    timeout_duration: 100
-                });
-            }, 100);
+    Object.assign(FakeWebSocket, { CONNECTING: 0, OPEN: 1, CLOSING: 2, CLOSED: 3, instances: [] });
+    return FakeWebSocket;
+});
+jest.mock('../services/ProjectService', () => ({ createProjectFromPlan: jest.fn(), addPlanToGroup: jest.fn() }));
+jest.mock('../services/analyticsContext', () => ({ buildTeamContext: jest.fn() }), { virtual: true });
+jest.mock('../models/access.model', () => ({ isGroupMember: jest.fn() }), { virtual: true });
+jest.mock('../models/group.model', () => ({ getGroupsByUserId: jest.fn() }));
+jest.mock('../models/github.model', () => ({ getGroupRepository: jest.fn() }), { virtual: true });
+jest.mock('../models/tasks.model', () => ({ getTasksByGroupId: jest.fn() }));
+jest.mock('../models/nodes.model', () => ({ getNodesByGroupId: jest.fn() }));
+jest.mock('../services/github/repoSnapshot', () => ({
+    ...jest.requireActual('../services/github/repoSnapshot'),
+    buildRepoSnapshot: jest.fn(),
+}));
+
+const WebSocket = require('ws');
+const llmService = require('../services/LLMService');
+const accessModel = require('../models/access.model');
+const groupModel = require('../models/group.model');
+const githubModel = require('../models/github.model');
+const tasksModel = require('../models/tasks.model');
+const nodesModel = require('../models/nodes.model');
+const { buildTeamContext } = require('../services/analyticsContext');
+const { buildRepoSnapshot } = require('../services/github/repoSnapshot');
+const UserSession = require('../services/UserSession');
+
+const UID = '22222222-2222-4222-8222-222222222222';
+const GID = '11111111-1111-4111-8111-111111111111';
+
+const clientSocket = () => ({ readyState: 1, send: jest.fn(), close: jest.fn() });
+const received = (ws) => ws.send.mock.calls.map(([raw]) => JSON.parse(raw));
+const lastOfType = (ws, type) => received(ws).filter((m) => m.type === type).pop();
+const pythonSocket = () => WebSocket.instances[WebSocket.instances.length - 1];
+const fromPython = (message) => llmService.handleMessage(JSON.stringify(message));
+const flush = () => new Promise((r) => setImmediate(r));
+
+describe('LLM fallback (Node side)', () => {
+    let ws;
+    let session;
+
+    beforeEach(() => {
+        jest.spyOn(console, 'log').mockImplementation(() => {});
+        jest.spyOn(console, 'warn').mockImplementation(() => {});
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        llmService.close();
+        WebSocket.instances.length = 0;
+        llmService.connectTimeoutMs = 30;
+        llmService.connect();
+
+        accessModel.isGroupMember.mockResolvedValue(true);
+        groupModel.getGroupsByUserId.mockResolvedValue([{ gid: GID, name: 'Demo' }]);
+        githubModel.getGroupRepository.mockResolvedValue({ gid: GID, repoId: 1, fullName: 'o/r', defaultBranch: 'main', suspendedAt: null });
+        tasksModel.getTasksByGroupId.mockResolvedValue([]);
+        nodesModel.getNodesByGroupId.mockResolvedValue([]);
+        buildRepoSnapshot.mockResolvedValue({ repo: {}, tree: [], readme: '', manifests: [], commits: [], issues: [] });
+        buildTeamContext.mockResolvedValue({ team_members: [] });
+        UserSession.lastAnalysisByUser.clear();
+
+        ws = clientSocket();
+        session = new UserSession(UID, ws);
+    });
+
+    afterEach(() => {
+        session.cleanup();
+        jest.useRealTimers();
+    });
+
+    describe('Python is down', () => {
+        test('a chat message ends in an LLM_ERROR for the user instead of hanging', async () => {
+            await session.handleMessage({ type: 'user', content: 'hola' });
+            expect(lastOfType(ws, 'error')).toMatchObject({ code: 'LLM_ERROR', content: expect.any(String) });
         });
-    }
-    
-    /**
-     * Simulate invalid LLM response
-     */
-    async simulateInvalidLLMResponse() {
-        try {
-            // Simulate invalid JSON response from LLM
-            const invalidResponse = '{ invalid json }';
-            JSON.parse(invalidResponse);
-        } catch (error) {
-            // Handle invalid response gracefully
-            return {
-                handled_gracefully: true,
-                error_type: 'invalid_json',
-                fallback_applied: true
-            };
-        }
-    }
-    
-    /**
-     * Calculate deterministic score (fallback algorithm)
-     */
-    calculateDeterministicScore(metrics, taskCategory) {
-        let baseScore = 50;
-        
-        try {
-            const expertise = metrics.expertise?.[taskCategory] || { expertise_score: 0, success_rate_percentage: 50 };
-            const workload = metrics.workload || 0;
-            const capacity = metrics.capacity || 3;
-            
-            // Expertise bonus (0-30 points)
-            const expertiseBonus = (expertise.expertise_score / 100) * 30;
-            
-            // Workload penalty (0-20 points deduction)
-            const workloadRatio = capacity > 0 ? workload / capacity : 0.5;
-            const workloadPenalty = Math.min(workloadRatio * 20, 20);
-            
-            // Success rate bonus (0-20 points)
-            const successBonus = (expertise.success_rate_percentage / 100) * 20;
-            
-            const finalScore = baseScore + expertiseBonus + successBonus - workloadPenalty;
-            return Math.max(0, Math.min(100, finalScore));
-            
-        } catch (error) {
-            console.log('Error in deterministic scoring:', error.message);
-            return baseScore; // Return base score if calculation fails
-        }
-    }
-    
-    /**
-     * Generate fallback reasoning
-     */
-    generateFallbackReasoning(metrics, taskCategory) {
-        try {
-            const expertise = metrics.expertise?.[taskCategory] || { expertise_score: 0, success_rate_percentage: 50 };
-            const workload = metrics.workload || 0;
-            const capacity = metrics.capacity || 3;
-            
-            const reasons = [];
-            
-            if (expertise.expertise_score > 70) {
-                reasons.push(`High expertise in ${taskCategory} (${expertise.expertise_score}%)`);
-            } else if (expertise.expertise_score > 40) {
-                reasons.push(`Moderate expertise in ${taskCategory} (${expertise.expertise_score}%)`);
-            } else {
-                reasons.push(`Learning opportunity in ${taskCategory}`);
-            }
-            
-            if (workload === 0) {
-                reasons.push('Currently available');
-            } else if (capacity > 0 && workload < capacity * 0.8) {
-                reasons.push('Has capacity for more work');
-            } else {
-                reasons.push('Currently at capacity');
-            }
-            
-            if (expertise.success_rate_percentage > 80) {
-                reasons.push(`High success rate (${expertise.success_rate_percentage}%)`);
-            }
-            
-            return reasons.join('; ');
-            
-        } catch (error) {
-            return `Analytics-based recommendation for ${taskCategory} tasks`;
-        }
-    }
-    
-    /**
-     * Recover from partial data
-     */
-    recoverFromPartialData(partialData) {
-        const recovered = [];
-        
-        for (const item of partialData) {
-            try {
-                if (item.user_id && item.username && item.base_score !== null) {
-                    recovered.push({
-                        user_id: item.user_id,
-                        username: item.username,
-                        score: item.base_score || 50,
-                        reasoning: 'Recovered from partial data',
-                        recovered: true
-                    });
-                }
-            } catch (error) {
-                console.log(`Failed to recover data for ${item.user_id}:`, error.message);
-            }
-        }
-        
-        return recovered;
-    }
-    
-    /**
-     * Test graceful degradation
-     */
-    async testGracefulDegradation() {
-        // Simulate various levels of service degradation
-        const degradationLevels = [
-            { level: 'none', llm_available: true, analytics_available: true },
-            { level: 'llm_only', llm_available: false, analytics_available: true },
-            { level: 'analytics_only', llm_available: true, analytics_available: false },
-            { level: 'minimal', llm_available: false, analytics_available: false }
-        ];
-        
-        for (const degradation of degradationLevels) {
-            if (!degradation.llm_available && degradation.analytics_available) {
-                // This is the expected fallback scenario
-                return {
-                    degraded_gracefully: true,
-                    degradation_level: degradation.level
-                };
-            }
-        }
-        
-        return { degraded_gracefully: false };
-    }
-    
-    /**
-     * Test error logging
-     */
-    testErrorLogging() {
-        const errors = [];
-        
-        try {
-            // Simulate various error scenarios
-            errors.push({ type: 'llm_timeout', message: 'LLM service timeout', timestamp: new Date() });
-            errors.push({ type: 'invalid_response', message: 'Invalid JSON response', timestamp: new Date() });
-            errors.push({ type: 'analytics_error', message: 'Analytics data unavailable', timestamp: new Date() });
-            
-            // Check if errors are properly structured
-            const validErrors = errors.every(error => 
-                error.type && error.message && error.timestamp
-            );
-            
-            return {
-                logged_properly: validErrors,
-                error_count: errors.length
-            };
-            
-        } catch (error) {
-            return {
-                logged_properly: false,
-                error: error.message
-            };
-        }
-    }
-    
-    /**
-     * Run all LLM fallback tests
-     */
-    async runAllTests() {
-        console.log('Starting LLM Fallback and Error Handling Tests...');
-        console.log('Testing LLM fallback scenarios and error handling\n');
-        
-        try {
-            await this.testLLMAvailability();
-            await this.testFallbackQuality();
-            await this.testErrorRecovery();
-            
-            this.printTestSummary();
-            
-        } catch (error) {
-            console.log('\n❌ Test suite failed with error:', error);
-            this.testResults.failed++;
-            this.testResults.errors.push(`Test suite error: ${error.message}`);
-            this.printTestSummary();
-        }
-    }
-    
-    /**
-     * Print test results summary
-     */
-    printTestSummary() {
-        console.log('\n\n=== LLM Fallback Test Summary ===');
-        console.log(`✅ Tests Passed: ${this.testResults.passed}`);
-        console.log(`❌ Tests Failed: ${this.testResults.failed}`);
-        console.log(`📊 Total Tests: ${this.testResults.passed + this.testResults.failed}`);
-        
-        if (this.testResults.errors.length > 0) {
-            console.log('\n🔍 Error Details:');
-            this.testResults.errors.forEach((error, index) => {
-                console.log(`  ${index + 1}. ${error}`);
-            });
-        }
-        
-        const successRate = this.testResults.passed / (this.testResults.passed + this.testResults.failed) * 100;
-        console.log(`\n📈 Success Rate: ${successRate.toFixed(1)}%`);
-        
-        if (successRate >= 80) {
-            console.log('\n🎉 LLM fallback tests completed successfully!');
-        } else if (successRate >= 60) {
-            console.log('\n⚠️ LLM fallback tests completed with warnings');
-        } else {
-            console.log('\n❌ LLM fallback tests failed - requires attention');
-        }
-        
-        console.log('\nLLM fallback test coverage:');
-        console.log('  ✅ LLM service unavailable scenarios');
-        console.log('  ✅ LLM timeout handling');
-        console.log('  ✅ Invalid LLM response handling');
-        console.log('  ✅ Deterministic scoring consistency');
-        console.log('  ✅ Fallback reasoning quality');
-        console.log('  ✅ Edge case handling');
-        console.log('  ✅ Partial data recovery');
-        console.log('  ✅ Graceful degradation');
-        console.log('  ✅ Error logging and monitoring');
-    }
-}
 
-// Export for use in other test files
-module.exports = LLMFallbackTest;
+        test('an analytics request ends in analytics_error', async () => {
+            await session.handleMessage({ type: 'analytics', action: 'x', requestId: 'a1', data: { group_id: GID } });
+            expect(lastOfType(ws, 'analytics_error')).toMatchObject({ error: 'LLM_ERROR', requestId: 'a1' });
+        });
 
-// Run tests if this file is executed directly
-if (require.main === module) {
-    const testSuite = new LLMFallbackTest();
-    testSuite.runAllTests();
-}
+        test('a repository analysis fails fast and frees the analysis slot', async () => {
+            await session.handleMessage({ type: 'repo_analysis', requestId: 'c1', groupId: GID });
+            expect(lastOfType(ws, 'error')).toMatchObject({ code: 'LLM_ERROR', requestId: 'c1' });
+            expect(session.analysis).toBeNull();
+        });
+
+        test('recovers once Python is back', async () => {
+            await session.handleMessage({ type: 'user', content: 'primero' });
+            const pending = session.handleMessage({ type: 'user', content: 'segundo' });
+            pythonSocket().open();
+            await pending;
+            expect(pythonSocket().sent.map((m) => m.params.message)).toEqual(['segundo']);
+        });
+    });
+
+    describe('Python is up but misbehaves', () => {
+        beforeEach(() => pythonSocket().open());
+
+        test('silent analyzer → LLM_TIMEOUT after 90 s and the late answer is dropped', async () => {
+            jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] });
+            await session.handleMessage({ type: 'repo_analysis', requestId: 'c1', groupId: GID });
+            const request = pythonSocket().sent.find((m) => m.method === 'analyze_repository');
+            expect(request).toBeDefined();
+            jest.advanceTimersByTime(UserSession.ANALYSIS_TIMEOUT_MS);
+            expect(lastOfType(ws, 'error')).toMatchObject({ code: 'LLM_TIMEOUT', requestId: 'c1' });
+
+            fromPython({ event: 'repo_analysis_plan', requestId: request.requestId, sessionId: session.sessionId, data: { plan: { tasks: [] } } });
+            await flush();
+            expect(lastOfType(ws, 'repo_plan')).toBeUndefined();
+        });
+
+        test('busy analyzer → LLM_RATE_LIMIT with retryAfterSec', async () => {
+            await session.handleMessage({ type: 'repo_analysis', requestId: 'c1', groupId: GID });
+            const request = pythonSocket().sent.find((m) => m.method === 'analyze_repository');
+            fromPython({ event: 'repo_analysis_error', requestId: request.requestId, sessionId: session.sessionId, error: { code: 'LLM_RATE_LIMIT', message: 'busy', retryAfterSec: 30 } });
+            await flush();
+            expect(lastOfType(ws, 'error')).toMatchObject({ code: 'LLM_RATE_LIMIT', retryAfterSec: 30, requestId: 'c1' });
+        });
+
+        test('unusable plan → LLM_INVALID_OUTPUT', async () => {
+            await session.handleMessage({ type: 'repo_analysis', requestId: 'c1', groupId: GID });
+            const request = pythonSocket().sent.find((m) => m.method === 'analyze_repository');
+            fromPython({ event: 'repo_analysis_plan', requestId: request.requestId, sessionId: session.sessionId, data: { plan: { summary: 'x', tasks: [{ name: '', due_date: 'mañana' }] } } });
+            await flush();
+            expect(lastOfType(ws, 'error')).toMatchObject({ code: 'LLM_INVALID_OUTPUT' });
+        });
+
+        test('invalid JSON or a missing sessionId is ignored and the session keeps working', async () => {
+            expect(() => llmService.handleMessage('{oops')).not.toThrow();
+            expect(() => fromPython({ event: 'response', data: { content: 'lost' } })).not.toThrow();
+            fromPython({ event: 'response', sessionId: session.sessionId, data: { content: 'sigo aquí' } });
+            await flush();
+            expect(lastOfType(ws, 'assistant')).toMatchObject({ content: 'sigo aquí' });
+        });
+
+        test('a degraded chat answer (friendly text + data.error) is shown as assistant text', async () => {
+            fromPython({ event: 'response', sessionId: session.sessionId, requestId: 'r', data: { content: 'El asistente está saturado, intenta en un momento.', error: { code: 'LLM_RATE_LIMIT', retryAfterSec: 10 } } });
+            await flush();
+            expect(lastOfType(ws, 'assistant')).toMatchObject({ content: 'El asistente está saturado, intenta en un momento.' });
+        });
+
+        test('an untyped Python error becomes a generic LLM_ERROR without internals', async () => {
+            fromPython({ event: 'error', sessionId: session.sessionId, requestId: 'r', error: 'An unexpected error occurred: KeyError(\'x\')' });
+            await flush();
+            const error = lastOfType(ws, 'error');
+            expect(error.code).toBe('LLM_ERROR');
+            expect(JSON.stringify(error)).not.toContain('KeyError');
+        });
+    });
+});
