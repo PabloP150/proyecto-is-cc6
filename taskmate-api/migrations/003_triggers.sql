@@ -1,5 +1,7 @@
--- Node-progress triggers. Installed by migrations/003_triggers.sql (keep both files in sync);
--- this copy can be run by hand with sqlcmd -I -b: CREATE OR ALTER makes it re-runnable.
+-- 003_triggers: installs the node-progress triggers (same logic as taskmate_triggers.sql).
+-- A target node in "progressor" mode (Edges.prerequisite = 0) shows the average percentage
+-- of its source nodes. Cursors are LOCAL so nested firings cannot collide on a global
+-- cursor name, and TRIGGER_NESTLEVEL() bounds the recursion.
 
 CREATE OR ALTER TRIGGER dbo.UpdateTargetNodePercentage
 ON dbo.Nodes

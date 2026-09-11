@@ -31,6 +31,9 @@ const CATEGORY_KEYWORDS = {
     ]
 };
 
+// A task that was never assigned has no TaskAnalytics fact: nothing to record, not an error.
+const isNoFactError = (error) => /not found or already completed/.test(error && error.message);
+
 class AnalyticsIntegration {
     constructor() {
         this.analyticsService = AnalyticsService;
@@ -69,24 +72,25 @@ class AnalyticsIntegration {
         try {
             return await this.analyticsService.recordTaskCompletion(taskId, success);
         } catch (error) {
+            if (isNoFactError(error)) return { success: true, skipped: true };
             console.error('Analytics Integration: Failed to record task completion:', error);
             return { success: false, error: error.message, skipped: false };
         }
     }
 
     /**
-     * Hook for task deletion - called when a task is deleted
+     * Hook for task deletion - called when a task is deleted. tasks.deleteTask already marks the
+     * facts 'failed' in its transaction; this refreshes the derived metrics (or closes facts
+     * left pending by older code paths).
      * @param {string} taskId - Task UUID
      */
     async onTaskDeletion(taskId) {
         if (!this.enabled) return { success: true, skipped: true };
 
         try {
-            
-            const result = await this.analyticsService.recordTaskCompletion(taskId, false, 'reassigned');
-            
-            return result;
+            return await this.analyticsService.recordTaskCompletion(taskId, false, 'failed');
         } catch (error) {
+            if (isNoFactError(error)) return { success: true, skipped: true };
             console.error('Analytics Integration: Failed to handle task deletion:', error);
             return { success: false, error: error.message, skipped: false };
         }

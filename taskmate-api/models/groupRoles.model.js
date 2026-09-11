@@ -1,5 +1,6 @@
 // models/groupRoles.model.js
 const { execReadCommand, execWriteCommand } = require('../helpers/execQuery');
+const { useTransaction } = require('../helpers/transaction');
 const { TYPES } = require('tedious');
 
 const getGroupRoles = async (gid) => {
@@ -8,7 +9,7 @@ const getGroupRoles = async (gid) => {
   return execReadCommand(query, params);
 };
 
-const addGroupRole = async (roleData) => {
+const addGroupRole = async (roleData, options = {}) => {
   const { gr_id, gid, gr_name, gr_color, gr_icon } = roleData;
   const query = `INSERT INTO dbo.GroupRoles (gr_id, gid, gr_name, gr_color, gr_icon) VALUES (@gr_id, @gid, @gr_name, @gr_color, @gr_icon)`;
   const params = [
@@ -18,7 +19,7 @@ const addGroupRole = async (roleData) => {
     { name: 'gr_color', type: TYPES.NVarChar, value: gr_color },
     { name: 'gr_icon', type: TYPES.NVarChar, value: gr_icon },
   ];
-  await execWriteCommand(query, params);
+  await (options.tx ? options.tx.write(query, params) : execWriteCommand(query, params));
   return { success: true };
 };
 
@@ -36,18 +37,16 @@ const updateGroupRole = async (roleData) => {
   return { success: true };
 };
 
-const deleteGroupRole = async (gr_id, gid) => {
+// Assignments first (FK), then the role, atomically.
+const deleteGroupRole = async (gr_id, gid, options = {}) => useTransaction(options, async (tx) => {
   const params = [
     { name: 'gr_id', type: TYPES.UniqueIdentifier, value: gr_id },
     { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
   ];
-  await execWriteCommand(
-    `DELETE FROM dbo.UserGroupRoles WHERE gr_id = @gr_id AND gid = @gid;
-     DELETE FROM dbo.GroupRoles WHERE gr_id = @gr_id AND gid = @gid`,
-    params
-  );
+  await tx.write('DELETE FROM dbo.UserGroupRoles WHERE gr_id = @gr_id AND gid = @gid', params);
+  await tx.write('DELETE FROM dbo.GroupRoles WHERE gr_id = @gr_id AND gid = @gid', params);
   return { success: true };
-};
+});
 
 module.exports = {
   getGroupRoles,

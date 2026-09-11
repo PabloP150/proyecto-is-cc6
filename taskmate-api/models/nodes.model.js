@@ -1,7 +1,8 @@
 const { execReadCommand, execWriteCommand } = require('../helpers/execQuery');
+const { useTransaction } = require('../helpers/transaction');
 const { TYPES } = require('tedious');
 
-const addNode = async (nodeData) => {
+const addNode = async (nodeData, options = {}) => {
     const { nid, gid, name, description, date, completed, percentage, x_pos, y_pos } = nodeData;
     const query = `INSERT INTO dbo.Nodes (nid, gid, name, description, date, completed, x_pos, y_pos, percentage)
                    VALUES (@nid, @gid, @name, @description, @date, @completed, @x_pos, @y_pos, @percentage)`;
@@ -16,7 +17,7 @@ const addNode = async (nodeData) => {
         { name: 'y_pos', type: TYPES.Float, value: y_pos },
         { name: 'percentage', type: TYPES.Int, value: percentage ?? 0 },
     ];
-    return execWriteCommand(query, params);
+    return options.tx ? options.tx.write(query, params) : execWriteCommand(query, params);
 };
 
 const updateNode = async (nodeData) => {
@@ -62,14 +63,12 @@ const updateNodePercentage = async (nodeData) => {
     return execWriteCommand(query, params);
 };
 
-const deleteNode = async (nid) => {
+// Edges first (FK), then the node, atomically. Returns the number of Nodes rows deleted.
+const deleteNode = async (nid, options = {}) => useTransaction(options, async (tx) => {
     const params = [{ name: 'nid', type: TYPES.UniqueIdentifier, value: nid }];
-    // Delete edges (FK constraint) and node in a single batch
-    return execWriteCommand(
-        `DELETE FROM dbo.Edges WHERE sourceId=@nid OR targetId=@nid; DELETE FROM dbo.Nodes WHERE nid=@nid`,
-        params
-    );
-};
+    await tx.write('DELETE FROM dbo.Edges WHERE sourceId = @nid OR targetId = @nid', params);
+    return tx.write('DELETE FROM dbo.Nodes WHERE nid = @nid', params);
+});
 
 const getAllNodes = async () => {
     const query = `SELECT nid, gid, name, description, date, completed, x_pos, y_pos, percentage FROM dbo.Nodes`;

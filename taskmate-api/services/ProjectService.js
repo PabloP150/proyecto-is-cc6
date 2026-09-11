@@ -4,6 +4,9 @@ const taskModel = require('../models/tasks.model');
 const nodeModel = require('../models/nodes.model');
 const userGroupModel = require('../models/userGroup.model');
 const groupRolesModel = require('../models/groupRoles.model');
+const { isGroupMember } = require('../models/access.model');
+const { withTransaction, isFkViolation, isUniqueViolation } = require('../helpers/transaction');
+const { AppError } = require('../helpers/errors');
 
 // Fallback: map common emojis to Material Icons names
 const EMOJI_TO_ICON = {
@@ -33,6 +36,38 @@ function normalizeIcon(icon) {
     if (VALID_ICONS.has(cleaned)) return cleaned;
     return 'star';
 }
+
+
+// Column sizes of the VARCHAR columns written here.
+const LIMITS = { name: 25, list: 25, description: 1000, roleName: 40, roleColor: 20 };
+const MAX_PLAN_TASKS = 100;
+const MAX_PLAN_MILESTONES = 50;
+const NODE_SPACING_X = 250;
+// SMALLDATETIME range (Tasks.datetime).
+const MIN_DATE = new Date(1900, 0, 1);
+const MAX_DATE = new Date(2079, 5, 6);
+
+// The VARCHAR columns use a Latin-1 code page: characters outside U+0000-U+00FF (emoji, CJK...)
+// would be stored as '?', so they are dropped before writing.
+const toLatin1 = (value) => String(value ?? '').normalize('NFC').replace(/[^\u0000-\u00FF]/g, '');
+const clip = (value, max) => toLatin1(value).trim().slice(0, max);
+const shorten = (value, max) => {
+    const text = toLatin1(value).trim();
+    return text.length > max ? `${text.slice(0, max - 3)}...` : text;
+};
+
+// 'YYYY-MM-DD' is a calendar date: build it in local time (the pool uses useUTC: false).
+const parseLocalDate = (value) => {
+    if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+    if (typeof value !== 'string') return null;
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+    const date = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+    if (m && date.getDate() !== Number(m[3])) return null; // e.g. 2026-02-31
+    return date;
+};
+
+const inSmallDateTimeRange = (date) => date >= MIN_DATE && date <= MAX_DATE;
 
 class ProjectService {
     /**
@@ -75,194 +110,189 @@ class ProjectService {
         return now;
     }
 
+    // Due date of an LLM-generated task or milestone: ISO date, duration ("2 weeks") or today.
+    _resolvePlanDate(value, fallbackDuration) {
+        let date = null;
+        if (typeof value === 'string' && value) {
+            date = (value.includes('T') || value.includes('-'))
+                ? parseLocalDate(value)
+                : this._calculateDueDate(value);
+        } else if (fallbackDuration) {
+            date = this._calculateDueDate(fallbackDuration);
+        }
+        return date && inSmallDateTimeRange(date) ? date : new Date();
+    }
+
+    /**
+     * Creates a group (with the user as admin and member), its roles, tasks and milestones from
+     * an AI plan, all in ONE transaction: either the whole project exists or nothing does.
+     * Returns {success: true, groupId, groupName} or {success: false, error}.
+     */
     async createProjectFromPlan(recommendations, originalMessage, userId) {
-        try {
-            // Validate input parameters
-            if (!recommendations) {
-                return { success: false, error: 'Missing recommendations data' };
-            }
+        if (!recommendations) {
+            return { success: false, error: 'Missing recommendations data' };
+        }
+        if (!userId) {
+            return { success: false, error: 'Missing user ID' };
+        }
 
-            if (!userId) {
-                return { success: false, error: 'Missing user ID' };
-            }
+        const projectData = recommendations.recommendations || recommendations;
+        if (!projectData) {
+            return { success: false, error: 'Invalid recommendations format: missing project data' };
+        }
+        if (!projectData.project_name && !originalMessage) {
+            return { success: false, error: 'Missing project name and original message' };
+        }
+        if (!projectData.tasks || !Array.isArray(projectData.tasks)) {
+            return { success: false, error: 'Invalid or missing tasks array' };
+        }
 
-            // Extract data from standardized recommendations format
-            const projectData = recommendations.recommendations || recommendations;
+        const groupId = uuidv4();
+        const groupName = clip(projectData.project_name || `Project: ${originalMessage}`, LIMITS.name) || 'Project';
 
-            // Validate project data structure
-            if (!projectData) {
-                return { success: false, error: 'Invalid recommendations format: missing project data' };
-            }
-
-            if (!projectData.project_name && !originalMessage) {
-                return { success: false, error: 'Missing project name and original message' };
-            }
-
-            if (!projectData.tasks || !Array.isArray(projectData.tasks)) {
-                return { success: false, error: 'Invalid or missing tasks array' };
-            }
-
-            // 1. Create a project group
-            const groupName = (projectData.project_name || `Project: ${originalMessage}`).substring(0, 25);
-            const groupId = uuidv4();
-
-            console.log(`Creating project group: ${groupName} (ID: ${groupId}) for user: ${userId}`);
-            await groupModel.addGroup({
-                gid: groupId,
-                adminId: userId,
-                name: groupName
+        // Role names are unique per group (UQ_GroupRoles_Gid_Name, case-insensitive).
+        const seenRoles = new Set();
+        const roles = (Array.isArray(projectData.roles) ? projectData.roles : [])
+            .map(role => ({ ...role, cleanName: clip(role && role.name, LIMITS.roleName) }))
+            .filter(role => {
+                const key = role.cleanName.toLowerCase();
+                if (!role.cleanName || seenRoles.has(key)) return false;
+                seenRoles.add(key);
+                return true;
             });
 
-            // 2. Add the creator to the group
-            await userGroupModel.addUserToGroup({ uid: userId, gid: groupId });
+        const tasks = projectData.tasks.map((task, i) => ({
+            tid: uuidv4(),
+            gid: groupId,
+            name: shorten(task && (task.name || task.task), LIMITS.name) || `Task ${i + 1}`,
+            description: clip(task && task.description, LIMITS.description),
+            list: shorten((task && (task.list || task.status)) || 'To Do', LIMITS.list) || 'To Do',
+            datetime: this._resolvePlanDate(task && task.due_date, task && task.duration),
+            percentage: 0,
+        }));
 
-            // 3. Create group roles (in parallel)
-            if (projectData.roles && Array.isArray(projectData.roles) && projectData.roles.length > 0) {
-                console.log(`Creating ${projectData.roles.length} roles for project ${groupId}`);
-                await Promise.all(projectData.roles.map(async (role) => {
-                    if (!role.name) return;
-                    try {
-                        await groupRolesModel.addGroupRole({
-                            gr_id: uuidv4(),
-                            gid: groupId,
-                            gr_name: role.name.substring(0, 30),
-                            gr_color: role.color || '#6b7280',
-                            gr_icon: normalizeIcon(role.icon),
-                        });
-                    } catch (roleError) {
-                        console.error(`Failed to create role ${role.name}:`, roleError);
-                    }
-                }));
-            }
+        const milestones = (Array.isArray(projectData.milestones) ? projectData.milestones : []).map((milestone, i) => ({
+            nid: uuidv4(),
+            gid: groupId,
+            name: shorten(milestone && milestone.name, LIMITS.name) || `Milestone ${i + 1}`,
+            description: clip((milestone && milestone.description) || 'Project milestone', LIMITS.description),
+            date: this._resolvePlanDate(milestone && milestone.date),
+            completed: false,
+            percentage: 0,
+            x_pos: NODE_SPACING_X * i,
+            y_pos: 0,
+        }));
 
-            // 4. Create tasks from the recommendations (in parallel)
-            console.log(`Creating ${projectData.tasks.length} tasks for project ${groupId}`);
-            await Promise.all(projectData.tasks.map(async (task, i) => {
-                const taskId = uuidv4();
-
-                if (!task.name && !task.task) {
-                    console.warn(`Task ${i + 1} missing name, using default`);
-                }
-
-                let dueDate;
-                try {
-                    if (task.due_date) {
-                        if (task.due_date.includes('T') || task.due_date.includes('-')) {
-                            dueDate = new Date(task.due_date);
-                            if (isNaN(dueDate.getTime())) {
-                                console.warn(`Invalid due_date format for task ${i + 1}: ${task.due_date}, using current date`);
-                                dueDate = new Date();
-                            }
-                        } else {
-                            dueDate = this._calculateDueDate(task.due_date);
-                        }
-                    } else if (task.duration) {
-                        dueDate = this._calculateDueDate(task.duration);
-                    } else {
-                        dueDate = new Date();
-                    }
-                } catch (dateError) {
-                    console.warn(`Error processing date for task ${i + 1}:`, dateError);
-                    dueDate = new Date();
-                }
-
-                const taskName = task.name || task.task || `Task ${i + 1}`;
-                const truncatedTaskName = taskName.length > 25 ? taskName.substring(0, 22) + '...' : taskName;
-
-                const taskData = {
-                    tid: taskId,
-                    gid: groupId,
-                    name: truncatedTaskName,
-                    description: task.description || '',
-                    list: task.list || task.status || 'To Do',
-                    datetime: dueDate,
-                    percentage: 0
-                };
-
-                try {
-                    await taskModel.addTask(taskData);
-                    console.log(`Created task: ${taskData.name}`);
-                } catch (taskError) {
-                    console.error(`Failed to create task ${i + 1}:`, taskError);
-                    throw new Error(`Failed to create task: ${taskData.name}`);
-                }
-            }));
-
-            // 5. Create milestones in Nodes table (in parallel, if provided)
-            if (projectData.milestones && Array.isArray(projectData.milestones)) {
-                console.log(`Creating ${projectData.milestones.length} milestones for project ${groupId}`);
-                await Promise.all(projectData.milestones.map(async (milestone, i) => {
-                    const nodeId = uuidv4();
-
-                    if (!milestone.name) {
-                        console.warn(`Milestone ${i + 1} missing name, using default`);
-                    }
-
-                    let milestoneDate;
-                    try {
-                        if (milestone.date) {
-                            if (milestone.date.includes('T') || milestone.date.includes('-')) {
-                                milestoneDate = new Date(milestone.date);
-                                if (isNaN(milestoneDate.getTime())) {
-                                    console.warn(`Invalid date format for milestone ${i + 1}: ${milestone.date}, using current date`);
-                                    milestoneDate = new Date();
-                                }
-                            } else {
-                                milestoneDate = this._calculateDueDate(milestone.date);
-                            }
-                        } else {
-                            milestoneDate = new Date();
-                        }
-                    } catch (dateError) {
-                        console.warn(`Error processing date for milestone ${i + 1}:`, dateError);
-                        milestoneDate = new Date();
-                    }
-
-                    const milestoneName = milestone.name || `Milestone ${i + 1}`;
-                    const truncatedMilestoneName = milestoneName.length > 25 ? milestoneName.substring(0, 22) + '...' : milestoneName;
-
-                    const milestoneData = {
-                        nid: nodeId,
+        try {
+            await withTransaction(async (tx) => {
+                await groupModel.addGroup({ gid: groupId, adminId: userId, name: groupName }, { tx });
+                await userGroupModel.addUserToGroup({ uid: userId, gid: groupId }, { tx });
+                // Queued FIFO on the transaction's single connection.
+                await Promise.all([
+                    ...roles.map(role => groupRolesModel.addGroupRole({
+                        gr_id: uuidv4(),
                         gid: groupId,
-                        name: truncatedMilestoneName,
-                        description: milestone.description || 'Project milestone',
-                        date: milestoneDate,
-                        completed: false,
-                        percentage: 0,
-                        x_pos: 0,
-                        y_pos: 0
-                    };
-
-                    try {
-                        await nodeModel.addNode(milestoneData);
-                        console.log(`Created milestone: ${milestoneData.name}`);
-                    } catch (milestoneError) {
-                        console.error(`Failed to create milestone ${i + 1}:`, milestoneError);
-                        throw new Error(`Failed to create milestone: ${milestoneData.name}`);
-                    }
-                }));
-            } else {
-                console.log('No milestones provided, skipping milestone creation');
-            }
-
-            console.log(`Successfully created project ${groupName} with ${projectData.tasks.length} tasks and ${projectData.milestones?.length || 0} milestones`);
-            return { success: true, groupId };
+                        gr_name: role.cleanName,
+                        gr_color: clip(role.color || '#6b7280', LIMITS.roleColor),
+                        gr_icon: normalizeIcon(role.icon),
+                    }, { tx })),
+                    ...tasks.map(task => taskModel.addTask(task, { tx })),
+                    ...milestones.map(node => nodeModel.addNode(node, { tx })),
+                ]);
+            });
+            return { success: true, groupId, groupName };
         } catch (error) {
             console.error('Error creating project from recommendations:', error);
-
-            // Provide more specific error messages
-            if (error.message.includes('Failed to create task')) {
-                return { success: false, error: `Task creation failed: ${error.message}` };
-            } else if (error.message.includes('Failed to create milestone')) {
-                return { success: false, error: `Milestone creation failed: ${error.message}` };
-            } else if (error.message.includes('duplicate') || error.message.includes('unique')) {
-                return { success: false, error: 'Project with this name already exists for this user' };
-            } else if (error.message.includes('foreign key') || error.message.includes('reference')) {
+            if (isFkViolation(error)) {
                 return { success: false, error: 'Invalid user ID or database reference error' };
-            } else {
-                return { success: false, error: `Database error: ${error.message}` };
             }
+            if (isUniqueViolation(error)) {
+                return { success: false, error: 'Project with this name already exists for this user' };
+            }
+            return { success: false, error: 'Database error: the project could not be created' };
         }
+    }
+
+    /**
+     * addPlanToGroup(gid, plan, uid) → {taskIds, nodeIds}
+     * Saves a confirmed repository-analysis plan into an existing group in one transaction:
+     * milestones become Nodes at x = 250*i, tasks become Tasks whose list is their milestone's
+     * name (<= 25) or 'GitHub'. Text is truncated to the columns and stripped to Latin-1.
+     * Throws AppError NOT_GROUP_MEMBER (403) or VALIDATION_ERROR (400).
+     */
+    async addPlanToGroup(gid, plan, uid) {
+        if (!plan || typeof plan !== 'object') {
+            throw new AppError('VALIDATION_ERROR', 'Plan is required', 400);
+        }
+        const planTasks = plan.tasks ?? [];
+        const planMilestones = plan.milestones ?? [];
+        if (!Array.isArray(planTasks) || !Array.isArray(planMilestones)) {
+            throw new AppError('VALIDATION_ERROR', 'Plan tasks and milestones must be arrays', 400);
+        }
+        if (planTasks.length === 0 && planMilestones.length === 0) {
+            throw new AppError('VALIDATION_ERROR', 'Plan has no tasks or milestones', 400);
+        }
+        if (planTasks.length > MAX_PLAN_TASKS || planMilestones.length > MAX_PLAN_MILESTONES) {
+            throw new AppError('VALIDATION_ERROR', 'Plan is too large', 400);
+        }
+
+        const requireDate = (value, what) => {
+            const date = parseLocalDate(value);
+            if (!date || !inSmallDateTimeRange(date)) {
+                throw new AppError('VALIDATION_ERROR', `Invalid date for ${what}`, 400);
+            }
+            return date;
+        };
+
+        const milestoneByKey = new Map();
+        const nodes = planMilestones.map((milestone, i) => {
+            if (!milestone || typeof milestone !== 'object') {
+                throw new AppError('VALIDATION_ERROR', `Invalid milestone ${i + 1}`, 400);
+            }
+            const node = {
+                nid: uuidv4(),
+                gid,
+                name: shorten(milestone.name, LIMITS.name) || `Milestone ${i + 1}`,
+                description: clip(milestone.description, LIMITS.description),
+                date: requireDate(milestone.target_date, `milestone ${i + 1}`),
+                completed: false,
+                percentage: 0,
+                x_pos: NODE_SPACING_X * i,
+                y_pos: 0,
+            };
+            if (milestone.key !== undefined && milestone.key !== null) milestoneByKey.set(String(milestone.key), node);
+            return node;
+        });
+
+        const tasks = planTasks.map((task, i) => {
+            if (!task || typeof task !== 'object') {
+                throw new AppError('VALIDATION_ERROR', `Invalid task ${i + 1}`, 400);
+            }
+            const milestone = task.milestone_key === undefined || task.milestone_key === null
+                ? null
+                : milestoneByKey.get(String(task.milestone_key));
+            return {
+                tid: uuidv4(),
+                gid,
+                name: shorten(task.name, LIMITS.name) || `Task ${i + 1}`,
+                description: clip(task.description, LIMITS.description),
+                list: milestone ? milestone.name : 'GitHub',
+                datetime: requireDate(task.due_date, `task ${i + 1}`),
+                percentage: 0,
+            };
+        });
+
+        await withTransaction(async (tx) => {
+            if (!(await isGroupMember(uid, gid, { tx }))) {
+                throw new AppError('NOT_GROUP_MEMBER', 'You are not a member of this group', 403);
+            }
+            await Promise.all([
+                ...nodes.map(node => nodeModel.addNode(node, { tx })),
+                ...tasks.map(task => taskModel.addTask(task, { tx })),
+            ]);
+        });
+
+        return { taskIds: tasks.map(t => t.tid), nodeIds: nodes.map(n => n.nid) };
     }
 }
 

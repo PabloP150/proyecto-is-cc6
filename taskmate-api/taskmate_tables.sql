@@ -1,3 +1,6 @@
+-- Base schema (version 0). Do not edit to change the schema: add a numbered file in
+-- migrations/ instead (setup-db.sh runs this only on an empty database, then the migrations).
+
 --DROP TABLE dbo.UserGroupRoles;
 --DROP TABLE dbo.GroupRoles;
 --DROP TABLE dbo.UserGroups;

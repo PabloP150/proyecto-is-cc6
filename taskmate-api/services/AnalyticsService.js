@@ -1,6 +1,8 @@
 const { execReadCommand, execWriteCommand } = require('../helpers/execQuery');
 const { TYPES } = require('tedious');
 
+const VALID_CATEGORIES = ['frontend', 'backend', 'database', 'testing', 'general'];
+
 class AnalyticsService {
     /**
      * Execute multiple operations with error handling (simplified transaction-like behavior)
@@ -8,12 +10,8 @@ class AnalyticsService {
      * @returns {Promise} Operation result
      */
     async executeWithErrorHandling(operations) {
-        try {
-            return await operations();
-        } catch (error) {
-            console.error('Operation failed:', error);
-            throw error;
-        }
+        // Errors propagate to the callers, which log them (a task with no analytics fact is a normal case).
+        return operations();
     }
     /**
      * Record a new task assignment in analytics
@@ -30,13 +28,13 @@ class AnalyticsService {
             }
 
             // Validate category
-            const validCategories = ['frontend', 'backend', 'database', 'testing', 'general'];
-            if (!validCategories.includes(category)) {
+            if (!VALID_CATEGORIES.includes(category)) {
                 console.warn(`Invalid category '${category}', defaulting to 'general'`);
                 category = 'general';
             }
 
-            // Insert only if no pending assignment already exists (single roundtrip)
+            // Insert only if no pending assignment already exists (single roundtrip). TaskAnalytics has
+            // no FK to Tasks (it keeps history), so the task's existence is checked here.
             const insertQuery = `
                 INSERT INTO dbo.TaskAnalytics (tid, uid, gid, task_category, assigned_at)
                 SELECT @tid, @uid, @gid, @category, GETDATE()
@@ -44,6 +42,7 @@ class AnalyticsService {
                     SELECT 1 FROM dbo.TaskAnalytics
                     WHERE tid = @tid AND uid = @uid AND success_status = 'pending'
                 )
+                AND EXISTS (SELECT 1 FROM dbo.Tasks WHERE tid = @tid)
             `;
             const insertParams = [
                 { name: 'tid', type: TYPES.UniqueIdentifier, value: taskId },
@@ -98,16 +97,39 @@ class AnalyticsService {
             
             const taskData = await execReadCommand(verifyQuery, verifyParams);
             if (!taskData || taskData.length === 0) {
-                throw new Error(`Task ${taskId} not found or already completed`);
+                // tasks.completeTask / deleteTask close the facts inside their own transaction, so the
+                // hook that runs after them only has to refresh the derived metrics (idempotent).
+                const closed = await execReadCommand(
+                    `SELECT TOP 1 success_status FROM dbo.TaskAnalytics
+                     WHERE tid = @tid AND success_status <> 'pending'
+                     ORDER BY completed_at DESC`,
+                    verifyParams
+                );
+                if (!closed || closed.length === 0) {
+                    throw new Error(`Task ${taskId} not found or already completed`);
+                }
+                await this._updateUserMetrics(taskId);
+                return {
+                    success: true,
+                    task_id: taskId,
+                    status: closed[0].success_status,
+                    completion_time_calculated: true,
+                    already_recorded: true
+                };
             }
-            
-            // Calculate completion time and update record
+
+            // Close the pending facts; completed_at is clamped so it is never before assigned_at
+            // (CK_TaskAnalytics_CompletedAt) and only completed tasks carry a duration.
             const updateQuery = `
-                UPDATE dbo.TaskAnalytics 
-                SET completed_at = GETDATE(),
+                UPDATE ta
+                SET completed_at = c.closed_at,
                     success_status = @status,
-                    completion_time_hours = DATEDIFF(HOUR, assigned_at, GETDATE())
-                WHERE tid = @tid AND success_status = 'pending'
+                    completion_time_hours = CASE WHEN @status = 'completed'
+                        THEN CAST(DATEDIFF(SECOND, ta.assigned_at, c.closed_at) / 3600.0 AS DECIMAL(10,2))
+                        ELSE NULL END
+                FROM dbo.TaskAnalytics ta
+                CROSS APPLY (SELECT CASE WHEN GETDATE() < ta.assigned_at THEN ta.assigned_at ELSE GETDATE() END AS closed_at) c
+                WHERE ta.tid = @tid AND ta.success_status = 'pending'
             `;
             const updateParams = [
                 { name: 'tid', type: TYPES.UniqueIdentifier, value: taskId },
@@ -247,32 +269,22 @@ class AnalyticsService {
     }
 
     /**
-     * Update user metrics after task completion (internal method)
+     * Refresh the derived metrics of every user that has a fact for this task (internal method).
      * @private
      */
     async _updateUserMetrics(taskId) {
         try {
-            // Get task analytics data
-            const taskQuery = `
-                SELECT uid, gid, task_category, completion_time_hours, success_status
-                FROM dbo.TaskAnalytics 
-                WHERE tid = @tid
-            `;
-            const taskParams = [
-                { name: 'tid', type: TYPES.UniqueIdentifier, value: taskId }
-            ];
-            
-            const taskData = await execReadCommand(taskQuery, taskParams);
-            if (!taskData || taskData.length === 0) return;
-            
-            const { uid, task_category, completion_time_hours, success_status } = taskData[0];
+            const rows = await execReadCommand(
+                `SELECT DISTINCT uid, task_category FROM dbo.TaskAnalytics WHERE tid = @tid`,
+                [{ name: 'tid', type: TYPES.UniqueIdentifier, value: taskId }]
+            );
+            if (!rows || rows.length === 0) return;
 
-            // Run both updates in parallel — they write to different tables
+            const uids = [...new Set(rows.map(r => String(r.uid).toUpperCase()))];
             await Promise.all([
-                this._updateUserExpertise(uid, task_category, completion_time_hours, success_status),
-                this._updateDailyMetrics(uid)
+                ...rows.map(r => this._updateUserExpertise(r.uid, r.task_category)),
+                ...uids.map(uid => this._updateDailyMetrics(uid))
             ]);
-            
         } catch (error) {
             console.error('Error updating user metrics:', error);
             // Don't throw error to avoid blocking main task operations
@@ -280,80 +292,49 @@ class AnalyticsService {
     }
 
     /**
-     * Update user expertise for a specific category
+     * Recompute a user's expertise in one category from the TaskAnalytics facts (completed vs
+     * failed). Recomputing instead of incrementing makes the refresh idempotent: running it
+     * twice for the same completion never double-counts.
+     * score = min(100, success rate + time bonus), bonus = avg > 0 ? max(0, 20 - avg/2) : 10.
      * @private
      */
-    async _updateUserExpertise(userId, category, completionTime, successStatus) {
+    async _updateUserExpertise(userId, category) {
         try {
-            // Get current expertise data
-            const currentQuery = `
-                SELECT expertise_score, tasks_completed, avg_completion_time_hours, success_rate_percentage
-                FROM dbo.UserExpertise 
-                WHERE uid = @uid AND task_category = @category
+            if (!VALID_CATEGORIES.includes(category)) return;
+            const query = `
+                MERGE dbo.UserExpertise WITH (HOLDLOCK) AS target
+                USING (
+                    SELECT s.uid, s.task_category, s.tasks_completed, s.avg_time, s.success_rate,
+                           CASE WHEN s.tasks_completed = 0 THEN 0
+                                WHEN s.success_rate + b.bonus > 100 THEN 100
+                                ELSE s.success_rate + b.bonus END AS score
+                    FROM (
+                        SELECT @uid AS uid, @category AS task_category,
+                               COUNT(*) AS tasks_completed,
+                               CAST(ISNULL(AVG(CASE WHEN success_status = 'completed' THEN completion_time_hours END), 0) AS DECIMAL(10,2)) AS avg_time,
+                               CAST(ISNULL(100.0 * SUM(CASE WHEN success_status = 'completed' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 0) AS DECIMAL(5,2)) AS success_rate
+                        FROM dbo.TaskAnalytics
+                        WHERE uid = @uid AND task_category = @category AND success_status IN ('completed', 'failed')
+                    ) s
+                    CROSS APPLY (SELECT CASE WHEN s.avg_time > 0
+                                             THEN CASE WHEN 20 - s.avg_time / 2 > 0 THEN 20 - s.avg_time / 2 ELSE 0 END
+                                             ELSE 10 END AS bonus) b
+                ) AS source
+                ON target.uid = source.uid AND target.task_category = source.task_category
+                WHEN MATCHED THEN
+                    UPDATE SET tasks_completed = source.tasks_completed,
+                               avg_completion_time_hours = source.avg_time,
+                               success_rate_percentage = source.success_rate,
+                               expertise_score = source.score,
+                               last_updated = GETDATE()
+                WHEN NOT MATCHED AND source.tasks_completed > 0 THEN
+                    INSERT (uid, task_category, expertise_score, tasks_completed, avg_completion_time_hours, success_rate_percentage)
+                    VALUES (source.uid, source.task_category, source.score, source.tasks_completed, source.avg_time, source.success_rate);
             `;
-            const currentParams = [
+            await execWriteCommand(query, [
                 { name: 'uid', type: TYPES.UniqueIdentifier, value: userId },
                 { name: 'category', type: TYPES.VarChar, value: category }
-            ];
-            
-            const current = await execReadCommand(currentQuery, currentParams);
-            
-            if (current.length === 0) {
-                // Create new expertise record
-                const insertQuery = `
-                    INSERT INTO dbo.UserExpertise (uid, task_category, expertise_score, tasks_completed, 
-                                                 avg_completion_time_hours, success_rate_percentage)
-                    VALUES (@uid, @category, @score, 1, @avgTime, @successRate)
-                `;
-                const isSuccess = successStatus === 'completed';
-                const insertParams = [
-                    { name: 'uid', type: TYPES.UniqueIdentifier, value: userId },
-                    { name: 'category', type: TYPES.VarChar, value: category },
-                    { name: 'score', type: TYPES.Decimal, value: isSuccess ? 60 : 30 },
-                    { name: 'avgTime', type: TYPES.Decimal, value: completionTime || 0 },
-                    { name: 'successRate', type: TYPES.Decimal, value: isSuccess ? 100 : 0 }
-                ];
-                
-                await execWriteCommand(insertQuery, insertParams);
-            } else {
-                // Update existing expertise record
-                const existing = current[0];
-                const newTaskCount = existing.tasks_completed + 1;
-                const isSuccess = successStatus === 'completed';
-                
-                // Calculate new averages
-                const newAvgTime = completionTime ? 
-                    ((existing.avg_completion_time_hours * existing.tasks_completed) + completionTime) / newTaskCount :
-                    existing.avg_completion_time_hours;
-                
-                const successCount = Math.round((existing.success_rate_percentage / 100) * existing.tasks_completed);
-                const newSuccessCount = isSuccess ? successCount + 1 : successCount;
-                const newSuccessRate = (newSuccessCount / newTaskCount) * 100;
-                
-                // Simple expertise score calculation (success rate + time bonus)
-                const timeBonus = newAvgTime > 0 ? Math.max(0, 20 - (newAvgTime / 2)) : 10;
-                const newExpertiseScore = Math.min(100, newSuccessRate + timeBonus);
-                
-                const updateQuery = `
-                    UPDATE dbo.UserExpertise 
-                    SET tasks_completed = @taskCount,
-                        avg_completion_time_hours = @avgTime,
-                        success_rate_percentage = @successRate,
-                        expertise_score = @expertiseScore,
-                        last_updated = GETDATE()
-                    WHERE uid = @uid AND task_category = @category
-                `;
-                const updateParams = [
-                    { name: 'uid', type: TYPES.UniqueIdentifier, value: userId },
-                    { name: 'category', type: TYPES.VarChar, value: category },
-                    { name: 'taskCount', type: TYPES.Int, value: newTaskCount },
-                    { name: 'avgTime', type: TYPES.Decimal, value: newAvgTime },
-                    { name: 'successRate', type: TYPES.Decimal, value: newSuccessRate },
-                    { name: 'expertiseScore', type: TYPES.Decimal, value: newExpertiseScore }
-                ];
-                
-                await execWriteCommand(updateQuery, updateParams);
-            }
+            ]);
         } catch (error) {
             console.error('Error updating user expertise:', error);
         }
@@ -388,7 +369,7 @@ class AnalyticsService {
             
             // Upsert daily metrics
             const upsertQuery = `
-                MERGE dbo.UserMetrics AS target
+                MERGE dbo.UserMetrics WITH (HOLDLOCK) AS target
                 USING (SELECT @uid as uid, @date as metric_date) AS source
                 ON target.uid = source.uid AND target.metric_date = source.metric_date
                 WHEN MATCHED THEN
@@ -667,18 +648,20 @@ class AnalyticsService {
             
             const activeUsers = await execReadCommand(activeUsersQuery);
 
+            // LEAST/GREATEST do not exist before SQL Server 2022, hence the CASEs.
             const expertiseUpdateQuery = `
                 UPDATE ue SET
                     expertise_score = CASE
-                        WHEN ue.tasks_completed > 0 THEN
-                            LEAST(100, ue.success_rate_percentage +
-                                CASE WHEN ue.avg_completion_time_hours > 0
-                                     THEN GREATEST(0, 20 - (ue.avg_completion_time_hours / 2))
-                                     ELSE 10 END)
-                        ELSE 0
+                        WHEN ue.tasks_completed = 0 THEN 0
+                        WHEN ue.success_rate_percentage + b.bonus > 100 THEN 100
+                        ELSE ue.success_rate_percentage + b.bonus
                     END,
                     last_updated = GETDATE()
                 FROM dbo.UserExpertise ue
+                CROSS APPLY (SELECT CASE WHEN ue.avg_completion_time_hours > 0
+                                         THEN CASE WHEN 20 - ue.avg_completion_time_hours / 2 > 0
+                                                   THEN 20 - ue.avg_completion_time_hours / 2 ELSE 0 END
+                                         ELSE 10 END AS bonus) b
                 WHERE ue.last_updated < DATEADD(hour, -1, GETDATE())
             `;
 
