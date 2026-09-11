@@ -31,7 +31,7 @@ En Macs con Apple Silicon agrega `--platform linux/amd64` (la imagen es amd64).
 
 Qué deja listo el primer arranque:
 - La BD `taskmate-db` y el login `sqladmin` con **mínimo privilegio**: solo `db_datareader` + `db_datawriter` (no puede cambiar el esquema ni escribir en `dbo.SchemaMigrations`).
-- El esquema base y las migraciones 001–005, aplicadas como `SA`.
+- El esquema base y las migraciones 001–006, aplicadas como `SA`.
 
 Los reinicios posteriores no repiten nada: cada paso se salta si ya está hecho.
 
@@ -57,7 +57,7 @@ Los contenedores creados antes de la Fase 3 no tienen las migraciones. Para apli
    ```bash
    read -s "SA_PW?Contraseña SA: "; echo     # zsh (en bash: read -s -p "Contraseña SA: " SA_PW; echo)
    docker exec -i -e SQLCMDPASSWORD="$SA_PW" taskmate-sql /opt/mssql-tools/bin/sqlcmd -S localhost -U SA \
-     -d taskmate-db -h -1 -y 0 -Q "SET NOCOUNT ON; SELECT name, OBJECT_DEFINITION(object_id) FROM sys.triggers" \
+     -d taskmate-db -y 0 -Q "SET NOCOUNT ON; SELECT name, OBJECT_DEFINITION(object_id) FROM sys.triggers" \
      > "$HOME/triggers-backup.sql"
    ```
 2. **Aplica las migraciones** (idempotentes; las ya aplicadas se saltan):

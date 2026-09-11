@@ -53,7 +53,7 @@ El 11 sep 2026 Pablo pidió además: base de datos con ACID y 3FN sin problemas,
 
 ### Impacto Esperado
 - **Producto:** 5 funcionalidades nuevas de GitHub dentro de TaskMate, sin salir de la app.
-- **Calidad:** de 52 pruebas fallando (41 API + 11 frontend) a **1151 pruebas pasando y 0 fallando** en cuatro suites (API, BD real, frontend, Python).
+- **Calidad:** de 52 pruebas fallando (41 API + 11 frontend) a **1153 pruebas pasando y 0 fallando** en cuatro suites (API, BD real, frontend, Python).
 - **Seguridad:** todas las rutas REST autenticadas y con autorización por grupo; en el E2E en vivo se probaron ~75 intentos de acceso cruzado entre grupos (IDOR), todos rechazados; la re-verificación de seguridad cerró todos los hallazgos.
 - **Habilitación:** la Fase 7 (algoritmo de colisión de archivos, conjunta con Christian) se apoya en los datos de ramas y PRs que genera esta fase.
 
@@ -287,9 +287,9 @@ Dependencias (`9917d37`): `ws ≥ 8.21`, `express ≥ 4.22`, `jsonwebtoken ≥ 9
 | Integración con GitHub | No existía | Repo por grupo, explorador, rama por tarea, progreso por PR, plan de IA desde el repo | 5 funcionalidades nuevas | Real (pruebas + E2E con GitHub simulado) |
 | Pruebas API (Jest) | 6/8 suites fallando (41 de 100 pruebas) | 30/30 suites, 747/747 | 0 fallos | Real |
 | Pruebas frontend (CRA) | 1/4 suites fallando (11 de 55) | 23/23 suites, 226/226 | 0 fallos | Real |
-| Pruebas de BD (SQL Server real en Docker) | No existían | 8 suites, 79 pruebas | Nueva capa | Real |
+| Pruebas de BD (SQL Server real en Docker) | No existían | 8 suites, 81 pruebas | Nueva capa | Real |
 | Pruebas Python (pytest) | No existían | 99 pruebas, sin red | Nueva capa | Real |
-| **Total** | **52 fallando** | **1151 pasando, 0 fallando** | | Real |
+| **Total** | **52 fallando** | **1153 pasando, 0 fallando** | | Real |
 | E2E en vivo (BD recién creada) | — | ~226 comprobaciones (auth, IDOR con ~75 intentos entre grupos, ciclo de vida atómico, rollbacks forzados, webhook, chat, aislamiento en Python); repetido sobre un contenedor nuevo de la imagen reconstruida: todos los escenarios en verde | | Real |
 | Revisión de seguridad | — | 2 altos, 2 medios, 5 bajos → todos atendidos; re-verificación: 15 hallazgos corregidos, los parciales/bajos restantes cerrados en `a931a1a` | | Real |
 | Autenticación REST | JWT solo en analytics | JWT en todas las rutas (salvo registro/login, callback y webhook) + autorización por grupo | IDOR cerrado | Real |
@@ -317,7 +317,7 @@ flowchart LR
     subgraph LOCAL["Máquina de desarrollo"]
         API["API Node.js Express :9000<br/>REST /api/* + WebSocket /chat /insights"]
         PY["Servidor de IA Python FastAPI<br/>127.0.0.1:8001 /ws"]
-        DB[("SQL Server en Docker<br/>migraciones 001–005")]
+        DB[("SQL Server en Docker<br/>migraciones 001–006")]
         SC["smee-client"]
     end
 
@@ -573,7 +573,7 @@ Columnas nuevas en tablas existentes: `UserGroups.joined_at` (005), `DeleteTask.
 
    # c) Ejecutar (la app se conecta con el login de mínimo privilegio; las migraciones, como sa)
    cd taskmate-api
-   TEST_DB_ENV_FILE="$HOME/taskmate-testdb.env" npm run test:db    # 8 suites / 79 pruebas
+   TEST_DB_ENV_FILE="$HOME/taskmate-testdb.env" npm run test:db    # 8 suites / 81 pruebas
 
    # d) Limpiar
    docker rm -f taskmate-sql-test
@@ -603,7 +603,7 @@ Columnas nuevas en tablas existentes: `UserGroups.joined_at` (005), `DeleteTask.
   - BD: `DB_USERNAME`/`DB_PASSWORD` = login de la app (`sqladmin`, nunca `sa`); `MIGRATION_DB_USERNAME` / `MIGRATION_DB_PASSWORD` (SA en Docker) para `npm run db:migrate`; opcional `DB_POOL_MAX`.
   - IA: `GROQ_API_KEY`, `LLM_MODEL`, `LLM_WEBSOCKET_URL` (`ws://127.0.0.1:8001/ws`), `REPO_ANALYSIS_*`, `MCP_*`.
   - Otras: `AUTH_RATE_LIMIT_MAX`, `API_RATE_LIMIT_MAX`, `TRUST_PROXY`, `ANALYTICS_BATCH_ENABLED`, `ANALYTICS_BATCH_SCHEDULE`.
-- **BD:** aplicar las migraciones 001–005 (`cd taskmate-api && npm run db:migrate` con credenciales de migración; ver la guía). Los contenedores nuevos las aplican solos al arrancar (`setup-db.sh`).
+- **BD:** aplicar las migraciones 001–006 (`cd taskmate-api && npm run db:migrate` con credenciales de migración; ver la guía). Los contenedores nuevos las aplican solos al arrancar (`setup-db.sh`).
 
 ---
 
@@ -633,10 +633,11 @@ git log --oneline 2c9673e..feature/fase-3-integracion-github
 
 ## Pendientes
 
-- [ ] Registrar la GitHub App y completar las variables `GITHUB_*` siguiendo [GUIA-GITHUB-APP.md](GUIA-GITHUB-APP.md) (bloqueador para usar la integración)
-- [ ] Migrar la BD de desarrollo (`taskmate-sql`): `cd taskmate-api && npm run db:migrate` con `MIGRATION_DB_USERNAME`/`MIGRATION_DB_PASSWORD` (bloqueador; la API nueva usa tablas y columnas de 001–005)
-- [ ] Ejecutar el checklist E2E con una GitHub App **real** + smee (bloqueador para dar por validado el flujo contra GitHub; hasta ahora GitHub se simuló en las pruebas y en el E2E)
-- [ ] Antes de migrar la BD de desarrollo, respaldar la definición de sus triggers: `CLAUDE_PROJECT_GUIDE.md` indica que esa BD tiene una versión iterativa (BFS) que no está en el repo, y la migración 003 los reemplaza (`CREATE OR ALTER`) por la versión con cursores, que propaga un nivel por disparo (varios niveles solo con `RECURSIVE_TRIGGERS ON`); las pruebas de BD cubren un nivel (no-bloqueador, verificar)
+- [x] Registrar la GitHub App: `taskmate-dev-pablop150` (App ID 4913756), creada el 11 sep 2026 con un *manifest* y las variables `GITHUB_*` en la `.env` de desarrollo
+- [x] Migrar la BD de desarrollo (`taskmate-sql`): respaldo completo y de triggers en `~/taskmate-backups/` y migraciones 001–006 aplicadas el 11 sep 2026 sin pérdida de datos
+- [x] Triggers de la BD de desarrollo: tenía instalada a mano una versión BFS (propaga por toda la cadena) que la 003 habría reemplazado por la de cursores (un nivel por disparo); la migración **006** la incorpora al repositorio, con pruebas de cadena, ciclos y cambio de tipo de arista
+- [ ] Ejecutar el checklist E2E con la GitHub App **real** + smee sobre el repositorio de prueba privado `PabloP150/taskmate-fase3-demo` (bloqueador para dar por validado el flujo contra GitHub)
+- [ ] 7 grupos vacíos (sin miembros ni tareas) en la BD de desarrollo, restos de la creación de grupos anterior (no atómica): decidir si se borran (no-bloqueador)
 - [ ] Membresía de grupo sin flujo de invitación/aceptación: el admin agrega usuarios directamente; mitigado porque todos los datos se acotan por grupo (p. ej. el contexto de IA solo usa la actividad de ese grupo) (no-bloqueador)
 - [ ] Estado en memoria (nonces y selecciones del flujo de instalación, planes pendientes, límites del chat, de analytics y de análisis, contadores de `express-rate-limit`, tokens y presupuesto de GitHub): TaskMate debe correr como **una sola instancia**; reiniciar la API invalida flujos de conexión a medias. Para escalar: Redis o BD (no-bloqueador)
 - [ ] La creación de rama no es atómica entre GitHub y la BD; se compensa borrando el ref creado en la misma petición (no-bloqueador)

@@ -191,15 +191,15 @@ El frontend usa `REACT_APP_API_URL` (por defecto `http://localhost:9000`) y `REA
 
 ## 7. Migrar la BD de desarrollo
 
-La API de la Fase 3 necesita las tablas y columnas de las migraciones 001–005. Los contenedores **nuevos** las aplican solos al arrancar (`setup-db.sh`); el contenedor de desarrollo `taskmate-sql` es anterior, así que hay que migrarlo una vez.
+La API de la Fase 3 necesita las tablas y columnas de las migraciones 001–006. Los contenedores **nuevos** las aplican solos al arrancar (`setup-db.sh`); el contenedor de desarrollo `taskmate-sql` es anterior, así que hay que migrarlo una vez. (El `taskmate-sql` de Pablo ya se respaldó y migró el 11 sep 2026.)
 
-**0. Respaldo recomendado de los triggers.** `CLAUDE_PROJECT_GUIDE.md` indica que esa BD tiene una versión iterativa (BFS) de los triggers de porcentaje que no está en el repositorio; la migración 003 los reemplaza (`CREATE OR ALTER`). Guarda su definición actual antes de migrar:
+**0. Respaldo recomendado de los triggers.** La BD de desarrollo tenía instalada a mano la versión iterativa (BFS) de los triggers de porcentaje; la migración 006 la incorpora al repositorio, así que el resultado final es el mismo. Aun así, guarda su definición antes de migrar por si tu BD tiene otra variante:
 
 ```bash
 docker start taskmate-sql
 read -s "SA_PW?Contraseña SA: "; echo           # zsh (en bash: read -s -p "Contraseña SA: " SA_PW; echo)
 docker exec -i -e SQLCMDPASSWORD="$SA_PW" taskmate-sql /opt/mssql-tools/bin/sqlcmd \
-  -S localhost -U SA -d taskmate-db -h -1 -y 0 \
+  -S localhost -U SA -d taskmate-db -y 0 \
   -Q "SET NOCOUNT ON; SELECT OBJECT_DEFINITION(OBJECT_ID('dbo.UpdateTargetNodePercentage')); SELECT OBJECT_DEFINITION(OBJECT_ID('dbo.UpdateTargetOnPrerequisiteChange'));" \
   > "$HOME/triggers-antes-de-003.sql"
 ```
@@ -215,6 +215,7 @@ MIGRATION_DB_USERNAME=sa MIGRATION_DB_PASSWORD="$SA_PW" node migrations/runner.j
 #   [x] 003_triggers
 #   [x] 004_repair_group_admins
 #   [x] 005_unicode_membership_github
+#   [x] 006_bfs_progress_triggers
 unset SA_PW
 ```
 

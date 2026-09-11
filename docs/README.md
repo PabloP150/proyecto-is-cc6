@@ -76,11 +76,11 @@ docs/
 - **Fase 2:** 7 optimizaciones implementadas, 6 documentos técnicos, benchmarks reales
 - **Fase 3:** GitHub dentro de TaskMate (conectar repo, explorador, rama por tarea, progreso automático por PR, la IA propone las siguientes tareas) + corrección de todos los problemas existentes detectados (ACID/3FN, JWT en todas las rutas, servidor de IA autenticado, XSS)
 
-**Global:** -71% latencia | -97.5% operaciones BD | -65% bundle size | de 52 pruebas fallando a 1151 pasando
+**Global:** -71% latencia | -97.5% operaciones BD | -65% bundle size | de 52 pruebas fallando a 1153 pasando
 
 ### ⏳ Próximas (Ordenadas)
 1. Fases 4-8: CI/CD, testing, SonarQube, colisión de archivos (se apoya en los datos de ramas y PRs de la Fase 3), go-live (Christian Martínez + Pablo)
-2. Pendientes de la Fase 3 para usarla con GitHub real: registrar la GitHub App y migrar la BD de desarrollo ([guía](fase-03-integracion-github/GUIA-GITHUB-APP.md))
+2. Pendiente de la Fase 3: recorrer el checklist E2E con la GitHub App real (App registrada y BD de desarrollo migrada el 11 sep; [guía](fase-03-integracion-github/GUIA-GITHUB-APP.md))
 
 ---
 

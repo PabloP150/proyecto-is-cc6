@@ -49,9 +49,9 @@
 - ✅ 5. Rama por tarea (`tm/<slug>-<tid8>`)
 - ✅ 6. Progreso automático por PR (webhooks firmados; PR fusionado → tarea completada)
 
-**Además:** se corrigieron todos los problemas existentes detectados (transacciones ACID y 3FN, JWT en todas las rutas, autorización por grupo, servidor de IA autenticado, XSS en el chat). Pruebas: de 52 fallando a 1151 pasando.
+**Además:** se corrigieron todos los problemas existentes detectados (transacciones ACID y 3FN, JWT en todas las rutas, autorización por grupo, servidor de IA autenticado, XSS en el chat). Pruebas: de 52 fallando a 1153 pasando.
 
-**Pendiente para usarla con GitHub real:** registrar la GitHub App y migrar la BD de desarrollo.
+**Pendiente:** recorrer el checklist E2E con la GitHub App real (ya registrada; BD de desarrollo ya migrada).
 
 **Documentación:** 3 archivos en `docs/fase-03-integracion-github/`
 

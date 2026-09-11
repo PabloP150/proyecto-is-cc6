@@ -645,7 +645,7 @@ Flow.jsx (Milestones)
 - **Idempotencia en usertask**: `INSERT ... SELECT ... WHERE NOT EXISTS` — llamar dos veces no crea duplicado
 - **Orden FK al eliminar tareas**: UserTask → TaskAnalytics → Tasks (este orden en el código)
 - **Orden FK al registrar eliminadas**: Insertar en DeleteTask → luego eliminar de Tasks
-- **Triggers BFS**: instalados en la DB, no en archivos SQL activos. Si se recrean tablas, reinstalar con node -e "..."
+- **Triggers BFS**: definidos en `taskmate-api/migrations/006_bfs_progress_triggers.sql` (se instalan con `npm run db:migrate` o al crear el contenedor)
 - **Chat history**: persiste en memoria del servidor (UserSession.chatHistory, max 100 msgs, 1h timeout)
 - **Patrón singleton**: AnalyticsService, AnalyticsIntegration, LLMService son `module.exports = new Class()`
 - **Lazy Loading frontend**: `React.lazy()` + `Suspense` para code splitting en App.js

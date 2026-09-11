@@ -278,7 +278,7 @@ Pruebas específicas (`tests/db/transaction.dbtest.js`): commit, rollback por ex
 - **Revocación del token OAuth**: *best effort* (se registra el fallo, nunca el token).
 - **Repos agregados a una instalación** (webhook): se leen de la API antes de la transacción; si alguno falla se omite y se vuelve a registrar cuando un grupo lo vincule.
 
-### B.5 Migraciones 001–005
+### B.5 Migraciones 001–006
 
 | Versión | Qué hace | Reversa (`.down.sql`) |
 |---------|----------|------------------------|
@@ -287,6 +287,7 @@ Pruebas específicas (`tests/db/transaction.dbtest.js`): commit, rollback por ex
 | `003_triggers` | `UpdateTargetNodePercentage` y `UpdateTargetOnPrerequisiteChange` (`CREATE OR ALTER`, cursores `LOCAL`, `TRIGGER_NESTLEVEL()` acotado); única definición en el repo | Borra los triggers |
 | `004_repair_group_admins` | Arreglo de datos único: grupos cuyo admin ya no es miembro (lo que antes corría en cada `getGroupsByUserId`) | No-op |
 | `005_unicode_membership_github` | `NVARCHAR` en textos visibles; `UserGroups.joined_at` y reparación por antigüedad; `gr_icon` de 40; `GroupRepositories.ai_analysis_enabled` (0 por defecto); `payload_sha256` con índice único filtrado | Con pérdida: lo que no cabe en el *code page* vuelve a `?`; íconos recortados a 20 |
+| `006_bfs_progress_triggers` | Reemplaza los triggers de 003 por la versión BFS por conjuntos que ya corría en la BD de desarrollo (nunca estuvo en el repo): propaga el avance por toda la cadena de aristas «progressor» en un solo disparo, con conjunto de visitados (los ciclos terminan) y tope de 20 niveles | Reinstala la versión de 003 |
 
 Todas son idempotentes (guardas con `OBJECT_ID`, `COL_LENGTH`, `sys.indexes`), usan lotes separados por `GO` y corren en **una transacción cada una** junto con su registro.
 
@@ -318,7 +319,7 @@ node migrations/runner.js reapply 1         # re-ejecuta 001 (p. ej. tras limpia
 
 ### B.7 Pruebas de la base de datos
 
-`npm run test:db` (8 suites, 79 pruebas) contra un SQL Server desechable en Docker: transacciones (ver B.3), migraciones (arriba/arriba/abajo/arriba, UNIQUE omitidas sin perder datos y agregadas al corregir, FKs compuestas, trigger, reparaciones 004/005, columnas de 005), tareas (`completeTask` concurrente, papelera, borrar lista, filas del flujo viejo), grupos (borrado en cascada, sucesión por antigüedad), proyecto (todo o nada, `x = 250·i`), GitHub (cascadas, cambio de repo, ramas sensibles a mayúsculas, orden de eventos, duplicados y *replay*, entregas atascadas, purga), analytics (contexto de equipo acotado al grupo) y Unicode. Cómo levantar el contenedor: [README → Cómo Reproducir](README.md#cómo-reproducir--verificar).
+`npm run test:db` (8 suites, 81 pruebas) contra un SQL Server desechable en Docker: transacciones (ver B.3), migraciones (arriba/arriba/abajo/arriba, UNIQUE omitidas sin perder datos y agregadas al corregir, FKs compuestas, trigger, reparaciones 004/005, columnas de 005), tareas (`completeTask` concurrente, papelera, borrar lista, filas del flujo viejo), grupos (borrado en cascada, sucesión por antigüedad), proyecto (todo o nada, `x = 250·i`), GitHub (cascadas, cambio de repo, ramas sensibles a mayúsculas, orden de eventos, duplicados y *replay*, entregas atascadas, purga), analytics (contexto de equipo acotado al grupo) y Unicode. Cómo levantar el contenedor: [README → Cómo Reproducir](README.md#cómo-reproducir--verificar).
 
 ---
 
@@ -329,7 +330,7 @@ node migrations/runner.js reapply 1         # re-ejecuta 001 (p. ej. tras limpia
 | **Estado en memoria**: nonces y selecciones del flujo de instalación, planes pendientes, límites del chat/analytics/análisis, contadores de `express-rate-limit`, tokens y presupuesto de GitHub | Solo una instancia de la API; reiniciarla invalida flujos a medias y reinicia contadores | TTLs cortos, topes de tamaño (`TtlStore`) y mensajes claros («el enlace expiró») | Redis o BD si se escala horizontalmente |
 | **Rama no atómica** entre GitHub y la BD | Puede quedar un ref huérfano en GitHub | Compensación: se borra el ref creado en la misma petición; un reintento lo adopta | — |
 | **Membresía sin invitación/aceptación**: el admin agrega usuarios directamente | Un admin puede meter a cualquiera en su grupo | Todos los datos se acotan por grupo (el contexto de IA solo usa la actividad de ese grupo) | Flujo de invitación |
-| **Triggers de la BD de desarrollo** | La guía del proyecto indica una versión BFS instalada a mano que 003 reemplaza; la versión del repo propaga un nivel por disparo salvo `RECURSIVE_TRIGGERS ON` | Las pruebas cubren la propagación de un nivel | Respaldar y comparar antes de migrar ([guía, paso 7](GUIA-GITHUB-APP.md#7-migrar-la-bd-de-desarrollo)) |
+| **Triggers de la BD de desarrollo** | ✅ Resuelto: la versión BFS que la BD de desarrollo tenía instalada a mano ahora está en la migración 006 | Pruebas de BD de propagación en cadena, ciclos y cambio de tipo de arista | La BD de desarrollo se respaldó (`~/taskmate-backups/`) y se migró el 11 sep 2026 |
 | `uuid@8.3.2` anidado bajo `tedious → @azure/msal-node` y bajo `node-cron` | Aviso de `npm audit` | No explotable aquí (Azure AD no se usa) | Actualizar cuando lo hagan las dependencias |
 | Avisos de la cadena de build de CRA (`react-scripts` 5) y de `react-router` | Avisos de `npm audit` | No explotables en esta app | Migrar el build (p. ej. Vite) en una fase futura |
 | Límites de Groq (plan gratuito) | `LLM_RATE_LIMIT` con uso intenso | Mensajes con reintento y 1 análisis simultáneo | Plan de pago o cola |
