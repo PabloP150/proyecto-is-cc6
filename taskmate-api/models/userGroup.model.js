@@ -1,8 +1,11 @@
 // models/userGroup.model.js
 const { execReadCommand, execWriteCommand } = require('../helpers/execQuery');
+const { useTransaction } = require('../helpers/transaction');
+const { AppError } = require('../helpers/errors');
+const { deleteGroupCascade } = require('./group.model');
 const { TYPES } = require('tedious');
 
-const addUserToGroup = async (userGroupData) => {
+const addUserToGroup = async (userGroupData, options = {}) => {
   const { uid, gid } = userGroupData;
   const query = `
     IF NOT EXISTS (SELECT 1 FROM dbo.UserGroups WHERE uid = @uid AND gid = @gid)
@@ -12,7 +15,7 @@ const addUserToGroup = async (userGroupData) => {
     { name: 'uid', type: TYPES.UniqueIdentifier, value: uid },
     { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
   ];
-  await execWriteCommand(query, params);
+  await (options.tx ? options.tx.write(query, params) : execWriteCommand(query, params));
   return { success: true };
 };
 
@@ -27,112 +30,80 @@ const getMembersByGroupId = async (gid) => {
   return execReadCommand(query, params);
 };
 
-const removeMemberFromGroup = async (uid, gid) => {
-  const query = `
-    BEGIN TRY
-      BEGIN TRANSACTION;
+// Next admin when the current one goes away: the longest-standing member (joined_at, then uid).
+// Never by username, which users pick themselves (a "!a" user would otherwise inherit the group).
+const NEXT_ADMIN_QUERY = `
+    SELECT TOP 1 ug.uid
+    FROM dbo.UserGroups ug
+    WHERE ug.gid = @gid AND ug.uid <> @uid
+    ORDER BY ug.joined_at, ug.uid`;
 
-      -- Si se elimina al admin, transferir a otro miembro antes de borrarlo
-      IF EXISTS (SELECT 1 FROM dbo.Groups WHERE gid = @gid AND adminId = @uid)
-      BEGIN
-        DECLARE @nextAdmin UNIQUEIDENTIFIER;
-        SELECT TOP 1 @nextAdmin = ug.uid
-        FROM dbo.UserGroups ug
-        INNER JOIN dbo.Users u ON u.uid = ug.uid
-        WHERE ug.gid = @gid AND ug.uid != @uid
-        ORDER BY u.username;
+const removeMembership = (tx, params) => tx.write(
+  `DELETE FROM dbo.UserGroupRoles WHERE uid = @uid AND gid = @gid;
+   DELETE FROM dbo.UserGroups WHERE uid = @uid AND gid = @gid;`,
+  params
+);
 
-        IF @nextAdmin IS NOT NULL
-          UPDATE dbo.Groups SET adminId = @nextAdmin WHERE gid = @gid;
-      END
-
-      DELETE FROM dbo.UserGroupRoles WHERE uid = @uid AND gid = @gid;
-      DELETE FROM dbo.UserGroups WHERE uid = @uid AND gid = @gid;
-
-      COMMIT TRANSACTION;
-    END TRY
-    BEGIN CATCH
-      IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
-      DECLARE @ErrMsg NVARCHAR(4000) = ERROR_MESSAGE();
-      DECLARE @ErrSeverity INT = ERROR_SEVERITY();
-      RAISERROR(@ErrMsg, @ErrSeverity, 1);
-    END CATCH;
-  `;
+// Removes a member (and their role assignments); if it was the admin, the role passes to the next member.
+const removeMemberFromGroup = async (uid, gid, options = {}) => useTransaction(options, async (tx) => {
   const params = [
     { name: 'uid', type: TYPES.UniqueIdentifier, value: uid },
     { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
   ];
-  await execWriteCommand(query, params);
+  const group = await tx.read(
+    `SELECT CASE WHEN adminId = @uid THEN 1 ELSE 0 END AS isAdmin
+     FROM dbo.Groups WITH (UPDLOCK, HOLDLOCK) WHERE gid = @gid`,
+    params
+  );
+  if (group.length > 0 && group[0].isAdmin) {
+    const next = await tx.read(NEXT_ADMIN_QUERY, params);
+    if (next.length > 0) {
+      await tx.write('UPDATE dbo.Groups SET adminId = @newAdmin WHERE gid = @gid', [
+        ...params,
+        { name: 'newAdmin', type: TYPES.UniqueIdentifier, value: next[0].uid },
+      ]);
+    }
+  }
+  await removeMembership(tx, params);
   return { success: true };
-};
+});
 
-const leaveGroup = async (uid, gid) => {
-  const query = `
-    BEGIN TRY
-      BEGIN TRANSACTION;
-
-      IF EXISTS (SELECT 1 FROM dbo.Groups WHERE gid = @gid AND adminId = @uid)
-      BEGIN
-        -- El que sale es el admin
-        DECLARE @otherCount INT;
-        SELECT @otherCount = COUNT(*) FROM dbo.UserGroups WHERE gid = @gid AND uid != @uid;
-
-        IF @otherCount > 0
-        BEGIN
-          -- Transferir admin al siguiente miembro (orden por username)
-          DECLARE @newAdmin UNIQUEIDENTIFIER;
-          SELECT TOP 1 @newAdmin = ug.uid
-          FROM dbo.UserGroups ug
-          INNER JOIN dbo.Users u ON u.uid = ug.uid
-          WHERE ug.gid = @gid AND ug.uid != @uid
-          ORDER BY u.username;
-
-          UPDATE dbo.Groups SET adminId = @newAdmin WHERE gid = @gid;
-          DELETE FROM dbo.UserGroups WHERE uid = @uid AND gid = @gid;
-
-          SELECT 'transferred' AS result, @newAdmin AS newAdminId;
-        END
-        ELSE
-        BEGIN
-          -- Nadie más en el grupo → eliminar todo
-          DELETE FROM dbo.UserGroupRoles WHERE gid = @gid;
-          DELETE FROM dbo.GroupRoles WHERE gid = @gid;
-          DELETE FROM dbo.Edges WHERE gid = @gid;
-          DELETE FROM dbo.Nodes WHERE gid = @gid;
-          IF OBJECT_ID('dbo.DeleteTask','U') IS NOT NULL
-            DELETE FROM dbo.DeleteTask WHERE gid = @gid;
-          IF OBJECT_ID('dbo.Completados','U') IS NOT NULL
-            DELETE FROM dbo.Completados WHERE gid = @gid;
-          DELETE FROM dbo.Tasks WHERE gid = @gid;
-          DELETE FROM dbo.UserGroups WHERE gid = @gid;
-          DELETE FROM dbo.Groups WHERE gid = @gid;
-
-          SELECT 'deleted' AS result, NULL AS newAdminId;
-        END
-      END
-      ELSE
-      BEGIN
-        -- No es admin, simplemente sale
-        DELETE FROM dbo.UserGroups WHERE uid = @uid AND gid = @gid;
-        SELECT 'left' AS result, NULL AS newAdminId;
-      END
-
-      COMMIT TRANSACTION;
-    END TRY
-    BEGIN CATCH
-      IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
-      DECLARE @ErrMsg NVARCHAR(4000) = ERROR_MESSAGE();
-      DECLARE @ErrSeverity INT = ERROR_SEVERITY();
-      RAISERROR(@ErrMsg, @ErrSeverity, 1);
-    END CATCH;
-  `;
+/**
+ * leaveGroup(uid, gid) → {success, result: 'left' | 'transferred' | 'deleted', newAdminId}
+ * A leaving admin hands the group to the next member; the last member leaving deletes the
+ * group with everything in it. Throws AppError NOT_FOUND when the group does not exist.
+ */
+const leaveGroup = async (uid, gid, options = {}) => useTransaction(options, async (tx) => {
   const params = [
     { name: 'uid', type: TYPES.UniqueIdentifier, value: uid },
     { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
   ];
-  await execWriteCommand(query, params);
-  return { success: true };
-};
+  const group = await tx.read(
+    `SELECT CASE WHEN adminId = @uid THEN 1 ELSE 0 END AS isAdmin
+     FROM dbo.Groups WITH (UPDLOCK, HOLDLOCK) WHERE gid = @gid`,
+    params
+  );
+  if (group.length === 0) throw new AppError('NOT_FOUND', 'Group not found', 404);
+
+  if (!group[0].isAdmin) {
+    await removeMembership(tx, params);
+    return { success: true, result: 'left', newAdminId: null };
+  }
+
+  const next = await tx.read(NEXT_ADMIN_QUERY, params);
+  if (next.length > 0) {
+    const newAdminId = next[0].uid;
+    await tx.write('UPDATE dbo.Groups SET adminId = @newAdmin WHERE gid = @gid', [
+      ...params,
+      { name: 'newAdmin', type: TYPES.UniqueIdentifier, value: newAdminId },
+    ]);
+    await removeMembership(tx, params);
+    return { success: true, result: 'transferred', newAdminId };
+  }
+
+  await deleteGroupCascade(tx, gid);
+  return { success: true, result: 'deleted', newAdminId: null };
+});
 
 module.exports = {
   addUserToGroup,

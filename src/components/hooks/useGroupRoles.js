@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { API_BASE } from '../../config';
+import { api } from '../../api/client';
+import { sameId } from '../../utils/ids';
 
 /**
  * Hook para gestionar roles de grupo y asignaciones de roles a usuarios.
+ * Las cargas guardan el error en `error`; las mutaciones (crear/editar/eliminar/asignar/quitar)
+ * revierten su cambio optimista y relanzan el ApiError para que la UI muestre el mensaje.
  * @param {string} groupId - ID del grupo seleccionado
  */
 export default function useGroupRoles(groupId) {
@@ -16,30 +19,23 @@ export default function useGroupRoles(groupId) {
     if (!groupId) return;
     setLoading(true);
     try {
-      const [rolesRes, matrixRes] = await Promise.all([
-        fetch(`${API_BASE}/api/grouproles/groups/${groupId}/roles`),
-        fetch(`${API_BASE}/api/usergrouproles/groups/${groupId}/rolesmatrix`),
+      const [rolesData, matrixData] = await Promise.all([
+        api.get(`/api/grouproles/groups/${groupId}/roles`),
+        // La matriz es opcional: si falla, los roles por usuario se cargan uno a uno.
+        api.get(`/api/usergrouproles/groups/${groupId}/rolesmatrix`).catch(() => null),
       ]);
-      if (!rolesRes.ok) throw new Error('Error al obtener roles');
-      const data = await rolesRes.json();
-      setRoles(data.roles || []);
-      try {
-        if (matrixRes.ok) {
-          const matrixData = await matrixRes.json();
-          if (Array.isArray(matrixData.matrix)) {
-            const builtMap = matrixData.matrix.reduce((acc, row) => {
-              if (!acc[row.uid]) acc[row.uid] = [];
-              if (row.gr_id && !acc[row.uid].includes(row.gr_id)) acc[row.uid].push(row.gr_id);
-              return acc;
-            }, {});
-            setUserRolesMap(prev => ({ ...prev, ...builtMap }));
-          }
-        }
-      } catch (e) {
-        console.debug('No se pudo cargar rolesmatrix:', e.message);
+      setRoles(rolesData?.roles || []);
+      setError(null);
+      if (Array.isArray(matrixData?.matrix)) {
+        const builtMap = matrixData.matrix.reduce((acc, row) => {
+          if (!acc[row.uid]) acc[row.uid] = [];
+          if (row.gr_id && !acc[row.uid].includes(row.gr_id)) acc[row.uid].push(row.gr_id);
+          return acc;
+        }, {});
+        setUserRolesMap(prev => ({ ...prev, ...builtMap }));
       }
     } catch (err) {
-      setError(err.message);
+      setError(err.message || 'Error al obtener roles');
     } finally {
       setLoading(false);
     }
@@ -49,13 +45,12 @@ export default function useGroupRoles(groupId) {
   const fetchUserRoles = useCallback(async (userId) => {
     if (!groupId || !userId) return [];
     try {
-  const res = await fetch(`${API_BASE}/api/usergrouproles/groups/${groupId}/users/${userId}/roles`);
-      if (!res.ok) throw new Error('Error al obtener roles de usuario');
-      const data = await res.json();
-      setUserRolesMap(prev => ({ ...prev, [userId]: data.roleIds || [] }));
-      return data.roleIds || [];
+      const data = await api.get(`/api/usergrouproles/groups/${groupId}/users/${userId}/roles`);
+      const roleIds = data?.roleIds || [];
+      setUserRolesMap(prev => ({ ...prev, [userId]: roleIds }));
+      return roleIds;
     } catch (err) {
-      setError(err.message);
+      setError(err.message || 'Error al obtener roles de usuario');
       return [];
     }
   }, [groupId]);
@@ -65,15 +60,8 @@ export default function useGroupRoles(groupId) {
     if (!groupId) return;
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/grouproles/groups/${groupId}/roles`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(roleData),
-      });
-      if (!res.ok) throw new Error('Error al crear rol');
+      await api.post(`/api/grouproles/groups/${groupId}/roles`, roleData);
       await fetchRoles();
-    } catch (err) {
-      setError(err.message);
     } finally {
       setLoading(false);
     }
@@ -83,35 +71,16 @@ export default function useGroupRoles(groupId) {
   const updateRole = async (roleId, roleData) => {
     if (!groupId || !roleId) return;
     setLoading(true);
-    // Guardar snapshot para posible rollback
     const prevRoles = roles;
-    // Actualización optimista local inmediata
-    setRoles(r => {
-      const updated = r.map(role => role.gr_id === roleId ? { ...role, ...roleData, gr_id: roleId } : role);
-      console.debug('[updateRole optimistic] roleId', roleId, 'data', roleData);
-      return updated;
-    });
+    setRoles(r => r.map(role => sameId(role.gr_id, roleId) ? { ...role, ...roleData, gr_id: roleId } : role));
     try {
-      const res = await fetch(`${API_BASE}/api/grouproles/groups/${groupId}/roles/${roleId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(roleData),
-      });
-      if (!res.ok) throw new Error('Error al editar rol');
-      // Intentar usar payload actualizado si el backend lo envía
-      try {
-        const payload = await res.json();
-        if (payload && payload.role) {
-          setRoles(r => {
-            console.debug('[updateRole server payload]', payload.role);
-            return r.map(role => role.gr_id === roleId ? { ...role, ...payload.role } : role);
-          });
-        }
-      } catch { /* ignorar si no hay json */ }
+      const payload = await api.put(`/api/grouproles/groups/${groupId}/roles/${roleId}`, roleData);
+      if (payload && payload.role) {
+        setRoles(r => r.map(role => sameId(role.gr_id, roleId) ? { ...role, ...payload.role } : role));
+      }
     } catch (err) {
-      setError(err.message);
-      // Rollback si falla
       setRoles(prevRoles);
+      throw err;
     } finally {
       setLoading(false);
     }
@@ -122,13 +91,8 @@ export default function useGroupRoles(groupId) {
     if (!groupId || !roleId) return;
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/grouproles/groups/${groupId}/roles/${roleId}`, {
-        method: 'DELETE',
-      });
-      if (!res.ok) throw new Error('Error al eliminar rol');
+      await api.del(`/api/grouproles/groups/${groupId}/roles/${roleId}`);
       await fetchRoles();
-    } catch (err) {
-      setError(err.message);
     } finally {
       setLoading(false);
     }
@@ -141,15 +105,10 @@ export default function useGroupRoles(groupId) {
     if (prev.includes(roleId)) return; // ya asignado
     setUserRolesMap(m => ({ ...m, [userId]: [...prev, roleId] }));
     try {
-      const res = await fetch(`${API_BASE}/api/usergrouproles/groups/${groupId}/userroles`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ uid: userId, gr_id: roleId }),
-      });
-      if (!res.ok) throw new Error('Error al asignar rol');
+      await api.post(`/api/usergrouproles/groups/${groupId}/userroles`, { uid: userId, gr_id: roleId });
     } catch (err) {
-      setError(err.message);
-      setUserRolesMap(m => ({ ...m, [userId]: prev })); // rollback
+      setUserRolesMap(m => ({ ...m, [userId]: prev }));
+      throw err;
     }
   };
 
@@ -159,15 +118,10 @@ export default function useGroupRoles(groupId) {
     const prev = userRolesMap[userId] || [];
     setUserRolesMap(m => ({ ...m, [userId]: prev.filter(id => id !== roleId) }));
     try {
-      const res = await fetch(`${API_BASE}/api/usergrouproles/groups/${groupId}/userroles`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ uid: userId, gr_id: roleId }),
-      });
-      if (!res.ok) throw new Error('Error al quitar rol');
+      await api.del(`/api/usergrouproles/groups/${groupId}/userroles`, { body: { uid: userId, gr_id: roleId } });
     } catch (err) {
-      setError(err.message);
-      setUserRolesMap(m => ({ ...m, [userId]: prev })); // rollback
+      setUserRolesMap(m => ({ ...m, [userId]: prev }));
+      throw err;
     }
   };
 

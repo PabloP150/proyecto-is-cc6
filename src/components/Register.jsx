@@ -1,5 +1,5 @@
 import { PersonAdd as RegisterIcon } from '@mui/icons-material';
-import { API_BASE } from '../config';
+import { api } from '../api/client';
 import {
   Alert,
   Box,
@@ -74,27 +74,15 @@ function Register() {
     setIsLoading(true);
 
     try {
-      const response = await fetch(`${API_BASE}/api/users`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ username, password }),
-      });
+      await api.post('/api/users', { username, password }, { auth: false });
+      setSuccess('Account created successfully! Redirecting to login...');
 
-      if (response.ok) {
-        await response.json(); // respuesta consumida, no se usa el contenido
-        setSuccess('Account created successfully! Redirecting to login...');
-        
-        // Redirect to login after a short delay
-        timerRef.current = setTimeout(() => navigate('/'), 2000);
-      } else {
-        const errorData = await response.json();
-        setError(errorData.error || 'Registration failed. Please try again.');
-      }
-    } catch (error) {
-      console.error('Error en la solicitud:', error);
-      setError('Network error. Please check your connection and try again.');
+      // Redirect to login after a short delay
+      timerRef.current = setTimeout(() => navigate('/'), 2000);
+    } catch (err) {
+      setError(err.code === 'NETWORK_ERROR'
+        ? 'Network error. Please check your connection and try again.'
+        : err.message || 'Registration failed. Please try again.');
     } finally {
       setIsLoading(false);
     }

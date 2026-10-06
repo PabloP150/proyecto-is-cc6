@@ -1,63 +1,26 @@
 // controllers/complete.controller.js
+// Completed-task history. Completing a task is POST /api/tasks/:tid/complete (atomic).
 const completeRoute = require('express').Router();
 const CompleteModel = require('./../models/complete.model');
-const AnalyticsIntegration = require('../services/AnalyticsIntegration');
+const { sendError } = require('../helpers/errors');
+const { requireGroupMember } = require('../middleware/groupAccess');
 
-
-completeRoute.post('/', async (req, res) => {
-    const {
-        tid,
-        gid,
-        name,
-        description,
-        percentage,
-        datetime
-    } = req.body;
-
+completeRoute.get('/:gid', requireGroupMember('gid'), async (req, res) => {
     try {
-        const result = await CompleteModel.addComplete({
-            tid,
-            gid,
-            name,
-            description,
-            percentage,
-            datetime
-        });
-
-        // Record task completion in analytics (non-blocking)
-        AnalyticsIntegration.onTaskCompletion(tid, true, {
-            percentage,
-            completedAt: datetime
-        }).catch(error => {
-            console.error('Analytics tracking failed for task completion:', error);
-        });
-
-        res.status(200).json({ data: { rowCount: result, tid } });
-    } catch (error) {
-        res.status(500).json({ error: error.message || 'Internal server error' });
-    }
-});
-
-completeRoute.get('/:gid', async (req, res) => {
-    const { gid } = req.params;
-    try {
-        const data = await CompleteModel.getCompletados(gid);
+        const data = await CompleteModel.getCompletados(req.groupId);
         res.status(200).json({ data });
     } catch (error) {
-        res.status(500).json({ error: error.message || 'Internal server error' });
+        sendError(res, error);
     }
 });
 
-completeRoute.delete('/:gid', async (req, res) => {
-    const { gid } = req.params;
+completeRoute.delete('/:gid', requireGroupMember('gid'), async (req, res) => {
     try {
-        await CompleteModel.deleteAll(gid);
+        await CompleteModel.deleteAll(req.groupId);
         res.status(200).json({ message: 'Todos los completados han sido vaciados' });
     } catch (error) {
-        res.status(500).json({ error: error.message || 'Internal server error' });
+        sendError(res, error);
     }
 });
-
-
 
 module.exports = completeRoute;

@@ -1,27 +1,18 @@
 import React, { useContext, useEffect, useState } from 'react';
-import { Menu, MenuItem, IconButton } from '@mui/material';
+import { Alert, Menu, MenuItem, IconButton, Snackbar } from '@mui/material';
 import PersonIcon from '@mui/icons-material/Person';
 import { GroupContext } from './GroupContext';
 import Switch from '@mui/material/Switch';
-import { API_BASE } from '../config';
+import { api, errorMessage } from '../api/client';
+import { sameId } from '../utils/ids';
 
-const SeleccionarPersona = ({ tid }) => {
+// `members` is loaded once per group by the task page and passed down: fetching it here
+// (one request per task card) tripped the API rate limit on large lists.
+const SeleccionarPersona = ({ tid, members = [] }) => {
   const { selectedGroupId } = useContext(GroupContext);
-  const [members, setMembers] = useState([]);
   const [anchorEl, setAnchorEl] = useState(null);
   const [selectedMembers, setSelectedMembers] = useState([]);
-
-  useEffect(() => {
-    if (!selectedGroupId) return;
-    const controller = new AbortController();
-
-    fetch(`${API_BASE}/api/groups/${selectedGroupId}/members`, { signal: controller.signal })
-      .then(res => res.ok ? res.json() : Promise.reject(res.status))
-      .then(data => setMembers(data.members))
-      .catch(err => { if (err?.name !== 'AbortError') console.error('Error al cargar los miembros', err); });
-
-    return () => controller.abort();
-  }, [selectedGroupId]);
+  const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
     const cargarEstado = async () => {
@@ -29,23 +20,11 @@ const SeleccionarPersona = ({ tid }) => {
       if (!selectedGroupId || members.length === 0 || !anchorEl) return;
 
       try {
-        const response = await fetch(`${API_BASE}/api/usertask?tid=${tid}`);
-        if (response.ok) {
-          const data = await response.json();
-          if (!data.data || data.data.length === 0) {
-            setSelectedMembers([]);
-            return;
-          }
-          const completedUsers = data.data
-            .filter(task => task.completed)
-            .map(task => task.uid);
-          setSelectedMembers(completedUsers);
-          return;
-        }
-        // Tratar cualquier estado no-OK (incluye 404) como "sin asignaciones" sin loguear error
-        setSelectedMembers([]);
-      } catch (error) {
-        // Silenciar errores de red u otras excepciones
+        const data = await api.get(`/api/usertask?tid=${encodeURIComponent(tid)}`);
+        const assignments = Array.isArray(data?.data) ? data.data : [];
+        setSelectedMembers(assignments.filter(task => task.completed).map(task => task.uid));
+      } catch {
+        // Cualquier error (incluye 404) equivale a "sin asignaciones"
         setSelectedMembers([]);
       }
     };
@@ -53,14 +32,21 @@ const SeleccionarPersona = ({ tid }) => {
     cargarEstado();
   }, [selectedGroupId, tid, members, anchorEl]);
 
-  const handleSelect = (member) => {
-    const isSelected = selectedMembers.includes(member.uid);
-    if (isSelected) {
-      setSelectedMembers(prev => prev.filter(m => m !== member.uid));
-      removeUserFromTask(member.uid, tid);
-    } else {
-      setSelectedMembers(prev => [...prev, member.uid]);
-      addUserToTask(member.uid, tid);
+  // Optimista: cambia el switch de inmediato y lo revierte si el servidor rechaza el cambio.
+  const handleSelect = async (member) => {
+    const isSelected = selectedMembers.some(uid => sameId(uid, member.uid));
+    setSelectedMembers(prev => isSelected ? prev.filter(m => !sameId(m, member.uid)) : [...prev, member.uid]);
+    try {
+      if (isSelected) {
+        await api.del(`/api/usertask?uid=${encodeURIComponent(member.uid)}&tid=${encodeURIComponent(tid)}`, {
+          body: { uid: member.uid, tid },
+        });
+      } else {
+        await api.post('/api/usertask', { uid: member.uid, tid, completed: true });
+      }
+    } catch (err) {
+      setSelectedMembers(prev => isSelected ? [...prev, member.uid] : prev.filter(m => !sameId(m, member.uid)));
+      setErrorMsg(errorMessage(err, isSelected ? 'Error al quitar la asignación' : 'Error al asignar el usuario'));
     }
   };
 
@@ -72,43 +58,10 @@ const SeleccionarPersona = ({ tid }) => {
     setAnchorEl(null);
   };
 
-  const addUserToTask = async (uid, tid) => {
-    try {
-      const response = await fetch(`${API_BASE}/api/usertask`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ uid, tid, completed: true }),
-      });
-      if (!response.ok) {
-        console.error('Error al agregar usuario a usertask');
-      }
-    } catch (error) {
-      console.error('Error en la solicitud:', error);
-    }
-  };
-
-  const removeUserFromTask = async (uid, tid) => {
-    try {
-      const response = await fetch(`${API_BASE}/api/usertask?uid=${uid}&tid=${tid}`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ uid, tid }),
-      });
-      if (!response.ok) {
-        console.error('Error al eliminar usuario de usertask');
-      }
-    } catch (error) {
-      console.error('Error en la solicitud:', error);
-    }
-  };
-
   return (
     <>
       <IconButton
+        aria-label="Assign user"
         onClick={handleClick}
         sx={{
           color: 'white',
@@ -158,6 +111,16 @@ const SeleccionarPersona = ({ tid }) => {
           </MenuItem>
         )}
       </Menu>
+      <Snackbar
+        open={Boolean(errorMsg)}
+        autoHideDuration={4000}
+        onClose={(event, reason) => { if (reason !== 'clickaway') setErrorMsg(''); }}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={() => setErrorMsg('')} severity="error" sx={{ width: '100%' }}>
+          {errorMsg}
+        </Alert>
+      </Snackbar>
     </>
   );
 };
@@ -181,7 +144,7 @@ const MemberRow = ({ member, selectedMembers, onToggle }) => {
       onClick={() => onToggle(member)}
     >
       <Switch
-        checked={selectedMembers.includes(member.uid)}
+        checked={selectedMembers.some(uid => sameId(uid, member.uid))}
         onChange={() => onToggle(member)}
         onClick={(e) => e.stopPropagation()}
         name={member.username}

@@ -9,8 +9,10 @@ import {
     ReactFlow
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+import { Alert, Snackbar } from '@mui/material';
 import { useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { API_BASE } from '../../config';
+import { api, errorMessage } from '../../api/client';
+import { LIMITS } from '../../constants/limits';
 import { GroupContext } from '../GroupContext';
 import CustomConnectionLine from './CustomConnectionLine';
 import CustomNode from './CustomNode';
@@ -25,6 +27,9 @@ const DEFAULT_EDGE_OPTIONS = {
   markerEnd: { type: MarkerType.ArrowClosed, color: 'darkgray' },
 };
 const CONNECTION_LINE_STYLE = { strokeWidth: 3, stroke: 'darkgray' };
+// React Flow fits once, when the loaded nodes are first measured; the canvas is keyed by group so
+// switching groups fits again. maxZoom 1 keeps a lone milestone from being blown up.
+const FIT_VIEW_OPTIONS = { padding: 0.2, maxZoom: 1 };
 
 const formatDateTimeToDate = (datetime) => {
   const date = new Date(datetime);
@@ -42,6 +47,8 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
   const [showDropdown, setShowDropdown] = useState(false);
   const [nodes, setNodes] = useState([]);
   const [edges, setEdges] = useState([]);
+  const [errorMsg, setErrorMsg] = useState('');
+  const notifyError = useCallback((err, fallback) => setErrorMsg(errorMessage(err, fallback)), []);
   const [nodeData, setNodeData] = useState({
     name: '',
     description: '',
@@ -85,54 +92,51 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
     const { signal } = controller;
     const loadNodesAndEdges = async () => {
       try {
-        const [nodesResponse, edgesResponse] = await Promise.all([
-          fetch(`${API_BASE}/api/nodes/group/${selectedGroupId}`, { signal }),
-          fetch(`${API_BASE}/api/edges/group/${selectedGroupId}`, { signal }),
+        const [nodesData, edgesData] = await Promise.all([
+          api.get(`/api/nodes/group/${selectedGroupId}`, { signal }),
+          api.get(`/api/edges/group/${selectedGroupId}`, { signal }),
         ]);
 
-        if (nodesResponse.ok && edgesResponse.ok) {
-          const nodesData = await nodesResponse.json();
-          const edgesData = await edgesResponse.json();
+        const formattedNodes = (nodesData?.data || []).map(node => ({
+          id: node.nid,
+          type: 'custom',
+          data: {
+            name: node.name,
+            description: node.description,
+            date: node.date,
+            completed: node.completed === 1,
+            percentage: node.percentage,
+            toggleCompletion,
+            onClick: () => handleNodeEdit(node),
+            onError: notifyError,
+            setSelectedNode,
+            refresh: refresh,
+            setRefresh
+          },
+          position: { x: node.x_pos, y: node.y_pos },
+        }));
+        const formattedEdges = (edgesData?.data || []).map(edge => ({
+          id: edge.eid,
+          type: 'floating',
+          source: edge.sourceId,
+          target: edge.targetId,
+          markerEnd: { type: MarkerType.ArrowClosed, color: 'darkgray' },
+          data: {
+            prerequisite: edge.prerequisite,
+            refreshNodes,
+            onError: notifyError,
+          }
+        }));
 
-          const formattedNodes = nodesData.data.map(node => ({
-            id: node.nid,
-            type: 'custom',
-            data: {
-              name: node.name,
-              description: node.description,
-              date: node.date,
-              completed: node.completed === 1,
-              percentage: node.percentage,
-              toggleCompletion,
-              onClick: () => handleNodeEdit(node),
-              setSelectedNode,
-              refresh: refresh,
-              setRefresh
-            },
-            position: { x: node.x_pos, y: node.y_pos },
-          }));
-          const formattedEdges = edgesData.data.map(edge => ({
-            id: edge.eid,
-            type: 'floating',
-            source: edge.sourceId,
-            target: edge.targetId,
-            markerEnd: { type: MarkerType.ArrowClosed, color: 'darkgray' },
-            data: {
-              prerequisite: edge.prerequisite,
-              refreshNodes,
-            }
-          }));
-
-          setNodes(formattedNodes);
-          setEdges(formattedEdges);
-        }
+        setNodes(formattedNodes);
+        setEdges(formattedEdges);
       } catch (error) {
-        if (error.name !== 'AbortError') console.error('Error loading nodes and edges:', error);
+        if (error.name !== 'AbortError') notifyError(error, 'Could not load the milestones');
       }
     };
     loadNodesAndEdges();
     return () => controller.abort();
-  }, [refresh, selectedGroupId, handleNodeEdit, setSelectedNode, toggleCompletion, refreshNodes]);
+  }, [refresh, selectedGroupId, handleNodeEdit, setSelectedNode, toggleCompletion, refreshNodes, notifyError]);
 
   useEffect(() => {
     if (!selectedGroupId) {
@@ -140,111 +144,86 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
       return;
     }
     const controller = new AbortController();
-    fetch(`${API_BASE}/api/tasks?gid=${selectedGroupId}`, { signal: controller.signal })
-      .then(r => r.ok ? r.json() : Promise.reject(r.status))
-      .then(data => setTasks(data.data))
-      .catch(err => { if (err?.name !== 'AbortError') console.error(err); });
+    api.get(`/api/tasks?gid=${selectedGroupId}`, { signal: controller.signal })
+      .then(data => setTasks(data?.data || []))
+      .catch(err => { if (err?.name !== 'AbortError') notifyError(err, 'Could not load the tasks to import'); });
     return () => controller.abort();
-  }, [selectedGroupId]);
+  }, [selectedGroupId, notifyError]);
 
   const handleImportTask = async (task) => {
     try {
-      const response = await fetch(`${API_BASE}/api/nodes`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          nid: task.tid,
-          gid: task.gid,
-          name: task.name,
-          description: task.description,
-          date: formatDateTimeToDate(task.datetime),
-          completed: 0,
-          percentage: task.percentage,
-          x_pos: 10,
-          y_pos: 10
-        }),
+      const data = await api.post('/api/nodes', {
+        nid: task.tid,
+        gid: task.gid,
+        name: task.name,
+        description: task.description,
+        date: formatDateTimeToDate(task.datetime),
+        completed: 0,
+        percentage: task.percentage,
+        x_pos: 10,
+        y_pos: 10
       });
-      if (response.ok) {
-        const data = await response.json();
-        const newNode = {
+      const newNode = {
+        id: data.data.nid,
+        type: 'custom',
+        data: {
           id: data.data.nid,
-          type: 'custom',
-          data: {
-            id: data.data.nid,
-            name: data.data.name,
-            description: data.data.description,
-            date: data.data.date,
-            completed: false,
-            percentage: data.data.percentage,
-            toggleCompletion,
-            onClick: () => handleNodeEdit(data.data),
-          },
-          position: { x: data.data.x_pos, y: data.data.y_pos },
-        };
+          name: data.data.name,
+          description: data.data.description,
+          date: data.data.date,
+          completed: false,
+          percentage: data.data.percentage,
+          toggleCompletion,
+          onClick: () => handleNodeEdit(data.data),
+          onError: notifyError,
+        },
+        position: { x: data.data.x_pos, y: data.data.y_pos },
+      };
 
-        setNodes((prevNodes) => [...prevNodes, newNode]);
-
-      } else {
-        const errorData = await response.json();
-        console.error('Error creating node:', errorData.error);
-      }
+      setNodes((prevNodes) => [...prevNodes, newNode]);
     } catch (error) {
-      console.error('Error in the request:', error);
+      notifyError(error, 'Could not import the task');
     }
   };
 
   const addNode = async (e) => {
     e.preventDefault();
     try {
-      const response = await fetch(`${API_BASE}/api/nodes`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          gid: selectedGroupId,
-          name: nodeData.name,
-          description: nodeData.description,
-          date: nodeData.date,
-          completed: 0,
-          x_pos: 10,
-          y_pos: 10
-        }),
+      const data = await api.post('/api/nodes', {
+        gid: selectedGroupId,
+        name: nodeData.name,
+        description: nodeData.description,
+        date: nodeData.date,
+        completed: 0,
+        x_pos: 10,
+        y_pos: 10
       });
-
-      if (response.ok) {
-        const data = await response.json();
-        const newNode = {
+      const newNode = {
+        id: data.data.nid,
+        type: 'custom',
+        data: {
+          ...nodeData,
           id: data.data.nid,
-          type: 'custom',
-          data: {
-            ...nodeData,
-            id: data.data.nid,
-            completed: false,
-            toggleCompletion,
-            onClick: () => handleNodeEdit(data.data)
-          },
-          position: { x: data.data.x_pos, y: data.data.y_pos },
-        };
-        setNodes((prevNodes) => [...prevNodes, newNode]);
+          completed: false,
+          toggleCompletion,
+          onClick: () => handleNodeEdit(data.data),
+          onError: notifyError,
+        },
+        position: { x: data.data.x_pos, y: data.data.y_pos },
+      };
+      setNodes((prevNodes) => [...prevNodes, newNode]);
 
-        // Reset form
-        setNodeData({
-          name: '',
-          description: '',
-          date: '',
-          completed: 0,
-          x_pos: 10,
-          y_pos: 10
-        });
-      } else {
-        const errorData = await response.json();
-        console.error('Error creating node:', errorData.error);
-      }
+      // Reset form
+      setNodeData({
+        name: '',
+        description: '',
+        date: '',
+        completed: 0,
+        x_pos: 10,
+        y_pos: 10
+      });
     } catch (error) {
-      console.error('Error in the request:', error);
+      notifyError(error, 'Could not create the milestone');
     }
   };
 
@@ -256,21 +235,15 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
   //node change in db
   const onNodeDragStop = useCallback(async (event, node) => {
     try {
-      await fetch(`${API_BASE}/api/nodes/${node.id}/coords`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          nid: node.id,
-          x_pos: node.position.x,
-          y_pos: node.position.y
-        }),
+      await api.put(`/api/nodes/${node.id}/coords`, {
+        nid: node.id,
+        x_pos: node.position.x,
+        y_pos: node.position.y
       });
     } catch (error) {
-      console.error('Error updating node:', error);
+      notifyError(error, 'Could not save the milestone position');
     }
-  }, []);
+  }, [notifyError]);
 
   const onEdgesChange = useCallback(
     (changes) => setEdges((eds) => applyEdgeChanges(changes, eds)),
@@ -278,37 +251,27 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
 
   const onConnect = useCallback(async (params) => {
     try {
-      const response = await fetch(`${API_BASE}/api/edges`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          gid: selectedGroupId,
-          sourceId: params.source,
-          targetId: params.target
-        }),
+      const data = await api.post('/api/edges', {
+        gid: selectedGroupId,
+        sourceId: params.source,
+        targetId: params.target
       });
-
-      if (response.ok) {
-        const data = await response.json();
-        setEdges((eds) =>
-          addEdge(
-            {
-              ...params,
-              id: data.data.eid,
-              type: 'floating',
-              markerEnd: { type: MarkerType.ArrowClosed },
-              data: { prerequisite: true, refreshNodes: () => setRefresh(prev => !prev) },
-            },
-            eds,
-          ),
-        );
-      }
+      setEdges((eds) =>
+        addEdge(
+          {
+            ...params,
+            id: data.data.eid,
+            type: 'floating',
+            markerEnd: { type: MarkerType.ArrowClosed },
+            data: { prerequisite: true, refreshNodes: () => setRefresh(prev => !prev), onError: notifyError },
+          },
+          eds,
+        ),
+      );
     } catch (error) {
-      console.error('Error saving edge:', error);
+      notifyError(error, 'Could not save the connection');
     }
-  }, [selectedGroupId]);
+  }, [selectedGroupId, notifyError]);
 
   // Tasks available for import — exclude tasks already imported as nodes
   const availableTasks = useMemo(() => {
@@ -326,36 +289,23 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
 
   // toggleCompletion ya declarado arriba
 
+  // ReactFlow already removed the element locally; on failure reload so the canvas matches the DB.
   const onNodesDelete = async (event) => {
     try {
-      const response1 = await fetch(`${API_BASE}/api/edges/source/${event[0].id}`, {
-        method: 'DELETE',
-      });
-
-      if (response1.ok) {
-        await fetch(`${API_BASE}/api/nodes/${event[0].id}`, {
-          method: 'DELETE',
-        });
-        // Node deleted successfully (log eliminado)
-      }
+      await api.del(`/api/edges/source/${event[0].id}`);
+      await api.del(`/api/nodes/${event[0].id}`);
     } catch (error) {
-      console.error('Error deleting node:', error);
+      notifyError(error, 'Could not delete the milestone');
+      refreshNodes();
     }
   };
 
   const onEdgesDelete = async (event) => {
     try {
-      const response = await fetch(`${API_BASE}/api/edges/${event[0].id}`, {
-        method: 'DELETE',
-      });
-
-      if (response.ok) {
-        // Edge deleted successfully (log eliminado)
-      } else {
-        console.error('Error deleting edge:', response.status);
-      }
+      await api.del(`/api/edges/${event[0].id}`);
     } catch (error) {
-      console.error('Error deleting edge:', error);
+      notifyError(error, 'Could not delete the connection');
+      refreshNodes();
     }
   };
 
@@ -376,6 +326,8 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
           name="name"
           value={nodeData.name}
           onChange={handleInputChange}
+          maxLength={LIMITS.nodeName}
+          aria-label="Milestone name"
           placeholder="Enter milestone name"
           style={{
             padding: '5px',
@@ -472,6 +424,9 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
         <div style={{color: 'white', padding: '1rem'}}>Selecciona un grupo para ver y crear milestones.</div>
       )}
       {selectedGroupId && <ReactFlow
+        key={selectedGroupId}
+        fitView
+        fitViewOptions={FIT_VIEW_OPTIONS}
         nodes={nodes}
         edges={edges}
         nodeTypes={NODE_TYPES}
@@ -490,6 +445,16 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
         <Background />
         <Controls />
       </ReactFlow>}
+      <Snackbar
+        open={Boolean(errorMsg)}
+        autoHideDuration={4000}
+        onClose={(event, reason) => { if (reason !== 'clickaway') setErrorMsg(''); }}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={() => setErrorMsg('')} severity="error" sx={{ width: '100%' }}>
+          {errorMsg}
+        </Alert>
+      </Snackbar>
     </div>
   );
 };

@@ -1,256 +1,134 @@
+// Factory (not automock): automocking would load the real LLMService and open a socket.
+jest.mock('../services/UserSession', () => jest.fn());
+
 const SessionManager = require('../services/SessionManager');
 const UserSession = require('../services/UserSession');
 
-// Mock WebSocket
-const mockWebSocket = (readyState = 1) => ({
-    readyState,
-    send: jest.fn(),
-    close: jest.fn()
-});
+const mockWebSocket = (readyState = 1) => ({ readyState, send: jest.fn(), close: jest.fn() });
 
-// Mock UserSession
-jest.mock('../services/UserSession');
+// Minimal stand-in with the UserSession surface SessionManager relies on.
+const fakeSession = (userId, ws) => {
+    const session = {
+        userId,
+        websocket: ws,
+        connected: true,
+        reconnect: jest.fn(() => { session.connected = true; }),
+        markDisconnected: jest.fn(() => { session.connected = false; session.websocket = null; }),
+        isDisconnected: jest.fn(() => !session.connected),
+        cleanup: jest.fn(),
+    };
+    return session;
+};
 
 describe('SessionManager', () => {
-    let sessionManager;
-    let mockWs;
-    let mockSession;
+    let manager;
 
     beforeEach(() => {
-        sessionManager = new SessionManager();
-        mockWs = mockWebSocket();
-        mockSession = {
-            userId: 'test-user-123',
-            initialize: jest.fn().mockResolvedValue(),
-            cleanup: jest.fn(),
-            websocket: mockWs
-        };
-        
-        // Reset mocks
-        UserSession.mockClear();
-        UserSession.mockImplementation(() => mockSession);
+        jest.spyOn(console, 'log').mockImplementation(() => {});
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        UserSession.mockImplementation((userId, ws) => fakeSession(userId, ws));
+        manager = new SessionManager();
     });
 
-    describe('constructor', () => {
-        test('should initialize with empty activeSessions Map', () => {
-            expect(sessionManager.activeSessions).toBeInstanceOf(Map);
-            expect(sessionManager.activeSessions.size).toBe(0);
-        });
+    afterEach(() => {
+        manager.cleanup();
+        jest.useRealTimers();
     });
 
-    describe('connect', () => {
-        test('should create new user session and store it', async () => {
-            const userId = 'test-user-123';
-            
-            const session = await sessionManager.connect(mockWs, userId);
-            
-            expect(UserSession).toHaveBeenCalledWith(userId, mockWs);
-            expect(mockSession.initialize).toHaveBeenCalled();
-            expect(sessionManager.activeSessions.get(mockWs)).toBe(mockSession);
-            expect(sessionManager.activeSessions.size).toBe(1);
-            expect(session).toBe(mockSession);
-        });
-
-        test('should handle initialization errors', async () => {
-            const userId = 'test-user-123';
-            const error = new Error('Initialization failed');
-            mockSession.initialize.mockRejectedValue(error);
-            
-            await expect(sessionManager.connect(mockWs, userId)).rejects.toThrow('Initialization failed');
-        });
-
-        test('should track multiple sessions', async () => {
-            const mockWs2 = mockWebSocket();
-            const mockSession2 = {
-                userId: 'test-user-456',
-                initialize: jest.fn().mockResolvedValue(),
-                cleanup: jest.fn(),
-                websocket: mockWs2
-            };
-            
-            UserSession.mockImplementationOnce(() => mockSession);
-            UserSession.mockImplementationOnce(() => mockSession2);
-            
-            await sessionManager.connect(mockWs, 'test-user-123');
-            await sessionManager.connect(mockWs2, 'test-user-456');
-            
-            expect(sessionManager.activeSessions.size).toBe(2);
-            expect(sessionManager.activeSessions.get(mockWs)).toBe(mockSession);
-            expect(sessionManager.activeSessions.get(mockWs2)).toBe(mockSession2);
-        });
+    test('connect creates one session per user and indexes it by socket and user', async () => {
+        const ws = mockWebSocket();
+        const session = await manager.connect(ws, 'u1');
+        expect(UserSession).toHaveBeenCalledWith('u1', ws);
+        expect(manager.getSession(ws)).toBe(session);
+        expect(manager.getUserSession('u1')).toBe(session);
+        expect(manager.getActiveSessionCount()).toBe(1);
     });
 
-    describe('disconnect', () => {
-        beforeEach(async () => {
-            await sessionManager.connect(mockWs, 'test-user-123');
-        });
-
-        test('should clean up session and remove from activeSessions', () => {
-            sessionManager.disconnect(mockWs);
-            
-            expect(mockSession.cleanup).toHaveBeenCalled();
-            expect(sessionManager.activeSessions.has(mockWs)).toBe(false);
-            expect(sessionManager.activeSessions.size).toBe(0);
-        });
-
-        test('should handle disconnect for non-existent session gracefully', () => {
-            const nonExistentWs = mockWebSocket();
-            
-            expect(() => sessionManager.disconnect(nonExistentWs)).not.toThrow();
-            expect(sessionManager.activeSessions.size).toBe(1); // Original session still there
-        });
-
-        test('should handle cleanup errors gracefully', () => {
-            mockSession.cleanup.mockImplementation(() => {
-                throw new Error('Cleanup failed');
-            });
-            
-            expect(() => sessionManager.disconnect(mockWs)).not.toThrow();
-            expect(sessionManager.activeSessions.has(mockWs)).toBe(false);
-        });
+    test('a second connection of the same user reuses the session and restores history', async () => {
+        const ws1 = mockWebSocket();
+        const ws2 = mockWebSocket();
+        const first = await manager.connect(ws1, 'u1');
+        const second = await manager.connect(ws2, 'u1');
+        expect(second).toBe(first);
+        expect(UserSession).toHaveBeenCalledTimes(1);
+        expect(first.websocket).toBe(ws2);
+        expect(first.reconnect).toHaveBeenCalled();
+        expect(manager.getSession(ws1)).toBeUndefined();
+        expect(manager.getSession(ws2)).toBe(first);
     });
 
-    describe('getSession', () => {
-        test('should return session for existing WebSocket', async () => {
-            await sessionManager.connect(mockWs, 'test-user-123');
-            
-            const session = sessionManager.getSession(mockWs);
-            
-            expect(session).toBe(mockSession);
-        });
-
-        test('should return undefined for non-existent WebSocket', () => {
-            const nonExistentWs = mockWebSocket();
-            
-            const session = sessionManager.getSession(nonExistentWs);
-            
-            expect(session).toBeUndefined();
-        });
+    test('sessions of different users are isolated', async () => {
+        const a = await manager.connect(mockWebSocket(), 'u1');
+        const b = await manager.connect(mockWebSocket(), 'u2');
+        expect(a).not.toBe(b);
+        expect(manager.getUserSession('u2').userId).toBe('u2');
     });
 
-    describe('getUserSession', () => {
-        test('should return session for existing userId', async () => {
-            await sessionManager.connect(mockWs, 'test-user-123');
-            
-            const session = sessionManager.getUserSession('test-user-123');
-            
-            expect(session).toBe(mockSession);
-        });
+    test('disconnect keeps the session for an hour, then cleans it up', async () => {
+        jest.useFakeTimers();
+        const ws = mockWebSocket();
+        const session = await manager.connect(ws, 'u1');
+        manager.disconnect(ws);
+        expect(session.markDisconnected).toHaveBeenCalled();
+        expect(manager.getActiveSessionCount()).toBe(0);
+        expect(manager.getUserSession('u1')).toBe(session);
 
-        test('should return null for non-existent userId', () => {
-            const session = sessionManager.getUserSession('non-existent-user');
-            
-            expect(session).toBeNull();
-        });
-
-        test('should find correct session among multiple sessions', async () => {
-            const mockWs2 = mockWebSocket();
-            const mockSession2 = {
-                userId: 'test-user-456',
-                initialize: jest.fn().mockResolvedValue(),
-                cleanup: jest.fn(),
-                websocket: mockWs2
-            };
-            
-            UserSession.mockImplementationOnce(() => mockSession);
-            UserSession.mockImplementationOnce(() => mockSession2);
-            
-            await sessionManager.connect(mockWs, 'test-user-123');
-            await sessionManager.connect(mockWs2, 'test-user-456');
-            
-            const session1 = sessionManager.getUserSession('test-user-123');
-            const session2 = sessionManager.getUserSession('test-user-456');
-            
-            expect(session1).toBe(mockSession);
-            expect(session2).toBe(mockSession2);
-        });
+        jest.advanceTimersByTime(SessionManager.SESSION_RETENTION_MS);
+        expect(session.cleanup).toHaveBeenCalled();
+        expect(manager.getUserSession('u1')).toBeNull();
     });
 
-    describe('getActiveSessionCount', () => {
-        test('should return 0 for no active sessions', () => {
-            expect(sessionManager.getActiveSessionCount()).toBe(0);
-        });
-
-        test('should return correct count for active sessions', async () => {
-            const mockWs2 = mockWebSocket();
-            const mockSession2 = {
-                userId: 'test-user-456',
-                initialize: jest.fn().mockResolvedValue(),
-                cleanup: jest.fn(),
-                websocket: mockWs2
-            };
-            
-            UserSession.mockImplementationOnce(() => mockSession);
-            UserSession.mockImplementationOnce(() => mockSession2);
-            
-            await sessionManager.connect(mockWs, 'test-user-123');
-            expect(sessionManager.getActiveSessionCount()).toBe(1);
-            
-            await sessionManager.connect(mockWs2, 'test-user-456');
-            expect(sessionManager.getActiveSessionCount()).toBe(2);
-            
-            sessionManager.disconnect(mockWs);
-            expect(sessionManager.getActiveSessionCount()).toBe(1);
-        });
+    test('reconnecting within the hour cancels the cleanup', async () => {
+        jest.useFakeTimers();
+        const ws = mockWebSocket();
+        const session = await manager.connect(ws, 'u1');
+        manager.disconnect(ws);
+        await manager.connect(mockWebSocket(), 'u1');
+        jest.advanceTimersByTime(SessionManager.SESSION_RETENTION_MS);
+        expect(session.cleanup).not.toHaveBeenCalled();
+        expect(manager.getUserSession('u1')).toBe(session);
     });
 
-    describe('cleanup', () => {
-        test('should clean up all sessions and clear activeSessions', async () => {
-            const mockWs2 = mockWebSocket();
-            const mockSession2 = {
-                userId: 'test-user-456',
-                initialize: jest.fn().mockResolvedValue(),
-                cleanup: jest.fn(),
-                websocket: mockWs2
-            };
-            
-            UserSession.mockImplementationOnce(() => mockSession);
-            UserSession.mockImplementationOnce(() => mockSession2);
-            
-            await sessionManager.connect(mockWs, 'test-user-123');
-            await sessionManager.connect(mockWs2, 'test-user-456');
-            
-            sessionManager.cleanup();
-            
-            expect(mockSession.cleanup).toHaveBeenCalled();
-            expect(mockSession2.cleanup).toHaveBeenCalled();
-            expect(sessionManager.activeSessions.size).toBe(0);
-        });
-
-        test('should handle cleanup errors gracefully', async () => {
-            mockSession.cleanup.mockImplementation(() => {
-                throw new Error('Cleanup failed');
-            });
-            
-            await sessionManager.connect(mockWs, 'test-user-123');
-            
-            expect(() => sessionManager.cleanup()).not.toThrow();
-            expect(sessionManager.activeSessions.size).toBe(0);
-        });
+    test('disconnecting an old socket after a reconnect does not affect the live one', async () => {
+        const ws1 = mockWebSocket();
+        const ws2 = mockWebSocket();
+        const session = await manager.connect(ws1, 'u1');
+        await manager.connect(ws2, 'u1');
+        manager.disconnect(ws1);
+        expect(session.markDisconnected).not.toHaveBeenCalled();
+        expect(manager.getSession(ws2)).toBe(session);
     });
 
-    describe('session isolation', () => {
-        test('should maintain separate sessions for different users', async () => {
-            const mockWs2 = mockWebSocket();
-            const mockSession2 = {
-                userId: 'test-user-456',
-                initialize: jest.fn().mockResolvedValue(),
-                cleanup: jest.fn(),
-                websocket: mockWs2
-            };
-            
-            UserSession.mockImplementationOnce(() => mockSession);
-            UserSession.mockImplementationOnce(() => mockSession2);
-            
-            await sessionManager.connect(mockWs, 'test-user-123');
-            await sessionManager.connect(mockWs2, 'test-user-456');
-            
-            const session1 = sessionManager.getSession(mockWs);
-            const session2 = sessionManager.getSession(mockWs2);
-            
-            expect(session1).not.toBe(session2);
-            expect(session1.userId).toBe('test-user-123');
-            expect(session2.userId).toBe('test-user-456');
-        });
+    test('disconnect of an unknown socket is a no-op', () => {
+        expect(() => manager.disconnect(mockWebSocket())).not.toThrow();
+    });
+
+    test('disconnectUser closes the socket and removes the session', async () => {
+        const ws = mockWebSocket();
+        const session = await manager.connect(ws, 'u1');
+        expect(manager.disconnectUser('u1')).toBe(true);
+        expect(ws.close).toHaveBeenCalledWith(1000, 'User logged out');
+        expect(session.cleanup).toHaveBeenCalled();
+        expect(manager.getUserSession('u1')).toBeNull();
+        expect(manager.disconnectUser('u1')).toBe(false);
+    });
+
+    test('cleanup clears every session and pending timer, tolerating errors', async () => {
+        jest.useFakeTimers();
+        const ws = mockWebSocket();
+        const a = await manager.connect(ws, 'u1');
+        const b = await manager.connect(mockWebSocket(), 'u2');
+        a.cleanup.mockImplementation(() => { throw new Error('boom'); });
+        manager.disconnect(ws);
+        expect(() => manager.cleanup()).not.toThrow();
+        expect(b.cleanup).toHaveBeenCalled();
+        expect(manager.cleanupTimers.size).toBe(0);
+        expect(jest.getTimerCount()).toBe(0);
+        expect(manager.getActiveSessionCount()).toBe(0);
+    });
+
+    test('constructor errors propagate from connect', async () => {
+        UserSession.mockImplementation(() => { throw new Error('init failed'); });
+        await expect(manager.connect(mockWebSocket(), 'u1')).rejects.toThrow('init failed');
     });
 });

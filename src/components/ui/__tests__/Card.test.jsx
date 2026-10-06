@@ -25,14 +25,13 @@ describe('Card Component', () => {
   });
 
   it('applies default variant styling', () => {
-    const { container } = render(
+    render(
       <TestWrapper>
         <Card data-testid="card">Default Card</Card>
       </TestWrapper>
     );
-    
-    const card = container.firstChild;
-    expect(card).toBeTruthy();
+
+    expect(screen.getByTestId('card')).toHaveTextContent('Default Card');
   });
 
   it('applies gradient variant styling', () => {

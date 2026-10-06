@@ -1,39 +1,26 @@
 // controllers/delete.controller.js
+// Trashed-task history. Trashing a task is POST /api/tasks/:tid/trash (atomic).
 const deleteRoute = require('express').Router();
 const DeleteModel = require('./../models/delete.model');
+const { sendError } = require('../helpers/errors');
+const { requireGroupMember } = require('../middleware/groupAccess');
 
-
-deleteRoute.post('/', async (req, res) => {
-    const { tid, gid, name, description, datetime, percentage } = req.body;
+deleteRoute.get('/:gid', requireGroupMember('gid'), async (req, res) => {
     try {
-        const rowCount = await DeleteModel.addDelete({ tid, gid, name, description, datetime, percentage });
-        res.status(200).json({ data: { rowCount, tid } });
-    } catch (error) {
-        console.error('[delete POST] error:', error.message);
-        res.status(500).json({ error: error.message || 'Internal server error' });
-    }
-});
-
-deleteRoute.get('/:gid', async (req, res) => {
-    const { gid } = req.params;
-    try {
-        const data = await DeleteModel.getEliminados(gid);
+        const data = await DeleteModel.getEliminados(req.groupId);
         res.status(200).json({ data });
     } catch (error) {
-        res.status(500).json({ error: error.message || 'Internal server error' });
+        sendError(res, error);
     }
 });
 
-deleteRoute.delete('/:gid', async (req, res) => {
-    const { gid } = req.params;
+deleteRoute.delete('/:gid', requireGroupMember('gid'), async (req, res) => {
     try {
-        await DeleteModel.deleteAll(gid);
+        await DeleteModel.deleteAll(req.groupId);
         res.status(200).json({ message: 'Todos los eliminados han sido vaciados' });
     } catch (error) {
-        res.status(500).json({ error: error.message || 'Internal server error' });
+        sendError(res, error);
     }
 });
-
-
 
 module.exports = deleteRoute;

@@ -1,75 +1,84 @@
 // controllers/user.controller.js
 const userRoute = require('express').Router();
 const UserModel = require('./../models/user.model');
-const GroupModel = require('./../models/group.model');
-const UserGroupModel = require('./../models/userGroup.model');
-const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcryptjs');
+const requireAuth = require('../middleware/auth.middleware');
+const { authLimiter, apiLimiter } = require('../middleware/rateLimit');
+const { signAccessToken } = require('../helpers/tokens');
+const { AppError, sendError } = require('../helpers/errors');
 
-userRoute.post('/', async (req, res) => {
-    const uid = uuidv4();
-    const { username, password } = req.body;
+const USERNAME_MAX = 25;
+// bcrypt ignores everything after 72 bytes; longer passwords would silently collide.
+const PASSWORD_MAX_BYTES = 72;
 
+userRoute.post('/', authLimiter, async (req, res) => {
+    const { username, password } = req.body || {};
     try {
-        if (!password || password.length < 6) {
-          return res.status(400).json({ error: 'Password too short' });
+        if (typeof username !== 'string' || !username.trim() || username.length > USERNAME_MAX) {
+            throw new AppError('VALIDATION_ERROR', `Username is required (max ${USERNAME_MAX} characters)`, 400);
         }
-        const hashed = await bcrypt.hash(password, 10);
-        await UserModel.addUser({ uid, username, password: hashed });
-
-        // Crear un grupo individual para el usuario
-        const gid = uuidv4();
-        await GroupModel.addGroup({ gid, adminId: uid, name: `${username}'s Group` });
-
-        // Agregar el usuario al grupo  
-        await UserGroupModel.addUserToGroup({ uid, gid });
+        if (typeof password !== 'string' || password.length < 6) {
+            throw new AppError('VALIDATION_ERROR', 'Password too short', 400);
+        }
+        if (Buffer.byteLength(password, 'utf8') > PASSWORD_MAX_BYTES) {
+            throw new AppError('VALIDATION_ERROR', 'Password too long', 400);
+        }
+        const passwordHash = await bcrypt.hash(password, 10);
+        // User + personal group + membership in one transaction; a taken username → VALIDATION_ERROR 400.
+        const { uid, gid } = await UserModel.registerUserWithPersonalGroup({
+            uid: uuidv4(),
+            username,
+            passwordHash,
+            gid: uuidv4(),
+            groupName: `${username}'s Group`,
+        });
 
         res.status(200).json({
             message: 'User and group and userGroup created successfully',
             data: { uid, gid }
         });
     } catch (error) {
-        console.error("Error adding user or group:", error);
-        res.status(500).json({ error: error.message || "An error occurred" });
-    }
-});
-userRoute.post('/login', async (req, res) => {
-    const { username, password } = req.body;
-    try {
-      const user = await UserModel.getUserByUsername(username);
-      if (user.length === 0) {
-        return res.status(401).json({ error: 'Invalid credentials' });
-      }
-      const stored = user[0];
-      const ok = await bcrypt.compare(password, stored.password);
-      if (!ok) {
-        return res.status(401).json({ error: 'Invalid credentials' });
-      }
-      const token = jwt.sign(
-        { userId: stored.uid, username: stored.username },
-        process.env.JWT_SECRET,
-        { expiresIn: '24h' }
-      );
-      res.status(200).json({ message: 'Login successful', uid: stored.uid, token });
-    } catch (e) {
-      console.error('Login error:', e);
-      res.status(500).json({ error: 'Server error' });
+        sendError(res, error);
     }
 });
 
-userRoute.get('/getuid', async (req, res) => {
-  const { username } = req.query;
-  try {
-    const user = await UserModel.getidUserByUsername(username);
-    if (user) {
-      res.status(200).json({ uid: user.uid });
-    } else {
-      res.status(404).json({ error: 'User not found' });
+userRoute.post('/login', authLimiter, async (req, res) => {
+    const { username, password } = req.body || {};
+    try {
+        if (typeof username !== 'string' || typeof password !== 'string' || !username || !password) {
+            throw new AppError('UNAUTHENTICATED', 'Invalid credentials', 401);
+        }
+        const user = await UserModel.getUserByUsername(username);
+        if (!user || user.length === 0) {
+            throw new AppError('UNAUTHENTICATED', 'Invalid credentials', 401);
+        }
+        const stored = user[0];
+        const ok = await bcrypt.compare(password, stored.password);
+        if (!ok) {
+            throw new AppError('UNAUTHENTICATED', 'Invalid credentials', 401);
+        }
+        const token = signAccessToken({ userId: stored.uid, username: stored.username });
+        res.status(200).json({ message: 'Login successful', uid: stored.uid, token });
+    } catch (error) {
+        sendError(res, error);
     }
-  } catch (error) {
-    res.status(500).json({ error: error.message || 'Internal server error' });
-  }
+});
+
+userRoute.get('/getuid', requireAuth, apiLimiter, async (req, res) => {
+    const { username } = req.query;
+    try {
+        if (typeof username !== 'string' || !username) {
+            throw new AppError('VALIDATION_ERROR', 'username is required', 400);
+        }
+        const user = await UserModel.getidUserByUsername(username);
+        if (!user) {
+            throw new AppError('NOT_FOUND', 'User not found', 404);
+        }
+        res.status(200).json({ uid: user.uid });
+    } catch (error) {
+        sendError(res, error);
+    }
 });
 
 module.exports = userRoute;

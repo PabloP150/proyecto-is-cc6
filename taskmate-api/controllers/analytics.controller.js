@@ -1,8 +1,27 @@
+const express = require('express');
 const AnalyticsService = require('../services/AnalyticsService');
+const AccessModel = require('../models/access.model');
+const { buildTeamContext } = require('../services/analyticsContext');
 const { execReadCommand, execWriteCommand } = require('../helpers/execQuery');
+const { AppError, isAppError, sendError } = require('../helpers/errors');
+const { assertUuid, sameId } = require('../middleware/groupAccess');
+const { createLimiter } = require('../middleware/rateLimit');
 const { TYPES } = require('tedious');
 const { v4: uuidv4 } = require('uuid');
 const llmService = require('../services/LLMService');
+
+const TASK_CATEGORIES = ['frontend', 'backend', 'database', 'testing', 'general'];
+const PRIVACY_MODES = ['team_leader_only', 'team', 'private'];
+const MAX_TASK_DESCRIPTION = 2000; // it becomes part of the LLM prompt
+
+// Known client errors keep their code; anything else becomes a generic 500 with the endpoint's message.
+const fail = (res, error, message) => {
+    if (isAppError(error)) return sendError(res, error);
+    console.error(`${message}:`, error);
+    return res.status(500).json({ success: false, error: message, code: 'INTERNAL_ERROR' });
+};
+
+const leaderOnly = (message) => new AppError('NOT_GROUP_ADMIN', message, 403);
 
 /**
  * Analytics Controller
@@ -18,28 +37,37 @@ class AnalyticsController {
      */
     static async getUserAnalytics(req, res) {
         try {
-            const { userId } = req.params;
-            
-            if (!userId) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'User ID is required'
-                });
+            const userId = assertUuid(req.params.userId, 'userId');
+
+            let analytics;
+            if (sameId(req.user.userId, userId)) {
+                analytics = await AnalyticsService.getUserAnalyticsSummary(userId);
+            } else {
+                // Another member: only through a group the caller leads, and only that group's slice
+                // (the global summary would expose what the user does in every other group).
+                const groupId = req.query.groupId;
+                if (groupId === undefined) {
+                    throw new AppError('VALIDATION_ERROR', 'groupId is required to view another member\'s analytics', 400);
+                }
+                assertUuid(groupId, 'groupId');
+                if (!(await AnalyticsController._checkTeamAccess(req.user.userId, groupId))) {
+                    throw leaderOnly('Access denied. Only team leaders can view the analytics of their team members.');
+                }
+                const team = await AnalyticsService.getTeamAnalyticsSummary(groupId);
+                const member = (team && team.team_members || []).find(m => sameId(String(m.user_id), userId));
+                if (!member) {
+                    throw new AppError('NOT_FOUND', 'The user is not a member of this group', 404);
+                }
+                analytics = { group_id: groupId, ...member, updated_at: team.updated_at };
             }
-            
-            const analytics = await AnalyticsService.getUserAnalyticsSummary(userId);
-            
+
             res.status(200).json({
                 success: true,
                 data: analytics
             });
-            
+
         } catch (error) {
-            console.error('Error getting user analytics:', error);
-            res.status(500).json({
-                success: false,
-                error: 'Failed to retrieve user analytics'
-            });
+            fail(res, error, 'Failed to retrieve user analytics');
         }
     }
     
@@ -50,37 +78,22 @@ class AnalyticsController {
      */
     static async getTeamAnalytics(req, res) {
         try {
-            const { groupId } = req.params;
-            const requesterId = req.user.userId;
+            const groupId = assertUuid(req.params.groupId, 'groupId');
 
-            if (!groupId) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Group ID is required'
-                });
-            }
-
-            const hasAccess = await AnalyticsController._checkTeamAccess(requesterId, groupId);
+            const hasAccess = await AnalyticsController._checkTeamAccess(req.user.userId, groupId);
             if (!hasAccess) {
-                return res.status(403).json({
-                    success: false,
-                    error: 'Access denied. Only team leaders can view team analytics.'
-                });
+                throw leaderOnly('Access denied. Only team leaders can view team analytics.');
             }
-            
+
             const analytics = await AnalyticsService.getTeamAnalyticsSummary(groupId);
-            
+
             res.status(200).json({
                 success: true,
                 data: analytics
             });
-            
+
         } catch (error) {
-            console.error('Error getting team analytics:', error);
-            res.status(500).json({
-                success: false,
-                error: 'Failed to retrieve team analytics'
-            });
+            fail(res, error, 'Failed to retrieve team analytics');
         }
     }
     
@@ -90,37 +103,22 @@ class AnalyticsController {
      */
     static async getWorkloadDistribution(req, res) {
         try {
-            const { groupId } = req.params;
-            const requesterId = req.user.userId;
+            const groupId = assertUuid(req.params.groupId, 'groupId');
 
-            if (!groupId) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Group ID is required'
-                });
-            }
-
-            const hasAccess = await AnalyticsController._checkTeamAccess(requesterId, groupId);
+            const hasAccess = await AnalyticsController._checkTeamAccess(req.user.userId, groupId);
             if (!hasAccess) {
-                return res.status(403).json({
-                    success: false,
-                    error: 'Access denied. Only team leaders can view workload distribution.'
-                });
+                throw leaderOnly('Access denied. Only team leaders can view workload distribution.');
             }
-            
+
             const workloadData = await AnalyticsService.getWorkloadDistribution(groupId);
-            
+
             res.status(200).json({
                 success: true,
                 data: workloadData
             });
-            
+
         } catch (error) {
-            console.error('Error getting workload distribution:', error);
-            res.status(500).json({
-                success: false,
-                error: 'Failed to retrieve workload distribution'
-            });
+            fail(res, error, 'Failed to retrieve workload distribution');
         }
     }
     
@@ -130,40 +128,24 @@ class AnalyticsController {
      */
     static async getUserCompletionTrends(req, res) {
         try {
-            const { userId } = req.params;
-            const { days = 30, requesterId } = req.query;
-            
-            if (!userId) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'User ID is required'
-                });
+            const userId = assertUuid(req.params.userId, 'userId');
+            const parsedDays = Number.parseInt(req.query.days, 10);
+            const days = Number.isFinite(parsedDays) ? Math.min(Math.max(parsedDays, 1), 365) : 30;
+
+            // Trends span every group the user belongs to, so they are only shown to the user themself.
+            if (!sameId(req.user.userId, userId)) {
+                throw leaderOnly('Access denied. You can only view your own completion trends.');
             }
-            
-            // Users can view their own trends, or team leaders can view team member trends
-            if (requesterId && requesterId !== userId) {
-                const hasAccess = await AnalyticsController._checkUserAccess(requesterId, userId);
-                if (!hasAccess) {
-                    return res.status(403).json({
-                        success: false,
-                        error: 'Access denied. You can only view your own trends or team member trends if you are a team leader.'
-                    });
-                }
-            }
-            
-            const trends = await AnalyticsService.getUserCompletionTrends(userId, parseInt(days));
-            
+
+            const trends = await AnalyticsService.getUserCompletionTrends(userId, days);
+
             res.status(200).json({
                 success: true,
                 data: trends
             });
-            
+
         } catch (error) {
-            console.error('Error getting user completion trends:', error);
-            res.status(500).json({
-                success: false,
-                error: 'Failed to retrieve completion trends'
-            });
+            fail(res, error, 'Failed to retrieve completion trends');
         }
     }
     
@@ -173,40 +155,26 @@ class AnalyticsController {
      */
     static async getCategoryExpertiseRankings(req, res) {
         try {
-            const { groupId } = req.params;
-            const { category, requesterId } = req.query;
-            
-            if (!groupId) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Group ID is required'
-                });
+            const groupId = assertUuid(req.params.groupId, 'groupId');
+            const { category } = req.query;
+            if (category !== undefined && !TASK_CATEGORIES.includes(category)) {
+                throw new AppError('VALIDATION_ERROR', `category must be one of ${TASK_CATEGORIES.join(', ')}`, 400);
             }
-            
-            // Access control check
-            if (requesterId) {
-                const hasAccess = await AnalyticsController._checkTeamAccess(requesterId, groupId);
-                if (!hasAccess) {
-                    return res.status(403).json({
-                        success: false,
-                        error: 'Access denied. Only team leaders can view expertise rankings.'
-                    });
-                }
+
+            const hasAccess = await AnalyticsController._checkTeamAccess(req.user.userId, groupId);
+            if (!hasAccess) {
+                throw leaderOnly('Access denied. Only team leaders can view expertise rankings.');
             }
-            
+
             const expertise = await AnalyticsService.getCategoryExpertiseRankings(groupId, category);
-            
+
             res.status(200).json({
                 success: true,
                 data: expertise
             });
-            
+
         } catch (error) {
-            console.error('Error getting expertise rankings:', error);
-            res.status(500).json({
-                success: false,
-                error: 'Failed to retrieve expertise rankings'
-            });
+            fail(res, error, 'Failed to retrieve expertise rankings');
         }
     }
     
@@ -217,41 +185,24 @@ class AnalyticsController {
      */
     static async getAnalyticsConfig(req, res) {
         try {
-            const { groupId } = req.params;
-            const { requesterId } = req.query;
-            
-            if (!groupId) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Group ID is required'
-                });
-            }
-            
+            const groupId = assertUuid(req.params.groupId, 'groupId');
+
             // Only team leaders can view/modify analytics configuration
-            if (requesterId) {
-                const hasAccess = await AnalyticsController._checkTeamAccess(requesterId, groupId);
-                if (!hasAccess) {
-                    return res.status(403).json({
-                        success: false,
-                        error: 'Access denied. Only team leaders can view analytics configuration.'
-                    });
-                }
+            const hasAccess = await AnalyticsController._checkTeamAccess(req.user.userId, groupId);
+            if (!hasAccess) {
+                throw leaderOnly('Access denied. Only team leaders can view analytics configuration.');
             }
-            
+
             // Get current analytics configuration for the group
             const config = await AnalyticsController._getGroupAnalyticsConfig(groupId);
-            
+
             res.status(200).json({
                 success: true,
                 data: config
             });
-            
+
         } catch (error) {
-            console.error('Error getting analytics config:', error);
-            res.status(500).json({
-                success: false,
-                error: 'Failed to retrieve analytics configuration'
-            });
+            fail(res, error, 'Failed to retrieve analytics configuration');
         }
     }
     
@@ -262,42 +213,37 @@ class AnalyticsController {
      */
     static async updateAnalyticsConfig(req, res) {
         try {
-            const { groupId } = req.params;
-            const { requesterId, config } = req.body;
-            
-            if (!groupId || !config) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Group ID and configuration data are required'
-                });
+            const groupId = assertUuid(req.params.groupId, 'groupId');
+
+            // Only team leaders can modify analytics configuration (checked before looking at the body)
+            if (!(await AnalyticsController._checkTeamAccess(req.user.userId, groupId))) {
+                throw leaderOnly('Access denied. Only team leaders can modify analytics configuration.');
             }
-            
-            // Only team leaders can modify analytics configuration
-            if (requesterId) {
-                const hasAccess = await AnalyticsController._checkTeamAccess(requesterId, groupId);
-                if (!hasAccess) {
-                    return res.status(403).json({
-                        success: false,
-                        error: 'Access denied. Only team leaders can modify analytics configuration.'
-                    });
-                }
+
+            const { config } = req.body || {};
+            if (!config || typeof config !== 'object' || Array.isArray(config)) {
+                throw new AppError('VALIDATION_ERROR', 'Group ID and configuration data are required', 400);
             }
-            
+            // Mirrors the AnalyticsConfig CHECK constraints, which would otherwise surface as a 500
+            if (config.privacy_mode !== undefined && !PRIVACY_MODES.includes(config.privacy_mode)) {
+                throw new AppError('VALIDATION_ERROR', `privacy_mode must be one of ${PRIVACY_MODES.join(', ')}`, 400);
+            }
+            const retention = config.data_retention_days;
+            if (retention !== undefined && !(Number.isInteger(retention) && retention >= 1 && retention <= 3650)) {
+                throw new AppError('VALIDATION_ERROR', 'data_retention_days must be an integer between 1 and 3650', 400);
+            }
+
             // Update analytics configuration
             const result = await AnalyticsController._updateGroupAnalyticsConfig(groupId, config);
-            
+
             res.status(200).json({
                 success: true,
                 message: 'Analytics configuration updated successfully',
                 data: result
             });
-            
+
         } catch (error) {
-            console.error('Error updating analytics config:', error);
-            res.status(500).json({
-                success: false,
-                error: 'Failed to update analytics configuration'
-            });
+            fail(res, error, 'Failed to update analytics configuration');
         }
     }
     
@@ -308,22 +254,12 @@ class AnalyticsController {
      */
     static async getDashboardData(req, res) {
         try {
-            const { groupId } = req.params;
-            const requesterId = req.user.userId;
+            const groupId = assertUuid(req.params.groupId, 'groupId');
 
-            if (!groupId) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Group ID is required'
-                });
-            }
-
-            const hasAccess = await AnalyticsController._checkMembership(requesterId, groupId);
+            // Same rule as /team, /workload and /expertise, whose data the dashboard aggregates
+            const hasAccess = await AnalyticsController._checkTeamAccess(req.user.userId, groupId);
             if (!hasAccess) {
-                return res.status(403).json({
-                    success: false,
-                    error: 'Access denied. You must be a team member to view this dashboard.'
-                });
+                throw leaderOnly('Access denied. Only team leaders can view the team dashboard.');
             }
 
             const [teamAnalytics, workloadDistribution, expertiseRankings] = await Promise.all([
@@ -345,11 +281,7 @@ class AnalyticsController {
             });
             
         } catch (error) {
-            console.error('Error getting dashboard data:', error);
-            res.status(500).json({
-                success: false,
-                error: 'Failed to retrieve dashboard data'
-            });
+            fail(res, error, 'Failed to retrieve dashboard data');
         }
     }
     
@@ -359,15 +291,38 @@ class AnalyticsController {
      */
     static async recordTaskAssignment(req, res) {
         try {
-            const { taskId, userId, groupId, category } = req.body;
-            
-            if (!taskId || !userId || !groupId) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Task ID, User ID, and Group ID are required'
-                });
+            const { taskId, userId, groupId, category } = req.body || {};
+
+            // Membership is checked before the rest of the body so non-members learn nothing from validation errors.
+            if (!groupId) {
+                throw new AppError('VALIDATION_ERROR', 'Task ID, User ID, and Group ID are required', 400);
             }
-            
+            assertUuid(groupId, 'groupId');
+            if (!(await AnalyticsController._checkMembership(req.user.userId, groupId))) {
+                throw new AppError('NOT_GROUP_MEMBER', 'Access denied. You must be a team member.', 403);
+            }
+
+            if (!taskId || !userId) {
+                throw new AppError('VALIDATION_ERROR', 'Task ID, User ID, and Group ID are required', 400);
+            }
+            assertUuid(taskId, 'taskId');
+            assertUuid(userId, 'userId');
+            if (category !== undefined && !TASK_CATEGORIES.includes(category)) {
+                throw new AppError('VALIDATION_ERROR', `category must be one of ${TASK_CATEGORIES.join(', ')}`, 400);
+            }
+
+            // The task must be in the group and the assignee (a target user) a member of it.
+            const [taskGroup, assigneeIsMember] = await Promise.all([
+                AccessModel.resolveGroupId('task', taskId),
+                AccessModel.isGroupMember(userId, groupId),
+            ]);
+            if (!sameId(taskGroup, groupId)) {
+                throw new AppError('TASK_NOT_FOUND', 'Task not found', 404);
+            }
+            if (!assigneeIsMember) {
+                throw new AppError('VALIDATION_ERROR', 'The user is not a member of this group', 400);
+            }
+
             const result = await AnalyticsService.recordTaskAssignment(
                 taskId,
                 userId,
@@ -382,11 +337,7 @@ class AnalyticsController {
             });
             
         } catch (error) {
-            console.error('Error recording task assignment:', error);
-            res.status(500).json({
-                success: false,
-                error: 'Failed to record task assignment'
-            });
+            fail(res, error, 'Failed to record task assignment');
         }
     }
     
@@ -396,16 +347,23 @@ class AnalyticsController {
      */
     static async recordTaskCompletion(req, res) {
         try {
-            const { taskId, success = true } = req.body;
-            
+            const { taskId, success = true } = req.body || {};
+
             if (!taskId) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Task ID is required'
-                });
+                throw new AppError('VALIDATION_ERROR', 'Task ID is required', 400);
             }
-            
-            const result = await AnalyticsService.recordTaskCompletion(taskId, success);
+            assertUuid(taskId, 'taskId');
+
+            // The task may live on in Complete/DeleteTask; any of them tells us its group.
+            const groupId = await AnalyticsController._resolveTaskGroup(taskId);
+            if (!groupId) {
+                throw new AppError('TASK_NOT_FOUND', 'Task not found', 404);
+            }
+            if (!(await AnalyticsController._checkMembership(req.user.userId, groupId))) {
+                throw new AppError('NOT_GROUP_MEMBER', 'Access denied. You must be a team member.', 403);
+            }
+
+            const result = await AnalyticsService.recordTaskCompletion(taskId, success !== false);
             
             res.status(200).json({
                 success: true,
@@ -414,11 +372,7 @@ class AnalyticsController {
             });
             
         } catch (error) {
-            console.error('Error recording task completion:', error);
-            res.status(500).json({
-                success: false,
-                error: 'Failed to record task completion'
-            });
+            fail(res, error, 'Failed to record task completion');
         }
     }
     
@@ -429,22 +383,23 @@ class AnalyticsController {
      */
     static async getTaskRecommendations(req, res) {
         try {
-            const { groupId, taskCategory, taskDescription } = req.body;
-            const requesterId = req.user.userId;
+            const { groupId, taskCategory, taskDescription } = req.body || {};
 
-            if (!groupId || !taskCategory || !taskDescription) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Group ID, task category, and task description are required'
-                });
+            // Membership first (only the group id is needed for it), then the rest of the body
+            assertUuid(groupId, 'groupId');
+            const hasAccess = await AnalyticsController._checkMembership(req.user.userId, groupId);
+            if (!hasAccess) {
+                throw new AppError('NOT_GROUP_MEMBER', 'Access denied. You must be a team member to get recommendations.', 403);
             }
 
-            const hasAccess = await AnalyticsController._checkMembership(requesterId, groupId);
-            if (!hasAccess) {
-                return res.status(403).json({
-                    success: false,
-                    error: 'Access denied. You must be a team member to get recommendations.'
-                });
+            if (!taskCategory || !taskDescription) {
+                throw new AppError('VALIDATION_ERROR', 'Group ID, task category, and task description are required', 400);
+            }
+            if (!TASK_CATEGORIES.includes(taskCategory)) {
+                throw new AppError('VALIDATION_ERROR', `taskCategory must be one of ${TASK_CATEGORIES.join(', ')}`, 400);
+            }
+            if (typeof taskDescription !== 'string' || taskDescription.length > MAX_TASK_DESCRIPTION) {
+                throw new AppError('VALIDATION_ERROR', `taskDescription must be text of at most ${MAX_TASK_DESCRIPTION} characters`, 400);
             }
 
             const recommendations = await AnalyticsController._getRecommendationsFromAgent(
@@ -459,120 +414,34 @@ class AnalyticsController {
             });
 
         } catch (error) {
-            console.error('Error getting task recommendations:', error.message);
-            res.status(500).json({
-                success: false,
-                error: 'Failed to get task recommendations'
-            });
+            fail(res, error, 'Failed to get task recommendations');
         }
     }
 
-    /**
-     * Batch update user metrics (admin endpoint)
-     * POST /api/analytics/batch-update
-     */
-    static async batchUpdateMetrics(req, res) {
-        try {
-            const result = await AnalyticsService.batchUpdateUserMetrics();
-            
-            res.status(200).json({
-                success: true,
-                message: 'Batch metrics update completed',
-                data: result
-            });
-            
-        } catch (error) {
-            console.error('Error in batch metrics update:', error);
-            res.status(500).json({
-                success: false,
-                error: 'Failed to update metrics'
-            });
-        }
-    }
-    
     // Private helper methods for access control
-    
+    // (the metrics batch runs from AnalyticsBatchJob; it is no longer exposed over HTTP)
+
     /**
-     * Check if user has access to team analytics (is team leader)
+     * Check if the user is a member of the group
      * Requirement 6.4: Proper access controls and data privacy compliance
      */
     static async _checkMembership(requesterId, groupId) {
-        try {
-            const result = await execReadCommand(
-                `SELECT 1 FROM dbo.UserGroups WHERE uid = @uid AND gid = @gid`,
-                [
-                    { name: 'uid', type: TYPES.UniqueIdentifier, value: requesterId },
-                    { name: 'gid', type: TYPES.UniqueIdentifier, value: groupId }
-                ]
-            );
-            return result && result.length > 0;
-        } catch (error) {
-            console.error('Error checking membership:', error);
-            return false;
-        }
+        return AccessModel.isGroupMember(requesterId, groupId);
     }
 
+    static async _resolveTaskGroup(taskId) {
+        for (const kind of ['task', 'completed', 'deleted']) {
+            const gid = await AccessModel.resolveGroupId(kind, taskId);
+            if (gid) return gid;
+        }
+        return null;
+    }
+
+    // Team leader of this group = its admin or a member holding a role whose name contains "leader".
     static async _checkTeamAccess(requesterId, groupId) {
-        try {
-            const query = `
-                SELECT ugr.gr_id, gr.gr_name
-                FROM dbo.UserGroupRoles ugr
-                JOIN dbo.GroupRoles gr ON ugr.gr_id = gr.gr_id
-                WHERE ugr.uid = @requesterId AND ugr.gid = @groupId
-            `;
-            
-            const params = [
-                { name: 'requesterId', type: TYPES.UniqueIdentifier, value: requesterId },
-                { name: 'groupId', type: TYPES.UniqueIdentifier, value: groupId }
-            ];
-            
-            const result = await execReadCommand(query, params);
-            
-            // Check if user has team leader role
-            return result && result.length > 0 && 
-                   result.some(role => role.gr_name && role.gr_name.toLowerCase().includes('leader'));
-            
-        } catch (error) {
-            console.error('Error checking team access:', error);
-            return false;
-        }
+        return AccessModel.isGroupLeader(requesterId, groupId);
     }
-    
-    /**
-     * Check if user has access to another user's analytics
-     */
-    static async _checkUserAccess(requesterId, targetUserId) {
-        try {
-            // Users can always access their own data
-            if (requesterId === targetUserId) {
-                return true;
-            }
-            
-            // Check if requester is a team leader in any group that includes the target user
-            const query = `
-                SELECT DISTINCT ugr1.gid
-                FROM dbo.UserGroupRoles ugr1
-                JOIN dbo.GroupRoles gr ON ugr1.gr_id = gr.gr_id
-                JOIN dbo.UserGroupRoles ugr2 ON ugr1.gid = ugr2.gid
-                WHERE ugr1.uid = @requesterId 
-                  AND ugr2.uid = @targetUserId
-                  AND gr.gr_name LIKE '%leader%'
-            `;
-            
-            const params = [
-                { name: 'requesterId', type: TYPES.UniqueIdentifier, value: requesterId },
-                { name: 'targetUserId', type: TYPES.UniqueIdentifier, value: targetUserId }
-            ];
-            
-            const result = await execReadCommand(query, params);
-            return result && result.length > 0;
-            
-        } catch (error) {
-            console.error('Error checking user access:', error);
-            return false;
-        }
-    }
-    
+
     /**
      * Get analytics configuration for a group
      */
@@ -643,7 +512,7 @@ class AnalyticsController {
                 track_capacity        = @track_capacity,
                 data_retention_days   = @data_retention_days,
                 privacy_mode          = @privacy_mode,
-                updated_at            = GETDATE()
+                updated_at            = SYSDATETIMEOFFSET()
             WHEN NOT MATCHED THEN INSERT
                 (gid, analytics_enabled, track_completion_time, track_success_rate,
                  track_workload, track_expertise, track_capacity, data_retention_days, privacy_mode)
@@ -656,84 +525,6 @@ class AnalyticsController {
     }
     
     /**
-     * Get mock dashboard data for demo/testing purposes
-     */
-    static _getMockDashboardData(groupId) {
-        const teamData = {
-            'test-group-456': { // Development Team
-                team_analytics: {
-                    total_members: 5,
-                    active_tasks: 14,
-                    completion_rate: 87.25,
-                    avg_response_time: 2.15
-                },
-                workload_distribution: [
-                    { name: 'Sarah Chen', workload: 4, capacity: 5, utilization: 80 },
-                    { name: 'Marcus Johnson', workload: 3, capacity: 5, utilization: 60 },
-                    { name: 'Elena Rodriguez', workload: 5, capacity: 6, utilization: 83 },
-                    { name: 'David Kim', workload: 2, capacity: 4, utilization: 50 },
-                    { name: 'Alex Thompson', workload: 3, capacity: 5, utilization: 60 }
-                ],
-                expertise_rankings: [
-                    { category: 'Frontend', expert: 'Sarah Chen', score: 94 },
-                    { category: 'Backend', expert: 'Marcus Johnson', score: 89 },
-                    { category: 'Database', expert: 'Elena Rodriguez', score: 91 },
-                    { category: 'Testing', expert: 'David Kim', score: 86 }
-                ]
-            },
-            'test-group-789': { // Design Team
-                team_analytics: {
-                    total_members: 4,
-                    active_tasks: 9,
-                    completion_rate: 92.50,
-                    avg_response_time: 1.75
-                },
-                workload_distribution: [
-                    { name: 'Maya Patel', workload: 3, capacity: 4, utilization: 75 },
-                    { name: 'James Wilson', workload: 2, capacity: 5, utilization: 40 },
-                    { name: 'Zoe Martinez', workload: 4, capacity: 5, utilization: 80 },
-                    { name: 'Ryan Foster', workload: 1, capacity: 3, utilization: 33 }
-                ],
-                expertise_rankings: [
-                    { category: 'UI Design', expert: 'Maya Patel', score: 96 },
-                    { category: 'UX Research', expert: 'James Wilson', score: 88 },
-                    { category: 'Prototyping', expert: 'Zoe Martinez', score: 92 },
-                    { category: 'Visual Design', expert: 'Maya Patel', score: 94 }
-                ]
-            },
-            'test-group-123': { // QA Team
-                team_analytics: {
-                    total_members: 6,
-                    active_tasks: 18,
-                    completion_rate: 89.75,
-                    avg_response_time: 1.95
-                },
-                workload_distribution: [
-                    { name: 'Lisa Wang', workload: 4, capacity: 5, utilization: 80 },
-                    { name: 'Tom Anderson', workload: 3, capacity: 4, utilization: 75 },
-                    { name: 'Priya Sharma', workload: 5, capacity: 6, utilization: 83 },
-                    { name: 'Jake Miller', workload: 2, capacity: 5, utilization: 40 },
-                    { name: 'Nina Kowalski', workload: 3, capacity: 4, utilization: 75 },
-                    { name: 'Carlos Mendez', workload: 4, capacity: 5, utilization: 80 }
-                ],
-                expertise_rankings: [
-                    { category: 'Automation', expert: 'Lisa Wang', score: 93 },
-                    { category: 'Manual Testing', expert: 'Tom Anderson', score: 87 },
-                    { category: 'Performance', expert: 'Priya Sharma', score: 90 },
-                    { category: 'Security Testing', expert: 'Carlos Mendez', score: 85 }
-                ]
-            }
-        };
-
-        const currentTeam = teamData[groupId] || teamData['test-group-456'];
-        
-        return {
-            ...currentTeam,
-            updated_at: new Date().toISOString()
-        };
-    }
-    
-    /**
      * Get recommendations from analytics agent via MCP WebSocket
      */
     static async _getRecommendationsFromAgent(groupId, taskCategory, taskDescription, context) {
@@ -743,7 +534,9 @@ class AnalyticsController {
             task_description: taskDescription,
             priority: context.priority || 'normal',
             deadline: context.deadline || 'flexible',
-            additional_context: context.additional_context || ''
+            additional_context: context.additional_context || '',
+            // Real team data so the agent does not fall back to its demo mock
+            team_context: await buildTeamContext(groupId)
         };
 
         return new Promise((resolve, reject) => {
@@ -766,19 +559,49 @@ class AnalyticsController {
                 }
             });
 
-            llmService.send({
+            const giveUp = (reason) => {
+                clearTimeout(timeout);
+                llmService.removeAllListeners(sessionId);
+                reject(new Error(`Failed to send analytics request: ${reason}`));
+            };
+
+            // send() resolves false when the agent is unreachable: fail now instead of waiting for the timeout
+            Promise.resolve(llmService.send({
                 requestId,
                 sessionId,
                 type: 'analytics',
                 action: 'get_task_assignment_recommendations',
                 data: requestData
-            }).catch(error => {
-                clearTimeout(timeout);
-                llmService.removeAllListeners(sessionId);
-                reject(new Error(`Failed to send analytics request: ${error.message}`));
-            });
+            })).then(sent => {
+                if (sent === false) giveUp('analytics agent unavailable');
+            }).catch(error => giveUp(error.message));
         });
     }
 }
+
+// Mounted by app.js at /api/analytics behind requireAuth + apiLimiter.
+// Each handler performs its own authorization, so they stay safe if reused elsewhere.
+// Every call becomes an LLM request on the shared Python link.
+const recommendationsLimiter = createLimiter({
+    windowMs: 60 * 1000,
+    limit: 10,
+    keyByUser: true,
+    message: 'Too many recommendation requests, please try again in a minute.',
+});
+
+const router = express.Router();
+router.get('/user/:userId', AnalyticsController.getUserAnalytics);
+router.get('/team/:groupId', AnalyticsController.getTeamAnalytics);
+router.get('/workload/:groupId', AnalyticsController.getWorkloadDistribution);
+router.get('/trends/:userId', AnalyticsController.getUserCompletionTrends);
+router.get('/expertise/:groupId', AnalyticsController.getCategoryExpertiseRankings);
+router.get('/config/:groupId', AnalyticsController.getAnalyticsConfig);
+router.put('/config/:groupId', AnalyticsController.updateAnalyticsConfig);
+router.get('/dashboard/:groupId', AnalyticsController.getDashboardData);
+router.post('/recommendations', recommendationsLimiter, AnalyticsController.getTaskRecommendations);
+router.post('/assignment', AnalyticsController.recordTaskAssignment);
+router.post('/completion', AnalyticsController.recordTaskCompletion);
+
+AnalyticsController.router = router;
 
 module.exports = AnalyticsController;

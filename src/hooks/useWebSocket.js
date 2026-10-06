@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { UNAUTHORIZED_EVENT } from '../api/client';
+import { WS_CLOSE_MESSAGE_TOO_BIG, WS_CLOSE_TOKEN_EXPIRED } from '../constants/ws';
 
 /**
  * Custom hook for WebSocket connection management with automatic reconnection
@@ -35,6 +37,7 @@ const useWebSocket = (url, token, options = {}) => {
   const currentToken = useRef(null);
   const activeToken = useRef(null); // token used for the current open connection
   const heartbeatIntervalId = useRef(null);
+  const connectTimeoutId = useRef(null); // deferred auto-connect, cancelled on unmount
 
   // Clear any existing reconnection timeout
   const clearReconnectTimeout = useCallback(() => {
@@ -82,9 +85,13 @@ const useWebSocket = (url, token, options = {}) => {
 
       const wsUrl = `${connectUrl}?token=${encodeURIComponent(connectToken)}`;
 
-      ws.current = new WebSocket(wsUrl);
+      const socket = new WebSocket(wsUrl);
+      ws.current = socket;
+      // Events from a socket that was already replaced (e.g. token change) must not touch state.
+      const isStale = () => ws.current !== null && ws.current !== socket;
 
-      ws.current.onopen = (event) => {
+      socket.onopen = (event) => {
+        if (isStale()) return;
         activeToken.current = connectToken;
         isConnecting.current = false;
         setConnectionStatus('Connected');
@@ -104,7 +111,8 @@ const useWebSocket = (url, token, options = {}) => {
         }
       };
 
-      ws.current.onmessage = (event) => {
+      socket.onmessage = (event) => {
+        if (isStale()) return;
         try {
           const data = JSON.parse(event.data);
           // Ignore pong messages
@@ -113,17 +121,30 @@ const useWebSocket = (url, token, options = {}) => {
           }
           setLastMessage(data);
           callbacksRef.current.onMessage(data);
-        } catch (parseError) {
-          console.error('Failed to parse WebSocket message:', parseError);
+        } catch {
           setError('Failed to parse message from server');
         }
       };
 
-      ws.current.onclose = (event) => {
+      socket.onclose = (event) => {
+        if (isStale()) return;
         isConnecting.current = false;
         setConnectionStatus('Disconnected');
         callbacksRef.current.onClose(event);
         clearHeartbeat(); // Stop heartbeat on close
+
+        // Reconnecting with the same expired token would just fail again: log out instead
+        // (App listens to the unauthorized event and sends the user to the login page).
+        if (event.code === WS_CLOSE_TOKEN_EXPIRED) {
+          shouldReconnect.current = false;
+          setError('La sesión expiró. Inicia sesión de nuevo.');
+          setConnectionStatus('Failed');
+          window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT, { detail: { source: 'websocket', code: 'TOKEN_EXPIRED' } }));
+          return;
+        }
+        if (event.code === WS_CLOSE_MESSAGE_TOO_BIG) {
+          setError('El mensaje era demasiado grande y el servidor cerró la conexión.');
+        }
 
         // Attempt reconnection if enabled and not a clean close
         if (shouldReconnect.current && event.code !== 1000 && reconnectAttempts.current < maxReconnectAttempts) {
@@ -144,10 +165,8 @@ const useWebSocket = (url, token, options = {}) => {
         }
       };
 
-      ws.current.onerror = (event) => {
-        console.error('WebSocket error:', event);
-        console.error('WebSocket readyState:', ws.current?.readyState);
-        console.error('WebSocket URL was:', wsUrl);
+      socket.onerror = (event) => {
+        if (isStale()) return;
         isConnecting.current = false;
         setError('WebSocket connection error');
         setConnectionStatus('Error');
@@ -155,8 +174,7 @@ const useWebSocket = (url, token, options = {}) => {
         clearHeartbeat(); // Stop heartbeat on error
       };
 
-    } catch (connectionError) {
-      console.error('Failed to create WebSocket connection:', connectionError);
+    } catch {
       isConnecting.current = false;
       setError('Failed to create WebSocket connection');
       setConnectionStatus('Error');
@@ -169,6 +187,10 @@ const useWebSocket = (url, token, options = {}) => {
     isConnecting.current = false;
     clearReconnectTimeout();
     clearHeartbeat(); // Stop heartbeat on disconnect
+    if (connectTimeoutId.current) {
+      clearTimeout(connectTimeoutId.current);
+      connectTimeoutId.current = null;
+    }
 
     if (ws.current) {
       ws.current.close(1000, 'Client disconnect');
@@ -187,8 +209,7 @@ const useWebSocket = (url, token, options = {}) => {
         const messageString = typeof message === 'string' ? message : JSON.stringify(message);
         ws.current.send(messageString);
         return true;
-      } catch (sendError) {
-        console.error('Failed to send WebSocket message:', sendError);
+      } catch {
         setError('Failed to send message');
         return false;
       }
@@ -231,12 +252,20 @@ const useWebSocket = (url, token, options = {}) => {
           ws.current.close(1000, 'Reconnecting with new parameters');
         }
 
-        // Connect after a short delay to allow cleanup
-        setTimeout(() => {
+        // Connect after a short delay to allow cleanup (also avoids opening and immediately
+        // closing a socket under React StrictMode's double effect invocation)
+        connectTimeoutId.current = setTimeout(() => {
+          connectTimeoutId.current = null;
           connect();
         }, 100);
       }
     }
+    return () => {
+      if (connectTimeoutId.current) {
+        clearTimeout(connectTimeoutId.current);
+        connectTimeoutId.current = null;
+      }
+    };
   }, [autoConnect, url, token, connect]);
 
   // Cleanup effect - runs only on unmount
@@ -247,6 +276,10 @@ const useWebSocket = (url, token, options = {}) => {
       if (reconnectTimeoutId.current) {
         clearTimeout(reconnectTimeoutId.current);
         reconnectTimeoutId.current = null;
+      }
+      if (heartbeatIntervalId.current) {
+        clearInterval(heartbeatIntervalId.current);
+        heartbeatIntervalId.current = null;
       }
       if (ws.current) {
         ws.current.close(1000, 'Component unmount');

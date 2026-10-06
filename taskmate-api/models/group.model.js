@@ -1,41 +1,36 @@
 // models/group.model.js
 const { execReadCommand, execWriteCommand } = require('../helpers/execQuery');
+const { useTransaction } = require('../helpers/transaction');
+const { AppError } = require('../helpers/errors');
 const { TYPES } = require('tedious');
 
-const addGroup = async (groupData) => {
+const addGroup = async (groupData, options = {}) => {
     const { gid, adminId, name } = groupData;
     const query = `INSERT INTO dbo.Groups (gid, adminId, name) VALUES (@gid, @adminId, @name)`;
     const params = [
         { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
         { name: 'adminId', type: TYPES.UniqueIdentifier, value: adminId },
-        { name: 'name', type: TYPES.VarChar, value: name },
+        { name: 'name', type: TYPES.NVarChar, value: name },
     ];
-    await execWriteCommand(query, params);
+    await (options.tx ? options.tx.write(query, params) : execWriteCommand(query, params));
     return { success: true };
 };
 
-const getGroupsByUserId = async (uid) => {
-    // Reparar grupos donde adminId ya no es miembro (solo grupos del usuario, no toda la tabla)
-    const repairQuery = `
-        UPDATE g SET g.adminId = (
-            SELECT TOP 1 ug2.uid
-            FROM dbo.UserGroups ug2
-            INNER JOIN dbo.Users u2 ON u2.uid = ug2.uid
-            WHERE ug2.gid = g.gid
-            ORDER BY u2.username
-        )
-        FROM dbo.Groups g
-        INNER JOIN dbo.UserGroups ug_user ON ug_user.gid = g.gid AND ug_user.uid = @uid
-        WHERE NOT EXISTS (
-            SELECT 1 FROM dbo.UserGroups ug WHERE ug.uid = g.adminId AND ug.gid = g.gid
-        )
-        AND EXISTS (
-            SELECT 1 FROM dbo.UserGroups ug WHERE ug.gid = g.gid
-        )
-    `;
-    const repairParams = [{ name: 'uid', type: TYPES.UniqueIdentifier, value: uid }];
-    await execWriteCommand(repairQuery, repairParams);
+// createGroupWithAdmin({gid, adminId, name}) → {gid}: the group and its admin's membership, atomically.
+const createGroupWithAdmin = async ({ gid, adminId, name }, options = {}) => useTransaction(options, async (tx) => {
+    const params = [
+        { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
+        { name: 'adminId', type: TYPES.UniqueIdentifier, value: adminId },
+        { name: 'name', type: TYPES.NVarChar, value: name },
+    ];
+    await tx.write('INSERT INTO dbo.Groups (gid, adminId, name) VALUES (@gid, @adminId, @name)', params);
+    await tx.write('INSERT INTO dbo.UserGroups (uid, gid) VALUES (@adminId, @gid)', params);
+    return { gid };
+});
 
+// Pure read. Admins that stopped being members are fixed once by migration 004 and can no
+// longer appear: leaveGroup/removeMemberFromGroup hand the admin role over in the same transaction.
+const getGroupsByUserId = async (uid) => {
     const query = `
         SELECT g.gid, g.adminId, g.name
         FROM dbo.Groups g
@@ -44,6 +39,14 @@ const getGroupsByUserId = async (uid) => {
     `;
     const params = [{ name: 'uid', type: TYPES.UniqueIdentifier, value: uid }];
     return execReadCommand(query, params);
+};
+
+// getGroupById(gid) → {gid, name, adminId} | null
+const getGroupById = async (gid, options = {}) => {
+    const query = 'SELECT gid, name, adminId FROM dbo.Groups WHERE gid = @gid';
+    const params = [{ name: 'gid', type: TYPES.UniqueIdentifier, value: gid }];
+    const rows = await (options.tx ? options.tx.read(query, params) : execReadCommand(query, params));
+    return rows.length > 0 ? rows[0] : null;
 };
 
 const getRolesByGroupId = async (gid) => {
@@ -57,54 +60,56 @@ const getRolesByGroupId = async (gid) => {
     return execReadCommand(query, params);
 };
 
-// Eliminación en cascada con una sola consulta transaccional (consistencia de estilo)
-const deleteGroup = async (gid, adminId) => {
-    const query = `
-        BEGIN TRY
-            BEGIN TRANSACTION;
-
-            -- Verificar autorización
-            IF NOT EXISTS (SELECT 1 FROM dbo.Groups WHERE gid=@gid AND adminId=@adminId)
-            BEGIN
-                RAISERROR('Not authorized to delete this group', 16, 1);
-            END
-
-            -- Eliminar dependencias en orden
-            DELETE FROM dbo.UserGroupRoles WHERE gid=@gid;      -- asignaciones de roles
-            DELETE FROM dbo.GroupRoles WHERE gid=@gid;          -- roles del grupo
-            DELETE FROM dbo.Edges WHERE gid=@gid;               -- edges
-            DELETE FROM dbo.Nodes WHERE gid=@gid;               -- nodes
-            DELETE FROM dbo.Tasks WHERE gid=@gid;               -- tasks
-            DELETE FROM dbo.UserGroups WHERE gid=@gid;          -- membresías
-
-            -- Por si hay registros de historial (opcional, ignora si no existe la tabla)
-            IF OBJECT_ID('dbo.DeleteTask','U') IS NOT NULL
-                DELETE FROM dbo.DeleteTask WHERE gid=@gid;
-
-            -- Finalmente el grupo
-            DELETE FROM dbo.Groups WHERE gid=@gid AND adminId=@adminId;
-
-            COMMIT TRANSACTION;
-        END TRY
-        BEGIN CATCH
-            IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
-            DECLARE @ErrMsg NVARCHAR(4000) = ERROR_MESSAGE();
-            DECLARE @ErrSeverity INT = ERROR_SEVERITY();
-            RAISERROR(@ErrMsg, @ErrSeverity, 1);
-        END CATCH;
-    `;
-
-    const params = [
-        { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
-        { name: 'adminId', type: TYPES.UniqueIdentifier, value: adminId },
-    ];
-    await execWriteCommand(query, params);
-    return { success: true };
+/**
+ * Deletes a group and everything that depends on it, children before parents, inside the
+ * caller's transaction. GroupRepositories and AnalyticsConfig go by ON DELETE CASCADE,
+ * TaskBranches by the cascade from Tasks. The OR clauses also catch rows whose gid
+ * disagrees with their parent's (possible only if migration 001 had to skip a composite FK).
+ */
+const deleteGroupCascade = async (tx, gid) => {
+    const params = [{ name: 'gid', type: TYPES.UniqueIdentifier, value: gid }];
+    await tx.write(
+        `DELETE FROM dbo.TaskAnalytics WHERE gid = @gid;
+         DELETE ut FROM dbo.UserTask ut INNER JOIN dbo.Tasks t ON t.tid = ut.tid WHERE t.gid = @gid;
+         DELETE FROM dbo.Tasks WHERE gid = @gid;
+         DELETE FROM dbo.Complete WHERE gid = @gid;
+         DELETE FROM dbo.DeleteTask WHERE gid = @gid;
+         DELETE FROM dbo.Edges
+         WHERE gid = @gid
+            OR sourceId IN (SELECT nid FROM dbo.Nodes WHERE gid = @gid)
+            OR targetId IN (SELECT nid FROM dbo.Nodes WHERE gid = @gid);
+         DELETE FROM dbo.Nodes WHERE gid = @gid;
+         DELETE FROM dbo.UserGroupRoles
+         WHERE gid = @gid OR gr_id IN (SELECT gr_id FROM dbo.GroupRoles WHERE gid = @gid);
+         DELETE FROM dbo.GroupRoles WHERE gid = @gid;
+         DELETE FROM dbo.UserGroups WHERE gid = @gid;`,
+        params
+    );
+    return tx.write('DELETE FROM dbo.Groups WHERE gid = @gid', params);
 };
+
+// Only the group's admin can delete it. Throws NOT_FOUND / NOT_GROUP_ADMIN (AppError).
+const deleteGroup = async (gid, adminId, options = {}) => useTransaction(options, async (tx) => {
+    const rows = await tx.read(
+        `SELECT CASE WHEN adminId = @adminId THEN 1 ELSE 0 END AS isAdmin
+         FROM dbo.Groups WITH (UPDLOCK, HOLDLOCK) WHERE gid = @gid`,
+        [
+            { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
+            { name: 'adminId', type: TYPES.UniqueIdentifier, value: adminId },
+        ]
+    );
+    if (rows.length === 0) throw new AppError('NOT_FOUND', 'Group not found', 404);
+    if (!rows[0].isAdmin) throw new AppError('NOT_GROUP_ADMIN', 'Not authorized to delete this group', 403);
+    await deleteGroupCascade(tx, gid);
+    return { success: true };
+});
 
 module.exports = {
     addGroup,
+    createGroupWithAdmin,
     getGroupsByUserId,
+    getGroupById,
     getRolesByGroupId,
     deleteGroup,
+    deleteGroupCascade,
 };

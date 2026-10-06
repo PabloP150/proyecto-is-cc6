@@ -1,5 +1,5 @@
 import { useState, useContext } from 'react';
-import { API_BASE } from '../config';
+import { api } from '../api/client';
 import {
   Box,
   Container,
@@ -27,7 +27,7 @@ function Login({ onLogin }) {
   const [isLoading, setIsLoading] = useState(false);
   const [validationErrors, setValidationErrors] = useState({});
   const navigate = useNavigate();
-  const { setSelectedGroupId, setSelectedGroupName } = useContext(GroupContext);
+  const { setSelectedGroupId, setSelectedGroupName, refreshGroups } = useContext(GroupContext);
 
   // Form validation
   const validateForm = () => {
@@ -56,47 +56,35 @@ function Login({ onLogin }) {
 
     setIsLoading(true);
 
+    let data;
     try {
-      const response = await fetch(`${API_BASE}/api/users/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ username, password }),
-      });
+      data = await api.post('/api/users/login', { username, password }, { auth: false });
+    } catch (err) {
+      setError(err.code === 'NETWORK_ERROR'
+        ? 'Network error. Please check your connection and try again.'
+        : err.message || 'Invalid credentials. Please try again.');
+      setIsLoading(false);
+      return;
+    }
 
-      if (response.ok) {
-        const data = await response.json();
-        const userId = data.uid;
-        const token = data.token;
-        localStorage.setItem('userId', userId);
-        localStorage.setItem('token', token);
-        onLogin({ uid: userId, name: username, token: token });
+    const userId = data.uid;
+    const token = data.token;
+    localStorage.setItem('userId', userId);
+    localStorage.setItem('token', token);
+    onLogin({ uid: userId, name: username, token: token });
 
-        // Obtener los grupos del usuario
-        const groupsResponse = await fetch(`${API_BASE}/api/groups/user-groups?uid=${userId}`);
-        if (groupsResponse.ok) {
-          const groupsData = await groupsResponse.json();
-          if (groupsData.groups && groupsData.groups.length > 0) {
-            const firstGroup = groupsData.groups[0];
-            setSelectedGroupId(firstGroup.gid);
-            setSelectedGroupName(firstGroup.name);
-            localStorage.setItem('selectedGroupId', firstGroup.gid);
-            localStorage.setItem('selectedGroupName', firstGroup.name);
-          }
-        }
-
-        navigate('/home');
-      } else {
-        const errorData = await response.json();
-        setError(errorData.message || 'Invalid credentials. Please try again.');
+    try {
+      const groups = await refreshGroups();
+      if (groups.length > 0) {
+        setSelectedGroupId(groups[0].gid);
+        setSelectedGroupName(groups[0].name);
       }
-    } catch (error) {
-      console.error('Error en la solicitud:', error);
-      setError('Network error. Please check your connection and try again.');
+    } catch {
+      // Non-fatal: the Groups page reloads them and lets the user pick one.
     } finally {
       setIsLoading(false);
     }
+    navigate('/home');
   };
 
   return (

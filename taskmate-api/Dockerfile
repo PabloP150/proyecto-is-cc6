@@ -14,10 +14,10 @@ RUN mkdir -p /usr/src/app
 WORKDIR /usr/src/app
 
 COPY setup-db.sh .
-COPY setup.sql .
 COPY taskmate_tables.sql .
+COPY migrations/ ./migrations/
 
-RUN chmod +x setup-db.sh
+RUN chmod +x setup-db.sh migrations/run-migrations.sh
 RUN chown -R 10001:0 /usr/src/app
 
 USER mssql

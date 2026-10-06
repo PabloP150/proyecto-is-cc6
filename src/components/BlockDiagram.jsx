@@ -1,11 +1,14 @@
 import './BlockDiagram.css';
-import { API_BASE } from '../config';
+import { api, errorMessage } from '../api/client';
+import { LIMITS } from '../constants/limits';
 import {
+  Alert,
   Typography,
   Container,
   Box,
   CssBaseline,
-  Paper
+  Paper,
+  Snackbar
 } from '@mui/material';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import Flow from './flow/Flow';
@@ -38,6 +41,7 @@ function BlockDiagram() {
   const [showPopup, setShowPopup] = useState(false);
   const [selectedNode, setSelectedNode] = useState(null);
   const [flowKey, setFlowKey] = useState(0);
+  const [errorMsg, setErrorMsg] = useState('');
 
   const handleNodeEdit = (node) => {
     setSelectedNode(node);
@@ -48,26 +52,23 @@ function BlockDiagram() {
     e.preventDefault();
     const formData = new FormData(e.target);
     const data = Object.fromEntries(formData.entries());
+    const body = {
+      name: data.name,
+      description: data.description,
+      date: formatDate(data.date)
+    };
     try {
-      setFlowKey(k => k + 1);
-      const body = JSON.stringify({
-        name: data.name,
-        description: data.description,
-        date: formatDate(data.date)
-      });
-      const headers = { 'Content-Type': 'application/json' };
-
-      const [response1, response2] = await Promise.all([
-        fetch(`${API_BASE}/api/nodes/${selectedNode.nid}`, { method: 'PUT', headers, body }),
-        fetch(`${API_BASE}/api/tasks/nodes/${selectedNode.nid}`, { method: 'PUT', headers, body }),
+      // The milestone may mirror a task with the same id, so both rows are updated.
+      await Promise.all([
+        api.put(`/api/nodes/${selectedNode.nid}`, body),
+        api.put(`/api/tasks/nodes/${selectedNode.nid}`, body),
       ]);
-
-      if (response1.ok && response2.ok) {
-        setShowPopup(false);
-        setSelectedNode(null);
-      }
-    } catch (error) {
-      console.error('Error updating node:', error);
+      setShowPopup(false);
+      setSelectedNode(null);
+    } catch (err) {
+      setErrorMsg(errorMessage(err, 'Could not update the milestone'));
+    } finally {
+      setFlowKey(k => k + 1);
     }
   };
 
@@ -151,7 +152,7 @@ function BlockDiagram() {
                   <form style={{ display: 'flex', flexDirection: 'column' }} onSubmit={handleSubmit}>
                     <label>
                       Milestone Name:
-                      <input type="text" name="name" value={selectedNode.name} onChange={handleInputChange} />
+                      <input type="text" name="name" value={selectedNode.name} onChange={handleInputChange} maxLength={LIMITS.nodeName} />
                     </label>
                     <label>
                       Milestone Description:
@@ -178,6 +179,16 @@ function BlockDiagram() {
           </Paper>
         </Container>
       </Box>
+      <Snackbar
+        open={Boolean(errorMsg)}
+        autoHideDuration={4000}
+        onClose={(event, reason) => { if (reason !== 'clickaway') setErrorMsg(''); }}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={() => setErrorMsg('')} severity="error" sx={{ width: '100%' }}>
+          {errorMsg}
+        </Alert>
+      </Snackbar>
     </ThemeProvider>
   );
 }

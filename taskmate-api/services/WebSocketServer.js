@@ -2,15 +2,29 @@ const WebSocket = require('ws');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const SessionManager = require('./SessionManager');
+const UserSession = require('./UserSession');
 const llmService = require('./LLMService'); // Import LLMService for insights
+const { verifyAccessToken } = require('../helpers/tokens');
+const { AppError, isAppError } = require('../helpers/errors');
+const { isAllowedOrigin } = require('../middleware/cors');
+
+const MAX_PAYLOAD_BYTES = 64 * 1024;
+const TOKEN_EXPIRED_CLOSE_CODE = 4001;
+const MAX_TIMER_MS = 2 ** 31 - 1; // setTimeout limit
+
+const rejectUpgrade = (socket, status) => {
+    socket.write(`HTTP/1.1 ${status}\r\nConnection: close\r\n\r\n`);
+    socket.destroy();
+};
 
 class WebSocketServer {
     constructor(server) {
         this.sessionManager = new SessionManager();
         this.insightsClients = new Map(); // Store clients for the /insights endpoint
         
-        // Create WebSocket server without a specific path
-        this.wss = new WebSocket.Server({ noServer: true });
+        // Create WebSocket server without a specific path. Client messages are small JSON commands;
+        // the 100 MiB default would let one client exhaust memory and flood the shared Python link.
+        this.wss = new WebSocket.Server({ noServer: true, maxPayload: MAX_PAYLOAD_BYTES });
 
         // Handle server upgrades to route connections
         server.on('upgrade', this.handleUpgrade.bind(this));
@@ -21,25 +35,37 @@ class WebSocketServer {
     }
 
     handleUpgrade(request, socket, head) {
-        const url = new URL(request.url, `http://${request.headers.host}`);
+        // Fixed base: the Host header is attacker-controlled and `new URL` throws on values like '%'.
+        let url;
+        try {
+            url = new URL(request.url, 'http://localhost');
+        } catch {
+            rejectUpgrade(socket, '400 Bad Request');
+            return;
+        }
         const pathname = url.pathname;
-        
-        // Authenticate before upgrading the connection
+
+        // Browsers always send Origin on WebSocket handshakes; reject pages from other sites.
+        if (!isAllowedOrigin(request.headers.origin)) {
+            rejectUpgrade(socket, '403 Forbidden');
+            return;
+        }
+
+        // Authenticate before upgrading the connection (same rules as requireAuth: HS256, access tokens only)
         const token = url.searchParams.get('token');
         let userId;
 
         try {
             if (!token) throw new Error('No token provided');
-            const decoded = jwt.verify(token, process.env.JWT_SECRET);
-            userId = decoded.userId || decoded.id;
+            userId = verifyAccessToken(token).userId;
         } catch (error) {
             console.log(`WebSocket upgrade rejected for ${pathname}: ${error.message}`);
-            socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
-            socket.destroy();
+            rejectUpgrade(socket, '401 Unauthorized');
             return;
         }
 
         request.userId = userId; // Attach userId to the request for later use
+        request.tokenExpiresAt = jwt.decode(token).exp * 1000; // verified above; access tokens always carry exp
 
         if (pathname === '/chat') {
             this.wss.handleUpgrade(request, socket, head, (ws) => {
@@ -51,7 +77,7 @@ class WebSocketServer {
             });
         } else {
             console.log(`No handler for WebSocket path: ${pathname}`);
-            socket.destroy();
+            rejectUpgrade(socket, '404 Not Found');
         }
     }
 
@@ -59,6 +85,12 @@ class WebSocketServer {
         this.wss.on('connection', (ws, req, connectionType) => {
             ws.isAlive = true;
             ws.on('pong', () => { ws.isAlive = true; });
+
+            // The token was only checked at the handshake: end the session when it expires.
+            const ttl = Math.min(Math.max(req.tokenExpiresAt - Date.now(), 0), MAX_TIMER_MS);
+            const expiryTimer = setTimeout(() => ws.close(TOKEN_EXPIRED_CLOSE_CODE, 'Token expired'), ttl);
+            expiryTimer.unref();
+            ws.on('close', () => clearTimeout(expiryTimer));
 
             if (connectionType === 'chat') {
                 this.handleChatConnection(ws, req);
@@ -76,7 +108,6 @@ class WebSocketServer {
     async handleChatConnection(ws, req) {
         try {
             const userId = req.userId;
-            console.log(`Chat WebSocket connection established for user: ${userId}`);
             const session = await this.sessionManager.connect(ws, userId);
 
             ws.on('message', async (data) => {
@@ -90,7 +121,6 @@ class WebSocketServer {
             });
 
             ws.on('close', () => {
-                console.log(`Chat WebSocket connection closed for user: ${userId}`);
                 this.sessionManager.disconnect(ws);
             });
 
@@ -109,7 +139,6 @@ class WebSocketServer {
     handleInsightsConnection(ws, req) {
         const userId = req.userId;
         const clientId = uuidv4();
-        console.log(`Insights WebSocket connection established for user: ${userId} (Client ID: ${clientId})`);
 
         this.insightsClients.set(clientId, { ws, userId });
 
@@ -121,36 +150,42 @@ class WebSocketServer {
         };
         llmService.on(clientId, llmListener);
 
-        ws.on('message', (data) => {
+        ws.on('message', async (data) => {
+            let request;
             try {
-                const request = JSON.parse(data.toString());
-
-                if (request.type === 'ping') {
-                    ws.send(JSON.stringify({ type: 'pong' }));
-                    return;
-                }
-
-                if (request.type === 'analytics') {
-                    const llmRequest = {
-                        requestId: request.requestId,
-                        sessionId: clientId, // Use the unique clientId to route the response back
-                        type: 'analytics',
-                        action: request.action,
-                        data: request.data,
-                        // Add params.message for orchestrator compatibility
-                        params: {
-                            message: `Analytics request: ${request.action}`
-                        }
-                    };
-                    llmService.send(llmRequest);
-                }
+                request = JSON.parse(data.toString());
             } catch (error) {
                 console.error(`Error parsing insights message for ${userId}:`, error);
+                return;
+            }
+            if (!request || typeof request !== 'object') return;
+
+            if (request.type === 'ping') {
+                ws.send(JSON.stringify({ type: 'pong' }));
+                return;
+            }
+
+            if (request.type === 'analytics') {
+                try {
+                    const llmRequest = await this.buildInsightsRequest(request, userId, clientId);
+                    if ((await llmService.send(llmRequest)) === false) {
+                        throw new AppError('LLM_ERROR', 'The analytics agent is unavailable, please try again later', 503);
+                    }
+                } catch (error) {
+                    if (!isAppError(error)) console.error(`Insights request failed for ${userId}:`, error);
+                    if (ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({
+                            event: 'analytics_error',
+                            requestId: request.requestId,
+                            error: isAppError(error) ? error.message : 'Analytics request failed',
+                            code: isAppError(error) ? error.code : 'INTERNAL_ERROR'
+                        }));
+                    }
+                }
             }
         });
 
         ws.on('close', () => {
-            console.log(`Insights WebSocket connection closed for user: ${userId}`);
             llmService.removeListener(clientId, llmListener);
             this.insightsClients.delete(clientId);
         });
@@ -160,6 +195,24 @@ class WebSocketServer {
             llmService.removeListener(clientId, llmListener);
             this.insightsClients.delete(clientId);
         });
+    }
+
+    // Same rules as the /chat analytics path (shared helper, per action): team data for a real group
+    // requires a team leader and gets the server-built team_context; demo ids (`test-group-*`) go through as-is.
+    async buildInsightsRequest(request, userId, clientId) {
+        const data = await UserSession.prepareAnalyticsData(userId, request.data, request.action);
+
+        return {
+            requestId: request.requestId,
+            sessionId: clientId, // Use the unique clientId to route the response back
+            type: 'analytics',
+            action: request.action,
+            data,
+            // Add params.message for orchestrator compatibility
+            params: {
+                message: `Analytics request: ${request.action}`
+            }
+        };
     }
 
     getActiveConnections() {

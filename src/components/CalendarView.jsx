@@ -1,10 +1,11 @@
 import {
+  Alert,
   Box,
   Container,
   CssBaseline,
   Typography,
 } from '@mui/material';
-import { API_BASE } from '../config';
+import { api, errorMessage } from '../api/client';
 import { ThemeProvider } from '@mui/material/styles';
 import moment from 'moment';
 import { useContext, useEffect, useState } from 'react';
@@ -22,6 +23,7 @@ const localizer = momentLocalizer(moment);
 function CalendarView() {
   const { selectedGroupId } = useContext(GroupContext);
   const [events, setEvents] = useState([]);
+  const [loadError, setLoadError] = useState('');
 
   useEffect(() => {
     if (!selectedGroupId) {
@@ -31,18 +33,16 @@ function CalendarView() {
     const controller = new AbortController();
     const fetchTasks = async () => {
       try {
-        const response = await fetch(`${API_BASE}/api/nodes/tasks/${selectedGroupId}`, { signal: controller.signal });
-        if (response.ok) {
-          const data = await response.json();
-          const tasks = data.data.map((task) => ({
-            title: task.name,
-            start: new Date(task.date),
-            end: new Date(task.date),
-          }));
-          setEvents(tasks);
-        }
+        const data = await api.get(`/api/nodes/tasks/${selectedGroupId}`, { signal: controller.signal });
+        const tasks = (data?.data || []).map((task) => ({
+          title: task.name,
+          start: new Date(task.date),
+          end: new Date(task.date),
+        }));
+        setEvents(tasks);
+        setLoadError('');
       } catch (error) {
-        if (error.name !== 'AbortError') console.error('Error fetching tasks:', error);
+        if (error.name !== 'AbortError') setLoadError(errorMessage(error, 'Could not load the calendar'));
       }
     };
     fetchTasks();
@@ -160,6 +160,9 @@ function CalendarView() {
                 <div style={{ color: 'white', textAlign: 'center', marginTop: '2rem' }}>
                   Selecciona un grupo para ver el calendario.
                 </div>
+              )}
+              {selectedGroupId && loadError && (
+                <Alert severity="error" sx={{ mb: 2 }}>{loadError}</Alert>
               )}
               {selectedGroupId && (
                 <Calendar

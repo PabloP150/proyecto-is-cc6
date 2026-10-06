@@ -1,108 +1,157 @@
 const tasksRoute = require('express').Router();
 const { v4: uuidv4 } = require('uuid');
 const TasksModel = require('./../models/tasks.model');
-const UsertaskModel = require('./../models/usertask.model');
 const AnalyticsIntegration = require('../services/AnalyticsIntegration');
+const branchService = require('../services/github/branchService');
+const { AppError, sendError } = require('../helpers/errors');
+const { requireGroupMember, requireResourceMember, sameId } = require('../middleware/groupAccess');
+const validate = require('../middleware/validate');
 
-tasksRoute.get('/', async (req, res) => {
-    const { gid } = req.query;
-    if (!gid) {
-        return res.status(400).json({ error: 'Group ID is required' });
-    }
+const TASK_NOT_FOUND = { notFoundCode: 'TASK_NOT_FOUND' };
+const MAX_SMALLDATETIME = new Date(2079, 5, 6, 23, 59);
+
+// Mirrors the Tasks columns (name/list NVARCHAR(25), description NVARCHAR(1000), SMALLDATETIME,
+// percentage 0-100) so bad input is a 400 instead of a driver error.
+const taskFields = (body) => ({
+    name: validate.text(body.name, 'name', { max: 25, required: true }),
+    description: validate.text(body.description, 'description', { max: 1000 }) ?? '',
+    list: validate.text(body.list, 'list', { max: 25, required: true }),
+    datetime: validate.dateTime(body.datetime, 'datetime', { required: true, max: MAX_SMALLDATETIME }),
+    percentage: validate.integer(body.percentage, 'percentage', { min: 0, max: 100 }) ?? 0,
+});
+
+const withDatetime = (row) => ({
+    ...row,
+    datetime: row.datetimeStr ? row.datetimeStr.replace(' ', 'T') : null
+});
+
+tasksRoute.get('/', requireGroupMember('gid'), async (req, res) => {
     try {
-        const data = await TasksModel.getTasksByGroupId(gid);
-        const normalized = data.map(t => ({
-            ...t,
-            datetime: t.datetimeStr ? t.datetimeStr.replace(' ', 'T') : null
-        }));
-        res.status(200).json({ data: normalized });
+        const data = await TasksModel.getTasksByGroupId(req.groupId);
+        res.status(200).json({ data: data.map(withDatetime) });
     } catch (error) {
-        console.error('Error fetching tasks:', error);
-        res.status(500).json({ error: error.message || 'Internal server error' });
+        sendError(res, error);
     }
 });
 
-tasksRoute.get('/:id', async (req, res) => {
-    const { id: tid } = req.params;
+tasksRoute.get('/:id', requireResourceMember('task', 'id', TASK_NOT_FOUND), async (req, res) => {
     try {
-        const data = await TasksModel.getTask(tid);
-        if (data.length > 0) {
-            const row = data[0];
-            const norm = row.datetimeStr ? row.datetimeStr.replace(' ', 'T') : null;
-            res.status(200).json({ data: { ...row, datetime: norm } });
-        } else {
-            res.status(404).json({ error: 'Task not found' });
+        const data = await TasksModel.getTask(req.resourceId);
+        if (!data || data.length === 0) {
+            throw new AppError('TASK_NOT_FOUND', 'Task not found', 404);
         }
+        res.status(200).json({ data: withDatetime(data[0]) });
     } catch (error) {
-        res.status(500).json({ error: error.message || 'Internal server error' });
+        sendError(res, error);
     }
 });
 
-tasksRoute.post('/', async (req, res) => {
+tasksRoute.post('/', requireGroupMember('gid'), async (req, res) => {
     const tid = uuidv4();
-    const { gid, name, description, list, datetime, percentage } = req.body;
-    if (!gid) {
-        return res.status(400).json({ error: 'Group ID is required' });
-    }
     try {
-        const rowCount = await TasksModel.addTask({ tid, gid, name, description, list, datetime, percentage });
+        const fields = taskFields(req.body);
+        const rowCount = await TasksModel.addTask({ tid, gid: req.groupId, ...fields });
         res.status(200).json({ data: { rowCount, tid } });
     } catch (error) {
-        res.status(500).json({ error: error.message || 'Internal server error' });
+        sendError(res, error);
     }
 });
 
-tasksRoute.put('/:id', async (req, res) => {
-    const { id: tid } = req.params;
-    const { gid, name, description, list, datetime, percentage } = req.body;
-    if (!gid) {
-        return res.status(400).json({ error: 'Group ID is required' });
-    }
+tasksRoute.put('/:id', requireResourceMember('task', 'id', TASK_NOT_FOUND), async (req, res) => {
+    const { gid } = req.body;
     try {
-        const rowCount = await TasksModel.updateTask({ tid, gid, name, description, list, datetime, percentage });
+        if (!gid) {
+            throw new AppError('VALIDATION_ERROR', 'Group ID is required', 400);
+        }
+        // Tasks cannot be moved between groups through this endpoint.
+        if (!sameId(gid, req.groupId)) {
+            throw new AppError('VALIDATION_ERROR', 'gid does not match the task group', 400);
+        }
+        const fields = taskFields(req.body);
+        const tid = req.resourceId;
+        const rowCount = await TasksModel.updateTask({ tid, gid: req.groupId, ...fields });
         res.status(200).json({ data: { rowCount, tid } });
     } catch (error) {
-        res.status(500).json({ error: error.message || 'Internal server error' });
+        sendError(res, error);
     }
 });
 
-// Smaller update for nodes
-tasksRoute.put('/nodes/:id', async (req, res) => {
-    const { id: tid } = req.params;
-    const { name, description, date } = req.body;
+// Smaller update for nodes. The flow editor calls it with node ids too: a node that is not a
+// task is authorized through its own group and simply updates no task.
+tasksRoute.put('/nodes/:id', requireResourceMember(['task', 'node'], 'id', TASK_NOT_FOUND), async (req, res) => {
+    const tid = req.resourceId;
     try {
+        const name = validate.text(req.body.name, 'name', { max: 25, required: true });
+        const description = validate.text(req.body.description, 'description', { max: 1000 }) ?? '';
+        const date = validate.dateTime(req.body.date, 'date', { required: true, max: MAX_SMALLDATETIME });
+        if (req.resourceKind !== 'task') {
+            return res.status(200).json({ data: { rowCount: 0, tid } });
+        }
         const rowCount = await TasksModel.updateTaskFromNode({ tid, name, description, date });
         res.status(200).json({ data: { rowCount, tid } });
     } catch (error) {
-        res.status(500).json({ error: error.message || 'Internal server error' });
+        sendError(res, error);
     }
 });
 
-tasksRoute.delete('/:id', async (req, res) => {
-    const { id: tid } = req.params;
-
+// Atomic completion (moves the task to Complete). Already-completed tasks are still
+// authorized through the Complete row so retries answer `already_completed`.
+// A GitHub branch the task had is cleaned up after the commit (branchService.cleanupBranchesWithin:
+// deleted only when safe, bounded wait) and reported as `branch`; the completion stands regardless.
+tasksRoute.post('/:tid/complete', requireResourceMember(['task', 'completed'], 'tid', TASK_NOT_FOUND), async (req, res) => {
+    const tid = req.resourceId;
     try {
-        const result = await TasksModel.deleteTask(tid);
+        const result = await TasksModel.completeTask(tid, { source: 'manual' });
+        if (!result || result.status === 'not_found') {
+            throw new AppError('TASK_NOT_FOUND', 'Task not found', 404);
+        }
 
-        // Record task deletion in analytics (non-blocking)
+        const data = { tid, status: result.status };
+        if (result.status === 'completed') {
+            AnalyticsIntegration.onTaskCompletion(tid, true, { percentage: 100 }).catch(error => {
+                console.error('Analytics tracking failed for task completion:', error);
+            });
+            if (result.branch) [data.branch] = await branchService.cleanupBranchesWithin([result.branch]);
+        }
+
+        res.status(200).json({ data });
+    } catch (error) {
+        sendError(res, error);
+    }
+});
+
+// Atomic "move to trash" (archive in DeleteTask + delete). The model already closes the
+// TaskAnalytics facts; the hook afterwards only refreshes derived metrics. The task's GitHub
+// branch is handled as in /complete.
+tasksRoute.post('/:tid/trash', requireResourceMember('task', 'tid', TASK_NOT_FOUND), async (req, res) => {
+    const tid = req.resourceId;
+    try {
+        const result = await TasksModel.trashTask(tid);
+        if (!result || result.status !== 'deleted') {
+            throw new AppError('TASK_NOT_FOUND', 'Task not found', 404);
+        }
+
         AnalyticsIntegration.onTaskDeletion(tid).catch(error => {
             console.error('Analytics tracking failed for task deletion:', error);
         });
 
-        res.status(200).json({ rowCount: result });
+        const data = { tid, status: 'deleted' };
+        if (result.branch) [data.branch] = await branchService.cleanupBranchesWithin([result.branch]);
+        res.status(200).json({ data });
     } catch (error) {
-        console.error('[tasks DELETE] tid:', tid, 'error:', error.message);
-        res.status(500).json({ error: error.message || 'Internal server error' });
+        sendError(res, error);
     }
 });
 
-tasksRoute.delete('/list/:gid/:list', async (req, res) => {
-    const { gid, list } = req.params;
+// `branches` reports the GitHub branches of the deleted tasks, cleaned up as in /complete.
+tasksRoute.delete('/list/:gid/:list', requireGroupMember('gid'), async (req, res) => {
+    const { list } = req.params;
     try {
-        await TasksModel.deleteTasksByList(gid, list);
-        res.status(200).json({ message: 'Lista eliminada exitosamente' });
+        const result = await TasksModel.deleteTasksByList(req.groupId, list);
+        const branches = await branchService.cleanupBranchesWithin((result && result.branches) || []);
+        res.status(200).json({ message: 'Lista eliminada exitosamente', branches });
     } catch (error) {
-        res.status(500).json({ error: error.message || 'Internal server error' });
+        sendError(res, error);
     }
 });
 

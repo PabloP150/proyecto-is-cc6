@@ -1,7 +1,8 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
-import { Navigate, Route, BrowserRouter as Router, Routes } from 'react-router-dom';
+import { lazy, Suspense, useCallback, useContext, useEffect, useState } from 'react';
+import { Navigate, Route, BrowserRouter as Router, Routes, useNavigate } from 'react-router-dom';
 import { Box, CircularProgress } from '@mui/material';
-import { GroupProvider } from './components/GroupContext';
+import { UNAUTHORIZED_EVENT } from './api/client';
+import { GroupContext, GroupProvider } from './components/GroupContext';
 import { ThemeProvider } from './theme';
 
 const AnalyticsDashboard = lazy(() => import('./components/AnalyticsDashboard'));
@@ -10,6 +11,7 @@ const CalendarView = lazy(() => import('./components/CalendarView'));
 const ChatPage = lazy(() => import('./components/ChatPage'));
 const CreateGroup = lazy(() => import('./components/CreateGroup'));
 const Flow = lazy(() => import('./components/flow/Flow'));
+const GitHubPage = lazy(() => import('./components/github/GitHubPage'));
 const GroupsView = lazy(() => import('./components/GroupsView'));
 const HomePage = lazy(() => import('./components/HomePage'));
 const Login = lazy(() => import('./components/Login'));
@@ -17,48 +19,86 @@ const Navbar = lazy(() => import('./components/Navbar'));
 const Recordatorios = lazy(() => import('./components/Recordatorios'));
 const Register = lazy(() => import('./components/Register'));
 
+const SESSION_KEYS = ['user', 'token', 'userId', 'selectedGroupId', 'selectedGroupName', 'showGroupDetails'];
+
+const clearStoredSession = () => {
+  try {
+    SESSION_KEYS.forEach((key) => localStorage.removeItem(key));
+  } catch {
+    // Storage unavailable: nothing persisted to clear.
+  }
+};
+
+// Runs before GroupProvider reads storage, so a brand-new browser session starts logged out
+// and a reload in the same tab keeps both the user and the selected group.
+const restoreSession = () => {
+  try {
+    if (!sessionStorage.getItem('sessionStarted')) {
+      sessionStorage.setItem('sessionStarted', 'true');
+      clearStoredSession();
+      return null;
+    }
+    const storedUser = localStorage.getItem('user');
+    return storedUser ? JSON.parse(storedUser) : null;
+  } catch {
+    return null;
+  }
+};
+
 const PageLoader = () => (
   <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
     <CircularProgress />
   </Box>
 );
 
-function App() {
-  const [user, setUser] = useState(null);
+function AppRoutes({ user, setUser }) {
+  const navigate = useNavigate();
+  const { clearGroupState } = useContext(GroupContext);
 
-  useEffect(() => {
-
-    const sessionFlag = sessionStorage.getItem('sessionStarted');
-
-    if (!sessionFlag) {
-      localStorage.removeItem('user');
-      localStorage.removeItem('selectedGroupId');
-      sessionStorage.setItem('sessionStarted', 'true');
-      setUser(null);
-      return;
-    }
-
-    try {
-      const storedUser = localStorage.getItem('user');
-      if (storedUser) {
-        setUser(JSON.parse(storedUser));
-      }
-    } catch (e) {
-      console.warn('No se pudo restaurar la sesión:', e);
-    }
-  }, []);
-
-  const handleLogin = (userData) => {
+  const handleLogin = useCallback((userData) => {
     setUser(userData);
     localStorage.setItem('user', JSON.stringify(userData));
-  };
+  }, [setUser]);
 
-
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
     setUser(null);
-    localStorage.removeItem('user');
-    localStorage.removeItem('selectedGroupId');
-  };
+    clearStoredSession();
+    clearGroupState();
+  }, [setUser, clearGroupState]);
+
+  useEffect(() => {
+    const onUnauthorized = () => {
+      handleLogout();
+      navigate('/', { replace: true });
+    };
+    window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+  }, [handleLogout, navigate]);
+
+  return (
+    <Suspense fallback={<PageLoader />}>
+      {user && <Navbar user={user} onLogout={handleLogout} />}
+      <Routes>
+        <Route path="/" element={user ? <Navigate to="/home" /> : <Login onLogin={handleLogin} />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/home" element={user ? <HomePage /> : <Navigate to="/" />} />
+        <Route path="/calendar" element={user ? <CalendarView /> : <Navigate to="/" />} />
+        <Route path="/block-diagram" element={user ? <BlockDiagram className='block-diagram' /> : <Navigate to="/" />} />
+        <Route path="/flow" element={user ? <Flow /> : <Navigate to="/" />} />
+        <Route path="/tasks" element={user ? <Recordatorios /> : <Navigate to="/" />} />
+        <Route path="/create-group" element={user ? <CreateGroup /> : <Navigate to="/" />} />
+        <Route path="/groups" element={user ? <GroupsView /> : <Navigate to="/" />} />
+        <Route path="/chat" element={user ? <ChatPage /> : <Navigate to="/" />} />
+        <Route path="/analytics" element={user ? <AnalyticsDashboard /> : <Navigate to="/" />} />
+        <Route path="/github" element={user ? <GitHubPage /> : <Navigate to="/" />} />
+        <Route path="*" element={<Navigate to={user ? '/home' : '/'} replace />} />
+      </Routes>
+    </Suspense>
+  );
+}
+
+function App() {
+  const [user, setUser] = useState(restoreSession);
 
   return (
     <ThemeProvider>
@@ -92,22 +132,7 @@ function App() {
                 `,
               }}
             />
-            <Suspense fallback={<PageLoader />}>
-              {user && <Navbar user={user} onLogout={handleLogout} />}
-              <Routes>
-                <Route path="/" element={user ? <Navigate to="/home" /> : <Login onLogin={handleLogin} />} />
-                <Route path="/register" element={<Register />} />
-                <Route path="/home" element={user ? <HomePage /> : <Navigate to="/" />} />
-                <Route path="/calendar" element={user ? <CalendarView /> : <Navigate to="/" />} />
-                <Route path="/block-diagram" element={user ? <BlockDiagram className='block-diagram' /> : <Navigate to="/" />} />
-                <Route path="/flow" element={user ? <Flow /> : <Navigate to="/" />} />
-                <Route path="/tasks" element={user ? <Recordatorios /> : <Navigate to="/" />} />
-                <Route path="/create-group" element={user ? <CreateGroup /> : <Navigate to="/" />} />
-                <Route path="/groups" element={user ? <GroupsView /> : <Navigate to="/" />} />
-                <Route path="/chat" element={user ? <ChatPage /> : <Navigate to="/" />} />
-                <Route path="/analytics" element={user ? <AnalyticsDashboard /> : <Navigate to="/" />} />
-              </Routes>
-            </Suspense>
+            <AppRoutes user={user} setUser={setUser} />
         </Router>
       </GroupProvider>
     </ThemeProvider>

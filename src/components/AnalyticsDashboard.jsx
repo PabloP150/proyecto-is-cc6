@@ -2,7 +2,8 @@ import React, { useState, useEffect, useContext, useRef, useCallback, useMemo } 
 import { GroupContext } from './GroupContext';
 import useWebSocket from '../hooks/useWebSocket';
 import './AnalyticsDashboard.css';
-import { API_BASE, WS_BASE } from '../config';
+import { WS_BASE } from '../config';
+import { api, errorMessage, getAuthToken } from '../api/client';
 
 const AVAILABLE_ROLES = [
     'Frontend Developer',
@@ -28,12 +29,10 @@ const AnalyticsDashboard = () => {
     // State for analytics recommendations
     const [analyticsResponse, setAnalyticsResponse] = useState(null);
     const [analyticsLoading, setAnalyticsLoading] = useState(false);
-    
-    // Get user token from localStorage
-    const [token] = useState(() => {
-        const user = JSON.parse(localStorage.getItem('user') || '{}');
-        return localStorage.getItem('token') || user.token;
-    });
+    const [loadError, setLoadError] = useState('');
+    const [leaderOnly, setLeaderOnly] = useState(false);
+
+    const [token] = useState(getAuthToken);
 
     // WebSocket connection for analytics
     const {
@@ -118,23 +117,18 @@ const AnalyticsDashboard = () => {
     };
     
     // Fetch analytics data from the real API
-    const fetchAnalyticsData = async (signal) => {
+    const fetchAnalyticsData = useCallback(async (signal) => {
         if (!selectedGroupId) {
             setLoading(false);
             return;
         }
 
         setLoading(true);
+        setLeaderOnly(false);
 
         try {
-            const res = await fetch(`${API_BASE}/api/analytics/dashboard/${selectedGroupId}`, {
-                headers: { Authorization: `Bearer ${token}` },
-                signal
-            });
-
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const json = await res.json();
-            if (!json.success) throw new Error(json.error || 'API error');
+            const json = await api.get(`/api/analytics/dashboard/${selectedGroupId}`, { signal });
+            if (!json?.success) throw new Error(json?.error || 'API error');
 
             const { team_analytics, workload_distribution, expertise_rankings } = json.data;
 
@@ -176,10 +170,18 @@ const AnalyticsDashboard = () => {
                 workload_distribution: workload,
                 expertise_rankings: expertiseFlat
             });
+            setLoadError('');
 
         } catch (error) {
             if (error.name === 'AbortError') return;
-            console.error('Error fetching analytics:', error);
+            // The dashboard is leader-only: that is an expected state, not an error.
+            if (error.code === 'NOT_GROUP_ADMIN') {
+                setLeaderOnly(true);
+                setLoadError('');
+                setAnalytics(null);
+                return;
+            }
+            setLoadError(errorMessage(error, 'Could not load analytics'));
             setAnalytics({
                 team_analytics: { total_members: 0, active_tasks: 0, completion_rate: 0 },
                 workload_distribution: [],
@@ -188,19 +190,19 @@ const AnalyticsDashboard = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [selectedGroupId]);
 
     useEffect(() => {
         if (!selectedGroupId) return;
         const controller = new AbortController();
         fetchAnalyticsData(controller.signal);
         return () => controller.abort();
-    }, [selectedGroupId]);
+    }, [selectedGroupId, fetchAnalyticsData]);
 
     // Refresh analytics data
     const refreshAnalytics = useCallback(() => {
-        fetchAnalyticsData(new AbortController().signal);
-    }, [selectedGroupId]);
+        fetchAnalyticsData();
+    }, [fetchAnalyticsData]);
 
     const workloadDistribution = useMemo(
         () => analytics?.workload_distribution || [],
@@ -236,6 +238,27 @@ const AnalyticsDashboard = () => {
                     }}></div>
                     <div className="loading-text" style={{ fontSize: '18px', fontWeight: '500', color: 'white' }}>
                         Loading analytics data...
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (leaderOnly) {
+        return (
+            <div className="analytics-dashboard">
+                <div className="dashboard-header">
+                    <h1>Team Analytics Dashboard</h1>
+                </div>
+                <div role="status" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '400px' }}>
+                    <div style={{ color: 'white', textAlign: 'center', maxWidth: 520 }}>
+                        <div style={{ fontSize: '20px', fontWeight: 600, marginBottom: 8 }}>
+                            Solo líderes del equipo
+                        </div>
+                        <div style={{ fontSize: '16px', opacity: 0.8 }}>
+                            El panel de analíticas está disponible únicamente para el líder del grupo. Pide a tu líder
+                            que revise las métricas o cambia a un grupo que administres.
+                        </div>
                     </div>
                 </div>
             </div>
@@ -279,6 +302,19 @@ const AnalyticsDashboard = () => {
                     </button>
                 </div>
             </div>
+
+            {loadError && (
+                <div role="alert" style={{
+                    margin: '0 0 16px',
+                    padding: '10px 14px',
+                    borderRadius: '10px',
+                    background: 'rgba(239, 68, 68, 0.12)',
+                    border: '1px solid rgba(239, 68, 68, 0.4)',
+                    color: '#fca5a5'
+                }}>
+                    Could not load analytics data: {loadError}
+                </div>
+            )}
 
             <div className="metrics-grid">
                 <MetricCard
@@ -346,14 +382,11 @@ const MetricCard = React.memo(({ title, value, icon, color }) => (
 ));
 
 const WorkloadChart = React.memo(({ data, selectedRole }) => {
-    // Ensure data is an array
-    const workloadData = Array.isArray(data) ? data : [];
-
-    // Filter data by selected role if not 'all'
-    const filteredData = useMemo(
-        () => selectedRole === 'all' ? workloadData : workloadData.filter(member => member.role === selectedRole),
-        [workloadData, selectedRole]
-    );
+    // Filter data by selected role if not 'all' (data may be missing: treat it as empty)
+    const filteredData = useMemo(() => {
+        const workloadData = Array.isArray(data) ? data : [];
+        return selectedRole === 'all' ? workloadData : workloadData.filter(member => member.role === selectedRole);
+    }, [data, selectedRole]);
 
     return (
         <div className="workload-chart">

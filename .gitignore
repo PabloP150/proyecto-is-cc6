@@ -39,3 +39,7 @@ taskmate-api/mcp/venv/
 **/__pycache__/
 *.pyc
 *.pyo
+
+# Phase 3: never track dependencies or private keys
+**/node_modules
+*.pem

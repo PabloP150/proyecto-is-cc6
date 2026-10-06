@@ -1,23 +1,12 @@
 const { execReadCommand, execWriteCommand } = require('../helpers/execQuery');
 const { TYPES } = require('tedious');
 
-const addDelete = async (deleteData) => {
-    const { tid, gid, name, description, datetime, percentage } = deleteData;
-    const query = `INSERT INTO dbo.DeleteTask (tid, gid, name, description, datetime, percentage)
-                   VALUES (@tid, @gid, @name, @description, @datetime, @percentage)`;
-    const params = [
-        { name: 'tid', type: TYPES.UniqueIdentifier, value: tid },
-        { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
-        { name: 'name', type: TYPES.VarChar, value: name },
-        { name: 'description', type: TYPES.VarChar, value: description ?? '' },
-        { name: 'datetime', type: TYPES.SmallDateTime, value: datetime ? new Date(datetime) : new Date(0) },
-        { name: 'percentage', type: TYPES.Int, value: percentage ?? 0 },
-    ];
-    return execWriteCommand(query, params);
-};
-
+// Same wall-clock string as GET /api/tasks ('YYYY-MM-DDTHH:mm'), like complete.model: the raw
+// column would reach the client shifted to UTC.
 const getEliminados = async (gid) => {
-    const query = `SELECT tid, gid, name, description, datetime, percentage FROM dbo.DeleteTask WHERE gid=@gid`;
+    const query = `SELECT tid, gid, name, description,
+                          REPLACE(CONVERT(VARCHAR(16), datetime, 120), ' ', 'T') AS datetime, percentage
+                   FROM dbo.DeleteTask WHERE gid=@gid`;
     const params = [{ name: 'gid', type: TYPES.UniqueIdentifier, value: gid }];
     return execReadCommand(query, params);
 };
@@ -29,7 +18,6 @@ const deleteAll = async (gid) => {
 };
 
 module.exports = {
-    addDelete,
     getEliminados,
     deleteAll
 };

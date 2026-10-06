@@ -3,7 +3,6 @@ const { execReadCommand, execWriteCommand } = require('../helpers/execQuery');
 
 // Mock the database helpers
 jest.mock('../helpers/execQuery');
-jest.mock('../helpers/getConnection');
 
 describe('AnalyticsService', () => {
     beforeEach(() => {
@@ -12,7 +11,6 @@ describe('AnalyticsService', () => {
 
     describe('recordTaskAssignment', () => {
         it('should record task assignment successfully', async () => {
-            execReadCommand.mockResolvedValueOnce([]); // No existing assignment
             execWriteCommand.mockResolvedValue(1);
 
             const result = await AnalyticsService.recordTaskAssignment(
@@ -28,7 +26,8 @@ describe('AnalyticsService', () => {
         });
 
         it('should handle duplicate assignment gracefully', async () => {
-            execReadCommand.mockResolvedValueOnce([{ id: 'existing-id' }]); // Existing assignment
+            // The guarded INSERT affects 0 rows when a pending assignment already exists
+            execWriteCommand.mockResolvedValueOnce(0);
 
             const result = await AnalyticsService.recordTaskAssignment(
                 'task-123',
@@ -47,7 +46,6 @@ describe('AnalyticsService', () => {
         });
 
         it('should handle invalid category gracefully', async () => {
-            execReadCommand.mockResolvedValueOnce([]); // No existing assignment
             execWriteCommand.mockResolvedValue(1);
 
             const result = await AnalyticsService.recordTaskAssignment(
@@ -62,7 +60,6 @@ describe('AnalyticsService', () => {
         });
 
         it('should handle foreign key constraint errors', async () => {
-            execReadCommand.mockResolvedValueOnce([]); // No existing assignment
             execWriteCommand.mockRejectedValue(new Error('FOREIGN KEY constraint failed'));
 
             await expect(AnalyticsService.recordTaskAssignment('task-123', 'user-456', 'group-789'))
@@ -210,27 +207,20 @@ describe('AnalyticsService', () => {
     describe('recordTaskCompletion', () => {
         it('should record successful task completion', async () => {
             execReadCommand
-                .mockResolvedValueOnce([{ // Verify task exists
+                .mockResolvedValueOnce([{ // Verify pending facts exist
                     uid: 'user-456',
                     gid: 'group-789',
                     task_category: 'frontend',
                     assigned_at: new Date()
                 }])
-                .mockResolvedValueOnce([{ // Task data for _updateUserMetrics
-                    uid: 'user-456',
-                    gid: 'group-789',
-                    task_category: 'frontend',
-                    completion_time_hours: 4,
-                    success_status: 'completed'
-                }])
-                .mockResolvedValueOnce([]) // No existing expertise record
+                .mockResolvedValueOnce([{ uid: 'user-456', task_category: 'frontend' }]) // Users of the task
                 .mockResolvedValueOnce([{ active_count: 2 }]) // Current workload
                 .mockResolvedValueOnce([{ concurrent_count: 3 }]); // Max concurrent
 
             execWriteCommand
                 .mockResolvedValueOnce(1) // Main completion update
-                .mockResolvedValueOnce(1) // Insert new expertise
-                .mockResolvedValueOnce(1); // Update daily metrics
+                .mockResolvedValueOnce(1) // Expertise recompute (MERGE)
+                .mockResolvedValueOnce(1); // Daily metrics (MERGE)
 
             const result = await AnalyticsService.recordTaskCompletion('task-123', true);
 
@@ -261,10 +251,31 @@ describe('AnalyticsService', () => {
         });
 
         it('should throw error when task not found', async () => {
-            execReadCommand.mockResolvedValueOnce([]); // No task found
+            execReadCommand
+                .mockResolvedValueOnce([]) // No pending facts
+                .mockResolvedValueOnce([]); // No closed facts either
 
             await expect(AnalyticsService.recordTaskCompletion('nonexistent-task'))
                 .rejects.toThrow('Task nonexistent-task not found or already completed');
+        });
+
+        it('should only refresh metrics when completeTask already closed the facts', async () => {
+            execReadCommand
+                .mockResolvedValueOnce([]) // No pending facts
+                .mockResolvedValueOnce([{ success_status: 'completed' }]) // Closed in the completeTask transaction
+                .mockResolvedValueOnce([{ uid: 'user-456', task_category: 'frontend' }])
+                .mockResolvedValue([{ active_count: 1, concurrent_count: 1 }]);
+            execWriteCommand.mockResolvedValue(1);
+
+            const result = await AnalyticsService.recordTaskCompletion('task-123', true);
+
+            expect(result).toEqual(expect.objectContaining({
+                success: true, task_id: 'task-123', status: 'completed', already_recorded: true
+            }));
+            // No UPDATE of the fact rows: only the two metric MERGEs ran
+            const writes = execWriteCommand.mock.calls.map(([sql]) => sql);
+            expect(writes.some(sql => /UPDATE ta\s+SET completed_at/.test(sql))).toBe(false);
+            expect(writes.filter(sql => /MERGE dbo\.User(Expertise|Metrics)/.test(sql))).toHaveLength(2);
         });
 
         it('should handle update failure gracefully', async () => {
@@ -395,8 +406,9 @@ describe('AnalyticsService', () => {
                 username: 'john',
                 current_workload: 4,
                 capacity: 5,
-                workload_percentage: 80.0,
-                status: 'high'
+                utilization: 80,
+                status: 'high',
+                role: 'N/A'
             });
             expect(result.workload_distribution[1].status).toBe('light');
         });

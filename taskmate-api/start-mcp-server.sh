@@ -1,6 +1,4 @@
 #!/bin/bash
-cd mcp
+cd "$(dirname "$0")/mcp"
 source venv/bin/activate
-export GRPC_VERBOSITY=ERROR
-export GLOG_minloglevel=2
-uvicorn server:app --host 0.0.0.0 --port 8001 --reload
+uvicorn server:app --host 127.0.0.1 --port 8001 --ws-max-size 4194304 --reload

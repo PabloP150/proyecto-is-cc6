@@ -3,7 +3,7 @@ import { Button } from '@mui/material';
 
 import { getEdgeParams } from './utils.js';
 import { useEffect, useState } from 'react';
-import { API_BASE } from '../../config';
+import { api } from '../../api/client';
 
 function FloatingEdge({ id, source, target, markerEnd, style, data }) {
   const sourceNode = useInternalNode(source);
@@ -43,14 +43,8 @@ function FloatingEdge({ id, source, target, markerEnd, style, data }) {
     setPrerequisite(newPrerequisite);
     
     try {
-      await fetch(`${API_BASE}/api/edges/${id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ prerequisite: newPrerequisite ? 1 : 0 }),
-      });
-      
+      await api.put(`/api/edges/${id}`, { prerequisite: newPrerequisite ? 1 : 0 });
+
       // Refresh nodes to show updated percentages from database trigger
       if (data?.refreshNodes) {
         // Small delay to ensure database trigger has completed
@@ -59,10 +53,9 @@ function FloatingEdge({ id, source, target, markerEnd, style, data }) {
         }, 100);
       }
     } catch (error) {
-      console.error('Error updating edge:', error);
-      // Revert on error
       setLabel(prerequisite ? 'Prerequisite' : 'Progressor');
       setPrerequisite(prerequisite);
+      data?.onError?.(error, 'Could not update the connection');
     }
   };
 

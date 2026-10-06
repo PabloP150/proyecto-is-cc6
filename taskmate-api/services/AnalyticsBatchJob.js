@@ -10,7 +10,8 @@ class AnalyticsBatchJob {
         this.isRunning = false;
         this.lastRun = null;
         this.schedule = process.env.ANALYTICS_BATCH_SCHEDULE || '0 2 * * *'; // Default: 2 AM daily
-        this.enabled = process.env.ANALYTICS_BATCH_ENABLED !== 'false'; // Default: enabled
+        // Opt-in: the recompute touches every active user's metrics, so it only runs when asked for.
+        this.enabled = process.env.ANALYTICS_BATCH_ENABLED === 'true';
         this.job = null;
     }
 
@@ -19,7 +20,11 @@ class AnalyticsBatchJob {
      */
     start() {
         if (!this.enabled) {
-            console.log('Analytics Batch Job: Disabled via configuration');
+            return;
+        }
+
+        if (!cron.validate(this.schedule)) {
+            console.error(`Analytics Batch Job: Invalid ANALYTICS_BATCH_SCHEDULE "${this.schedule}", not started`);
             return;
         }
 
@@ -118,7 +123,7 @@ class AnalyticsBatchJob {
             running: this.isRunning,
             schedule: this.schedule,
             lastRun: this.lastRun,
-            nextRun: this.job ? this.job.nextDate() : null
+            nextRun: this.job && typeof this.job.nextDate === 'function' ? this.job.nextDate() : null
         };
     }
 
