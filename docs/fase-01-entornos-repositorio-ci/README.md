@@ -11,8 +11,8 @@
 |-------|-------|
 | **Fase** | 1 |
 | **Nombre** | Entornos, Repositorio e Infraestructura CI Inicial |
-| **Complejidad** | Media |
-| **Fechas Planificadas** | 21-25 ago 2026 |
+| **Complejidad** | Baja |
+| **Fechas Planificadas** | 14-21 ago 2026 |
 | **Fechas Reales** | Antes de calendarización (enero-marzo 2026) |
 | **Estado** | ✅ 100% Completado |
 | **Responsable** | Pablo Pineda |
@@ -210,7 +210,7 @@ Los diagramas de arquitectura principal se encuentran en la raíz:
 
 ## Pendientes
 
-- [ ] Documentación de deployment (será Fase 4 de Christian)
+- [ ] Documentación de deployment (parte de la Fase 4, pipeline CI/CD)
 - [ ] GitHub Actions workflow (será Fase 4)
 - [ ] Load testing en staging (será Fase 5)
 

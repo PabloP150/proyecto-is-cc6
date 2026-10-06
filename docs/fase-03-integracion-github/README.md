@@ -11,8 +11,8 @@
 |-------|-------|
 | **Fase** | 3 |
 | **Nombre** | Integración con GitHub |
-| **Complejidad** | Alta |
-| **Fechas Planificadas** | 5 sep 2026 — 8 sep 2026 |
+| **Complejidad** | Media |
+| **Fechas Planificadas** | 4 sep 2026 — 18 sep 2026 |
 | **Fechas Reales** | 10 sep 2026 — 11 sep 2026 (alcance acordado el 10 sep; 14 commits el 11 sep, 08:46–10:02). E2E con GitHub real, correcciones y limpieza segura de ramas: 5–6 oct 2026 |
 | **Estado** | ✅ Completada (E2E con GitHub real en verde) |
 | **Rama Git** | `feature/fase-3-integracion-github` (creada desde `refactor/cleanup`); PR #4, apilado sobre el #2 (Fases 1 y 2) |
@@ -30,7 +30,7 @@
 
 ## Objetivo
 
-La calendarización solo tenía el título de esta fase. El 10 sep 2026 se definió con Pablo que **no** se trataba de configurar el repositorio ni DevOps (eso cruza con la Fase 4 de Christian), sino de una **funcionalidad del producto**: que un equipo pueda manejar su repositorio de GitHub desde TaskMate y que la IA use ese repositorio para planificar.
+La calendarización solo tenía el título de esta fase. El 10 sep 2026 se definió con Pablo que **no** se trataba de configurar el repositorio ni DevOps (eso es parte de la Fase 4, el pipeline CI/CD), sino de una **funcionalidad del producto**: que un equipo pueda manejar su repositorio de GitHub desde TaskMate y que la IA use ese repositorio para planificar.
 
 De la lluvia de ideas (11 propuestas numeradas) se eligieron cinco:
 
@@ -703,7 +703,7 @@ git log --oneline 2c9673e..feature/fase-3-integracion-github
 ## Referencias Relacionadas
 
 - [Fase 2 — Optimización y rendimiento](../fase-02-optimizacion-rendimiento/README.md) (fase anterior)
-- Fases 4–8 (Christian Martínez + Pablo): CI/CD, testing, SonarQube, **colisión de archivos (Fase 7, se apoya en esta fase)**, go-live — ver [Calendarizacion_TaskMate.md](../../Calendarizacion_TaskMate.md)
+- Fases 4–8 (Pablo; la 7 junto con Christian Martínez): CI/CD, testing automático, SonarQube, **colisión de archivos (Fase 7, se apoya en esta fase)**, pruebas finales — ver [Calendarizacion_TaskMate.md](../../Calendarizacion_TaskMate.md)
 - [GUIA-GITHUB-APP.md](GUIA-GITHUB-APP.md) · [SEGURIDAD-Y-BASE-DE-DATOS.md](SEGURIDAD-Y-BASE-DE-DATOS.md)
 - `taskmate-api/.env.example` — plantilla de configuración
 - [taskmate-architecture-diagram.md](../../taskmate-architecture-diagram.md) · [taskmate-database-erd.md](../../taskmate-database-erd.md) (diagramas generales anteriores a esta fase)

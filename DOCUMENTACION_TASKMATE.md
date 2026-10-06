@@ -491,7 +491,7 @@ W3C. (2023). *Web Content Accessibility Guidelines (WCAG) 2.2*. World Wide Web C
 
 ### Anexo A: Calendarización Original del Proyecto
 
-La planificación temporal original, con las dos líneas de trabajo (Pablo Pineda y Christian Martínez) y las pre-entregas, se encuentra en [`Calendarizacion_TaskMate.md`](Calendarizacion_TaskMate.md).
+La planificación temporal (línea de trabajo de Pablo Pineda, con la Fase 7 junto con Christian Martínez) se encuentra en [`Calendarizacion_TaskMate.md`](Calendarizacion_TaskMate.md).
 
 ### Anexo B: Calendarización Final del Proyecto
 
