@@ -76,7 +76,7 @@ docs/
 - **Fase 2:** 7 optimizaciones implementadas, 6 documentos técnicos, benchmarks reales
 - **Fase 3:** GitHub dentro de TaskMate (conectar repo, explorador, rama por tarea, progreso automático por PR, la IA propone las siguientes tareas) + corrección de todos los problemas existentes detectados (ACID/3FN, JWT en todas las rutas, servidor de IA autenticado, XSS)
 
-**Global:** -71% latencia | -97.5% operaciones BD | -65% bundle size | de 52 pruebas fallando a 1153 pasando
+**Global:** -71% latencia, -97.5% operaciones BD y -65% bundle size (estimaciones de la Fase 2, no mediciones) | de 52 pruebas fallando a 1353 pasando (6 oct 2026)
 
 ### ⏳ Próximas (Ordenadas)
 1. Fases 4-8: CI/CD, testing, SonarQube, colisión de archivos (se apoya en los datos de ramas y PRs de la Fase 3), go-live (Christian Martínez + Pablo)

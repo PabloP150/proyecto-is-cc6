@@ -47,54 +47,57 @@ proyecto-is-cc6/
 │   ├── pages/
 │   ├── App.js
 │   └── index.js
-├── taskmate-api/                 # Backend Node.js Express
-│   ├── server.js
+├── taskmate-api/                 # Backend Node.js Express (workspace de npm)
+│   ├── server.js / app.js
 │   ├── controllers/
 │   ├── models/
 │   ├── services/
 │   ├── tests/
-│   └── package.json
-├── mcp-server/                   # Python FastAPI (MCP)
-│   ├── main.py
-│   ├── requirements.txt
-│   └── ...
+│   ├── package.json
+│   └── mcp/                      # Servidor de IA en Python (FastAPI + WebSocket)
+│       ├── server.py
+│       ├── llm_service.py
+│       ├── agents/
+│       └── requirements.txt
 ├── docs/                         # Documentación
-├── package.json                  # Root monorepo config
+├── start.sh                      # Arranca SQL Server (Docker), la API y el servidor de IA
+├── package.json                  # Raíz: frontend + workspace taskmate-api
 ├── .gitignore                    # Limpio y saneado
 └── README.md
 ```
 
 ### Variables de Entorno
 
-**Frontend** (`src/.env`):
+**Frontend** (opcionales; `src/config.js` usa estos valores por defecto):
 - `REACT_APP_API_URL` = http://localhost:9000
+- `REACT_APP_WS_URL` = ws://localhost:9000
 
-**Backend** (`taskmate-api/.env`):
+**Backend** (`taskmate-api/.env` o la `.env` de la raíz; plantilla en `taskmate-api/.env.example`):
 - `DB_SERVER`, `DB_USERNAME`, `DB_PASSWORD`, `DB_NAME`
 - `API_PORT`, `LLM_WEBSOCKET_URL`
 - `JWT_SECRET`
 
-**Python** (`mcp-server/.env`):
-- `GOOGLE_API_KEY`
-- `PORT`
+**Python** (`taskmate-api/mcp/.env`, `taskmate-api/.env` o la `.env` de la raíz, en ese orden):
+- `GROQ_API_KEY` (o `LLM_API_KEY`), `LLM_MODEL`
+- `MCP_PORT` (por defecto 8001)
+- Desde la Fase 3 también `MCP_SHARED_SECRET` (el mismo valor en Node y Python)
 
 ### Scripts NPM
 
-**Root** (`package.json`):
+**Raíz** (`package.json`):
 ```json
 {
   "scripts": {
-    "start": "concurrently \"npm run start:frontend\" \"npm run start:api\"",
-    "start:frontend": "cd src && react-scripts start",
-    "start:api": "cd taskmate-api && npm start",
-    "build": "cd src && react-scripts build",
-    "test": "npm run test:frontend && npm run test:api",
-    "test:frontend": "cd src && react-scripts test",
-    "test:api": "cd taskmate-api && npm test",
-    "test:performance": "cd taskmate-api && npm run test:performance"
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject",
+    "start:api": "npm run start --workspace=taskmate-api"
   }
 }
 ```
+
+**API** (`taskmate-api/package.json`): `start`, `test`, `test:watch`, `test:performance`; desde la Fase 3 también `test:db` (pruebas con SQL Server real) y `db:migrate`.
 
 ### Testing
 
@@ -162,29 +165,30 @@ proyecto-is-cc6/
 git clone <repo>
 cd proyecto-is-cc6
 
-# 2. Instalar dependencias
+# 2. Instalar dependencias (la raíz instala también el workspace taskmate-api)
 npm install
-cd taskmate-api && npm install && cd ..
+cd taskmate-api/mcp && python3 -m venv venv && venv/bin/pip install -r requirements.txt && cd ../..
 
-# 3. Configurar .env (copiar templates)
-cp .env.example .env
+# 3. Configurar .env (copiar la plantilla)
 cp taskmate-api/.env.example taskmate-api/.env
 
-# 4. Levantar BD (SQL Server en Docker)
-docker-compose up -d
+# 4. Levantar SQL Server (contenedor de Docker taskmate-sql), la API y el servidor de IA
+./start.sh
 
-# 5. Ejecutar scripts
-npm start            # Frontend + Backend
-npm run test:api     # Tests backend
-npm run test         # Todos los tests
+# 5. Frontend y pruebas
+npm start                      # Frontend (puerto 3000)
+cd taskmate-api && npm test    # Pruebas de la API
+CI=true npm test -- --watchAll=false   # Pruebas del frontend (desde la raíz)
 ```
 
 ### Verificación
 
 - ✅ Frontend accesible en http://localhost:3000
-- ✅ API responde en http://localhost:9000/api/health
-- ✅ Python MCP en ws://localhost:8001/ws
-- ✅ Tests pasan: `npm test`
+- ✅ API en http://localhost:9000 (el log muestra `API running on PORT 9000`)
+- ✅ Servidor de IA en ws://127.0.0.1:8001/ws (o el `MCP_PORT` configurado)
+- ✅ Pruebas de la API y del frontend en verde
+
+> **Nota (6 oct 2026):** esta sección se corrigió para describir el repositorio real. La versión anterior mencionaba un `mcp-server/` con `GOOGLE_API_KEY`, scripts de la raíz con `concurrently` y `test:api`, `docker-compose` y `/api/health`, que nunca existieron en el repositorio.
 
 ---
 

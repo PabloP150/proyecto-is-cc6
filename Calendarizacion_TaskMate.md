@@ -32,7 +32,7 @@
 - Code-splitting frontend (-65%)
 - Logging removal (-100%)
 
-**Mejora global: -71% latencia | 3.5x más rápido**
+**Mejora global estimada (no medida): -71% latencia | 3.5x más rápido**
 
 **Documentación:** 6 archivos en `docs/fase-02-optimizacion-rendimiento/`
 
