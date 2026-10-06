@@ -185,10 +185,11 @@ describe('UserSession', () => {
             expect(accessModel.isGroupMember).toHaveBeenCalledWith(UID, GID);
         });
 
-        test('non-member → NOT_GROUP_MEMBER', async () => {
+        test('non-member → NOT_GROUP_MEMBER, shown live only (not kept for history_restore)', async () => {
             accessModel.isGroupMember.mockResolvedValue(false);
             await session.handleMessage({ type: 'set_context', groupId: GID });
             expect(lastOfType(ws, 'error')).toMatchObject({ code: 'NOT_GROUP_MEMBER' });
+            expect(session.chatHistory).toHaveLength(0);
         });
 
         test('null clears the context; invalid ids are rejected', async () => {
@@ -196,6 +197,7 @@ describe('UserSession', () => {
             expect(lastOfType(ws, 'context')).toMatchObject({ groupId: null, repo: null });
             await session.handleMessage({ type: 'set_context', groupId: 'x; DROP TABLE' });
             expect(lastOfType(ws, 'error')).toMatchObject({ code: 'VALIDATION_ERROR' });
+            expect(session.chatHistory).toHaveLength(0);
         });
     });
 
@@ -237,12 +239,13 @@ describe('UserSession', () => {
             expect(restore.messages.some((m) => m.type === 'repo_plan' && m.planId === msg.planId)).toBe(true);
         });
 
-        test('non-member → NOT_GROUP_MEMBER, nothing sent to Python, no cooldown consumed', async () => {
+        test('non-member → NOT_GROUP_MEMBER, nothing sent to Python, no cooldown consumed, nothing kept in history', async () => {
             accessModel.isGroupMember.mockResolvedValue(false);
             await startAnalysis();
             expect(lastOfType(ws, 'error')).toMatchObject({ code: 'NOT_GROUP_MEMBER', requestId: 'client-1' });
             expect(pythonRequests()).toHaveLength(0);
             expect(UserSession.lastAnalysisByUser.has(UID)).toBe(false);
+            expect(session.chatHistory).toHaveLength(0);
         });
 
         test('no repository → REPO_NOT_CONNECTED', async () => {
@@ -273,7 +276,7 @@ describe('UserSession', () => {
             await replyPlan(request);
             await session.handleMessage({ type: 'repo_analysis', requestId: 'client-2', groupId: GID });
             const error = lastOfType(ws, 'error');
-            expect(error).toMatchObject({ code: 'RATE_LIMITED', requestId: 'client-2' });
+            expect(error).toMatchObject({ code: 'RATE_LIMITED', requestId: 'client-2', message: 'Solo se puede pedir un análisis por minuto.' });
             expect(error.retryAfterSec).toBeGreaterThan(0);
 
             const otherSession = new UserSession(UID, mockWebSocket());
@@ -293,6 +296,9 @@ describe('UserSession', () => {
             expect(lastOfType(ws, 'error')).toMatchObject({ code: 'LLM_TIMEOUT', requestId: 'client-1' });
             expect(session.analysis).toBeNull();
             expect(await replyPlan(request)).toBeUndefined();
+            expect(session.chatHistory.map((m) => [m.type, m.code || m.content])).toEqual([
+                ['user', 'enfócate en pruebas'], ['error', 'LLM_TIMEOUT'],
+            ]);
         });
 
         test('replies for another requestId are ignored', async () => {
@@ -331,6 +337,53 @@ describe('UserSession', () => {
         });
     });
 
+    describe('history_restore keeps whole turns (request + outcome)', () => {
+        const turns = () => session.chatHistory.map((m) => [m.type, m.code || m.content]);
+        const restore = () => {
+            const reconnectWs = mockWebSocket();
+            session.websocket = reconnectWs;
+            session.reconnect();
+            return sent(reconnectWs).find((m) => m.type === 'history_restore');
+        };
+
+        test('a cooldown refusal is shown live but not restored, so no orphan error comes back', async () => {
+            await replyPlan(await startAnalysis());
+            await session.handleMessage({ type: 'repo_analysis', requestId: 'client-2', groupId: GID, instructions: 'prioriza las pruebas' });
+            expect(lastOfType(ws, 'error')).toMatchObject({ code: 'RATE_LIMITED', requestId: 'client-2', retryAfterSec: expect.any(Number) });
+
+            const restored = restore().messages;
+            expect(restored.map((m) => m.type)).toEqual(['user', 'repo_plan']);
+            // The request keeps its requestId so ChatPage can tell it is already in the restore.
+            expect(restored[0]).toMatchObject({ content: 'enfócate en pruebas', requestId: 'client-1' });
+            expect(JSON.stringify(restored)).not.toContain('prioriza las pruebas');
+        });
+
+        test('ANALYSIS_IN_PROGRESS and VALIDATION_ERROR refusals are not kept either', async () => {
+            await startAnalysis();
+            await session.handleMessage({ type: 'repo_analysis', requestId: 'client-2', groupId: GID, instructions: 'otra' });
+            await session.handleMessage({ type: 'repo_analysis', requestId: 'client-3', groupId: 'nope' });
+            expect(sent(ws).filter((m) => m.type === 'error').map((m) => m.code)).toEqual(['ANALYSIS_IN_PROGRESS', 'VALIDATION_ERROR']);
+            expect(turns()).toEqual([['user', 'enfócate en pruebas']]);
+        });
+
+        test('an analysis without instructions is kept with the text the chat shows', async () => {
+            await startAnalysis({ instructions: '' });
+            expect(turns()).toEqual([['user', 'Analiza el repositorio de «Mi proyecto» y propón las siguientes tareas.']]);
+        });
+
+        test('kept instructions are the cleaned ones sent to the AI', async () => {
+            const request = await startAnalysis({ instructions: '  prioriza\u0000las pruebas  ' });
+            expect(request.params.instructions).toBe('prioriza las pruebas');
+            expect(turns()).toEqual([['user', 'prioriza las pruebas']]);
+        });
+
+        test('an error after the analysis was accepted is kept right after its request', async () => {
+            githubModel.getGroupRepository.mockResolvedValue(null);
+            await startAnalysis();
+            expect(turns()).toEqual([['user', 'enfócate en pruebas'], ['error', 'REPO_NOT_CONNECTED']]);
+        });
+    });
+
     describe('repo_plan_confirm / discard', () => {
         const getPlan = async () => replyPlan(await startAnalysis());
 
@@ -349,6 +402,7 @@ describe('UserSession', () => {
             ]);
             expect(projectService.addPlanToGroup).toHaveBeenCalledTimes(1);
             expect(lastOfType(ws, 'error')).toMatchObject({ code: 'REPO_PLAN_NOT_FOUND', planId });
+            expect(session.chatHistory).toContainEqual(expect.objectContaining({ type: 'error', code: 'REPO_PLAN_NOT_FOUND', planId }));
         });
 
         test('expired plan → REPO_PLAN_EXPIRED', async () => {
@@ -357,6 +411,8 @@ describe('UserSession', () => {
             await session.handleMessage({ type: 'repo_plan_confirm', planId });
             expect(lastOfType(ws, 'error')).toMatchObject({ code: 'REPO_PLAN_EXPIRED' });
             expect(projectService.addPlanToGroup).not.toHaveBeenCalled();
+            // ChatPage folds it into the restored plan card.
+            expect(session.chatHistory).toContainEqual(expect.objectContaining({ type: 'error', code: 'REPO_PLAN_EXPIRED', planId }));
         });
 
         test('membership is re-checked at confirm time', async () => {
@@ -465,11 +521,11 @@ describe('UserSession', () => {
     });
 
     describe('chat limits and timeouts', () => {
-        test('content over 4000 chars → MESSAGE_TOO_LONG, nothing sent', async () => {
+        test('content over 4000 chars → MESSAGE_TOO_LONG, nothing sent, nothing kept in history', async () => {
             await session.handleMessage({ type: 'user', content: 'x'.repeat(4001), requestId: 'm1' });
             expect(lastOfType(ws, 'error')).toMatchObject({ code: 'MESSAGE_TOO_LONG', requestId: 'm1' });
             expect(pythonRequests()).toHaveLength(0);
-            expect(session.chatHistory.some((m) => m.type === 'user')).toBe(false);
+            expect(session.chatHistory).toHaveLength(0);
         });
 
         test('non-string or blank content is ignored', async () => {
@@ -482,16 +538,20 @@ describe('UserSession', () => {
             for (let i = 0; i < 20; i += 1) await session.handleMessage({ type: 'user', content: `m${i}` });
             const other = new UserSession(UID, mockWebSocket());
             await other.handleMessage({ type: 'user', content: 'one more', requestId: 'm21' });
-            expect(sent(other.websocket).pop()).toMatchObject({ code: 'RATE_LIMITED', requestId: 'm21', retryAfterSec: expect.any(Number) });
+            expect(sent(other.websocket).pop()).toMatchObject({
+                code: 'RATE_LIMITED', requestId: 'm21', retryAfterSec: expect.any(Number), message: 'Estás enviando mensajes muy rápido; espera un momento.',
+            });
             expect(pythonRequests()).toHaveLength(20);
+            expect(other.chatHistory).toHaveLength(0);
             other.cleanup();
         });
 
-        test('no answer within 90 s → LLM_TIMEOUT with the client requestId', async () => {
+        test('no answer within 90 s → LLM_TIMEOUT with the client requestId, kept after the message', async () => {
             jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] });
             await session.handleMessage({ type: 'user', content: 'hola', requestId: 'c-9' });
             jest.advanceTimersByTime(UserSession.REQUEST_TIMEOUT_MS);
             expect(lastOfType(ws, 'error')).toMatchObject({ code: 'LLM_TIMEOUT', requestId: 'c-9' });
+            expect(session.chatHistory.map((m) => [m.type, m.code || m.content])).toEqual([['user', 'hola'], ['error', 'LLM_TIMEOUT']]);
         });
 
         test('a matching response clears the timeout and carries the requestId', async () => {

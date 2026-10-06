@@ -1,5 +1,5 @@
 import { ThemeProvider } from '@mui/material/styles';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import * as github from '../../../api/github';
 import theme from '../../../theme/theme';
@@ -204,6 +204,36 @@ describe('GitHubPage', () => {
     github.syncGroup.mockRejectedValueOnce(Object.assign(new Error('429'), { code: 'RATE_LIMITED', status: 429 }));
     fireEvent.click(screen.getByRole('button', { name: /Sincronizar PRs/ }));
     expect(await screen.findByText(/Espera unos 30 segundos/)).toBeInTheDocument();
+  });
+
+  it('gives a toast that replaces an open one its full display time', async () => {
+    github.getRepository.mockResolvedValue(REPO);
+    github.syncGroup
+      .mockResolvedValueOnce({ branchesChecked: 1, pullRequestsFound: 0, updated: 0 })
+      .mockRejectedValueOnce(Object.assign(new Error('429'), { code: 'RATE_LIMITED', status: 429 }));
+    showPage();
+    const sync = await screen.findByRole('button', { name: /Sincronizar PRs/ });
+
+    jest.useFakeTimers();
+    try {
+      fireEvent.click(sync);
+      expect(await screen.findByText(/Sincronización completa/)).toBeInTheDocument();
+
+      act(() => jest.advanceTimersByTime(3000));
+      fireEvent.click(screen.getByRole('button', { name: /Sincronizar PRs/ }));
+      expect(await screen.findByText(/Ya se sincronizó hace poco/)).toBeInTheDocument();
+      expect(screen.queryByText(/Sincronización completa/)).not.toBeInTheDocument();
+
+      // Past the first toast's 4 s (plus its exit transition), well within the second one's.
+      act(() => jest.advanceTimersByTime(1500));
+      act(() => jest.advanceTimersByTime(300));
+      expect(screen.getByText(/Ya se sincronizó hace poco/)).toBeVisible();
+
+      act(() => jest.advanceTimersByTime(2500));
+      await waitFor(() => expect(screen.queryByText(/Ya se sincronizó hace poco/)).not.toBeInTheDocument());
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('disconnects after confirming, explaining the App stays installed', async () => {

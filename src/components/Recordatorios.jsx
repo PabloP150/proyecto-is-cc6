@@ -1,6 +1,9 @@
 import AddIcon from '@mui/icons-material/Add';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+import FilterAltIcon from '@mui/icons-material/FilterAlt';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import {
   Alert,
   Box,
@@ -8,13 +11,15 @@ import {
   CssBaseline,
   IconButton,
   Snackbar,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import { ThemeProvider } from '@mui/material/styles';
-import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { api, errorMessage } from '../api/client';
 import BarraLateral from './BarraLateral';
 import Dialogos from './Dialogos';
+import BranchToastMessage, { branchesNotice, branchNotice, withBranchNotice } from './github/BranchToastMessage';
 import useTaskLinks from './github/useTaskLinks';
 import { GroupContext } from './GroupContext'; // Importa el contexto
 import ListaRecordatorios from './ListaRecordatorios';
@@ -51,6 +56,15 @@ const dropTask = (listas, tid) => listas.map(l => (
 ));
 const withoutUiFlags = ({ __justCompleted, __justDeleted, ...task }) => task;
 const remainingAnimation = (startedAt) => Math.max(0, COMPLETE_ANIMATION_MS - (Date.now() - startedAt));
+const isHeld = (held) => held.hover || held.focus;
+
+// List-deletion pill per severity: rgb of its light and deep gradient stops, icon and icon color.
+const LIST_TOAST_STYLES = {
+  success: { light: '16,185,129', deep: '5,150,105', Icon: CheckCircleIcon, iconColor: '#10b981' },
+  info: { light: '59,130,246', deep: '37,99,235', Icon: InfoOutlinedIcon, iconColor: '#60a5fa' },
+  warning: { light: '245,158,11', deep: '217,119,6', Icon: WarningAmberIcon, iconColor: '#fbbf24' },
+  error: { light: '239,68,68', deep: '220,38,38', Icon: ErrorOutlineIcon, iconColor: '#f87171' },
+};
 
 export default function Recordatorios() {
   const [openRecordatorio, setOpenRecordatorio] = useState(false);
@@ -70,11 +84,16 @@ export default function Recordatorios() {
   const [recordatorioEditar, setRecordatorioEditar] = useState(null);
   const [openEditar, setOpenEditar] = useState(false); // Estado para el diálogo de edición
   const { selectedGroupId, selectedGroupName } = useContext(GroupContext); // Usa el contexto para obtener el gid y el nombre
-  const [feedback, setFeedback] = useState({ open: false, message: '', severity: 'error' });
+  const [feedback, setFeedback] = useState({ open: false, message: '', severity: 'error', url: null, duration: null });
   // One request per group for every task's branch/PR (not one per task).
   const { getLink: getTaskLink, repoConnected, refresh: refreshTaskLinks } = useTaskLinks(selectedGroupId);
 
-  const notify = useCallback((message, severity = 'error') => setFeedback({ open: true, message, severity }), []);
+  // `url`/`duration` only for a toast that tells what happened to a GitHub branch.
+  const notify = useCallback(
+    (message, severity = 'error', { url = null, duration = null } = {}) =>
+      setFeedback({ open: true, message, severity, url, duration }),
+    []
+  );
   const notifyError = useCallback((err, fallback) => {
     if (err?.name === 'AbortError') return;
     notify(errorMessage(err, fallback), 'error');
@@ -249,22 +268,42 @@ export default function Recordatorios() {
     }
   };
 
+  // Lists whose deletion is in flight. The server answers only after cleaning up the tasks' GitHub
+  // branches (up to ~5 s), so meanwhile the list shows it is busy, cannot be deleted twice and its
+  // tasks (already gone on the server) take no actions. The ref answers clicks before a re-render.
+  const deletingListsRef = useRef(new Set());
+  const [deletingLists, setDeletingLists] = useState([]);
+  const markListDeleting = useCallback((nombreLista, deleting) => {
+    if (deleting) deletingListsRef.current.add(nombreLista);
+    else deletingListsRef.current.delete(nombreLista);
+    setDeletingLists([...deletingListsRef.current]);
+  }, []);
+
+  // A task that is no longer on the server (e.g. a merged PR completed it) leaves the board,
+  // and with it its branch/PR chips.
+  const dropMissingTask = useCallback((tid) => {
+    setListas(prev => dropTask(prev, tid));
+    notify('This task no longer exists. The list was refreshed.', 'warning');
+    cargarTareas();
+    refreshTaskLinks();
+  }, [cargarTareas, notify, refreshTaskLinks]);
+
   // Atomic delete on the server (moves the task to the deleted list in one transaction).
-  // Resolves true when deleted; on failure the card is restored (or dropped if it no longer exists).
+  // Resolves the response data ({ tid, status, branch? }) when deleted, false on failure; then the
+  // card is restored (or dropped if it no longer exists).
   const handleEliminar = useCallback(async (listaNombre, task) => {
-    if (!task?.tid) return false;
+    if (!task?.tid || deletingListsRef.current.has(listaNombre)) return false;
     const { tid } = task;
     const original = withoutUiFlags(task);
     const startedAt = Date.now();
 
     setListas(prev => mapTask(prev, tid, r => ({ ...r, __justDeleted: true })));
+    let res;
     try {
-      await api.post(`/api/tasks/${tid}/trash`);
+      res = await api.post(`/api/tasks/${tid}/trash`);
     } catch (err) {
       if (err?.code === 'TASK_NOT_FOUND') {
-        setListas(prev => dropTask(prev, tid));
-        notify('This task no longer exists. The list was refreshed.', 'warning');
-        cargarTareas();
+        dropMissingTask(tid);
       } else {
         setListas(prev => mapTask(prev, tid, () => original));
         notifyError(err, 'Could not delete the task');
@@ -274,20 +313,20 @@ export default function Recordatorios() {
     setTimeout(() => setListas(prev => dropTask(prev, tid)), remainingAnimation(startedAt));
     cargarEliminados();
     refreshTaskLinks();
-    return true;
-  }, [cargarTareas, cargarEliminados, notify, notifyError, refreshTaskLinks]);
+    return res?.data || {};
+  }, [cargarEliminados, dropMissingTask, notifyError, refreshTaskLinks]);
 
   // Atomic completion on the server ('completed' and 'already_completed' are both success).
-  // `restore` maps the card back when the request fails for any reason other than a missing task.
+  // Resolves the response data ({ tid, status, branch? }) or false; `restore` maps the card back
+  // when the request fails for any reason other than a missing task.
   const completarEnServidor = useCallback(async (tid, restore) => {
     const startedAt = Date.now();
+    let res;
     try {
-      await api.post(`/api/tasks/${tid}/complete`);
+      res = await api.post(`/api/tasks/${tid}/complete`);
     } catch (err) {
       if (err?.code === 'TASK_NOT_FOUND') {
-        setListas(prev => dropTask(prev, tid));
-        notify('This task no longer exists. The list was refreshed.', 'warning');
-        cargarTareas();
+        dropMissingTask(tid);
       } else {
         setListas(prev => mapTask(prev, tid, restore));
         notifyError(err, 'Could not complete the task');
@@ -297,18 +336,18 @@ export default function Recordatorios() {
     setTimeout(() => setListas(prev => dropTask(prev, tid)), remainingAnimation(startedAt));
     cargarCompletados();
     refreshTaskLinks();
-    return true;
-  }, [cargarTareas, cargarCompletados, notify, notifyError, refreshTaskLinks]);
+    return res?.data || {};
+  }, [cargarCompletados, dropMissingTask, notifyError, refreshTaskLinks]);
 
   const handleCompletar = useCallback(async (listaNombre, task) => {
-    if (!task?.tid) return false;
+    if (!task?.tid || deletingListsRef.current.has(listaNombre)) return false;
     const original = withoutUiFlags(task);
     setListas(prev => mapTask(prev, task.tid, r => ({ ...r, percentage: 100, __justCompleted: true })));
     return completarEnServidor(task.tid, () => original);
   }, [completarEnServidor]);
 
   const handleEditar = useCallback((listaNombre, recordatorio) => {
-    if (recordatorio) {
+    if (recordatorio && !deletingListsRef.current.has(listaNombre)) {
       // Normalizar datetime a 'YYYY-MM-DDTHH:mm' en hora local para edición estable
       const normalizeLocal = (dt) => {
         if (!dt) return '';
@@ -376,14 +415,36 @@ export default function Recordatorios() {
     }
   }, [filtro, listas, eliminados, completados]);
 
-  const [deleteListSuccess, setDeleteListSuccess] = useState(false);
-  const [deleteListError, setDeleteListError] = useState(false);
+  // { severity, message, url } of the list-deletion pill; one timer so a newer pill is not hidden early.
+  // Like the Snackbars, it stays while hovered or focused (it can hold «Ver rama») and then hides
+  // after half its time.
+  const [listToast, setListToast] = useState(null);
+  const listToastTimer = useRef(null);
+  const listToastDuration = useRef(0);
+  const listToastHeld = useRef({ hover: false, focus: false });
+  const hideListToastIn = useCallback((ms) => {
+    clearTimeout(listToastTimer.current);
+    listToastTimer.current = setTimeout(() => setListToast(null), ms);
+  }, []);
+  const showListToast = useCallback((toast, duration) => {
+    clearTimeout(listToastTimer.current);
+    setListToast(toast);
+    listToastDuration.current = duration;
+    if (!isHeld(listToastHeld.current)) hideListToastIn(duration);
+  }, [hideListToastIn]);
+  const holdListToast = useCallback((reason, held) => {
+    listToastHeld.current[reason] = held;
+    if (held) clearTimeout(listToastTimer.current);
+    else if (!isHeld(listToastHeld.current)) hideListToastIn(listToastDuration.current / 2);
+  }, [hideListToastIn]);
+  useEffect(() => () => clearTimeout(listToastTimer.current), []);
 
   const handleEliminarLista = useCallback(async (nombreLista) => {
     const gid = selectedGroupId;
-    if (!gid) return;
+    if (!gid || deletingListsRef.current.has(nombreLista)) return;
+    markListDeleting(nombreLista, true);
     try {
-      await api.del(`/api/tasks/list/${gid}/${encodeURIComponent(nombreLista)}`);
+      const res = await api.del(`/api/tasks/list/${gid}/${encodeURIComponent(nombreLista)}`);
       setListas(prevListas => prevListas.filter(lista => lista.nombre !== nombreLista));
       // Actualizar localStorage quitando la lista
       try {
@@ -399,16 +460,16 @@ export default function Recordatorios() {
         // customLists corrupto: se ignora, la lista ya se quitó del estado
       }
       cargarTareas();
-      setDeleteListError(false);
-      setDeleteListSuccess(true);
-      setTimeout(() => setDeleteListSuccess(false), 3000);
+      refreshTaskLinks();
+      const toast = withBranchNotice('List deleted', 'success', branchesNotice(res?.branches));
+      showListToast(toast, toast.duration || 3000);
     } catch (err) {
       notifyError(err, 'Could not delete the list');
-      setDeleteListSuccess(false);
-      setDeleteListError(true);
-      setTimeout(() => setDeleteListError(false), 4000);
+      showListToast({ severity: 'error', message: 'Delete failed', url: null }, 4000);
+    } finally {
+      markListDeleting(nombreLista, false);
     }
-  }, [cargarTareas, selectedGroupId, notifyError]);
+  }, [cargarTareas, refreshTaskLinks, selectedGroupId, notifyError, showListToast, markListDeleting]);
 
   const handleSubmitEditar = async () => {
     if (!recordatorioEditar?.tid || !selectedGroupId) return;
@@ -441,8 +502,10 @@ export default function Recordatorios() {
     // Llegó a 100%: animación y completado atómico. El PUT ya guardó la edición, así que si
     // completar falla se conserva lo editado y solo se quita la animación.
     setListas(prev => mapTask(prev, tid, () => ({ ...editado, __justCompleted: true })));
-    const ok = await completarEnServidor(tid, r => ({ ...r, __justCompleted: false }));
-    if (ok) notify('Task completed', 'success');
+    const result = await completarEnServidor(tid, r => ({ ...r, __justCompleted: false }));
+    if (!result) return;
+    const toast = withBranchNotice('Task completed', 'success', branchNotice(result.branch));
+    notify(toast.message, toast.severity, toast);
   };
 
   const handleCloseEditar = () => {
@@ -468,6 +531,9 @@ export default function Recordatorios() {
         return 'All Tasks';
     }
   };
+
+  const listToastStyle = listToast ? LIST_TOAST_STYLES[listToast.severity] || LIST_TOAST_STYLES.success : null;
+  const ListToastIcon = listToastStyle ? listToastStyle.Icon : null;
 
   const handleVaciarEliminados = useCallback(async () => {
     if (!selectedGroupId) return;
@@ -561,23 +627,26 @@ export default function Recordatorios() {
             }}>
               Tasks {selectedGroupId && `(${listasFiltradas.reduce((sum, l) => sum + (l.recordatorios?.length || 0), 0)})`} {selectedGroupName && `- ${selectedGroupName}`}
             </Typography>
-            <IconButton 
-              onClick={() => setDrawerOpen(true)} 
-              sx={{ 
-                color: 'white',
-                background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(245, 158, 11, 0.2) 100%)',
-                border: '1px solid rgba(59, 130, 246, 0.3)',
-                borderRadius: 2,
-                transition: 'all 0.3s cubic-bezier(.4, 2, .3, 1)',
-                '&:hover': {
-                  background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.3) 0%, rgba(245, 158, 11, 0.3) 100%)',
-                  transform: 'scale(1.05)',
-                  boxShadow: '0 4px 16px 0 rgba(59, 130, 246, 0.4)',
-                },
-              }}
-            >
-              <AddIcon fontSize="large" />
-            </IconButton>
+            <Tooltip title="Filters" arrow>
+              <IconButton
+                aria-label="Filters"
+                onClick={() => setDrawerOpen(true)}
+                sx={{
+                  color: 'white',
+                  background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(245, 158, 11, 0.2) 100%)',
+                  border: '1px solid rgba(59, 130, 246, 0.3)',
+                  borderRadius: 2,
+                  transition: 'all 0.3s cubic-bezier(.4, 2, .3, 1)',
+                  '&:hover': {
+                    background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.3) 0%, rgba(245, 158, 11, 0.3) 100%)',
+                    transform: 'scale(1.05)',
+                    boxShadow: '0 4px 16px 0 rgba(59, 130, 246, 0.4)',
+                  },
+                }}
+              >
+                <FilterAltIcon fontSize="large" />
+              </IconButton>
+            </Tooltip>
           </Box>
 
           <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
@@ -640,6 +709,7 @@ export default function Recordatorios() {
               setOrden={setOrden}
               filtro={filtro}
               handleEliminarLista={handleEliminarLista}
+              deletingLists={deletingLists}
               sx={{ color: 'white' }}
               handleVaciarCompletados={handleVaciarCompletados}
               handleVaciarEliminados={handleVaciarEliminados}
@@ -648,26 +718,30 @@ export default function Recordatorios() {
               onTaskLinkChange={refreshTaskLinks}
               members={members}
             />}
-            {(deleteListSuccess || deleteListError) && (
+            {listToast && (
               <Box
+                role="status"
+                data-severity={listToast.severity}
+                onMouseEnter={() => holdListToast('hover', true)}
+                onMouseLeave={() => holdListToast('hover', false)}
+                onFocus={() => holdListToast('focus', true)}
+                onBlur={() => holdListToast('focus', false)}
                 sx={{
                   position: 'fixed',
                   bottom: 24,
                   left: '50%',
                   transform: 'translateX(-50%)',
+                  // The GitHub summary can be long: wrap inside the viewport instead of overflowing it.
+                  maxWidth: 'calc(100vw - 32px)',
                   display: 'flex',
                   alignItems: 'center',
                   gap: 1,
                   px: 2.5,
                   py: 1.25,
                   borderRadius: '999px',
-                  background: deleteListSuccess
-                    ? 'linear-gradient(135deg, rgba(16,185,129,0.15) 0%, rgba(5,150,105,0.4) 100%)'
-                    : 'linear-gradient(135deg, rgba(239,68,68,0.15) 0%, rgba(220,38,38,0.4) 100%)',
-                  border: `1px solid ${deleteListSuccess ? 'rgba(16,185,129,0.5)' : 'rgba(239,68,68,0.5)'}`,
-                  boxShadow: deleteListSuccess
-                    ? '0 4px 18px -2px rgba(16,185,129,0.4)'
-                    : '0 4px 18px -2px rgba(239,68,68,0.4)',
+                  background: `linear-gradient(135deg, rgba(${listToastStyle.light},0.15) 0%, rgba(${listToastStyle.deep},0.4) 100%)`,
+                  border: `1px solid rgba(${listToastStyle.light},0.5)`,
+                  boxShadow: `0 4px 18px -2px rgba(${listToastStyle.light},0.4)`,
                   backdropFilter: 'blur(12px)',
                   zIndex: 1500,
                   color: '#fff',
@@ -675,9 +749,8 @@ export default function Recordatorios() {
                   fontSize: '0.9rem'
                 }}
               >
-                {deleteListSuccess && <CheckCircleIcon sx={{ color: '#10b981' }} />}
-                {deleteListError && <ErrorOutlineIcon sx={{ color: '#f87171' }} />}
-                <span>{deleteListSuccess ? 'List deleted' : 'Delete failed'}</span>
+                <ListToastIcon sx={{ color: listToastStyle.iconColor }} />
+                <span><BranchToastMessage message={listToast.message} url={listToast.url} /></span>
               </Box>
             )}
           </Box>
@@ -718,12 +791,12 @@ export default function Recordatorios() {
         </Card>
         <Snackbar
           open={feedback.open}
-          autoHideDuration={4000}
+          autoHideDuration={feedback.duration || 4000}
           onClose={handleCloseFeedback}
           anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
         >
           <Alert onClose={handleCloseFeedback} severity={feedback.severity} sx={{ width: '100%' }}>
-            {feedback.message}
+            <BranchToastMessage message={feedback.message} url={feedback.url} />
           </Alert>
         </Snackbar>
       </Container>

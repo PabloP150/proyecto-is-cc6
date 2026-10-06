@@ -242,3 +242,50 @@ describe('Recordatorios — members and validation', () => {
     expect(await screen.findByText('name must be at most 25 characters')).toBeInTheDocument();
   });
 });
+
+describe('Recordatorios — filters drawer and completed tasks', () => {
+  const ACTIVE = { ...TASK, datetime: '2026-10-21T00:00' };
+  // Same shape GET /api/completados sends: the stored wall-clock time, without a zone.
+  const DONE = { tid: 'c1', gid: 'g1', name: 'Tests unitarios', description: 'Cobertura', percentage: 100, datetime: '2026-10-21T00:00' };
+
+  beforeEach(() => {
+    localStorage.clear();
+    api.get.mockReset().mockImplementation((path) => {
+      if (path.startsWith('/api/tasks?gid=')) return Promise.resolve({ data: [ACTIVE] });
+      if (path.startsWith('/api/completados/')) return Promise.resolve({ data: [DONE] });
+      if (path.startsWith('/api/groups/')) return Promise.resolve({ members: [] });
+      return Promise.resolve({ data: [] });
+    });
+  });
+
+  it('labels the drawer toggle "Filters" so the only add buttons are Add List and Add Task', async () => {
+    await renderTasks();
+
+    const toggle = screen.getByRole('button', { name: 'Filters' });
+    fireEvent.mouseOver(toggle);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Filters');
+    expect(screen.getAllByRole('button', { name: /add/i }).map((b) => b.textContent)).toEqual(['Add List', 'Add Task']);
+
+    fireEvent.click(toggle);
+    for (const option of ['Today', 'This Week', 'This Month', 'All Tasks', 'Completed', 'Deleted']) {
+      expect(await screen.findByRole('button', { name: option })).toBeInTheDocument();
+    }
+  });
+
+  it('names the sort and delete-list icon buttons', async () => {
+    await renderTasks();
+    expect(screen.getByRole('button', { name: 'Sort tasks' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Delete list Trabajo' })).toBeInTheDocument();
+  });
+
+  it('shows a completed task with the same date and time it had while active', async () => {
+    await renderTasks();
+    expect(screen.getByText('Resumen semanal - 21/10/2026 00:00')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Filters' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Completed' }));
+
+    expect(await screen.findByText('Tests unitarios')).toBeInTheDocument();
+    expect(screen.getByText('Cobertura - 21/10/2026 00:00')).toBeInTheDocument();
+  });
+});

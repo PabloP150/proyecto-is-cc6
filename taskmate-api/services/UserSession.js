@@ -48,7 +48,7 @@ const ERROR_MESSAGES = {
     GITHUB_ERROR: 'No se pudo leer el repositorio en GitHub.',
     GITHUB_NOT_CONFIGURED: 'La integración con GitHub no está configurada.',
     ANALYSIS_IN_PROGRESS: 'Ya hay un análisis en curso.',
-    RATE_LIMITED: 'Espera un minuto antes de pedir otro análisis.',
+    RATE_LIMITED: 'Solo se puede pedir un análisis por minuto.',
     MESSAGE_TOO_LONG: `El mensaje es demasiado largo (máximo ${MAX_CHAT_MESSAGE} caracteres).`,
     LLM_TIMEOUT: 'La IA tardó demasiado en responder. Intenta de nuevo.',
     LLM_RATE_LIMIT: 'El servicio de IA está ocupado. Intenta de nuevo en unos segundos.',
@@ -189,7 +189,8 @@ class UserSession {
             case 'analytics':
                 return this.run(this.handleAnalyticsMessage(message));
             case 'set_context':
-                return this.run(this.handleSetContext(message));
+                // Not a chat turn (and re-sent on every reconnect): a refusal is shown live only.
+                return this.run(this.handleSetContext(message), { persist: false });
             case 'repo_analysis':
                 return this.run(this.handleRepoAnalysis(message));
             case 'repo_plan_confirm':
@@ -207,19 +208,26 @@ class UserSession {
         return this.run(this.handleUserMessage(message));
     }
 
-    run(promise) {
-        return promise.catch((error) => this.sendErrorFrom(error));
+    run(promise, options) {
+        return promise.catch((error) => this.sendErrorFrom(error, {}, options));
+    }
+
+    // A refused request (bad input, rate limit, analysis already running) is answered live only:
+    // the request itself never enters chatHistory, so a restored refusal would have no context,
+    // and its "retry in N s" would be stale by then.
+    refuse(code, extra) {
+        return this.sendError(code, extra, { persist: false });
     }
 
     async handleUserMessage(message) {
         const requestId = uuidv4();
         const clientRequestId = clientRequestIdOf(message.requestId) || requestId;
         if (message.content.length > MAX_CHAT_MESSAGE) {
-            return this.sendError('MESSAGE_TOO_LONG', { requestId: clientRequestId });
+            return this.refuse('MESSAGE_TOO_LONG', { requestId: clientRequestId });
         }
         const retryAfterSec = takeChatSlot(this.userId);
         if (retryAfterSec > 0) {
-            return this.sendError('RATE_LIMITED', { requestId: clientRequestId, retryAfterSec, message: CHAT_RATE_LIMITED_MESSAGE, content: CHAT_RATE_LIMITED_MESSAGE });
+            return this.refuse('RATE_LIMITED', { requestId: clientRequestId, retryAfterSec, message: CHAT_RATE_LIMITED_MESSAGE, content: CHAT_RATE_LIMITED_MESSAGE });
         }
 
         // Store user message in history
@@ -319,22 +327,33 @@ class UserSession {
 
     async handleRepoAnalysis(message) {
         const clientRequestId = clientRequestIdOf(message.requestId) || uuidv4();
-        const fail = (code, extra = {}) => this.sendError(code, { requestId: clientRequestId, ...extra });
+        const refuse = (code, extra = {}) => this.refuse(code, { requestId: clientRequestId, ...extra });
 
         const { groupId } = message;
         const instructions = message.instructions === undefined || message.instructions === null ? '' : message.instructions;
-        if (!isUuid(groupId) || typeof instructions !== 'string') return fail('VALIDATION_ERROR');
-        if (this.analysis) return fail('ANALYSIS_IN_PROGRESS');
+        if (!isUuid(groupId) || typeof instructions !== 'string') return refuse('VALIDATION_ERROR');
+        if (this.analysis) return refuse('ANALYSIS_IN_PROGRESS');
         const retryAfterSec = cooldownRemainingSec(this.userId);
-        if (retryAfterSec > 0) return fail('RATE_LIMITED', { retryAfterSec });
+        if (retryAfterSec > 0) return refuse('RATE_LIMITED', { retryAfterSec });
 
         // Claimed synchronously so a second request in flight sees ANALYSIS_IN_PROGRESS.
-        const analysis = { requestId: uuidv4(), clientRequestId, groupId, groupName: null, existingTaskNames: [], timer: null };
+        const analysis = { requestId: uuidv4(), clientRequestId, groupId, groupName: null, existingTaskNames: [], timer: null, inHistory: false };
         this.analysis = analysis;
+        const cleanInstructions = instructions.replace(/[\x00-\x08\x0b-\x1f\x7f]/g, ' ').trim().slice(0, MAX_INSTRUCTIONS);
         let releaseCooldown = null;
         try {
             const group = await this.loadMemberGroup(groupId);
             analysis.groupName = group.groupName;
+            // From here the analysis is part of the conversation: history_restore shows the request
+            // (same text ChatPage shows) before its plan or error. The requestId lets ChatPage tell
+            // whether a restore already holds the request it is showing.
+            this.addToHistory({
+                type: 'user',
+                content: cleanInstructions || `Analiza el repositorio de «${group.groupName}» y propón las siguientes tareas.`,
+                requestId: clientRequestId,
+                timestamp: new Date(),
+            });
+            analysis.inHistory = true;
             const repo = await githubModel.getGroupRepository(groupId);
             if (!repo) throw new AppError('REPO_NOT_CONNECTED', 'This group has no connected repository', 409);
             if (repo.suspendedAt) throw new AppError('INSTALLATION_SUSPENDED', 'The GitHub App installation is suspended', 409);
@@ -367,7 +386,7 @@ class UserSession {
                 method: 'analyze_repository',
                 params: {
                     groupId,
-                    instructions: instructions.replace(/[\x00-\x08\x0b-\x1f\x7f]/g, ' ').trim().slice(0, MAX_INSTRUCTIONS),
+                    instructions: cleanInstructions,
                     today: localToday(),
                     limits: { ...PLAN_LIMITS },
                     snapshot,
@@ -392,8 +411,10 @@ class UserSession {
         this.analysis = null;
         const extra = { requestId: analysis.clientRequestId };
         if (Number.isFinite(retryAfterSec)) extra.retryAfterSec = retryAfterSec;
-        if (error) this.sendErrorFrom(error, extra);
-        else this.sendError(code, extra);
+        // Kept only next to the request it answers (a refused request is not in history; see refuse).
+        const options = { persist: analysis.inHistory };
+        if (error) this.sendErrorFrom(error, extra, options);
+        else this.sendError(code, extra, options);
     }
 
     handleAnalysisReply(response) {
@@ -574,32 +595,32 @@ class UserSession {
         return this.llmService.send({ requestId, sessionId: this.sessionId, method: 'save_plan_result', params }, { expectReply: false });
     }
 
-    sendError(code, extra = {}) {
+    sendError(code, extra = {}, options) {
         const message = ERROR_MESSAGES[code] || ERROR_MESSAGES.INTERNAL_ERROR;
         const payload = { type: 'error', code: code || 'INTERNAL_ERROR', message, content: message, timestamp: new Date(), ...extra };
         Object.keys(payload).forEach((key) => payload[key] === undefined && delete payload[key]);
-        this.sendMessage(payload);
+        this.sendMessage(payload, options);
     }
 
-    sendErrorFrom(error, extra = {}) {
+    sendErrorFrom(error, extra = {}, options) {
         if (isAppError(error) && ERROR_MESSAGES[error.code]) {
             const withRetry = error.details && Number.isFinite(error.details.retryAfterSec)
                 ? { retryAfterSec: error.details.retryAfterSec, ...extra }
                 : extra;
-            return this.sendError(error.code, withRetry);
+            return this.sendError(error.code, withRetry, options);
         }
         console.error(`Unexpected error in session of user ${this.userId}:`, error && error.message);
-        return this.sendError('INTERNAL_ERROR', extra);
+        return this.sendError('INTERNAL_ERROR', extra, options);
     }
 
-    sendMessage(message) {
+    sendMessage(message, { persist = true } = {}) {
         try {
             this.lastActivity = new Date();
             if (!message.timestamp) message.timestamp = new Date();
 
             const isWelcome = message.type === 'system' && typeof message.content === 'string'
                 && message.content.includes('Connected to TaskMate');
-            if (!isWelcome && !TRANSIENT_TYPES.has(message.type)) {
+            if (persist && !isWelcome && !TRANSIENT_TYPES.has(message.type)) {
                 this.addToHistory(message);
             }
 

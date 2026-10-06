@@ -27,6 +27,9 @@ const DEFAULT_EDGE_OPTIONS = {
   markerEnd: { type: MarkerType.ArrowClosed, color: 'darkgray' },
 };
 const CONNECTION_LINE_STYLE = { strokeWidth: 3, stroke: 'darkgray' };
+// React Flow fits once, when the loaded nodes are first measured; the canvas is keyed by group so
+// switching groups fits again. maxZoom 1 keeps a lone milestone from being blown up.
+const FIT_VIEW_OPTIONS = { padding: 0.2, maxZoom: 1 };
 
 const formatDateTimeToDate = (datetime) => {
   const date = new Date(datetime);
@@ -421,6 +424,9 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
         <div style={{color: 'white', padding: '1rem'}}>Selecciona un grupo para ver y crear milestones.</div>
       )}
       {selectedGroupId && <ReactFlow
+        key={selectedGroupId}
+        fitView
+        fitViewOptions={FIT_VIEW_OPTIONS}
         nodes={nodes}
         edges={edges}
         nodeTypes={NODE_TYPES}

@@ -14,11 +14,14 @@ const EMPTY_LINKS = new Map();
 
 function toLinkMap(list, repo) {
   const repoUrl = repoHtmlUrl(repo);
+  const defaultBranch = (repo && repo.defaultBranch) || null;
   const links = new Map();
   (Array.isArray(list) ? list : []).forEach((item) => {
     if (!item || !item.tid) return;
     links.set(normalizeId(item.tid), {
       ...item,
+      // A PR merged into another base (pr.baseBranch) does not complete the task.
+      defaultBranch,
       branchUrl: safeGitHubUrl(item.branchUrl) || branchUrl(repoUrl, item.branchName),
       pr: item.pr
         ? { ...item.pr, htmlUrl: safeGitHubUrl(item.pr.htmlUrl) || pullRequestUrl(repoUrl, item.pr.number) }

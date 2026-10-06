@@ -8,6 +8,7 @@ jest.mock('../../models/github.model', () => ({
     upsertRepository: jest.fn(),
     applyPullRequest: jest.fn(),
     findTaskByBranch: jest.fn(),
+    getGroupRepository: jest.fn(),
 }));
 jest.mock('../../helpers/transaction', () => ({ withTransaction: jest.fn(), isFkViolation: jest.fn() }));
 jest.mock('../../models/tasks.model', () => ({ completeTask: jest.fn() }));
@@ -23,11 +24,12 @@ const AnalyticsIntegration = require('../../services/AnalyticsIntegration');
 const { githubApp } = require('../../services/github/githubApp');
 const { createWebhookHandler } = require('../../services/github/webhookHandler');
 const { signWebhookPayload } = require('../../services/github/webhookSignature');
-const { useFakeGitHub, tokenRoute } = require('./helpers/fakeGitHub');
+const { useFakeGitHub, tokenRoute, REPO } = require('./helpers/fakeGitHub');
 
 const SECRET = 'whsec-test';
 const DELIVERY = '6c3f1a2e-0b9d-11f0-8a3e-0242ac120002';
 const TX = { id: 'tx' };
+const HEAD_SHA = 'f'.repeat(40);
 
 const buildApp = (options) => {
     const app = express();
@@ -56,7 +58,7 @@ const prPayload = ({ merged = true, base = 'main', headRepoId = 500, action = 'c
         number: 12,
         title: 'Add auth',
         draft: false,
-        head: { ref: 'tm/add-auth-abcdef12', repo: headRepoId === null ? null : { id: headRepoId } },
+        head: { ref: 'tm/add-auth-abcdef12', sha: HEAD_SHA, repo: headRepoId === null ? null : { id: headRepoId } },
         base: { ref: base },
         created_at: '2026-09-10T10:00:00Z',
         updated_at: '2026-09-11T10:00:00Z',
@@ -240,6 +242,95 @@ describe('pull_request', () => {
         await new Promise((r) => setImmediate(r));
         expect(tasksModel.completeTask).toHaveBeenCalled();
         expect(githubModel.finishDelivery).toHaveBeenCalledWith(DELIVERY, 'processed', { tx: TX });
+    });
+});
+
+describe('branch cleanup after a merge', () => {
+    const BRANCH = 'tm/add-auth-abcdef12';
+    const LINK = { tid: 'T1', gid: REPO.gid, repoId: 500, owner: 'octo', repoName: 'demo', branchName: BRANCH, baseSha: 'a'.repeat(40) };
+    const COMPARE = `GET /repos/octo/demo/compare/main...${HEAD_SHA}`;
+    const flush = async (rounds = 10) => {
+        for (let i = 0; i < rounds; i += 1) await new Promise((r) => setImmediate(r));
+    };
+    // A squash merge: the branch keeps commits main does not have, but its head is the PR head.
+    const squashRoutes = (overrides = {}) => ({
+        'POST /app/installations/77/access_tokens': tokenRoute('ghs_hook'),
+        'GET /repos/octo/demo': { body: { id: 500, name: 'demo', owner: { login: 'octo' }, default_branch: 'main' } },
+        [`GET /repos/octo/demo/git/ref/heads/${BRANCH}`]: { body: { object: { sha: HEAD_SHA } } },
+        [COMPARE]: { body: { ahead_by: 2 } },
+        'GET /repos/octo/demo/pulls': { body: [] },
+        [`DELETE /repos/octo/demo/git/refs/heads/${BRANCH}`]: { status: 204 },
+        ...overrides,
+    });
+
+    beforeEach(() => {
+        githubModel.getGroupRepository.mockResolvedValue({ ...REPO });
+        tasksModel.completeTask.mockResolvedValue({ status: 'completed', branch: LINK });
+        jest.spyOn(console, 'log').mockImplementation(() => {});
+        jest.spyOn(console, 'warn').mockImplementation(() => {});
+    });
+
+    test('starts after the commit with the merged PR head and never holds the response', async () => {
+        let release;
+        const gate = new Promise((resolve) => { release = resolve; });
+        const fetchImpl = useFakeGitHub(squashRoutes({ [COMPARE]: async () => { await gate; return { body: { ahead_by: 2 } }; } }));
+        let githubCallsAtCommit = null;
+        transaction.withTransaction.mockImplementation(async (fn) => {
+            const result = await fn(TX);
+            githubCallsAtCommit = fetchImpl.calls.length;
+            return result;
+        });
+
+        const res = await send(buildApp(), 'pull_request', prPayload());
+        expect(res.status).toBe(200);
+        expect(res.body.status).toBe('processed');
+        expect(githubCallsAtCommit).toBe(0);
+        await flush();
+        expect(fetchImpl.calls.some((c) => c.path.includes('/compare/'))).toBe(true);
+        expect(fetchImpl.calls.some((c) => c.method === 'DELETE')).toBe(false);
+
+        release();
+        await flush();
+        expect(fetchImpl.calls.filter((c) => c.method === 'DELETE').map((c) => c.path)).toEqual([`/repos/octo/demo/git/refs/heads/${BRANCH}`]);
+        expect(console.log).toHaveBeenCalledWith(`GitHub branch cleanup of ${BRANCH} (task T1): deleted`);
+    });
+
+    test('a failing cleanup only logs: the delivery stays processed', async () => {
+        const fetchImpl = useFakeGitHub(squashRoutes({ [COMPARE]: { status: 500, body: {} } }));
+        const res = await send(buildApp(), 'pull_request', prPayload());
+        expect(res.status).toBe(200);
+        expect(res.body.status).toBe('processed');
+        await flush();
+        expect(fetchImpl.calls.some((c) => c.method === 'DELETE')).toBe(false);
+        expect(console.log).toHaveBeenCalledWith(`GitHub branch cleanup of ${BRANCH} (task T1): error`);
+        expect(githubModel.failDelivery).not.toHaveBeenCalled();
+    });
+
+    test.each([
+        ['the task was already completed', () => tasksModel.completeTask.mockResolvedValue({ status: 'already_completed' })],
+        ['the PR merged into another branch', null, { base: 'develop' }],
+        ['the PR was closed without merging', () => githubModel.applyPullRequest.mockResolvedValue({ state: 'closed', changed: true, becameMerged: false }), { merged: false }],
+        ['the transaction failed', () => githubModel.finishDelivery.mockRejectedValueOnce(new Error('deadlock victim'))],
+    ])('no cleanup when %s', async (_label, arrange, payload = {}) => {
+        const fetchImpl = useFakeGitHub(squashRoutes());
+        if (arrange) arrange();
+        await send(buildApp(), 'pull_request', prPayload(payload));
+        await flush();
+        expect(fetchImpl.calls).toHaveLength(0);
+        expect(githubModel.getGroupRepository).not.toHaveBeenCalled();
+    });
+
+    test('the merged PR head only vouches for its own branch', async () => {
+        // Another branch whose head happens to be the merged PR head, with commits main lacks.
+        const fetchImpl = useFakeGitHub(squashRoutes({
+            'GET /repos/octo/demo/git/ref/heads/tm/other-12345678': { body: { object: { sha: HEAD_SHA } } },
+        }));
+        tasksModel.completeTask.mockResolvedValue({ status: 'completed', branch: { ...LINK, branchName: 'tm/other-12345678' } });
+        await send(buildApp(), 'pull_request', prPayload());
+        await flush();
+        expect(fetchImpl.calls.some((c) => c.path.includes('/compare/'))).toBe(true);
+        expect(fetchImpl.calls.some((c) => c.method === 'DELETE')).toBe(false);
+        expect(console.log).toHaveBeenCalledWith('GitHub branch cleanup of tm/other-12345678 (task T1): kept_unmerged');
     });
 });
 

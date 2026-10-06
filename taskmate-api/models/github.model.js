@@ -262,15 +262,16 @@ const findTaskByBranch = async (repoId, branchName, options = {}) => {
     return rows.length > 0 ? { tid: rows[0].tid, gid: rows[0].gid } : null;
 };
 
-// [{tid, branchName, pr: null | {number, title, state, isDraft, openedAt, mergedAt}}] — latest PR per branch.
+// [{tid, branchName, pr: null | {number, title, state, isDraft, baseBranch, openedAt, mergedAt}}] — latest PR per branch.
+// baseBranch lets the UI tell a merge into the default branch (completes the task) from any other.
 const getTaskLinksByGroup = async (gid, options = {}) => {
     const rows = await read(options,
-        `SELECT tb.tid, tb.branch_name, pr.number, pr.title, pr.state, pr.is_draft, pr.opened_at, pr.merged_at
+        `SELECT tb.tid, tb.branch_name, pr.number, pr.title, pr.state, pr.is_draft, pr.base_branch, pr.opened_at, pr.merged_at
          FROM dbo.TaskBranches tb
          INNER JOIN dbo.Tasks t ON t.tid = tb.tid
          INNER JOIN dbo.GroupRepositories gr ON gr.gid = t.gid AND gr.repo_id = tb.repo_id
          OUTER APPLY (
-             SELECT TOP 1 p.number, p.title, p.state, p.is_draft, p.opened_at, p.merged_at
+             SELECT TOP 1 p.number, p.title, p.state, p.is_draft, p.base_branch, p.opened_at, p.merged_at
              FROM dbo.PullRequests p
              WHERE p.repo_id = tb.repo_id AND p.head_branch = tb.branch_name
              ORDER BY p.opened_at DESC, p.number DESC
@@ -287,6 +288,7 @@ const getTaskLinksByGroup = async (gid, options = {}) => {
             title: r.title,
             state: r.state,
             isDraft: Boolean(r.is_draft),
+            baseBranch: r.base_branch,
             openedAt: r.opened_at,
             mergedAt: r.merged_at,
         },

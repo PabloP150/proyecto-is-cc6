@@ -197,6 +197,103 @@ describe('ChatPage — GitHub project analysis', () => {
     ]);
     expect(screen.getByRole('combobox')).toHaveTextContent('Equipo Web');
     expect(screen.getByTestId('nav-state')).toHaveTextContent('null');
+    // Same request bubble as from the selector (and as the server restores it).
+    expect(screen.getAllByText('Analiza el repositorio de «Equipo Web» y propón las siguientes tareas.')).toHaveLength(1);
+  });
+
+  it('keeps the /github request bubble when the restore sent as the socket opened arrives after it', () => {
+    renderChat({ state: { analyzeGroupId: 'G1' } });
+    const [request] = sentOfType('repo_analysis');
+    receive({ type: 'history_restore', messages: [{ type: 'user', content: 'hola' }] });
+
+    expect(screen.getByText('hola')).toBeInTheDocument();
+    expect(screen.getAllByText('Analiza el repositorio de «Equipo Web» y propón las siguientes tareas.')).toHaveLength(1);
+    receive({ ...PLAN_MESSAGE, requestId: request.requestId });
+    expect(screen.getByText('Agregar pruebas')).toBeInTheDocument();
+  });
+
+  it('does not repeat the request bubble when the restore already holds that request', () => {
+    renderChat({ state: { analyzeGroupId: 'G1' } });
+    const [request] = sentOfType('repo_analysis');
+    receive({
+      type: 'history_restore',
+      messages: [{ type: 'user', content: 'Analiza el repositorio de «Equipo Web» y propón las siguientes tareas.', requestId: request.requestId }],
+    });
+    expect(screen.getAllByText('Analiza el repositorio de «Equipo Web» y propón las siguientes tareas.')).toHaveLength(1);
+  });
+
+  it('drops the bubble of a finished analysis on the next restore (the server history decides)', () => {
+    renderChat();
+    selectProject('Equipo Web');
+    fireEvent.change(screen.getByRole('textbox', { name: 'Instrucciones para el análisis' }), { target: { value: 'prioriza las pruebas' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Analizar repositorio' }));
+    const [request] = sentOfType('repo_analysis');
+    receive({ type: 'error', code: 'RATE_LIMITED', requestId: request.requestId, retryAfterSec: 41, message: 'Solo se puede pedir un análisis por minuto.' });
+
+    receive({ type: 'history_restore', messages: [{ type: 'user', content: 'hola' }] });
+    expect(screen.queryByText('prioriza las pruebas')).not.toBeInTheDocument();
+  });
+
+  it('shows the analysis cooldown as an analysis message with the wait, next to its request', () => {
+    renderChat();
+    selectProject('Equipo Web');
+    receive({ type: 'context', groupId: 'G1', groupName: 'Equipo Web', repo: { fullName: 'acme/web', defaultBranch: 'main' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Instrucciones para el análisis' }), { target: { value: 'prioriza las pruebas' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Analizar repositorio' }));
+    const [request] = sentOfType('repo_analysis');
+
+    receive({ type: 'error', code: 'RATE_LIMITED', requestId: request.requestId, retryAfterSec: 41, message: 'Solo se puede pedir un análisis por minuto.' });
+    expect(screen.getByText('prioriza las pruebas')).toBeInTheDocument();
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent('Solo se puede pedir un análisis por minuto. Podrás reintentar en 41 s.');
+    expect(alert).not.toHaveTextContent('Vas muy rápido');
+    expect(screen.getByRole('button', { name: 'Analizar repositorio' })).toBeEnabled();
+  });
+
+  it('restores errors with the live wording but without a stale countdown', () => {
+    renderChat();
+    receive({
+      type: 'history_restore',
+      messages: [
+        { type: 'user', content: 'hola' },
+        { type: 'error', code: 'AI_ANALYSIS_DISABLED', requestId: 'r1', message: 'El análisis con IA está desactivado para este proyecto; un administrador puede activarlo.' },
+        { type: 'error', code: 'LLM_TIMEOUT', requestId: 'r2', retryAfterSec: 41, message: 'La IA tardó demasiado en responder. Intenta de nuevo.' },
+      ],
+    });
+    const [disabled, timeout] = screen.getAllByRole('alert');
+    expect(disabled).toHaveTextContent('Un administrador del grupo puede activarlo en la página GitHub');
+    expect(timeout).toHaveTextContent('La IA tardó demasiado en responder. Inténtalo de nuevo.');
+    expect(timeout).not.toHaveTextContent('Podrás reintentar');
+  });
+
+  // An API from before the refusals stopped being stored still restores them; only its text says which limit it was.
+  it('restores a RATE_LIMITED error with the server text, which tells the analysis cooldown from the chat limit', () => {
+    renderChat();
+    receive({
+      type: 'history_restore',
+      messages: [
+        { type: 'error', code: 'RATE_LIMITED', requestId: 'r1', retryAfterSec: 41, message: 'Espera un minuto antes de pedir otro análisis.' },
+        { type: 'error', code: 'RATE_LIMITED', requestId: 'r2', retryAfterSec: 5, message: 'Estás enviando mensajes muy rápido; espera un momento.' },
+      ],
+    });
+    const [analysisLimit, chatLimit] = screen.getAllByRole('alert');
+    expect(analysisLimit).toHaveTextContent('Espera un minuto antes de pedir otro análisis.');
+    expect(analysisLimit).not.toHaveTextContent('Vas muy rápido');
+    expect(chatLimit).toHaveTextContent('Estás enviando mensajes muy rápido; espera un momento.');
+    [analysisLimit, chatLimit].forEach(alert => expect(alert).not.toHaveTextContent('Podrás reintentar'));
+  });
+
+  it('restores a plan card as expired from a REPO_PLAN_EXPIRED error in history', () => {
+    renderChat();
+    receive({
+      type: 'history_restore',
+      messages: [
+        PLAN_MESSAGE,
+        { type: 'error', code: 'REPO_PLAN_EXPIRED', planId: 'plan-1', message: 'El plan expiró; vuelve a analizar el repositorio.' },
+      ],
+    });
+    expect(screen.getByTestId('repo-plan-compact')).toHaveTextContent('Plan expirado');
+    expect(screen.getByRole('alert')).toHaveTextContent('El plan expiró');
   });
 
   it('restores plan cards from history with their final status', () => {
@@ -235,6 +332,8 @@ describe('ChatPage — GitHub project analysis', () => {
     it.each([
       [{ code: 'MESSAGE_TOO_LONG', message: 'too long' }, 'El mensaje es demasiado largo: el máximo es 4000 caracteres.'],
       [{ code: 'RATE_LIMITED', message: 'slow down', retryAfterSec: 12 }, 'Vas muy rápido: espera un momento antes de volver a intentarlo. Podrás reintentar en 12 s.'],
+      // A chat message (its requestId is not an analysis one) keeps the chat wording.
+      [{ code: 'RATE_LIMITED', requestId: 'chat-1', message: 'Estás enviando mensajes muy rápido; espera un momento.', retryAfterSec: 5 }, 'Vas muy rápido: espera un momento antes de volver a intentarlo. Podrás reintentar en 5 s.'],
       [{ code: 'LLM_TIMEOUT', message: 'timeout' }, 'La IA tardó demasiado en responder. Inténtalo de nuevo.'],
     ])('shows a friendly message for %o', (error, text) => {
       renderChat();

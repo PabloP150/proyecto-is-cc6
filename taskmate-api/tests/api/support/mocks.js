@@ -161,7 +161,8 @@ function applyDefaults() {
     m.tasks.getTask.mockResolvedValue([taskRow]);
     m.tasks.completeTask.mockResolvedValue({ status: 'completed' });
     m.tasks.trashTask.mockResolvedValue({ status: 'deleted', task: taskRow });
-    ['addTask', 'updateTask', 'updateTaskFromNode', 'deleteTask', 'deleteTasksByList'].forEach((fn) => m.tasks[fn].mockResolvedValue(1));
+    ['addTask', 'updateTask', 'updateTaskFromNode', 'deleteTask'].forEach((fn) => m.tasks[fn].mockResolvedValue(1));
+    m.tasks.deleteTasksByList.mockResolvedValue({ rowCount: 1, branches: [] });
 
     m.usertask.addUsertask.mockResolvedValue(1);
     m.usertask.deleteUsertask.mockResolvedValue(1);

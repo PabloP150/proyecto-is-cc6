@@ -91,6 +91,7 @@ function AppRoutes({ user, setUser }) {
         <Route path="/chat" element={user ? <ChatPage /> : <Navigate to="/" />} />
         <Route path="/analytics" element={user ? <AnalyticsDashboard /> : <Navigate to="/" />} />
         <Route path="/github" element={user ? <GitHubPage /> : <Navigate to="/" />} />
+        <Route path="*" element={<Navigate to={user ? '/home' : '/'} replace />} />
       </Routes>
     </Suspense>
   );

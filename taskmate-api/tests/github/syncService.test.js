@@ -20,7 +20,7 @@ const { useFakeGitHub, tokenRoute, REPO } = require('./helpers/fakeGitHub');
 const TX = { id: 'tx' };
 const pr = (overrides = {}) => ({
     id: 1, number: 3, title: 'x', draft: false,
-    head: { ref: 'tm/a-11111111', repo: { id: 500 } },
+    head: { ref: 'tm/a-11111111', sha: 'e'.repeat(40), repo: { id: 500 } },
     base: { ref: 'main' },
     created_at: '2026-09-01T00:00:00Z', updated_at: '2026-09-02T00:00:00Z',
     closed_at: '2026-09-02T00:00:00Z', merged_at: '2026-09-02T00:00:00Z',
@@ -103,4 +103,87 @@ test('no connected repository → REPO_NOT_CONNECTED', async () => {
     useFakeGitHub({});
     githubModel.getGroupRepository.mockResolvedValue(null);
     await expect(syncGroup(REPO.gid)).rejects.toMatchObject({ code: 'REPO_NOT_CONNECTED' });
+});
+
+describe('branch cleanup of the tasks the sync completes', () => {
+    const BRANCH = 'tm/a-11111111';
+    const LINK = { tid: 'T1', gid: REPO.gid, repoId: 500, owner: 'octo', repoName: 'demo', branchName: BRANCH, baseSha: 'a'.repeat(40) };
+    const flush = async (rounds = 10) => {
+        for (let i = 0; i < rounds; i += 1) await new Promise((r) => setImmediate(r));
+    };
+    const HEAD_SHA = 'e'.repeat(40);
+    const META = { id: 500, name: 'demo', owner: { login: 'octo' }, default_branch: 'main' };
+    const syncRoutes = (compare) => ({
+        'POST /app/installations/77/access_tokens': tokenRoute('ghs_sync'),
+        'GET /repos/octo/demo': { body: META },
+        // The sync asks for every PR of a branch; the cleanup only for open ones.
+        'GET /repos/octo/demo/pulls': (call) => ({ body: call.query.state === 'open' || call.query.head !== `octo:${BRANCH}` ? [] : [pr()] }),
+        [`GET /repos/octo/demo/git/ref/heads/${BRANCH}`]: { body: { object: { sha: HEAD_SHA } } },
+        [`GET /repos/octo/demo/compare/main...${HEAD_SHA}`]: compare,
+        [`DELETE /repos/octo/demo/git/refs/heads/${BRANCH}`]: { status: 204 },
+    });
+    const cleanupLog = () => console.log.mock.calls.map(([line]) => line).filter((line) => String(line).startsWith('GitHub branch cleanup'));
+
+    beforeEach(() => {
+        githubModel.getTaskLinksByGroup.mockResolvedValue([{ tid: 'T1', branchName: BRANCH, pr: null }]);
+        jest.spyOn(console, 'log').mockImplementation(() => {});
+        jest.spyOn(console, 'warn').mockImplementation(() => {});
+    });
+
+    test('runs in the background with the merged PR head; the sync result does not wait for it', async () => {
+        let release;
+        const gate = new Promise((resolve) => { release = resolve; });
+        const fetchImpl = useFakeGitHub(syncRoutes(async () => { await gate; return { body: { ahead_by: 1 } }; }));
+        tasksModel.completeTask.mockResolvedValue({ status: 'completed', branch: LINK });
+
+        await expect(syncGroup(REPO.gid)).resolves.toEqual({ branchesChecked: 1, pullRequestsFound: 1, updated: 1 });
+        expect(fetchImpl.calls.some((c) => c.method === 'DELETE')).toBe(false);
+
+        release();
+        await flush();
+        expect(fetchImpl.calls.filter((c) => c.method === 'DELETE').map((c) => c.path)).toEqual([`/repos/octo/demo/git/refs/heads/${BRANCH}`]);
+        expect(console.log).toHaveBeenCalledWith(`GitHub branch cleanup of ${BRANCH} (task T1): deleted`);
+    });
+
+    test('near the budget limit the sync still resolves: cleanups that would dip into the reserve report error', async () => {
+        const branches = ['tm/a-11111111', 'tm/b-22222222', 'tm/c-33333333'];
+        const tidOf = (branchName) => `T${branches.indexOf(branchName) + 1}`;
+        githubModel.getTaskLinksByGroup.mockResolvedValue(branches.map((branchName) => ({ tid: tidOf(branchName), branchName, pr: null })));
+        githubModel.findTaskByBranch.mockImplementation(async (_repoId, branchName) => ({ tid: tidOf(branchName), gid: REPO.gid }));
+        tasksModel.completeTask.mockImplementation(async (tid) => ({
+            status: 'completed', branch: { ...LINK, tid, branchName: branches[Number(tid.slice(1)) - 1] },
+        }));
+        const routes = {
+            'POST /app/installations/77/access_tokens': tokenRoute('ghs_sync'),
+            'GET /repos/octo/demo': { body: META },
+            'GET /repos/octo/demo/pulls': (call) => {
+                if (call.query.state === 'open') return { body: [] };
+                const ref = call.query.head.split(':')[1];
+                return { body: [pr({ id: branches.indexOf(ref) + 1, head: { ref, sha: HEAD_SHA, repo: { id: 500 } } })] };
+            },
+            [`GET /repos/octo/demo/compare/main...${HEAD_SHA}`]: { body: { ahead_by: 0 } },
+        };
+        branches.forEach((name) => {
+            routes[`GET /repos/octo/demo/git/ref/heads/${name}`] = { body: { object: { sha: HEAD_SHA } } };
+            routes[`DELETE /repos/octo/demo/git/refs/heads/${name}`] = { status: 204 };
+        });
+        const fetchImpl = useFakeGitHub(routes);
+        // 26 requests: the sync spends 4 (repository + 3 branches), leaving its reserve of 20 plus 2,
+        // fewer than one cleanup (6) needs on top of the reserve.
+        githubApp.options.hourlyBudget = 26;
+
+        await expect(syncGroup(REPO.gid)).resolves.toEqual({ branchesChecked: 3, pullRequestsFound: 3, updated: 3 });
+        await flush();
+        expect(cleanupLog().sort()).toEqual(branches.map((name) => `GitHub branch cleanup of ${name} (task ${tidOf(name)}): error`));
+        expect(fetchImpl.calls.some((c) => c.method === 'DELETE')).toBe(false);
+        expect(githubApp.availableBudget(77)).toBeGreaterThanOrEqual(20);
+    });
+
+    test('nothing to clean up when the task was already completed', async () => {
+        const fetchImpl = useFakeGitHub(syncRoutes({ body: { ahead_by: 0 } }));
+        tasksModel.completeTask.mockResolvedValue({ status: 'already_completed' });
+        await syncGroup(REPO.gid);
+        await flush();
+        expect(fetchImpl.calls.some((c) => c.path.includes('/compare/') || c.method === 'DELETE')).toBe(false);
+    });
 });

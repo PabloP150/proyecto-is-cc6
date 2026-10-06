@@ -92,6 +92,17 @@ const getNodesByGroupId = async (gid) => {
     return execReadCommand(query, params);
 };
 
+// getNodeLayout(gid) → [{ y_pos, descriptionLength }] of the group's nodes (y grows downward): what
+// decides how tall each card is drawn, so new nodes can go below all of them.
+// Inside a transaction the range lock makes a concurrent caller for the same group wait for the
+// commit, so two plans saved at once do not both take the same free row.
+const getNodeLayout = async (gid, options = {}) => {
+    const query = `SELECT y_pos, LEN(description) AS descriptionLength
+                   FROM dbo.Nodes WITH (UPDLOCK, HOLDLOCK) WHERE gid=@gid`;
+    const params = [{ name: 'gid', type: TYPES.UniqueIdentifier, value: gid }];
+    return options.tx ? options.tx.read(query, params) : execReadCommand(query, params);
+};
+
 module.exports = {
     addNode,
     updateNode,
@@ -102,4 +113,5 @@ module.exports = {
     getNodesAndTasks,
     getNode,
     getNodesByGroupId,
+    getNodeLayout,
 };

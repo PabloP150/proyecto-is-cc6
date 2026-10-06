@@ -3,9 +3,10 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import FilterListIcon from '@mui/icons-material/FilterList';
-import { Alert, Box, Divider, IconButton, LinearProgress, List, ListItem, ListItemText, Menu, MenuItem, Snackbar, Typography } from '@mui/material';
+import { Alert, Box, CircularProgress, Divider, IconButton, LinearProgress, List, ListItem, ListItemText, Menu, MenuItem, Snackbar, Typography } from '@mui/material';
 import Tooltip from '@mui/material/Tooltip';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import BranchToastMessage, { branchNotice, withBranchNotice } from './github/BranchToastMessage';
 import TaskGitHubActions from './github/TaskGitHubActions';
 import SeleccionarPersona from './SeleccionarPersona';
 import Button from './ui/Button';
@@ -83,20 +84,36 @@ const ordenarRecordatorios = (recordatorios, orden) => {
   }
 };
 
-const ListaRecordatorios = memo(function ListaRecordatorios({ listas, handleEliminar, handleCompletar, handleEditar, filtro, handleEliminarLista, orden, setOrden, handleVaciarCompletados, handleVaciarEliminados, getTaskLink, repoConnected = false, onTaskLinkChange, members }) {
-  const fadeTimerRef = useRef(null);
-  // Snackbar state
-  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+// Stable default, so the sorted lists are not rebuilt on every render.
+const NO_LISTS = [];
 
-  // Handlers resolve false when the server rejected the change (the parent already showed the error).
+// deletingLists: names of the lists whose deletion is still in flight (the parent ignores their
+// actions; here they look busy and take no clicks).
+const ListaRecordatorios = memo(function ListaRecordatorios({ listas, handleEliminar, handleCompletar, handleEditar, filtro, handleEliminarLista, deletingLists = NO_LISTS, orden, setOrden, handleVaciarCompletados, handleVaciarEliminados, getTaskLink, repoConnected = false, onTaskLinkChange, members }) {
+  const fadeTimerRef = useRef(null);
+  // One toast for every task card (complete, delete and the GitHub actions), so a new message
+  // replaces the previous one instead of stacking on it; the new key restarts its autoHide timer.
+  const [snackbar, setSnackbar] = useState({ key: 0, open: false, message: '', severity: 'success', duration: 2200, url: null });
+  const showSnackbar = useCallback((severity, message, duration = 2200, url = null) => {
+    setSnackbar(s => ({ key: s.key + 1, open: true, message, severity, duration, url }));
+  }, []);
+  const showTaskOutcome = useCallback((message, severity, result) => {
+    const toast = withBranchNotice(message, severity, branchNotice(result && result.branch));
+    showSnackbar(toast.severity, toast.message, toast.duration || undefined, toast.url);
+  }, [showSnackbar]);
+
+  // Handlers resolve false when the server rejected the change (the parent already showed the error),
+  // otherwise the response data, whose `branch` tells what happened to the task's GitHub branch.
   const handleCompletarConFeedback = useCallback(async (...args) => {
-    if (await handleCompletar(...args) === false) return;
-    setSnackbar({ open: true, message: 'Task completed', severity: 'success' });
-  }, [handleCompletar]);
+    const result = await handleCompletar(...args);
+    if (result === false) return;
+    showTaskOutcome('Task completed', 'success', result);
+  }, [handleCompletar, showTaskOutcome]);
   const handleEliminarConFeedback = useCallback(async (...args) => {
-    if (await handleEliminar(...args) === false) return;
-    setSnackbar({ open: true, message: 'Task deleted', severity: 'info' });
-  }, [handleEliminar]);
+    const result = await handleEliminar(...args);
+    if (result === false) return;
+    showTaskOutcome('Task deleted', 'info', result);
+  }, [handleEliminar, showTaskOutcome]);
   const handleCloseSnackbar = useCallback((event, reason) => {
     if (reason === 'clickaway') return;
     setSnackbar(s => ({ ...s, open: false }));
@@ -107,8 +124,12 @@ const ListaRecordatorios = memo(function ListaRecordatorios({ listas, handleElim
   const prevTareasRef = useRef({});
 
   const sortedListas = useMemo(
-    () => listas.map(lista => ({ ...lista, recordatorios: ordenarRecordatorios(lista.recordatorios || [], orden) })),
-    [listas, orden]
+    () => listas.map(lista => ({
+      ...lista,
+      recordatorios: ordenarRecordatorios(lista.recordatorios || [], orden),
+      deleting: deletingLists.includes(lista.nombre),
+    })),
+    [listas, orden, deletingLists]
   );
 
   // Detectar nuevas tareas por lista
@@ -206,23 +227,26 @@ const ListaRecordatorios = memo(function ListaRecordatorios({ listas, handleElim
         }}>
           {orden === 'CreationDate' ? 'Creation Date' : orden === 'Deadline' ? 'Deadline' : 'Priority'}
         </Typography>
-        <IconButton 
-          onClick={handleClick} 
-          sx={{ 
-            color: 'white',
-            background: 'rgba(59, 130, 246, 0.1)',
-            border: '1px solid rgba(59, 130, 246, 0.3)',
-            borderRadius: 1,
-            transition: 'all 0.3s cubic-bezier(.4, 2, .3, 1)',
-            '&:hover': {
-              background: 'rgba(59, 130, 246, 0.2)',
-              transform: 'scale(1.05)',
-              boxShadow: '0 4px 12px 0 rgba(59, 130, 246, 0.3)',
-            },
-          }}
-        >
-          <FilterListIcon />
-        </IconButton>
+        <Tooltip title="Sort by" arrow>
+          <IconButton
+            aria-label="Sort tasks"
+            onClick={handleClick}
+            sx={{
+              color: 'white',
+              background: 'rgba(59, 130, 246, 0.1)',
+              border: '1px solid rgba(59, 130, 246, 0.3)',
+              borderRadius: 1,
+              transition: 'all 0.3s cubic-bezier(.4, 2, .3, 1)',
+              '&:hover': {
+                background: 'rgba(59, 130, 246, 0.2)',
+                transform: 'scale(1.05)',
+                boxShadow: '0 4px 12px 0 rgba(59, 130, 246, 0.3)',
+              },
+            }}
+          >
+            <FilterListIcon />
+          </IconButton>
+        </Tooltip>
         <Menu
           anchorEl={anchorEl}
           open={Boolean(anchorEl)}
@@ -277,7 +301,7 @@ const ListaRecordatorios = memo(function ListaRecordatorios({ listas, handleElim
       <List>
         {sortedListas.length > 0 ? (
           sortedListas.map((lista, index) => (
-            <Box key={index} sx={{ mb: 2 }}>
+            <Box key={index} sx={{ mb: 2 }} aria-busy={lista.deleting || undefined}>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                 <Typography variant="h5" sx={{ 
                   color: 'primary.light',
@@ -291,24 +315,31 @@ const ListaRecordatorios = memo(function ListaRecordatorios({ listas, handleElim
                   {lista.nombre}
                 </Typography>
                 {filtro !== 'completed' && filtro !== 'deleted' && (
-                  <IconButton 
-                    onClick={() => handleEliminarLista(lista.nombre)}
-                    sx={{ 
-                      color: 'white', 
-                      ml: 1,
-                      background: 'rgba(239, 68, 68, 0.1)',
-                      border: '1px solid rgba(239, 68, 68, 0.3)',
-                      borderRadius: 1,
-                      transition: 'all 0.3s cubic-bezier(.4, 2, .3, 1)',
-                      '&:hover': {
-                        background: 'rgba(239, 68, 68, 0.2)',
-                        transform: 'scale(1.05)',
-                        boxShadow: '0 4px 12px 0 rgba(239, 68, 68, 0.3)',
-                      },
-                    }}
-                  >
-                    <DeleteIcon />
-                  </IconButton>
+                  <Tooltip title={lista.deleting ? 'Deleting list…' : 'Delete list'} arrow>
+                    {/* A disabled button fires no events, so the tooltip listens on the span. */}
+                    <span>
+                      <IconButton
+                        aria-label={`Delete list ${lista.nombre}`}
+                        onClick={() => handleEliminarLista(lista.nombre)}
+                        disabled={lista.deleting}
+                        sx={{
+                          color: 'white',
+                          ml: 1,
+                          background: 'rgba(239, 68, 68, 0.1)',
+                          border: '1px solid rgba(239, 68, 68, 0.3)',
+                          borderRadius: 1,
+                          transition: 'all 0.3s cubic-bezier(.4, 2, .3, 1)',
+                          '&:hover': {
+                            background: 'rgba(239, 68, 68, 0.2)',
+                            transform: 'scale(1.05)',
+                            boxShadow: '0 4px 12px 0 rgba(239, 68, 68, 0.3)',
+                          },
+                        }}
+                      >
+                        {lista.deleting ? <CircularProgress size={24} sx={{ color: 'white' }} /> : <DeleteIcon />}
+                      </IconButton>
+                    </span>
+                  </Tooltip>
                 )}
               </Box>
               <Box sx={{
@@ -335,7 +366,7 @@ const ListaRecordatorios = memo(function ListaRecordatorios({ listas, handleElim
                         position: 'relative',
                         border: '1px solid rgba(59, 130, 246, 0.1)',
                         transition: 'all 0.35s cubic-bezier(.4,2,.3,1)',
-                        opacity: nuevosIds.includes(recordatorio.tid || recordatorio.id) ? 0 : 1,
+                        opacity: nuevosIds.includes(recordatorio.tid || recordatorio.id) ? 0 : lista.deleting ? 0.5 : 1,
                         animation: recordatorio.__justCompleted
                           ? 'justCompletedHold 1.4s forwards'
                           : recordatorio.__justDeleted
@@ -346,7 +377,7 @@ const ListaRecordatorios = memo(function ListaRecordatorios({ listas, handleElim
                           : recordatorio.__justDeleted
                             ? '0 0 0 2px rgba(239,68,68,0.35), 0 4px 18px rgba(239,68,68,0.25)'
                             : '0 2px 12px 0 rgba(0,0,0,0.18)',
-                        pointerEvents: (recordatorio.__justCompleted || recordatorio.__justDeleted) ? 'none' : 'auto',
+                        pointerEvents: (recordatorio.__justCompleted || recordatorio.__justDeleted || lista.deleting) ? 'none' : 'auto',
                         '@keyframes justCompletedHold': {
                           '0%': { opacity: 1, transform: 'scale(1)' },
                           '55%': { opacity: 1, transform: 'scale(1.015)' },
@@ -553,6 +584,7 @@ const ListaRecordatorios = memo(function ListaRecordatorios({ listas, handleElim
                                link={getTaskLink ? getTaskLink(recordatorio.tid) : null}
                                repoConnected={repoConnected}
                                onChange={onTaskLinkChange}
+                               onNotify={showSnackbar}
                              />
                            )}
                          </Box>
@@ -574,13 +606,14 @@ const ListaRecordatorios = memo(function ListaRecordatorios({ listas, handleElim
         )}
       </List>
       <Snackbar
+        key={snackbar.key}
         open={snackbar.open}
-        autoHideDuration={2200}
+        autoHideDuration={snackbar.duration}
         onClose={handleCloseSnackbar}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
         <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
-          {snackbar.message}
+          <BranchToastMessage message={snackbar.message} url={snackbar.url} />
         </Alert>
       </Snackbar>
     </>

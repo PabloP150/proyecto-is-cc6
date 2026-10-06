@@ -36,6 +36,19 @@ describe('useTaskLinks', () => {
     expect(latest.links.size).toBe(2);
   });
 
+  it('carries the default branch and the PR base so merges elsewhere can be told apart', async () => {
+    getRepository.mockResolvedValue(REPO);
+    getTaskLinks.mockResolvedValue([
+      { tid: 'TASK-A', branchName: 'tm/a-1', pr: { number: 4, state: 'merged', baseBranch: 'develop', mergedAt: '2026-10-01T00:00:00Z' } },
+    ]);
+    render(<Probe gid="G1" />);
+    await waitFor(() => expect(screen.getByTestId('state')).toHaveTextContent('connected'));
+
+    const link = latest.getLink('task-a');
+    expect(link.defaultBranch).toBe('main');
+    expect(link.pr.baseBranch).toBe('develop');
+  });
+
   it('skips task links when the group has no repository', async () => {
     getRepository.mockResolvedValue(null);
     render(<Probe gid="G1" />);

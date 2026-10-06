@@ -259,6 +259,16 @@ describe('branch and sync', () => {
         const res = await as(request(app).get(`/api/github/groups/${GID}/task-links`));
         expect(res.body).toEqual({ data: [{ tid: TID, branchName: 'tm/x-abcdef12', pr: null }] });
     });
+
+    test('GET task-links includes the PR base branch', async () => {
+        const pr = { number: 4, title: 'Login', state: 'merged', isDraft: false, baseBranch: 'develop',
+            openedAt: '2026-10-01T10:00:00.000Z', mergedAt: '2026-10-02T10:00:00.000Z' };
+        githubModel.getTaskLinksByGroup.mockResolvedValue([{ tid: TID, branchName: 'tm/x-abcdef12', pr }]);
+        const res = await as(request(app).get(`/api/github/groups/${GID}/task-links`));
+        expect(res.status).toBe(200);
+        expect(res.body.data[0].pr).toEqual(pr);
+        expect(githubModel.getTaskLinksByGroup).toHaveBeenCalledWith(GID);
+    });
 });
 
 describe('public routes', () => {

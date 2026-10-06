@@ -43,6 +43,18 @@ const LIMITS = { name: 25, list: 25, description: 1000, roleName: 40, roleColor:
 const MAX_PLAN_TASKS = 100;
 const MAX_PLAN_MILESTONES = 50;
 const NODE_SPACING_X = 250;
+// A milestone card (src/components/flow/CustomNode.jsx) is 11em wide and ~180px tall with a short
+// description, so a row placed 300 below a card's top leaves a clear gap. The card shows the whole
+// description, though, so a card taller than that pushes the next row down to its estimated bottom.
+const NODE_SPACING_Y = 300;
+const NODE_GAP_Y = 60;
+// Upper bound of a card's height, from cards rendered in Chrome: at most 168px without a description,
+// plus one 23px line (bold 0.9em, line-height 1.6) per 16-18 characters of it; 15 per line leaves margin.
+const estimateNodeHeight = (descriptionLength) => 170 + 23 * Math.ceil((Number(descriptionLength) || 0) / 15);
+// y of a new row of nodes: below every card the group already has, or 0 when it has none.
+const nextNodeRowY = (layout) => (layout.length === 0 ? 0 : Math.max(...layout.map(node => (
+    node.y_pos + Math.max(NODE_SPACING_Y, estimateNodeHeight(node.descriptionLength) + NODE_GAP_Y)
+))));
 // SMALLDATETIME range (Tasks.datetime).
 const MIN_DATE = new Date(1900, 0, 1);
 const MAX_DATE = new Date(2079, 5, 6);
@@ -223,8 +235,9 @@ class ProjectService {
     /**
      * addPlanToGroup(gid, plan, uid) → {taskIds, nodeIds}
      * Saves a confirmed repository-analysis plan into an existing group in one transaction:
-     * milestones become Nodes at x = 250*i, tasks become Tasks whose list is their milestone's
-     * name (<= 25) or 'GitHub'. Text is truncated to the column sizes.
+     * milestones become Nodes at x = 250*i in a new row below every node the group has (300 below
+     * each card's top, more under a tall card; y = 0 when it has none), tasks become Tasks whose
+     * list is their milestone's name (<= 25) or 'GitHub'. Text is truncated to the column sizes.
      * Throws AppError NOT_GROUP_MEMBER (403) or VALIDATION_ERROR (400).
      */
     async addPlanToGroup(gid, plan, uid) {
@@ -265,7 +278,6 @@ class ProjectService {
                 completed: false,
                 percentage: 0,
                 x_pos: NODE_SPACING_X * i,
-                y_pos: 0,
             };
             if (milestone.key !== undefined && milestone.key !== null) milestoneByKey.set(String(milestone.key), node);
             return node;
@@ -293,8 +305,9 @@ class ProjectService {
             if (!(await isGroupMember(uid, gid, { tx }))) {
                 throw new AppError('NOT_GROUP_MEMBER', 'You are not a member of this group', 403);
             }
+            const rowY = nodes.length > 0 ? nextNodeRowY(await nodeModel.getNodeLayout(gid, { tx })) : 0;
             await Promise.all([
-                ...nodes.map(node => nodeModel.addNode(node, { tx })),
+                ...nodes.map(node => nodeModel.addNode({ ...node, y_pos: rowY }, { tx })),
                 ...tasks.map(task => taskModel.addTask(task, { tx })),
             ]);
         });

@@ -3,7 +3,7 @@ import GitHubIcon from '@mui/icons-material/GitHub';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import SyncIcon from '@mui/icons-material/Sync';
 import { Alert, Box, Chip, CircularProgress, Container, Snackbar, Tab, Tabs, Typography } from '@mui/material';
-import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-dom';
 import { getRepository, syncGroup } from '../../api/github';
 import { GroupContext } from '../GroupContext';
@@ -74,6 +74,7 @@ export default function GitHubPage() {
   const [tab, setTab] = useState('repo');
   const [syncing, setSyncing] = useState(false);
   const [toast, setToast] = useState(null);
+  const toastCount = useRef(0);
 
   const groups = useMemo(() => (Array.isArray(contextGroups) ? contextGroups : []), [contextGroups]);
 
@@ -176,25 +177,30 @@ export default function GitHubPage() {
     reloadRepo();
   };
 
+  // A new key remounts the Snackbar, so a toast replacing an open one gets its full autoHide time.
+  const showToast = useCallback((severity, message) => {
+    toastCount.current += 1;
+    setToast({ key: toastCount.current, open: true, severity, message });
+  }, []);
+
   const handleSync = async () => {
     setSyncing(true);
     try {
       const result = (await syncGroup(gid)) || {};
       const count = (value) => Number(value) || 0;
-      setToast({
-        severity: 'success',
-        message:
-          `Sincronización completa: ${count(result.branchesChecked)} ramas revisadas, ` +
-          `${count(result.pullRequestsFound)} PR encontrados, ${count(result.updated)} actualizados.`,
-      });
+      showToast(
+        'success',
+        `Sincronización completa: ${count(result.branchesChecked)} ramas revisadas, ` +
+          `${count(result.pullRequestsFound)} PR encontrados, ${count(result.updated)} actualizados.`
+      );
     } catch (err) {
       const limited = err && err.code === 'RATE_LIMITED';
-      setToast({
-        severity: limited ? 'warning' : 'error',
-        message: limited
+      showToast(
+        limited ? 'warning' : 'error',
+        limited
           ? 'Ya se sincronizó hace poco. Espera unos 30 segundos e inténtalo de nuevo.'
-          : errorMessage(err, 'No se pudo sincronizar con GitHub.'),
-      });
+          : errorMessage(err, 'No se pudo sincronizar con GitHub.')
+      );
     } finally {
       setSyncing(false);
     }
@@ -270,7 +276,7 @@ export default function GitHubPage() {
                 isAdmin={isAdmin}
                 onRepoChange={updateRepo}
                 onUnlinked={() => {
-                  setToast({ open: true, severity: 'success', message: 'Repositorio desconectado del grupo.' });
+                  showToast('success', 'Repositorio desconectado del grupo.');
                   reloadRepo();
                 }}
               />
@@ -356,7 +362,8 @@ export default function GitHubPage() {
       {content}
 
       <Snackbar
-        open={Boolean(toast && toast.open !== false)}
+        key={toast ? toast.key : undefined}
+        open={Boolean(toast && toast.open)}
         autoHideDuration={4000}
         onClose={closeToast}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}

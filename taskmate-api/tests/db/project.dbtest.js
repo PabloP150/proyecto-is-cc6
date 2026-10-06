@@ -69,17 +69,17 @@ describe('ProjectService.addPlanToGroup', () => {
         ],
     };
 
-    it('creates nodes at x = 250*i and tasks listed under their milestone or GitHub', async () => {
+    it('creates nodes at x = 250*i (first row of an empty group) and tasks listed under their milestone or GitHub', async () => {
         const user = await h.createUser('plan');
         const gid = await h.createGroup(user.uid);
         const { taskIds, nodeIds } = await projectService.addPlanToGroup(gid, plan, user.uid);
         expect(taskIds).toHaveLength(3);
         expect(nodeIds).toHaveLength(2);
         const p = [h.guid('gid', gid)];
-        const nodes = await execReadCommand('SELECT name, x_pos, CONVERT(VARCHAR(10), date, 23) AS date FROM dbo.Nodes WHERE gid = @gid ORDER BY x_pos', p);
+        const nodes = await execReadCommand('SELECT name, x_pos, y_pos, CONVERT(VARCHAR(10), date, 23) AS date FROM dbo.Nodes WHERE gid = @gid ORDER BY x_pos', p);
         expect(nodes).toEqual([
-            { name: 'Autenticación y sesion...', x_pos: 0, date: '2030-01-10' },
-            { name: 'Deploy', x_pos: 250, date: '2030-02-10' },
+            { name: 'Autenticación y sesion...', x_pos: 0, y_pos: 0, date: '2030-01-10' },
+            { name: 'Deploy', x_pos: 250, y_pos: 0, date: '2030-02-10' },
         ]);
         const tasks = await execReadCommand('SELECT name, list FROM dbo.Tasks WHERE gid = @gid ORDER BY name', p);
         expect(tasks).toEqual([
@@ -87,6 +87,55 @@ describe('ProjectService.addPlanToGroup', () => {
             { name: 'Docker', list: 'Deploy' },
             { name: 'Login', list: 'Autenticación y sesion...' },
         ]);
+    });
+
+    it('puts each new plan in a row below the lowest existing milestone instead of on top of them', async () => {
+        const user = await h.createUser('plan');
+        const gid = await h.createGroup(user.uid);
+        expect(await nodesModel.getNodeLayout(gid)).toEqual([]);
+        // Hand-placed cards like E-Component's.
+        const placed = (name, x_pos, y_pos) => nodesModel.addNode({ nid: uuidv4(), gid, name, description: 'd', date: '2030-01-01', x_pos, y_pos });
+        await placed('Testing', 157, 81);
+        await placed('Development', 166, 397);
+
+        await projectService.addPlanToGroup(gid, plan, user.uid);
+        await projectService.addPlanToGroup(gid, plan, user.uid);
+
+        const nodes = await execReadCommand('SELECT name, x_pos, y_pos FROM dbo.Nodes WHERE gid = @gid ORDER BY y_pos, x_pos', [h.guid('gid', gid)]);
+        expect(nodes).toEqual([
+            { name: 'Testing', x_pos: 157, y_pos: 81 },
+            { name: 'Development', x_pos: 166, y_pos: 397 },
+            { name: 'Autenticación y sesion...', x_pos: 0, y_pos: 697 },
+            { name: 'Deploy', x_pos: 250, y_pos: 697 },
+            { name: 'Autenticación y sesion...', x_pos: 0, y_pos: 997 },
+            { name: 'Deploy', x_pos: 250, y_pos: 997 },
+        ]);
+        const layout = await nodesModel.getNodeLayout(gid);
+        expect(layout.map(n => n.y_pos).sort((a, b) => a - b)).toEqual([81, 397, 697, 697, 997, 997]);
+        expect(layout.every(n => n.descriptionLength === 1)).toBe(true);
+    });
+
+    it('puts the new row below the bottom of a card with a long description', async () => {
+        const user = await h.createUser('plan');
+        const gid = await h.createGroup(user.uid);
+        await nodesModel.addNode({ nid: uuidv4(), gid, name: 'Docs', description: 'palabra '.repeat(75).trim(), date: '2030-01-01', x_pos: 166, y_pos: 397 });
+
+        await projectService.addPlanToGroup(gid, plan, user.uid);
+
+        // 599 characters → at most 40 lines: 170 + 23 * 40 = 1090px tall, plus the 60px gap.
+        const rows = await execReadCommand('SELECT DISTINCT y_pos FROM dbo.Nodes WHERE gid = @gid ORDER BY y_pos', [h.guid('gid', gid)]);
+        expect(rows).toEqual([{ y_pos: 397 }, { y_pos: 397 + 1090 + 60 }]);
+    });
+
+    it('two plans saved at the same time take different rows', async () => {
+        const user = await h.createUser('plan');
+        const gid = await h.createGroup(user.uid);
+        await Promise.all([
+            projectService.addPlanToGroup(gid, plan, user.uid),
+            projectService.addPlanToGroup(gid, plan, user.uid),
+        ]);
+        const rows = await execReadCommand('SELECT y_pos, COUNT(*) AS n FROM dbo.Nodes WHERE gid = @gid GROUP BY y_pos ORDER BY y_pos', [h.guid('gid', gid)]);
+        expect(rows).toEqual([{ y_pos: 0, n: 2 }, { y_pos: 300, n: 2 }]);
     });
 
     it('rejects non-members and invalid plans without writing anything', async () => {

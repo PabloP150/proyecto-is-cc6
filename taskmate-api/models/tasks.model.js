@@ -91,12 +91,43 @@ const CLOSE_PENDING_FACTS = (status, where) => `
     CROSS APPLY (SELECT CASE WHEN GETDATE() < ta.assigned_at THEN ta.assigned_at ELSE GETDATE() END AS closed_at) c
     WHERE ta.success_status = 'pending' AND ${where}`;
 
+// GitHub branch links that the Tasks delete is about to cascade away, read first so the branch
+// can be cleaned up after the commit. Only a branch of the repository the group is linked to
+// right now counts (same rule as github.model findTaskByBranch). UPDLOCK, HOLDLOCK keeps a
+// branch linked concurrently from slipping in before the cascade: its insert waits, then fails
+// on the FK and createTaskBranch removes the ref it made.
+const readLinkedBranches = async (tx, where, params) => {
+    const rows = await tx.read(
+        `SELECT tb.tid, t.gid, tb.repo_id, tb.branch_name, tb.base_sha, i.account_login AS owner, r.name AS repo_name
+         FROM dbo.TaskBranches tb WITH (UPDLOCK, HOLDLOCK)
+         INNER JOIN dbo.Tasks t ON t.tid = tb.tid
+         INNER JOIN dbo.GroupRepositories gr ON gr.gid = t.gid AND gr.repo_id = tb.repo_id
+         INNER JOIN dbo.GitHubRepositories r ON r.repo_id = tb.repo_id
+         INNER JOIN dbo.GitHubInstallations i ON i.installation_id = r.installation_id
+         WHERE ${where}
+         ORDER BY tb.created_at, tb.tid`,
+        params
+    );
+    return rows.map(r => ({
+        tid: r.tid,
+        gid: r.gid,
+        repoId: Number(r.repo_id),
+        owner: r.owner,
+        repoName: r.repo_name,
+        branchName: r.branch_name,
+        baseSha: r.base_sha,
+    }));
+};
+
 /**
- * completeTask(tid, {tx, source: 'manual' | 'github_pr'}) → {status: 'completed' | 'already_completed' | 'not_found', task?}
+ * completeTask(tid, {tx, source: 'manual' | 'github_pr'})
+ *   → {status: 'completed' | 'already_completed' | 'not_found', task?, branch?}
  * Keeps the "move to Complete" semantics in one transaction: the Tasks row is locked
  * (UPDLOCK, HOLDLOCK) so two concurrent completions serialize and the loser sees
  * 'already_completed'. Complete gets percentage 100, pending TaskAnalytics facts become
  * 'completed', UserTask rows go away and TaskBranches is removed by the FK cascade.
+ * branch (only with 'completed'): the removed link {tid, gid, repoId, owner, repoName,
+ * branchName, baseSha}, or null when the task had no branch in the group's linked repository.
  */
 const completeTask = async (tid, options = {}) => {
     const { source = 'manual' } = options;
@@ -128,18 +159,19 @@ const completeTask = async (tid, options = {}) => {
         );
         await tx.write(CLOSE_PENDING_FACTS('completed', 'ta.tid = @tid'), params);
         await tx.write('DELETE FROM dbo.UserTask WHERE tid = @tid', params);
+        const [branch = null] = await readLinkedBranches(tx, 'tb.tid = @tid', params);
         await tx.write('DELETE FROM dbo.Tasks WHERE tid = @tid', params);
 
-        return { status: 'completed', task: { ...rows[0], percentage: 100 } };
+        return { status: 'completed', task: { ...rows[0], percentage: 100 }, branch };
     });
 };
 
 /**
- * trashTask(tid, {tx}) → {status: 'deleted' | 'not_found', task?}
+ * trashTask(tid, {tx}) → {status: 'deleted' | 'not_found', task?, branch?}
  * The UI's "delete" (copy into DeleteTask, then remove the task) as one transaction: the task is
  * locked, archived in DeleteTask (refreshing a row left by the old two-request flow), its
  * pending analytics facts marked 'failed', its assignments removed and the Tasks row deleted
- * (TaskBranches goes by cascade).
+ * (TaskBranches goes by cascade; `branch` is the removed link, as in completeTask).
  */
 const trashTask = async (tid, options = {}) => useTransaction(options, async (tx) => {
     const params = [{ name: 'tid', type: TYPES.UniqueIdentifier, value: tid }];
@@ -163,9 +195,10 @@ const trashTask = async (tid, options = {}) => useTransaction(options, async (tx
     );
     await tx.write(CLOSE_PENDING_FACTS('failed', 'ta.tid = @tid'), params);
     await tx.write('DELETE FROM dbo.UserTask WHERE tid = @tid', params);
+    const [branch = null] = await readLinkedBranches(tx, 'tb.tid = @tid', params);
     await tx.write('DELETE FROM dbo.Tasks WHERE tid = @tid', params);
 
-    return { status: 'deleted', task: rows[0] };
+    return { status: 'deleted', task: rows[0], branch };
 });
 
 const getTask = async (tid) => {
@@ -183,7 +216,7 @@ const getTasksByGroupId = async (gid) => {
 };
 
 // Same cleanup as trashTask (without the DeleteTask copy) for every task of a list; the range lock keeps new tasks from
-// slipping into the list between statements. Returns the number of tasks deleted.
+// slipping into the list between statements. → {rowCount: tasks deleted, branches: the removed branch links (see completeTask)}
 const deleteTasksByList = async (gid, list, options = {}) => useTransaction(options, async (tx) => {
     const params = [
         { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
@@ -199,7 +232,9 @@ const deleteTasksByList = async (gid, list, options = {}) => useTransaction(opti
          WHERE t.gid = @gid AND t.list = @list`,
         params
     );
-    return tx.write('DELETE FROM dbo.Tasks WHERE gid = @gid AND list = @list', params);
+    const branches = await readLinkedBranches(tx, 't.gid = @gid AND t.list = @list', params);
+    const rowCount = await tx.write('DELETE FROM dbo.Tasks WHERE gid = @gid AND list = @list', params);
+    return { rowCount, branches };
 });
 
 module.exports = {

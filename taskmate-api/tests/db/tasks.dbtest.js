@@ -1,7 +1,10 @@
 const tasksModel = require('../../models/tasks.model');
+const completeModel = require('../../models/complete.model');
+const deleteModel = require('../../models/delete.model');
 const usertaskModel = require('../../models/usertask.model');
 const github = require('../../models/github.model');
 const { execReadCommand } = require('../../helpers/execQuery');
+const { withTransaction } = require('../../helpers/transaction');
 const h = require('./helpers');
 
 const SHA = 'a'.repeat(40);
@@ -14,6 +17,26 @@ async function linkedRepo(gid, uid) {
     await github.linkGroupRepository({ gid, repoId, connectedBy: uid });
     return repoId;
 }
+
+// A repository the group is NOT linked to. A branch row pointing there (left by an old link)
+// must never be reported for cleanup: the branch would be deleted in the wrong repository.
+async function otherRepo() {
+    const installationId = h.githubId();
+    const repoId = h.githubId();
+    await github.upsertInstallation({ installationId, accountLogin: 'someone', accountType: 'User' });
+    await github.upsertRepository({ repoId, installationId, name: 'elsewhere', defaultBranch: 'main', isPrivate: false });
+    return repoId;
+}
+
+// tid/gid come back upper-cased from SQL Server; expectSameIds compares them.
+const branchLink = (repoId, branchName) => ({
+    tid: expect.any(String), gid: expect.any(String), repoId, owner: 'octo', repoName: 'repo', branchName, baseSha: SHA,
+});
+
+const expectSameIds = (link, tid, gid) => {
+    expect(h.sameId(link.tid, tid)).toBe(true);
+    expect(h.sameId(link.gid, gid)).toBe(true);
+};
 
 const facts = (tid) => execReadCommand(
     'SELECT uid, success_status, completed_at, completion_time_hours FROM dbo.TaskAnalytics WHERE tid = @tid',
@@ -37,6 +60,8 @@ describe('tasks.completeTask', () => {
 
         expect(result.status).toBe('completed');
         expect(result.task).toEqual(expect.objectContaining({ name: 'Ship it', percentage: 100 }));
+        expect(result.branch).toEqual(branchLink(repoId, `tm/ship-${tid.slice(0, 8)}`));
+        expectSameIds(result.branch, tid, gid);
         const p = [h.guid('tid', tid)];
         expect(await h.count('dbo.Tasks WHERE tid = @tid', p)).toBe(0);
         expect(await h.count('dbo.UserTask WHERE tid = @tid', p)).toBe(0);
@@ -57,6 +82,64 @@ describe('tasks.completeTask', () => {
         expect(await h.count('dbo.Complete WHERE tid = @tid', [h.guid('tid', tid)])).toBe(1);
     });
 
+    it('reports no branch for a task without one, or with one in a repository the group is not linked to', async () => {
+        const plain = await h.createTask(gid);
+        await expect(tasksModel.completeTask(plain)).resolves.toEqual(expect.objectContaining({ status: 'completed', branch: null }));
+
+        const stale = await h.createTask(gid);
+        const elsewhere = await otherRepo();
+        await github.insertTaskBranch({ tid: stale, repoId: elsewhere, branchName: `tm/old-${stale.slice(0, 8)}`, baseSha: SHA, createdBy: user.uid });
+        const result = await tasksModel.completeTask(stale);
+        expect(result).toEqual(expect.objectContaining({ status: 'completed', branch: null }));
+        expect(await h.count('dbo.TaskBranches WHERE tid = @tid', [h.guid('tid', stale)])).toBe(0);
+    });
+
+    it('the loser of two concurrent completions reports no branch', async () => {
+        const tid = await h.createTask(gid);
+        await github.insertTaskBranch({ tid, repoId, branchName: `tm/race-${tid.slice(0, 8)}`, baseSha: SHA, createdBy: user.uid });
+        const results = await Promise.all([tasksModel.completeTask(tid), tasksModel.completeTask(tid)]);
+        const winner = results.find(r => r.status === 'completed');
+        const loser = results.find(r => r.status === 'already_completed');
+        expect(winner.branch).toEqual(expect.objectContaining({ branchName: `tm/race-${tid.slice(0, 8)}` }));
+        expect(loser).toEqual({ status: 'already_completed' });
+    });
+
+    // The one interleaving the lock on the links protects against: a branch linked after the links
+    // were read and before the Tasks delete would be cascaded away unreported (orphaned on GitHub).
+    it('a branch linked between reading the links and deleting the task waits, then fails on the FK', async () => {
+        const tid = await h.createTask(gid);
+        const branchName = `tm/late-${tid.slice(0, 8)}`;
+        let reachDelete;
+        const atDelete = new Promise(resolve => { reachDelete = resolve; });
+        let releaseDelete;
+        const deleteGate = new Promise(resolve => { releaseDelete = resolve; });
+        const holdBeforeTasksDelete = (tx) => ({
+            read: (sql, params) => tx.read(sql, params),
+            query: (sql, params) => tx.query(sql, params),
+            write: async (sql, params) => {
+                if (/^DELETE FROM dbo\.Tasks WHERE/.test(sql)) {
+                    reachDelete();
+                    await deleteGate;
+                }
+                return tx.write(sql, params);
+            },
+        });
+
+        const completing = withTransaction(tx => tasksModel.completeTask(tid, { tx: holdBeforeTasksDelete(tx) }));
+        await atDelete;
+        const inserting = github.insertTaskBranch({ tid, repoId, branchName, baseSha: SHA, createdBy: user.uid })
+            .then(() => 'inserted', err => err);
+        const meanwhile = await Promise.race([inserting, new Promise(resolve => setTimeout(() => resolve('waiting'), 500))]);
+        releaseDelete();
+        const result = await completing;
+        const inserted = await inserting;
+
+        expect(meanwhile).toBe('waiting');
+        expect(inserted).toEqual(expect.objectContaining({ code: 'TASK_NOT_FOUND' }));
+        expect(result).toEqual(expect.objectContaining({ status: 'completed', branch: null }));
+        expect(await h.count('dbo.TaskBranches WHERE tid = @tid', [h.guid('tid', tid)])).toBe(0);
+    });
+
     it('returns not_found for an unknown task and rejects an unknown source', async () => {
         await expect(tasksModel.completeTask('00000000-0000-0000-0000-000000000000')).resolves.toEqual({ status: 'not_found' });
         await expect(tasksModel.completeTask('00000000-0000-0000-0000-000000000000', { source: 'x' })).rejects.toThrow(TypeError);
@@ -73,6 +156,16 @@ describe('tasks.completeTask', () => {
         const [row] = await execReadCommand('SELECT name, percentage FROM dbo.Complete WHERE tid = @tid', [h.guid('tid', tid)]);
         expect(row).toEqual({ name: 'Half done', percentage: 100 });
     });
+
+    it('lists the completed task with the same wall-clock datetime string as the active one', async () => {
+        const tid = await h.createTask(gid, { name: 'Wall clock' });
+        const [active] = await tasksModel.getTask(tid);
+        await tasksModel.completeTask(tid);
+
+        const completed = (await completeModel.getCompletados(gid)).find(r => h.sameId(r.tid, tid));
+        expect(active.datetimeStr).toBe('2030-01-01 00:00');
+        expect(completed.datetime).toBe(active.datetimeStr.replace(' ', 'T'));
+    });
 });
 
 describe('tasks deletion', () => {
@@ -88,7 +181,10 @@ describe('tasks deletion', () => {
         await h.assignTask(user.uid, tid, gid);
         await github.insertTaskBranch({ tid, repoId, branchName: `tm/del-${tid.slice(0, 8)}`, baseSha: SHA, createdBy: user.uid });
 
-        await expect(tasksModel.trashTask(tid)).resolves.toEqual(expect.objectContaining({ status: 'deleted' }));
+        const result = await tasksModel.trashTask(tid);
+        expect(result).toEqual(expect.objectContaining({ status: 'deleted' }));
+        expect(result.branch).toEqual(branchLink(repoId, `tm/del-${tid.slice(0, 8)}`));
+        expectSameIds(result.branch, tid, gid);
         const p = [h.guid('tid', tid)];
         expect(await h.count('dbo.Tasks WHERE tid = @tid', p)).toBe(0);
         expect(await h.count('dbo.UserTask WHERE tid = @tid', p)).toBe(0);
@@ -97,12 +193,20 @@ describe('tasks deletion', () => {
         await expect(tasksModel.trashTask(tid)).resolves.toEqual({ status: 'not_found' });
     });
 
+    it('trashTask reports no branch for one in a repository the group is not linked to', async () => {
+        const tid = await h.createTask(gid);
+        const elsewhere = await otherRepo();
+        await github.insertTaskBranch({ tid, repoId: elsewhere, branchName: `tm/old-${tid.slice(0, 8)}`, baseSha: SHA, createdBy: user.uid });
+        await expect(tasksModel.trashTask(tid)).resolves.toEqual(expect.objectContaining({ status: 'deleted', branch: null }));
+        expect(await h.count('dbo.TaskBranches WHERE tid = @tid', [h.guid('tid', tid)])).toBe(0);
+    });
+
     it('trashTask archives into DeleteTask and deletes atomically', async () => {
         const tid = await h.createTask(gid, { name: 'Trash me', percentage: 30 });
         await h.assignTask(user.uid, tid, gid);
 
         const result = await tasksModel.trashTask(tid);
-        expect(result).toEqual(expect.objectContaining({ status: 'deleted' }));
+        expect(result).toEqual(expect.objectContaining({ status: 'deleted', branch: null }));
         expect(result.task).toEqual(expect.objectContaining({ name: 'Trash me', percentage: 30 }));
         const p = [h.guid('tid', tid)];
         const [archived] = await execReadCommand('SELECT name, percentage FROM dbo.DeleteTask WHERE tid = @tid', p);
@@ -111,6 +215,16 @@ describe('tasks deletion', () => {
         expect(await h.count('dbo.UserTask WHERE tid = @tid', p)).toBe(0);
         expect((await facts(tid)).map(f => f.success_status)).toEqual(['failed']);
         await expect(tasksModel.trashTask(tid)).resolves.toEqual({ status: 'not_found' });
+    });
+
+    it('lists the trashed task with the same wall-clock datetime string as the active one', async () => {
+        const tid = await h.createTask(gid, { name: 'Wall clock trash' });
+        const [active] = await tasksModel.getTask(tid);
+        await tasksModel.trashTask(tid);
+
+        const trashed = (await deleteModel.getEliminados(gid)).find(r => h.sameId(r.tid, tid));
+        expect(active.datetimeStr).toBe('2030-01-01 00:00');
+        expect(trashed.datetime).toBe(active.datetimeStr.replace(' ', 'T'));
     });
 
     it('deleteTasksByList handles assignments, facts and branches (used to fail on the FK)', async () => {
@@ -122,11 +236,34 @@ describe('tasks deletion', () => {
         await h.assignTask(user.uid, t2, gid);
         await github.insertTaskBranch({ tid: t1, repoId, branchName: `tm/list-${t1.slice(0, 8)}`, baseSha: SHA, createdBy: user.uid });
 
-        await expect(tasksModel.deleteTasksByList(gid, list)).resolves.toBe(2);
+        const result = await tasksModel.deleteTasksByList(gid, list);
+        expect(result).toEqual({ rowCount: 2, branches: [branchLink(repoId, `tm/list-${t1.slice(0, 8)}`)] });
+        expectSameIds(result.branches[0], t1, gid);
         expect(await h.count('dbo.Tasks WHERE gid = @gid', [h.guid('gid', gid)])).toBeGreaterThanOrEqual(1);
         expect(await h.count('dbo.Tasks WHERE tid = @tid', [h.guid('tid', other)])).toBe(1);
+        expect(await h.count('dbo.TaskBranches WHERE tid = @tid', [h.guid('tid', t1)])).toBe(0);
         expect((await facts(t1)).map(f => f.success_status)).toEqual(['failed']);
         expect((await facts(t2)).map(f => f.success_status)).toEqual(['failed']);
+    });
+
+    it('deleteTasksByList reports only the list\'s branches in the linked repository', async () => {
+        const list = `B-${Date.now() % 100000}`;
+        const linked = await h.createTask(gid, { list });
+        const stale = await h.createTask(gid, { list });
+        await h.createTask(gid, { list });
+        const outside = await h.createTask(gid, { list: 'Keep' });
+        const elsewhere = await otherRepo();
+        await github.insertTaskBranch({ tid: linked, repoId, branchName: `tm/in-${linked.slice(0, 8)}`, baseSha: SHA, createdBy: user.uid });
+        await github.insertTaskBranch({ tid: stale, repoId: elsewhere, branchName: `tm/old-${stale.slice(0, 8)}`, baseSha: SHA, createdBy: user.uid });
+        await github.insertTaskBranch({ tid: outside, repoId, branchName: `tm/keep-${outside.slice(0, 8)}`, baseSha: SHA, createdBy: user.uid });
+
+        const result = await tasksModel.deleteTasksByList(gid, list);
+        expect(result.rowCount).toBe(3);
+        expect(result.branches.map(b => b.branchName)).toEqual([`tm/in-${linked.slice(0, 8)}`]);
+        expectSameIds(result.branches[0], linked, gid);
+        expect(await h.count('dbo.TaskBranches WHERE tid = @tid', [h.guid('tid', outside)])).toBe(1);
+
+        await expect(tasksModel.deleteTasksByList(gid, list)).resolves.toEqual({ rowCount: 0, branches: [] });
     });
 
     it('deleteUsertask closes only that user\'s pending fact as reassigned', async () => {

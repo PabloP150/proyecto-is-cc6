@@ -80,12 +80,28 @@ const CHAT_ERROR_MESSAGES = {
     LLM_TIMEOUT: 'La IA tardó demasiado en responder. Inténtalo de nuevo.',
     AI_ANALYSIS_DISABLED: 'El análisis con IA está desactivado para este proyecto. Un administrador del grupo puede activarlo en la página GitHub («Permitir análisis con IA»).',
 };
-const friendlyError = (data) => {
-    const base = CHAT_ERROR_MESSAGES[data.code];
+// The analysis cooldown shares RATE_LIMITED with the chat limit but is not about typing too fast.
+const ANALYSIS_ERROR_MESSAGES = {
+    RATE_LIMITED: 'Solo se puede pedir un análisis por minuto.',
+};
+const friendlyError = (data, { forAnalysis = false, restored = false } = {}) => {
+    const base = (forAnalysis && ANALYSIS_ERROR_MESSAGES[data.code]) || CHAT_ERROR_MESSAGES[data.code];
     if (!base) return null;
     const wait = Number(data.retryAfterSec);
-    return Number.isFinite(wait) && wait > 0 ? `${base} Podrás reintentar en ${Math.ceil(wait)} s.` : base;
+    // A countdown replayed from history would already be wrong.
+    return !restored && Number.isFinite(wait) && wait > 0 ? `${base} Podrás reintentar en ${Math.ceil(wait)} s.` : base;
 };
+// Restored errors read as they did live. A restored RATE_LIMITED keeps the server's text: the code
+// alone cannot tell the analysis cooldown from the chat limit, and the stored text already does.
+const toRestoredMessage = (raw, index) => {
+    const msg = toChatMessage(raw, nextMessageId(`restored-${index}`));
+    const friendly = msg.type === 'error' && msg.code !== 'RATE_LIMITED' ? friendlyError(msg, { restored: true }) : null;
+    return friendly ? { ...msg, content: friendly } : msg;
+};
+// Same text the server keeps in history for an analysis without instructions.
+const analysisRequestText = (instructions, groupName) => (
+    instructions || `Analiza el repositorio de «${groupName || 'este proyecto'}» y propón las siguientes tareas.`
+);
 const ANALYSIS_STAGE_TEXT = {
     fetching_repo: 'Leyendo el repositorio en GitHub…',
     analyzing: 'La IA está analizando el repositorio (puede tardar hasta un minuto y medio)…',
@@ -179,6 +195,8 @@ function ChatPage() {
     const [busyPlanId, setBusyPlanId] = useState(null);
     const projectIdRef = useRef(projectId);
     const pendingAnalyzeRef = useRef(analyzeGroupId);
+    // { requestId, bubble } of the analysis in flight, set as it is sent (before `analysis` renders).
+    const analysisRequestRef = useRef(null);
     useEffect(() => { projectIdRef.current = projectId; }, [projectId]);
 
     // Get user token from localStorage (reactive to changes)
@@ -243,6 +261,7 @@ function ChatPage() {
                 }
 
                 if (data.type === 'repo_plan') {
+                    analysisRequestRef.current = null;
                     setAnalysis(null);
                     setIsTyping(false);
                     setMessages(prev => [...prev, toChatMessage(data)]);
@@ -258,16 +277,23 @@ function ChatPage() {
 
                 if (data.type === 'history_restore') {
                     const restoredMessages = foldPlanEvents((Array.isArray(data.messages) ? data.messages : [])
-                        .map((msg, index) => toChatMessage(msg, nextMessageId(`restored-${index}`))))
+                        .map(toRestoredMessage))
                         .filter(msg => msg.content.trim()); // Filter empty content from history
 
-                    setMessages(restoredMessages);
+                    // The restore is sent as the socket opens, so when the /github shortcut has already
+                    // sent its analysis the restore predates that request: keep its bubble.
+                    const pending = analysisRequestRef.current;
+                    const keepPending = pending && !restoredMessages.some(m => m.requestId === pending.requestId);
+                    setMessages(keepPending ? [...restoredMessages, pending.bubble] : restoredMessages);
                     setHasReceivedHistory(true);
                     setIsTyping(false);
                     return;
                 }
 
                 if (data.type === 'error') {
+                    // Only the requestId tells an analysis error from a chat one with the same code.
+                    const forAnalysis = Boolean(data.requestId) && analysisRequestRef.current?.requestId === data.requestId;
+                    if (forAnalysis) analysisRequestRef.current = null;
                     if (data.planId) {
                         setBusyPlanId(prev => (prev === data.planId ? null : prev));
                         if (PLAN_ERROR_STATUS[data.code]) {
@@ -281,7 +307,7 @@ function ChatPage() {
                         setProjectRepo(prev => (prev ? { ...prev, aiAnalysisEnabled: false } : prev));
                     }
                     const errorMsg = toChatMessage(data);
-                    const friendly = friendlyError(data);
+                    const friendly = friendlyError(data, { forAnalysis });
                     if (friendly) errorMsg.content = friendly;
                     if (!errorMsg.content.trim()) errorMsg.content = 'Something went wrong while processing your request.';
                     setMessages(prev => [...prev, errorMsg]);
@@ -311,6 +337,7 @@ function ChatPage() {
             onClose: (event) => {
                 // A reply that arrives while disconnected comes back through history_restore.
                 setIsTyping(false);
+                analysisRequestRef.current = null;
                 setAnalysis(null);
                 setBusyPlanId(null);
                 if (event?.code === WS_CLOSE_MESSAGE_TOO_BIG) {
@@ -341,16 +368,27 @@ function ChatPage() {
         setMessages(prev => [...prev, { id: nextMessageId('error'), type: 'error', content, timestamp: new Date() }]);
     }, []);
 
+    // Also used by the /github shortcut, so that request shows up too (history_restore brings it back).
     const startAnalysis = useCallback((groupId, instructions) => {
+        const group = (groups || []).find(g => sameId(g.gid, groupId));
         const requestId = newRequestId();
+        const bubble = {
+            id: nextMessageId('user'),
+            type: 'user',
+            content: analysisRequestText(instructions, group?.name),
+            requestId,
+            timestamp: new Date(),
+        };
+        setMessages(prev => [...prev, bubble]);
         const sent = sendWebSocketMessage({ type: 'repo_analysis', requestId, groupId, instructions });
         if (!sent) {
             pushError('No se pudo enviar la solicitud de análisis. Revisa tu conexión.');
             return false;
         }
+        analysisRequestRef.current = { requestId, bubble };
         setAnalysis({ requestId, stage: null });
         return true;
-    }, [sendWebSocketMessage, pushError]);
+    }, [sendWebSocketMessage, pushError, groups]);
 
     // On (re)connect the server session needs the selected project again; a navigation from
     // /github with `analyzeGroupId` also starts the analysis once and then clears that state.
@@ -445,6 +483,7 @@ function ChatPage() {
         if (!waiting) return undefined;
         const timer = setTimeout(() => {
             setIsTyping(false);
+            analysisRequestRef.current = null;
             setAnalysis(null);
             pushError('No llegó respuesta a tiempo. Si llega más tarde aparecerá aquí; también puedes intentarlo de nuevo.');
         }, REPLY_TIMEOUT_MS);
@@ -457,16 +496,8 @@ function ChatPage() {
         // With a project selected the input carries optional instructions for a repo analysis.
         if (projectId) {
             if (!isConnected || analysis || analysisBlocked) return;
-            const instructions = inputMessage.trim().slice(0, MAX_INSTRUCTIONS);
-            const group = (groups || []).find(g => sameId(g.gid, projectId));
-            setMessages(prev => [...prev, {
-                id: nextMessageId('user'),
-                type: 'user',
-                content: instructions || `Analiza el repositorio de «${group?.name || 'este proyecto'}» y propón las siguientes tareas.`,
-                timestamp: new Date(),
-            }]);
             setInputMessage('');
-            startAnalysis(projectId, instructions);
+            startAnalysis(projectId, inputMessage.trim().slice(0, MAX_INSTRUCTIONS));
             return;
         }
 

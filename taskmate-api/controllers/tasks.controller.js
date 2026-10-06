@@ -2,6 +2,7 @@ const tasksRoute = require('express').Router();
 const { v4: uuidv4 } = require('uuid');
 const TasksModel = require('./../models/tasks.model');
 const AnalyticsIntegration = require('../services/AnalyticsIntegration');
+const branchService = require('../services/github/branchService');
 const { AppError, sendError } = require('../helpers/errors');
 const { requireGroupMember, requireResourceMember, sameId } = require('../middleware/groupAccess');
 const validate = require('../middleware/validate');
@@ -95,6 +96,8 @@ tasksRoute.put('/nodes/:id', requireResourceMember(['task', 'node'], 'id', TASK_
 
 // Atomic completion (moves the task to Complete). Already-completed tasks are still
 // authorized through the Complete row so retries answer `already_completed`.
+// A GitHub branch the task had is cleaned up after the commit (branchService.cleanupBranchesWithin:
+// deleted only when safe, bounded wait) and reported as `branch`; the completion stands regardless.
 tasksRoute.post('/:tid/complete', requireResourceMember(['task', 'completed'], 'tid', TASK_NOT_FOUND), async (req, res) => {
     const tid = req.resourceId;
     try {
@@ -103,20 +106,23 @@ tasksRoute.post('/:tid/complete', requireResourceMember(['task', 'completed'], '
             throw new AppError('TASK_NOT_FOUND', 'Task not found', 404);
         }
 
+        const data = { tid, status: result.status };
         if (result.status === 'completed') {
             AnalyticsIntegration.onTaskCompletion(tid, true, { percentage: 100 }).catch(error => {
                 console.error('Analytics tracking failed for task completion:', error);
             });
+            if (result.branch) [data.branch] = await branchService.cleanupBranchesWithin([result.branch]);
         }
 
-        res.status(200).json({ data: { tid, status: result.status } });
+        res.status(200).json({ data });
     } catch (error) {
         sendError(res, error);
     }
 });
 
 // Atomic "move to trash" (archive in DeleteTask + delete). The model already closes the
-// TaskAnalytics facts; the hook afterwards only refreshes derived metrics.
+// TaskAnalytics facts; the hook afterwards only refreshes derived metrics. The task's GitHub
+// branch is handled as in /complete.
 tasksRoute.post('/:tid/trash', requireResourceMember('task', 'tid', TASK_NOT_FOUND), async (req, res) => {
     const tid = req.resourceId;
     try {
@@ -129,17 +135,21 @@ tasksRoute.post('/:tid/trash', requireResourceMember('task', 'tid', TASK_NOT_FOU
             console.error('Analytics tracking failed for task deletion:', error);
         });
 
-        res.status(200).json({ data: { tid, status: 'deleted' } });
+        const data = { tid, status: 'deleted' };
+        if (result.branch) [data.branch] = await branchService.cleanupBranchesWithin([result.branch]);
+        res.status(200).json({ data });
     } catch (error) {
         sendError(res, error);
     }
 });
 
+// `branches` reports the GitHub branches of the deleted tasks, cleaned up as in /complete.
 tasksRoute.delete('/list/:gid/:list', requireGroupMember('gid'), async (req, res) => {
     const { list } = req.params;
     try {
-        await TasksModel.deleteTasksByList(req.groupId, list);
-        res.status(200).json({ message: 'Lista eliminada exitosamente' });
+        const result = await TasksModel.deleteTasksByList(req.groupId, list);
+        const branches = await branchService.cleanupBranchesWithin((result && result.branches) || []);
+        res.status(200).json({ message: 'Lista eliminada exitosamente', branches });
     } catch (error) {
         sendError(res, error);
     }
