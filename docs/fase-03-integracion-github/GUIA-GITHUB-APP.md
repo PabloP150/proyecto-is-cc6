@@ -268,15 +268,16 @@ Recomendación: instala la App **desde TaskMate** («Conectar repositorio») par
 - [ ] **5. Explorar.** Pestaña **Archivos**: navega el árbol, abre un archivo y el README (renderizado). Pestaña **Commits**: aparecen los últimos commits con autor y fecha.
 - [ ] **6. Permitir IA.** En **Repositorio**, activa **«Permitir análisis con IA»** y lee el aviso (qué se envía a Groq; nunca el código fuente).
 - [ ] **7. Analizar.** Pulsa **«Analizar con IA»**: el chat muestra «Leyendo el repositorio en GitHub…», luego «La IA está analizando el repositorio…» y al final una tarjeta con resumen, hitos y tareas. (Alternativa: en **AI Bot**, selector **Proyecto** → tu grupo → instrucciones opcionales → enviar.)
-- [ ] **8. Límite.** Pide otro análisis antes de que pase un minuto → «Espera un minuto antes de pedir otro análisis.»
+- [ ] **8. Límite.** Pide otro análisis antes de que pase un minuto → «Solo se puede pedir un análisis por minuto. Podrás reintentar en N s.» Ese aviso se ve solo en vivo: al salir y volver a **AI Bot** no reaparece (el historial guarda turnos completos, no solicitudes rechazadas).
 - [ ] **9. Confirmar.** Pulsa **Confirmar** → «Plan guardado en «grupo»: N tareas creadas y M hitos.» En **Tasks** aparecen las tareas en listas con el nombre de cada hito (o `GitHub`); en **Milestones**, los hitos. (En otro análisis prueba **Descartar** → «Plan descartado».)
 - [ ] **10. Crear rama.** En **Tasks**, en una tarea, pulsa **«Crear rama en GitHub»** → «Rama `tm/<slug>-<tid8>` lista en GitHub.» La rama existe en GitHub; recargar o pulsar de nuevo no crea otra. Clic en el chip copia `git checkout <rama>`.
 - [ ] **11. Abrir PR.** En tu copia local: `git fetch origin && git checkout tm/<slug>-<tid8>`, haz un commit, `git push` y abre un PR hacia la **rama por defecto**. smee muestra el `POST … 200`. Recarga **Tasks** → la tarea muestra **«PR #N abierto»** (si es borrador, «borrador»).
 - [ ] **12. Fusionar.** Haz *merge* del PR en GitHub. Recarga **Tasks** → la tarea ya no está en su lista y aparece en el filtro **Completed** con 100 %.
-- [ ] **13. Reenvío sin duplicado.** En la App: **Advanced → Recent Deliveries** → la entrega `pull_request` del cierre → **Redeliver**. La respuesta es `200` con `{"status":"duplicate"}` y la tarea sigue apareciendo una sola vez en Completed.
+- [ ] **13. Reenvío sin duplicado.** En la App: **Advanced → Recent Deliveries** → la entrega `pull_request` del cierre → **Redeliver**. smee muestra otro `POST … 200` y la tarea sigue apareciendo una sola vez en Completed. Con smee, GitHub registra la respuesta de smee.io (200 con cuerpo vacío), no la de la API: el `{"status":"duplicate"}` solo se ve sin smee (endpoint público). Para confirmarlo en desarrollo, `GitHubWebhookDeliveries` tiene una sola fila con ese `delivery_id`.
 - [ ] **14. Sincronizar.** En `/github` pulsa **«Sincronizar PRs»** → aviso con ramas revisadas, PR encontrados y actualizados. Repetir antes de 30 s → «Ya se sincronizó hace poco…».
 - [ ] **15. Casos negativos.** Un PR fusionado hacia **otra** rama (no la por defecto) **no** completa la tarea. Un PR cerrado sin *merge* deja el chip «cerrado» y la tarea sigue abierta.
-- [ ] **16. Desinstalar.** En GitHub: **Settings → Applications → Installed GitHub Apps** → tu App → **Configure → Uninstall**. smee muestra el evento `installation`; en `/github` el grupo aparece como **«Sin repositorio conectado»**.
+- [ ] **15b. Limpieza segura de ramas.** Con cuatro tareas con rama: (1) sin commits → **completar** → aviso «Rama `…` eliminada en GitHub.» y la rama ya no está en GitHub; (2) con un commit fusionado solo en otra rama (p. ej. `develop`) → **papelera** → «La rama `…` sigue en GitHub: tiene commits sin fusionar.» con «Ver rama»; (3) con un PR abierto → **completar** → «… tiene un PR abierto.»; (4) PR fusionado con *squash* en la rama por defecto → la tarea se completa por webhook y el log de la API muestra `GitHub branch cleanup of tm/… (task …): deleted`.
+- [ ] **16. Desinstalar.** En GitHub: **Settings → Applications → Installed GitHub Apps** → tu App → **Configure → Uninstall**. smee muestra el evento `installation`; en `/github` el grupo aparece como **«Sin repositorio conectado»** y TaskMate borra la instalación, sus repositorios, los vínculos, las ramas por tarea y los PR registrados (las ramas siguen en GitHub). Quitar un repositorio de la instalación (**Configure → Repository access**) también desvincula los grupos que lo usaban (evento `installation_repositories`). Para volver a usarla: **«Conectar repositorio»** en `/github` (instalación nueva) y elegir el repositorio.
 - [ ] **17. Limpieza.** Detén `smee-client`. Si la App era solo de prueba, bórrala o regenera la llave privada y los secretos si se expusieron.
 
 ---
@@ -300,6 +301,7 @@ Recomendación: instala la App **desde TaskMate** («Conectar repositorio») par
 | `status=pending` | La organización exige que un propietario apruebe la instalación | Tras la aprobación, pulsar «Ya instalé la App» |
 | «La selección de repositorios expiró» (`SELECTION_NOT_FOUND`) | Pasaron más de 10 min en la tarjeta de selección, ya se usó o se reinició la API | Repetir desde «Conectar repositorio» |
 | La App ya estaba instalada y «Conectar» no vuelve a TaskMate | GitHub muestra la configuración de la instalación existente | Usar **«Ya instalé la App»** (autorización OAuth sin reinstalar) |
+| *(nota)* Con smee, el código de respuesta de la API aparece en la salida de `smee-client` (`POST … - 401`), no en **Recent Deliveries** de GitHub, que solo ve la respuesta de smee.io | | |
 | Webhook responde **401** | `GITHUB_WEBHOOK_SECRET` vacío o distinto del *Webhook secret* de la App | Igualarlos y reiniciar la API; luego *Redeliver* |
 | Webhook responde **400** | Faltan las cabeceras `X-GitHub-Event`/`X-GitHub-Delivery` o el cuerpo no es un objeto JSON (no viene de GitHub) | Enviar solo a través de la App/smee |
 | Webhook responde **500** | El procesamiento falló; la entrega queda `failed` | Revisar el log de la API; *Redeliver* o «Sincronizar PRs» (GitHub no reintenta solo) |
@@ -329,5 +331,5 @@ Recomendación: instala la App **desde TaskMate** («Conectar repositorio») par
 
 ---
 
-**Documento generado:** 11 sep 2026
+**Documento generado:** 11 sep 2026 · **Última actualización:** 6 oct 2026 (E2E con GitHub real)
 **Autor:** Pablo Pineda

@@ -13,9 +13,9 @@
 | **Nombre** | Integración con GitHub |
 | **Complejidad** | Alta |
 | **Fechas Planificadas** | 5 sep 2026 — 8 sep 2026 |
-| **Fechas Reales** | 10 sep 2026 — 11 sep 2026 (alcance acordado el 10 sep; 14 commits el 11 sep, 08:46–10:02) |
-| **Estado** | ✅ Completada |
-| **Rama Git** | `feature/fase-3-integracion-github` (creada desde `refactor/cleanup`; aún sin push) |
+| **Fechas Reales** | 10 sep 2026 — 11 sep 2026 (alcance acordado el 10 sep; 14 commits el 11 sep, 08:46–10:02). E2E con GitHub real, correcciones y limpieza segura de ramas: 5–6 oct 2026 |
+| **Estado** | ✅ Completada (E2E con GitHub real en verde) |
+| **Rama Git** | `feature/fase-3-integracion-github` (creada desde `refactor/cleanup`); PR #4, apilado sobre el #2 (Fases 1 y 2) |
 | **Responsable** | Pablo Pineda |
 
 ### Documentos de esta fase
@@ -53,7 +53,7 @@ El 11 sep 2026 Pablo pidió además: base de datos con ACID y 3FN sin problemas,
 
 ### Impacto Esperado
 - **Producto:** 5 funcionalidades nuevas de GitHub dentro de TaskMate, sin salir de la app.
-- **Calidad:** de 52 pruebas fallando (41 API + 11 frontend) a **1153 pruebas pasando y 0 fallando** en cuatro suites (API, BD real, frontend, Python).
+- **Calidad:** de 52 pruebas fallando (41 API + 11 frontend) a **1353 pruebas pasando y 0 fallando** en cuatro suites (API, BD real, frontend, Python; 6 oct 2026).
 - **Seguridad:** todas las rutas REST autenticadas y con autorización por grupo; en el E2E en vivo se probaron ~75 intentos de acceso cruzado entre grupos (IDOR), todos rechazados; la re-verificación de seguridad cerró todos los hallazgos.
 - **Habilitación:** la Fase 7 (algoritmo de colisión de archivos, conjunta con Christian) se apoya en los datos de ramas y PRs que genera esta fase.
 
@@ -159,17 +159,23 @@ Además, **«Sincronizar PRs»** (funcionalidad 6) y **«Analizar con IA»** (fu
 - `POST /api/github/tasks/:tid/branch` (miembro del grupo de la tarea): lee el SHA de la rama por defecto → crea el ref (token con `contents: write` solo para ese repo) → inserta la fila en `TaskBranches`. Si la fila falla, **solo** se borra el ref creado en esta misma petición (compensación). Un `422 already exists` se adopta únicamente si ninguna otra tarea reclama esa rama (si no, `409 BRANCH_CONFLICT`). Repositorio vacío → `409 REPO_EMPTY`.
 - **No es atómico entre GitHub y la BD** (no existe transacción distribuida); está documentado como riesgo residual.
 
-**Archivos clave:** `taskmate-api/services/github/{branchName,branchService}.js`, `taskmate-api/models/github.model.js` (`insertTaskBranch`, `getTaskBranch`), `src/components/github/{TaskGitHubActions,useTaskLinks}.{jsx,js}`, `src/components/{Recordatorios,ListaRecordatorios}.jsx`.
+**Limpieza segura de la rama (6 oct 2026).** Cuando una tarea con rama sale del tablero (completar, papelera, borrar la lista o PR fusionado en la rama por defecto), TaskMate borra la rama en GitHub **solo si es seguro**; si no, la deja y el aviso de Tasks dice por qué:
+- Se borra solo si se cumplen las tres: (a) el grupo sigue vinculado a ese repositorio (comprobado contra GitHub: mismo `id`, dueño y rama por defecto actuales) y no es la rama por defecto; (b) todos sus commits ya están en la rama por defecto (`compare <por defecto>...<sha de la rama>` con `ahead_by = 0`) o, en el camino del PR fusionado, la cabeza de la rama es la cabeza del PR que se acaba de fusionar (cubre *squash* y *rebase*); (c) ningún PR abierto la usa como cabeza **ni como base** (GitHub cerraría ambos).
+- Si una comprobación no se puede completar (error de GitHub, presupuesto de solicitudes, tiempo), no se borra (`error`). Nunca hace fallar ni revierte la acción sobre la tarea: el vínculo se lee dentro de la transacción de la tarea (antes de la cascada) y la limpieza corre después del *commit*.
+- Las rutas HTTP (`POST /api/tasks/:tid/complete`, `/trash` y `DELETE /api/tasks/list/:gid/:list`) esperan como máximo 5 s y devuelven `branch` / `branches` = `{ name, outcome, url }` con `outcome` ∈ `deleted | kept_unmerged | kept_open_pr | missing | skipped | error`; el webhook y la sincronización la lanzan en segundo plano y solo la registran en el log.
+- Riesgo conocido (comentado en el código): un *push* que llegue entre las comprobaciones y el `DELETE` se pierde con la rama; GitHub no permite borrar una referencia «solo si sigue en el commit X». Las ramas que quedaron huérfanas antes de esta función no se limpian hacia atrás.
 
-**Cómo probarlo:** checklist E2E paso 10. Pruebas: `tests/github/{branchName,branchService}.test.js`, `src/components/github/__tests__/{TaskGitHubActions,useTaskLinks}.test.jsx`, `src/components/__tests__/RecordatoriosGitHub.test.jsx`.
+**Archivos clave:** `taskmate-api/services/github/{branchName,branchService}.js`, `taskmate-api/models/{github,tasks}.model.js` (`insertTaskBranch`, `getTaskBranch`, vínculo leído en `completeTask`/`trashTask`/`deleteTasksByList`), `taskmate-api/controllers/tasks.controller.js`, `src/components/github/{TaskGitHubActions,useTaskLinks,BranchToastMessage}.{jsx,js}`, `src/components/{Recordatorios,ListaRecordatorios}.jsx`.
 
-**Commits relacionados:** `285bf14`, `a62aee0`, `95879b9`, `349aa02`
+**Cómo probarlo:** checklist E2E pasos 10 y 15b. Pruebas: `tests/github/{branchName,branchService}.test.js`, `tests/api/taskBranchCleanup.test.js`, `tests/db/tasks.dbtest.js`, `src/components/github/__tests__/{TaskGitHubActions,useTaskLinks,BranchToastMessage}.test.jsx`, `src/components/__tests__/RecordatoriosGitHub.test.jsx`.
+
+**Commits relacionados:** `285bf14`, `a62aee0`, `95879b9`, `349aa02`, `ab2a2a0`
 
 ---
 
 #### Funcionalidad 6 — Progreso automático por PR
 
-**Qué hace para el usuario:** cuando alguien abre un PR desde la rama de la tarea, la tarea muestra **«PR #N abierto»** (o «borrador» / «cerrado» / «fusionado»). Cuando el PR se **fusiona en la rama por defecto**, la tarea se completa sola: sale de su lista y aparece en el filtro *Completed* con 100 %, exactamente como si alguien hubiera pulsado completar (se ve al recargar la página). Un PR cerrado sin fusionar no completa nada. **«Sincronizar PRs»** en `/github` reconcilia lo que los webhooks no hayan entregado.
+**Qué hace para el usuario:** cuando alguien abre un PR desde la rama de la tarea, la tarea muestra **«PR #N abierto»** (o «borrador» / «cerrado» / «fusionado»; si se fusionó en otra rama que no es la por defecto, «fusionado en `<rama>`», y la tarea sigue abierta). Cuando el PR se **fusiona en la rama por defecto**, la tarea se completa sola: sale de su lista y aparece en el filtro *Completed* con 100 %, exactamente como si alguien hubiera pulsado completar (se ve al recargar la página), y su rama se borra en GitHub con la limpieza segura de la funcionalidad 5. Un PR cerrado sin fusionar no completa nada. **«Sincronizar PRs»** en `/github` no trae «lo nuevo del repositorio» (el explorador ya lee en vivo): reconcilia los PR de las ramas de tareas que los webhooks no hayan entregado (GitHub no reintenta las entregas fallidas).
 
 **Cómo funciona** (ver [Diagrama 3](#diagrama-3-webhook-de-pr-fusionado--tarea-completada)):
 - `POST /api/github/webhook` se monta **antes** de `express.json()` para verificar el HMAC-SHA256 sobre los bytes exactos (`timingSafeEqual`); sin `GITHUB_WEBHOOK_SECRET` se rechaza todo.
@@ -278,18 +284,47 @@ La ola de QA, la revisión de seguridad (2 hallazgos altos, 2 medios y 5 bajos) 
 
 Dependencias (`9917d37`): `ws ≥ 8.21`, `express ≥ 4.22`, `jsonwebtoken ≥ 9.0.3`, `uuid 11`, `react-router-dom ≥ 6.30.2`, `qs` y `uuid` fijados con `overrides`, `axios` (sin uso) eliminado; `taskmate-api/node_modules` salió del índice de Git y `*.pem` quedó ignorado.
 
+#### E2E con GitHub real (5–6 oct 2026, `ab2a2a0`)
+
+Checklist de [GUIA-GITHUB-APP.md](GUIA-GITHUB-APP.md#9-checklist-e2e-manual) con la App `taskmate-dev-pablop150`, smee y el repositorio privado `PabloP150/taskmate-fase3-demo`, grupo **E-Component**, usuario **Admin**. Todos los pasos en verde salvo el 4 (permisos de un miembro no admin), que no se probó en vivo por no tener credenciales de un segundo usuario (sí está cubierto por pruebas automáticas).
+
+| Pasos | Resultado |
+|-------|-----------|
+| 2–3 Conectar | «Ya instalé la App» y también instalación nueva desde «Conectar repositorio» (la autorización OAuth la da el usuario); quitar un repo de la instalación desvincula el grupo por webhook |
+| 5–9 Explorar e IA | Árbol, visor, README y commits; análisis en ~12 s; límite de 1 por minuto; «Confirmar» creó 5 tareas y 3 hitos; «Descartar» funciona |
+| 10–12 Rama y PR | Rama desde `main`, «PR #3 abierto», *merge* → tarea en *Completed* al 100 % |
+| 13–15 | Reenvío sin duplicar la tarea; «Sincronizar PRs» (2 ramas, 2 PR) y su límite de 30 s; PR fusionado hacia `develop` no completa; PR cerrado muestra «cerrado» |
+| 15b Limpieza segura | Rama sin tocar → borrada al completar; rama con commit solo en `develop` → se queda al mandarla a la papelera («commits sin fusionar»); PR abierto → se queda («tiene un PR abierto»); PR fusionado con *squash* → tarea completada por webhook y rama borrada |
+| 16 Desinstalar | Evento `installation/deleted`: se borran instalación, repos, vínculos, ramas por tarea y PR registrados; reinstalación desde TaskMate |
+
+Problemas encontrados y corregidos en esa ronda:
+
+| # | Problema | Causa | Corrección |
+|---|----------|-------|------------|
+| B1 | Los hitos de cada plan de IA quedaban encima de los anteriores en Milestones | `addPlanToGroup` usaba siempre `(250·i, 0)` | Fila nueva debajo de todos los nodos del grupo (estimando la altura de cada tarjeta por su descripción), leída con bloqueo dentro de la transacción para que dos planes simultáneos no tomen la misma fila |
+| B2 | El aviso del límite de análisis decía una cosa en vivo y otra en el historial | El chat reemplazaba el texto del servidor por el genérico de mensajes | Texto propio del análisis («Solo se puede pedir un análisis por minuto. Podrás reintentar en N s.») en vivo y al restaurar |
+| B3 | Una URL desconocida dejaba la página en blanco | Sin ruta comodín | `path="*"` → `/home` (o `/` sin sesión) |
+| B4 | El aviso «Rama … lista en GitHub» salía apretado dentro de la tarjeta | La tarjeta con `transform`/`backdropFilter` encierra los `position: fixed` | Aviso en `Portal` (o en el aviso de la lista) |
+| B5 | El botón de filtros de Tasks parecía «agregar» | Ícono `+` sin etiqueta | Ícono de filtro, `aria-label` y *tooltip* |
+| B6 | Una tarea completada o en la papelera mostraba la hora corrida 6 h | `Complete`/`DeleteTask` devolvían la columna cruda (zona del servidor → UTC en JSON) | Mismo texto de fecha local que `GET /api/tasks` |
+| B7 | Un segundo aviso en `/github` desaparecía casi enseguida | El `Snackbar` conservaba el temporizador del aviso anterior | `key` por aviso |
+| B8 | «PR #N fusionado» en una tarea abierta (PR fusionado hacia `develop`) | Faltaba la rama base en los vínculos | «PR #N fusionado en `develop`» |
+| B9 | El historial del chat mostraba errores sin el mensaje que los provocó | Se guardaban los rechazos pero no la solicitud | El historial guarda turnos completos; los rechazos se muestran solo en vivo |
+| — | El planificador de hitos abría en (0, 0) sin mostrar filas nuevas | Sin `fitView` | Ajuste a los nodos al cargar y al cambiar de grupo (máx. 100 %) |
+| D1 | La guía prometía ver `{"status":"duplicate"}` en GitHub | Con smee, GitHub solo ve la respuesta de smee.io | Guía corregida (pasos 8, 13 y 16 y nota en solución de problemas) |
+
 ---
 
 ## Antes vs. Ahora
 
 | Funcionalidad | Antes | Después | Mejora | Medición |
 |---------------|-------|---------|--------|----------|
-| Integración con GitHub | No existía | Repo por grupo, explorador, rama por tarea, progreso por PR, plan de IA desde el repo | 5 funcionalidades nuevas | Real (pruebas + E2E con GitHub simulado) |
-| Pruebas API (Jest) | 6/8 suites fallando (41 de 100 pruebas) | 30/30 suites, 747/747 | 0 fallos | Real |
-| Pruebas frontend (CRA) | 1/4 suites fallando (11 de 55) | 23/23 suites, 226/226 | 0 fallos | Real |
-| Pruebas de BD (SQL Server real en Docker) | No existían | 8 suites, 81 pruebas | Nueva capa | Real |
-| Pruebas Python (pytest) | No existían | 99 pruebas, sin red | Nueva capa | Real |
-| **Total** | **52 fallando** | **1153 pasando, 0 fallando** | | Real |
+| Integración con GitHub | No existía | Repo por grupo, explorador, rama por tarea (con limpieza segura), progreso por PR, plan de IA desde el repo | 5 funcionalidades nuevas | Real (pruebas + E2E con GitHub simulado + E2E con GitHub real) |
+| Pruebas API (Jest) | 6/8 suites fallando (41 de 100 pruebas) | 36/36 suites, 846/846 | 0 fallos | Real |
+| Pruebas frontend (CRA) | 1/4 suites fallando (11 de 55) | 26/26 suites, 310/310 | 0 fallos | Real |
+| Pruebas de BD (SQL Server real en Docker) | No existían | 8 suites, 91 pruebas | Nueva capa | Real |
+| Pruebas Python (pytest) | No existían | 106 pruebas, sin red | Nueva capa | Real |
+| **Total** | **52 fallando** | **1353 pasando, 0 fallando** | | Real (6 oct 2026) |
 | E2E en vivo (BD recién creada) | — | ~226 comprobaciones (auth, IDOR con ~75 intentos entre grupos, ciclo de vida atómico, rollbacks forzados, webhook, chat, aislamiento en Python); repetido sobre un contenedor nuevo de la imagen reconstruida: todos los escenarios en verde | | Real |
 | Revisión de seguridad | — | 2 altos, 2 medios, 5 bajos → todos atendidos; re-verificación: 15 hallazgos corregidos, los parciales/bajos restantes cerrados en `a931a1a` | | Real |
 | Autenticación REST | JWT solo en analytics | JWT en todas las rutas (salvo registro/login, callback y webhook) + autorización por grupo | IDOR cerrado | Real |
@@ -544,7 +579,7 @@ Columnas nuevas en tablas existentes: `UserGroups.joined_at` (005), `DeleteTask.
 2. **Pruebas de la API (Jest, sin BD: modelos y GitHub simulados):**
    ```bash
    cd taskmate-api
-   npm test                      # 30 suites / 747 pruebas
+   npm test                      # 36 suites / 846 pruebas
    ```
 
 3. **Pruebas de integración de BD contra un SQL Server desechable** (ejecutan migraciones arriba/abajo y escriben datos: **nunca** apuntes a `taskmate-sql` ni reutilices la etiqueta `taskmate-sql:latest`):
@@ -573,7 +608,7 @@ Columnas nuevas en tablas existentes: `UserGroups.joined_at` (005), `DeleteTask.
 
    # c) Ejecutar (la app se conecta con el login de mínimo privilegio; las migraciones, como sa)
    cd taskmate-api
-   TEST_DB_ENV_FILE="$HOME/taskmate-testdb.env" npm run test:db    # 8 suites / 81 pruebas
+   TEST_DB_ENV_FILE="$HOME/taskmate-testdb.env" npm run test:db    # 8 suites / 91 pruebas
 
    # d) Limpiar
    docker rm -f taskmate-sql-test
@@ -582,7 +617,7 @@ Columnas nuevas en tablas existentes: `UserGroups.joined_at` (005), `DeleteTask.
 
 4. **Pruebas del frontend (CRA):**
    ```bash
-   CI=true npm test -- --watchAll=false  # desde la raíz: 23 suites / 226 pruebas
+   CI=true npm test -- --watchAll=false  # desde la raíz: 26 suites / 310 pruebas
    ```
 
 5. **Pruebas de Python (pytest, sin red; `conftest.py` bloquea cualquier llamada real a Groq):**
@@ -590,10 +625,10 @@ Columnas nuevas en tablas existentes: `UserGroups.joined_at` (005), `DeleteTask.
    cd taskmate-api/mcp
    python3 -m venv venv && source venv/bin/activate    # si aún no existe el venv
    pip install -r requirements-dev.txt
-   python -m pytest                                      # 99 pruebas
+   python -m pytest                                      # 106 pruebas
    ```
 
-6. **Verificar en UI con una GitHub App real:** seguir [GUIA-GITHUB-APP.md](GUIA-GITHUB-APP.md) (registro de la App, `.env`, smee, migración de la BD de desarrollo y checklist E2E de 17 pasos).
+6. **Verificar en UI con una GitHub App real:** seguir [GUIA-GITHUB-APP.md](GUIA-GITHUB-APP.md) (registro de la App, `.env`, smee, migración de la BD de desarrollo y checklist E2E de 17 pasos, más el 15b de limpieza de ramas; ejecutado en verde el 5–6 oct 2026).
 
 ### Requisitos
 - **Dependencias:** Node.js 18+ (usa `fetch` nativo; desarrollado con Node 24), Python 3.9+, Docker Desktop, `npm install` en la raíz (workspaces), `pip install -r taskmate-api/mcp/requirements.txt` (`requirements-dev.txt` para pruebas). Nuevas: `helmet`, `express-rate-limit`, `node-cron`, `supertest` (dev), `rehype-sanitize`, `remark-gfm`, `moment`, `pytest`, `pytest-asyncio`.
@@ -623,6 +658,8 @@ Columnas nuevas en tablas existentes: `UserGroups.joined_at` (005), `DeleteTask.
 - `96060fd` — Interruptor de IA, comparación de IDs, límites del chat, README endurecido
 - `c1489f8` — Job de métricas de nuevo en marcha y rechazo de `JWT_SECRET` débil
 - `a931a1a` — Cierre de los hallazgos bajos de la verificación (límites por usuario, contexto de IA acotado al grupo, purga de webhooks, `MCP_SHARED_SECRET` fuerte, `SchemaMigrations` protegida)
+- `3b1fffa`, `d7d2070`, `730a908`, `2ca49d9`, `adeade3` — Migración 006 (triggers BFS), App registrada, `start.sh` sin matar procesos ajenos, modelo de Groq vigente, `proxy-addr` 2.0.8
+- `ab2a2a0` — Limpieza segura de ramas y correcciones del E2E con GitHub real (B1–B9)
 
 **Ver todos:**
 ```bash
@@ -636,7 +673,12 @@ git log --oneline 2c9673e..feature/fase-3-integracion-github
 - [x] Registrar la GitHub App: `taskmate-dev-pablop150` (App ID 4913756), creada el 11 sep 2026 con un *manifest* y las variables `GITHUB_*` en la `.env` de desarrollo
 - [x] Migrar la BD de desarrollo (`taskmate-sql`): respaldo completo y de triggers en `~/taskmate-backups/` y migraciones 001–006 aplicadas el 11 sep 2026 sin pérdida de datos
 - [x] Triggers de la BD de desarrollo: tenía instalada a mano una versión BFS (propaga por toda la cadena) que la 003 habría reemplazado por la de cursores (un nivel por disparo); la migración **006** la incorpora al repositorio, con pruebas de cadena, ciclos y cambio de tipo de arista
-- [ ] Ejecutar el checklist E2E con la GitHub App **real** + smee sobre el repositorio de prueba privado `PabloP150/taskmate-fase3-demo` (bloqueador para dar por validado el flujo contra GitHub)
+- [x] Ejecutar el checklist E2E con la GitHub App **real** + smee sobre el repositorio de prueba privado `PabloP150/taskmate-fase3-demo`: en verde el 5–6 oct 2026, con 9 problemas encontrados y corregidos (`ab2a2a0`, ver [E2E con GitHub real](#e2e-con-github-real-56-oct-2026-ab2a2a0))
+- [x] Ramas que quedaban en GitHub al completar o borrar una tarea: limpieza segura (`ab2a2a0`)
+- [ ] Paso 4 del checklist (miembro no admin) no probado en vivo: falta un segundo usuario con credenciales; cubierto por pruebas automáticas (no-bloqueador)
+- [ ] Ramas huérfanas de antes de la limpieza segura (p. ej. en el repo de prueba): no se limpian hacia atrás; un panel «ramas sin tarea» en `/github` quedó como opción futura (opcional)
+- [ ] Nodos encimados por los planes de IA anteriores al arreglo B1 (grupo E-Component de desarrollo): se separan arrastrándolos en Milestones (no-bloqueador)
+- [ ] `GitHubInstallations.account_login` solo se actualiza al instalar; si la cuenta cambia de nombre queda viejo (la limpieza de ramas ya consulta el dueño real en GitHub). Manejar el evento `installation_target` (no-bloqueador)
 - [ ] 7 grupos vacíos (sin miembros ni tareas) en la BD de desarrollo, restos de la creación de grupos anterior (no atómica): decidir si se borran (no-bloqueador)
 - [ ] Membresía de grupo sin flujo de invitación/aceptación: el admin agrega usuarios directamente; mitigado porque todos los datos se acotan por grupo (p. ej. el contexto de IA solo usa la actividad de ese grupo) (no-bloqueador)
 - [ ] Estado en memoria (nonces y selecciones del flujo de instalación, planes pendientes, límites del chat, de analytics y de análisis, contadores de `express-rate-limit`, tokens y presupuesto de GitHub): TaskMate debe correr como **una sola instancia**; reiniciar la API invalida flujos de conexión a medias. Para escalar: Redis o BD (no-bloqueador)
@@ -668,5 +710,5 @@ git log --oneline 2c9673e..feature/fase-3-integracion-github
 
 ---
 
-**Documento generado:** 11 sep 2026
+**Documento generado:** 11 sep 2026 · **Última actualización:** 6 oct 2026 (E2E con GitHub real)
 **Autor:** Pablo Pineda
