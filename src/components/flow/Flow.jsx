@@ -9,12 +9,31 @@ import {
     ReactFlow
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { useCallback, useContext, useEffect, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { API_BASE } from '../../config';
 import { GroupContext } from '../GroupContext';
 import CustomConnectionLine from './CustomConnectionLine';
 import CustomNode from './CustomNode';
 import FloatingEdge from './FloatingEdge';
 import './Flow.css';
+
+const NODE_TYPES = { custom: CustomNode };
+const EDGE_TYPES = { floating: FloatingEdge };
+const DEFAULT_EDGE_OPTIONS = {
+  style: { strokeWidth: 3, stroke: 'darkgray' },
+  type: 'floating',
+  markerEnd: { type: MarkerType.ArrowClosed, color: 'darkgray' },
+};
+const CONNECTION_LINE_STYLE = { strokeWidth: 3, stroke: 'darkgray' };
+
+const formatDateTimeToDate = (datetime) => {
+  const date = new Date(datetime);
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
+};
 
 const Flow = ({ handleNodeEdit, setSelectedNode }) => {
   const { selectedGroupId } = useContext(GroupContext);
@@ -33,14 +52,6 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
     refresh: refresh,
     setRefresh
   });   // Cambiar a localStorage cuando funcionen grupos
-
-  function formatDateTimeToDate(datetime) {
-    const date = new Date(datetime);
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  }
 
   // Declarar toggleCompletion antes de los efectos que lo referencian
   const toggleCompletion = useCallback((nodeId) => {
@@ -61,6 +72,8 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
     );
   }, []); // setNodes es estable
 
+  const refreshNodes = useCallback(() => setRefresh(prev => !prev), []);
+
   useEffect(() => {
     if (!selectedGroupId) {
       // limpiar si se des-selecciona
@@ -68,10 +81,14 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
       setEdges([]);
       return;
     }
+    const controller = new AbortController();
+    const { signal } = controller;
     const loadNodesAndEdges = async () => {
       try {
-        const nodesResponse = await fetch(`http://localhost:9000/api/nodes/group/${selectedGroupId}`);
-        const edgesResponse = await fetch(`http://localhost:9000/api/edges/group/${selectedGroupId}`);
+        const [nodesResponse, edgesResponse] = await Promise.all([
+          fetch(`${API_BASE}/api/nodes/group/${selectedGroupId}`, { signal }),
+          fetch(`${API_BASE}/api/edges/group/${selectedGroupId}`, { signal }),
+        ]);
 
         if (nodesResponse.ok && edgesResponse.ok) {
           const nodesData = await nodesResponse.json();
@@ -96,11 +113,13 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
           }));
           const formattedEdges = edgesData.data.map(edge => ({
             id: edge.eid,
+            type: 'floating',
             source: edge.sourceId,
             target: edge.targetId,
+            markerEnd: { type: MarkerType.ArrowClosed, color: 'darkgray' },
             data: {
               prerequisite: edge.prerequisite,
-              refreshNodes: () => setRefresh(prev => !prev) // Add refresh function
+              refreshNodes,
             }
           }));
 
@@ -108,34 +127,29 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
           setEdges(formattedEdges);
         }
       } catch (error) {
-        console.error('Error loading nodes and edges:', error);
+        if (error.name !== 'AbortError') console.error('Error loading nodes and edges:', error);
       }
     };
     loadNodesAndEdges();
-  }, [refresh, selectedGroupId, handleNodeEdit, setSelectedNode, toggleCompletion]);
+    return () => controller.abort();
+  }, [refresh, selectedGroupId, handleNodeEdit, setSelectedNode, toggleCompletion, refreshNodes]);
 
   useEffect(() => {
     if (!selectedGroupId) {
       setTasks([]);
       return;
     }
-    const getTasks = async () => {
-      try {
-        const response = await fetch(`http://localhost:9000/api/tasks?gid=${selectedGroupId}`);
-        if (response.ok) {
-          const data = await response.json();
-          setTasks(data.data);
-        }
-      } catch (error) {
-        console.error(error);
-      }
-    };
-    getTasks();
+    const controller = new AbortController();
+    fetch(`${API_BASE}/api/tasks?gid=${selectedGroupId}`, { signal: controller.signal })
+      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then(data => setTasks(data.data))
+      .catch(err => { if (err?.name !== 'AbortError') console.error(err); });
+    return () => controller.abort();
   }, [selectedGroupId]);
 
   const handleImportTask = async (task) => {
     try {
-      const response = await fetch('http://localhost:9000/api/nodes', {
+      const response = await fetch(`${API_BASE}/api/nodes`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -184,7 +198,7 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
   const addNode = async (e) => {
     e.preventDefault();
     try {
-      const response = await fetch('http://localhost:9000/api/nodes', {
+      const response = await fetch(`${API_BASE}/api/nodes`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -240,9 +254,9 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
   );
 
   //node change in db
-  const onNodeDragStop = async (event, node) => {
+  const onNodeDragStop = useCallback(async (event, node) => {
     try {
-      await fetch(`http://localhost:9000/api/nodes/${node.id}/coords`, {
+      await fetch(`${API_BASE}/api/nodes/${node.id}/coords`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -256,7 +270,7 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
     } catch (error) {
       console.error('Error updating node:', error);
     }
-  }
+  }, []);
 
   const onEdgesChange = useCallback(
     (changes) => setEdges((eds) => applyEdgeChanges(changes, eds)),
@@ -264,7 +278,7 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
 
   const onConnect = useCallback(async (params) => {
     try {
-      const response = await fetch('http://localhost:9000/api/edges', {
+      const response = await fetch(`${API_BASE}/api/edges`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -285,6 +299,7 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
               id: data.data.eid,
               type: 'floating',
               markerEnd: { type: MarkerType.ArrowClosed },
+              data: { prerequisite: true, refreshNodes: () => setRefresh(prev => !prev) },
             },
             eds,
           ),
@@ -294,6 +309,12 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
       console.error('Error saving edge:', error);
     }
   }, [selectedGroupId]);
+
+  // Tasks available for import — exclude tasks already imported as nodes
+  const availableTasks = useMemo(() => {
+    const nodeIds = new Set(nodes.map(n => n.id));
+    return tasks.filter(t => !nodeIds.has(t.tid));
+  }, [tasks, nodes]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -307,12 +328,12 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
 
   const onNodesDelete = async (event) => {
     try {
-      const response1 = await fetch(`http://localhost:9000/api/edges/source/${event[0].id}`, {
+      const response1 = await fetch(`${API_BASE}/api/edges/source/${event[0].id}`, {
         method: 'DELETE',
       });
 
       if (response1.ok) {
-        await fetch(`http://localhost:9000/api/nodes/${event[0].id}`, {
+        await fetch(`${API_BASE}/api/nodes/${event[0].id}`, {
           method: 'DELETE',
         });
         // Node deleted successfully (log eliminado)
@@ -324,7 +345,7 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
 
   const onEdgesDelete = async (event) => {
     try {
-      const response = await fetch(`http://localhost:9000/api/edges/${event[0].id}`, {
+      const response = await fetch(`${API_BASE}/api/edges/${event[0].id}`, {
         method: 'DELETE',
       });
 
@@ -336,28 +357,6 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
     } catch (error) {
       console.error('Error deleting edge:', error);
     }
-  };
-
-  const nodeTypes = {
-    custom: CustomNode,
-  };
-
-  const edgeTypes = {
-    floating: FloatingEdge,
-  };
-
-  const defaultEdgeOptions = {
-    style: { strokeWidth: 3, stroke: 'darkgray' },
-    type: 'floating',
-    markerEnd: {
-      type: MarkerType.ArrowClosed,
-      color: 'darkgray',
-    },
-  };
-
-  const connectionLineStyle = {
-    strokeWidth: 3,
-    stroke: 'darkgray',
   };
 
   return (
@@ -442,14 +441,14 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
         <div className="dropdown">
           <button
             className="dropdown-button"
-            onClick={() => setShowDropdown(!showDropdown)}
+            onClick={() => setShowDropdown(prev => !prev)}
           >
             Import Task
           </button>
-          {showDropdown && tasks.length > 0 && (
+          {showDropdown && (
             <ul className="dropdown-menu">
-              {(tasks).map((task) => (
-                <li key={task.id}>
+              {availableTasks.length > 0 ? availableTasks.map((task) => (
+                <li key={task.tid}>
                   <button
                     className="dropdown-item"
                     onClick={() => {
@@ -460,7 +459,11 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
                     {task.name}
                   </button>
                 </li>
-              ))}
+              )) : (
+                <li style={{ padding: '8px 10px', color: '#666', fontStyle: 'italic' }}>
+                  No tasks available
+                </li>
+              )}
             </ul>
           )}
         </div>
@@ -471,11 +474,11 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
       {selectedGroupId && <ReactFlow
         nodes={nodes}
         edges={edges}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
-        defaultEdgeOptions={defaultEdgeOptions}
+        nodeTypes={NODE_TYPES}
+        edgeTypes={EDGE_TYPES}
+        defaultEdgeOptions={DEFAULT_EDGE_OPTIONS}
         connectionLineComponent={CustomConnectionLine}
-        connectionLineStyle={connectionLineStyle}
+        connectionLineStyle={CONNECTION_LINE_STYLE}
         onNodesChange={onNodesChange}
         onNodeDragStop={onNodeDragStop}
         onNodesDelete={onNodesDelete}

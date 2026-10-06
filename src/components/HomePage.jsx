@@ -1,4 +1,3 @@
-import React from 'react';
 import {
   Container,
   Typography,
@@ -19,38 +18,38 @@ import {
 import { Card, Button } from './ui';
 import { theme } from '../theme';
 
-function HomePage() {
-  const features = [
-    {
-      title: 'Task Management',
-      description: 'Organize and track your tasks with powerful management tools',
-      icon: <TaskIcon sx={{ fontSize: 36, color: 'primary.main', mb: 1.5 }} />,
-      path: '/tasks',
-      variant: 'elevated',
-    },
-    {
-      title: 'Calendar View',
-      description: 'Visualize your schedule and deadlines in an intuitive calendar',
-      icon: <CalendarIcon sx={{ fontSize: 36, color: 'secondary.main', mb: 1.5 }} />,
-      path: '/calendar',
-      variant: 'elevated',
-    },
-    {
-      title: 'Milestone Viewer',
-      description: 'Track project progress with visual milestone diagrams',
-      icon: <DiagramIcon sx={{ fontSize: 36, color: 'success.main', mb: 1.5 }} />,
-      path: '/block-diagram',
-      variant: 'elevated',
-    },
-    {
-      title: 'Team Groups',
-      description: 'Collaborate with your team and manage group projects',
-      icon: <GroupsIcon sx={{ fontSize: 36, color: 'warning.main', mb: 1.5 }} />,
-      path: '/groups',
-      variant: 'elevated',
-    },
-  ];
+const FEATURES = [
+  {
+    title: 'Task Management',
+    description: 'Organize and track your tasks with powerful management tools',
+    icon: <TaskIcon sx={{ fontSize: 36, color: 'primary.main', mb: 1.5 }} />,
+    path: '/tasks',
+    variant: 'elevated',
+  },
+  {
+    title: 'Calendar View',
+    description: 'Visualize your schedule and deadlines in an intuitive calendar',
+    icon: <CalendarIcon sx={{ fontSize: 36, color: 'secondary.main', mb: 1.5 }} />,
+    path: '/calendar',
+    variant: 'elevated',
+  },
+  {
+    title: 'Milestone Viewer',
+    description: 'Track project progress with visual milestone diagrams',
+    icon: <DiagramIcon sx={{ fontSize: 36, color: 'success.main', mb: 1.5 }} />,
+    path: '/block-diagram',
+    variant: 'elevated',
+  },
+  {
+    title: 'Team Groups',
+    description: 'Collaborate with your team and manage group projects',
+    icon: <GroupsIcon sx={{ fontSize: 36, color: 'warning.main', mb: 1.5 }} />,
+    path: '/groups',
+    variant: 'elevated',
+  },
+];
 
+function HomePage() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
@@ -137,7 +136,7 @@ function HomePage() {
               },
             }}
           >
-            {features.map((feature, index) => (
+            {FEATURES.map((feature, index) => (
               <Box
                 key={index}
                 sx={{

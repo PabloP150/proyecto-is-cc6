@@ -8,8 +8,18 @@ import {
   Toolbar,
   Typography
 } from '@mui/material';
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+
+const NAV_ITEMS = [
+  { path: '/home', label: 'Home' },
+  { path: '/tasks', label: 'Tasks' },
+  { path: '/calendar', label: 'Calendar' },
+  { path: '/block-diagram', label: 'Milestones' },
+  { path: '/groups', label: 'Groups' },
+  { path: '/analytics', label: 'Analytics' },
+  { path: '/chat', label: 'AI Bot' },
+];
 
 const Navbar = ({ user, onLogout }) => {
   const [anchorEl, setAnchorEl] = useState(null);
@@ -77,15 +87,7 @@ const Navbar = ({ user, onLogout }) => {
           flexGrow: 1,
           gap: 1,
         }}>
-          {[
-            { path: '/home', label: 'Home' },
-            { path: '/tasks', label: 'Tasks' },
-            { path: '/calendar', label: 'Calendar' },
-            { path: '/block-diagram', label: 'Milestones' },
-            { path: '/groups', label: 'Groups' },
-            { path: '/analytics', label: 'Analytics' },
-            { path: '/chat', label: 'AI Bot' }
-          ].map(({ path, label }) => (
+          {NAV_ITEMS.map(({ path, label }) => (
             <Button
               key={path}
               component={Link}

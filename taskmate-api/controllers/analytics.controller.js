@@ -1,6 +1,8 @@
 const AnalyticsService = require('../services/AnalyticsService');
-const { execReadCommand } = require('../helpers/execQuery');
+const { execReadCommand, execWriteCommand } = require('../helpers/execQuery');
 const { TYPES } = require('tedious');
+const { v4: uuidv4 } = require('uuid');
+const llmService = require('../services/LLMService');
 
 /**
  * Analytics Controller
@@ -49,24 +51,21 @@ class AnalyticsController {
     static async getTeamAnalytics(req, res) {
         try {
             const { groupId } = req.params;
-            const { requesterId } = req.query; // For access control
-            
+            const requesterId = req.user.userId;
+
             if (!groupId) {
                 return res.status(400).json({
                     success: false,
                     error: 'Group ID is required'
                 });
             }
-            
-            // Check if requester has access to team analytics (team leader check)
-            if (requesterId) {
-                const hasAccess = await AnalyticsController._checkTeamAccess(requesterId, groupId);
-                if (!hasAccess) {
-                    return res.status(403).json({
-                        success: false,
-                        error: 'Access denied. Only team leaders can view team analytics.'
-                    });
-                }
+
+            const hasAccess = await AnalyticsController._checkTeamAccess(requesterId, groupId);
+            if (!hasAccess) {
+                return res.status(403).json({
+                    success: false,
+                    error: 'Access denied. Only team leaders can view team analytics.'
+                });
             }
             
             const analytics = await AnalyticsService.getTeamAnalyticsSummary(groupId);
@@ -92,24 +91,21 @@ class AnalyticsController {
     static async getWorkloadDistribution(req, res) {
         try {
             const { groupId } = req.params;
-            const { requesterId } = req.query;
-            
+            const requesterId = req.user.userId;
+
             if (!groupId) {
                 return res.status(400).json({
                     success: false,
                     error: 'Group ID is required'
                 });
             }
-            
-            // Access control check
-            if (requesterId) {
-                const hasAccess = await AnalyticsController._checkTeamAccess(requesterId, groupId);
-                if (!hasAccess) {
-                    return res.status(403).json({
-                        success: false,
-                        error: 'Access denied. Only team leaders can view workload distribution.'
-                    });
-                }
+
+            const hasAccess = await AnalyticsController._checkTeamAccess(requesterId, groupId);
+            if (!hasAccess) {
+                return res.status(403).json({
+                    success: false,
+                    error: 'Access denied. Only team leaders can view workload distribution.'
+                });
             }
             
             const workloadData = await AnalyticsService.getWorkloadDistribution(groupId);
@@ -313,47 +309,35 @@ class AnalyticsController {
     static async getDashboardData(req, res) {
         try {
             const { groupId } = req.params;
-            const { requesterId } = req.query;
-            
+            const requesterId = req.user.userId;
+
             if (!groupId) {
                 return res.status(400).json({
                     success: false,
                     error: 'Group ID is required'
                 });
             }
-            
-            // Skip access control check for debugging
-            console.log('🔓 Skipping access control for dashboard debugging');
-            
-            // Check if groupId is a valid GUID, if not use mock data
-            const isValidGuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(groupId);
-            
-            let dashboardData;
-            
-            if (isValidGuid) {
-                console.log('📊 Using real analytics service for valid GUID:', groupId);
-                try {
-                    // Aggregate multiple analytics data points for dashboard
-                    const [teamAnalytics, workloadDistribution, expertiseRankings] = await Promise.all([
-                        AnalyticsService.getTeamAnalyticsSummary(groupId),
-                        AnalyticsService.getWorkloadDistribution(groupId),
-                        AnalyticsService.getCategoryExpertiseRankings(groupId)
-                    ]);
-                    
-                    dashboardData = {
-                        team_analytics: teamAnalytics,
-                        workload_distribution: workloadDistribution,
-                        expertise_rankings: expertiseRankings,
-                        updated_at: new Date().toISOString()
-                    };
-                } catch (dbError) {
-                    console.log('📊 Database error, falling back to mock data:', dbError.message);
-                    dashboardData = AnalyticsController._getMockDashboardData(groupId);
-                }
-            } else {
-                console.log('📊 Using mock data for non-GUID group ID:', groupId);
-                dashboardData = AnalyticsController._getMockDashboardData(groupId);
+
+            const hasAccess = await AnalyticsController._checkMembership(requesterId, groupId);
+            if (!hasAccess) {
+                return res.status(403).json({
+                    success: false,
+                    error: 'Access denied. You must be a team member to view this dashboard.'
+                });
             }
+
+            const [teamAnalytics, workloadDistribution, expertiseRankings] = await Promise.all([
+                AnalyticsService.getTeamAnalyticsSummary(groupId),
+                AnalyticsService.getWorkloadDistribution(groupId),
+                AnalyticsService.getCategoryExpertiseRankings(groupId)
+            ]);
+
+            const dashboardData = {
+                team_analytics: teamAnalytics,
+                workload_distribution: workloadDistribution,
+                expertise_rankings: expertiseRankings,
+                updated_at: new Date().toISOString()
+            };
             
             res.status(200).json({
                 success: true,
@@ -361,12 +345,10 @@ class AnalyticsController {
             });
             
         } catch (error) {
-            console.error('❌ Error getting dashboard data:', error);
-            console.error('❌ Error stack:', error.stack);
+            console.error('Error getting dashboard data:', error);
             res.status(500).json({
                 success: false,
-                error: 'Failed to retrieve dashboard data',
-                debug: error.message
+                error: 'Failed to retrieve dashboard data'
             });
         }
     }
@@ -447,44 +429,40 @@ class AnalyticsController {
      */
     static async getTaskRecommendations(req, res) {
         try {
-            console.log('📥 Analytics recommendations request received:', req.body);
-            
-            const { groupId, taskCategory, taskDescription, requesterId } = req.body;
-            
+            const { groupId, taskCategory, taskDescription } = req.body;
+            const requesterId = req.user.userId;
+
             if (!groupId || !taskCategory || !taskDescription) {
-                console.log('❌ Missing required fields:', { groupId, taskCategory, taskDescription });
                 return res.status(400).json({
                     success: false,
                     error: 'Group ID, task category, and task description are required'
                 });
             }
-            
-            // Skip access control check for debugging
-            console.log('🔓 Skipping access control for debugging');
-            
-            console.log('🤖 Calling analytics agent for recommendations...');
-            
-            // Call the analytics agent for recommendations
+
+            const hasAccess = await AnalyticsController._checkMembership(requesterId, groupId);
+            if (!hasAccess) {
+                return res.status(403).json({
+                    success: false,
+                    error: 'Access denied. You must be a team member to get recommendations.'
+                });
+            }
+
             const recommendations = await AnalyticsController._getRecommendationsFromAgent(
                 groupId, taskCategory, taskDescription, req.body
             );
-            
-            console.log('✅ Received recommendations from agent:', recommendations);
-            
+
             res.status(200).json({
                 success: true,
                 recommendations: recommendations.recommendations || [],
                 suggested_plan: recommendations.suggested_plan || null,
                 task_category: recommendations.task_category || taskCategory
             });
-            
+
         } catch (error) {
-            console.error('❌ Error getting task recommendations:', error);
-            console.error('❌ Error stack:', error.stack);
+            console.error('Error getting task recommendations:', error.message);
             res.status(500).json({
                 success: false,
-                error: 'Failed to get task recommendations',
-                debug: error.message
+                error: 'Failed to get task recommendations'
             });
         }
     }
@@ -518,6 +496,22 @@ class AnalyticsController {
      * Check if user has access to team analytics (is team leader)
      * Requirement 6.4: Proper access controls and data privacy compliance
      */
+    static async _checkMembership(requesterId, groupId) {
+        try {
+            const result = await execReadCommand(
+                `SELECT 1 FROM dbo.UserGroups WHERE uid = @uid AND gid = @gid`,
+                [
+                    { name: 'uid', type: TYPES.UniqueIdentifier, value: requesterId },
+                    { name: 'gid', type: TYPES.UniqueIdentifier, value: groupId }
+                ]
+            );
+            return result && result.length > 0;
+        } catch (error) {
+            console.error('Error checking membership:', error);
+            return false;
+        }
+    }
+
     static async _checkTeamAccess(requesterId, groupId) {
         try {
             const query = `
@@ -583,8 +577,28 @@ class AnalyticsController {
      * Get analytics configuration for a group
      */
     static async _getGroupAnalyticsConfig(groupId) {
-        // For now, return default configuration
-        // In a full implementation, this would be stored in a database table
+        const rows = await execReadCommand(
+            `SELECT * FROM dbo.AnalyticsConfig WHERE gid = @gid`,
+            [{ name: 'gid', type: TYPES.UniqueIdentifier, value: groupId }]
+        );
+
+        if (rows && rows.length > 0) {
+            const r = rows[0];
+            return {
+                group_id: groupId,
+                analytics_enabled: !!r.analytics_enabled,
+                track_completion_time: !!r.track_completion_time,
+                track_success_rate: !!r.track_success_rate,
+                track_workload: !!r.track_workload,
+                track_expertise: !!r.track_expertise,
+                track_capacity: !!r.track_capacity,
+                data_retention_days: r.data_retention_days,
+                privacy_mode: r.privacy_mode,
+                updated_at: r.updated_at
+            };
+        }
+
+        // Return defaults if no config exists yet
         return {
             group_id: groupId,
             analytics_enabled: true,
@@ -598,30 +612,47 @@ class AnalyticsController {
             updated_at: new Date().toISOString()
         };
     }
-    
+
     /**
      * Update analytics configuration for a group
      */
     static async _updateGroupAnalyticsConfig(groupId, config) {
-        // For now, just validate and return the config
-        // In a full implementation, this would update a database table
-        
-        const validatedConfig = {
-            group_id: groupId,
-            analytics_enabled: config.analytics_enabled !== undefined ? config.analytics_enabled : true,
-            track_completion_time: config.track_completion_time !== undefined ? config.track_completion_time : true,
-            track_success_rate: config.track_success_rate !== undefined ? config.track_success_rate : true,
-            track_workload: config.track_workload !== undefined ? config.track_workload : true,
-            track_expertise: config.track_expertise !== undefined ? config.track_expertise : true,
-            track_capacity: config.track_capacity !== undefined ? config.track_capacity : true,
-            data_retention_days: config.data_retention_days || 365,
-            privacy_mode: config.privacy_mode || 'team_leader_only',
-            updated_at: new Date().toISOString()
-        };
-        
-        console.log(`Analytics configuration updated for group ${groupId}:`, validatedConfig);
-        
-        return validatedConfig;
+        const b = (val, def) => (val !== undefined ? (val ? 1 : 0) : def);
+
+        const params = [
+            { name: 'gid',                  type: TYPES.UniqueIdentifier, value: groupId },
+            { name: 'analytics_enabled',    type: TYPES.Bit,     value: b(config.analytics_enabled, 1) },
+            { name: 'track_completion_time',type: TYPES.Bit,     value: b(config.track_completion_time, 1) },
+            { name: 'track_success_rate',   type: TYPES.Bit,     value: b(config.track_success_rate, 1) },
+            { name: 'track_workload',       type: TYPES.Bit,     value: b(config.track_workload, 1) },
+            { name: 'track_expertise',      type: TYPES.Bit,     value: b(config.track_expertise, 1) },
+            { name: 'track_capacity',       type: TYPES.Bit,     value: b(config.track_capacity, 1) },
+            { name: 'data_retention_days',  type: TYPES.Int,     value: config.data_retention_days || 365 },
+            { name: 'privacy_mode',         type: TYPES.VarChar, value: config.privacy_mode || 'team_leader_only' },
+        ];
+
+        await execWriteCommand(`
+            MERGE dbo.AnalyticsConfig AS target
+            USING (SELECT @gid AS gid) AS source ON target.gid = source.gid
+            WHEN MATCHED THEN UPDATE SET
+                analytics_enabled     = @analytics_enabled,
+                track_completion_time = @track_completion_time,
+                track_success_rate    = @track_success_rate,
+                track_workload        = @track_workload,
+                track_expertise       = @track_expertise,
+                track_capacity        = @track_capacity,
+                data_retention_days   = @data_retention_days,
+                privacy_mode          = @privacy_mode,
+                updated_at            = GETDATE()
+            WHEN NOT MATCHED THEN INSERT
+                (gid, analytics_enabled, track_completion_time, track_success_rate,
+                 track_workload, track_expertise, track_capacity, data_retention_days, privacy_mode)
+            VALUES
+                (@gid, @analytics_enabled, @track_completion_time, @track_success_rate,
+                 @track_workload, @track_expertise, @track_capacity, @data_retention_days, @privacy_mode);
+        `, params);
+
+        return await AnalyticsController._getGroupAnalyticsConfig(groupId);
     }
     
     /**
@@ -706,82 +737,47 @@ class AnalyticsController {
      * Get recommendations from analytics agent via MCP WebSocket
      */
     static async _getRecommendationsFromAgent(groupId, taskCategory, taskDescription, context) {
-        try {
-            console.log('🔗 Connecting to MCP server for analytics...');
-            
-            const { v4: uuidv4 } = require('uuid');
-            const llmService = require('../services/LLMService');
-            
-            // Prepare the request data
-            const requestData = {
-                group_id: groupId,
-                task_category: taskCategory,
-                task_description: taskDescription,
-                priority: context.priority || 'normal',
-                deadline: context.deadline || 'flexible',
-                additional_context: context.additional_context || ''
-            };
-            
-            console.log('📋 Request data prepared:', requestData);
-            
-            return new Promise((resolve, reject) => {
-                const requestId = uuidv4();
-                const sessionId = `analytics_${requestId}`;
-                
-                console.log('🆔 Generated session ID:', sessionId);
-                
-                // Set up timeout
-                const timeout = setTimeout(() => {
-                    console.log('⏰ Analytics request timeout');
-                    llmService.removeAllListeners(sessionId);
-                    reject(new Error('Analytics agent request timeout'));
-                }, 30000); // 30 second timeout
-                
-                // Listen for the response
-                llmService.once(sessionId, (response) => {
-                    console.log('📨 Received response from MCP server:', response);
-                    clearTimeout(timeout);
-                    
-                    try {
-                        if (response.event === 'analytics_response') {
-                            console.log('✅ Analytics response successful');
-                            resolve(response.data);
-                        } else if (response.event === 'analytics_error') {
-                            console.log('❌ Analytics error response:', response.error);
-                            reject(new Error(response.error || 'Analytics agent error'));
-                        } else {
-                            console.log('⚠️ Unexpected response event:', response.event);
-                            reject(new Error('Unexpected response from analytics agent'));
-                        }
-                    } catch (error) {
-                        console.log('❌ Error processing response:', error);
-                        reject(new Error(`Failed to process analytics response: ${error.message}`));
-                    }
-                });
-                
-                // Send the analytics request in the format expected by MCP server
-                const request = {
-                    requestId: requestId,
-                    sessionId: sessionId,
-                    type: 'analytics',
-                    action: 'get_task_assignment_recommendations',
-                    data: requestData
-                };
-                
-                console.log('📤 Sending request to MCP server:', request);
-                
-                llmService.send(request).catch(error => {
-                    console.log('❌ Failed to send request to MCP server:', error);
-                    clearTimeout(timeout);
-                    llmService.removeAllListeners(sessionId);
-                    reject(new Error(`Failed to send analytics request: ${error.message}`));
-                });
+        const requestData = {
+            group_id: groupId,
+            task_category: taskCategory,
+            task_description: taskDescription,
+            priority: context.priority || 'normal',
+            deadline: context.deadline || 'flexible',
+            additional_context: context.additional_context || ''
+        };
+
+        return new Promise((resolve, reject) => {
+            const requestId = uuidv4();
+            const sessionId = `analytics_${requestId}`;
+
+            const timeout = setTimeout(() => {
+                llmService.removeAllListeners(sessionId);
+                reject(new Error('Analytics agent request timeout'));
+            }, 30000);
+
+            llmService.once(sessionId, (response) => {
+                clearTimeout(timeout);
+                if (response.event === 'analytics_response') {
+                    resolve(response.data);
+                } else if (response.event === 'analytics_error') {
+                    reject(new Error(response.error || 'Analytics agent error'));
+                } else {
+                    reject(new Error('Unexpected response from analytics agent'));
+                }
             });
-            
-        } catch (error) {
-            console.error('❌ Error in _getRecommendationsFromAgent:', error);
-            throw error;
-        }
+
+            llmService.send({
+                requestId,
+                sessionId,
+                type: 'analytics',
+                action: 'get_task_assignment_recommendations',
+                data: requestData
+            }).catch(error => {
+                clearTimeout(timeout);
+                llmService.removeAllListeners(sessionId);
+                reject(new Error(`Failed to send analytics request: ${error.message}`));
+            });
+        });
     }
 }
 

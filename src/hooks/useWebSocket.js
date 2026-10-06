@@ -33,7 +33,8 @@ const useWebSocket = (url, token, options = {}) => {
   const isConnecting = useRef(false);
   const currentUrl = useRef(null);
   const currentToken = useRef(null);
-  const heartbeatIntervalId = useRef(null); // Ref for heartbeat interval
+  const activeToken = useRef(null); // token used for the current open connection
+  const heartbeatIntervalId = useRef(null);
 
   // Clear any existing reconnection timeout
   const clearReconnectTimeout = useCallback(() => {
@@ -70,7 +71,6 @@ const useWebSocket = (url, token, options = {}) => {
     }
 
     if (ws.current?.readyState === WebSocket.OPEN || isConnecting.current) {
-  // debug: ya conectado o conectándose
       return;
     }
 
@@ -80,14 +80,12 @@ const useWebSocket = (url, token, options = {}) => {
       setConnectionStatus('Connecting');
       setError(null);
 
-      // Create WebSocket connection with authentication
       const wsUrl = `${connectUrl}?token=${encodeURIComponent(connectToken)}`;
-  // debug: intentando conexión
 
       ws.current = new WebSocket(wsUrl);
 
       ws.current.onopen = (event) => {
-  // debug: conectado
+        activeToken.current = connectToken;
         isConnecting.current = false;
         setConnectionStatus('Connected');
         reconnectAttempts.current = 0;
@@ -122,7 +120,6 @@ const useWebSocket = (url, token, options = {}) => {
       };
 
       ws.current.onclose = (event) => {
-  // debug: conexión cerrada
         isConnecting.current = false;
         setConnectionStatus('Disconnected');
         callbacksRef.current.onClose(event);
@@ -136,8 +133,6 @@ const useWebSocket = (url, token, options = {}) => {
           ) + Math.random() * 1000; // Add jitter
 
           reconnectAttempts.current += 1;
-
-          // debug: reintentando reconexión
           setConnectionStatus(`Reconnecting (${reconnectAttempts.current}/${maxReconnectAttempts})`);
 
           reconnectTimeoutId.current = setTimeout(() => {
@@ -170,7 +165,6 @@ const useWebSocket = (url, token, options = {}) => {
 
   // Disconnect from WebSocket server
   const disconnect = useCallback(() => {
-  // debug: desconectando
     shouldReconnect.current = false;
     isConnecting.current = false;
     clearReconnectTimeout();
@@ -206,7 +200,6 @@ const useWebSocket = (url, token, options = {}) => {
 
   // Manually trigger reconnection
   const reconnect = useCallback(() => {
-  // debug: reconexión manual
     disconnect();
     shouldReconnect.current = true;
     reconnectAttempts.current = 0;
@@ -226,11 +219,11 @@ const useWebSocket = (url, token, options = {}) => {
     if (autoConnect && url && token) {
       shouldReconnect.current = true;
 
-      // Only reconnect if we don't have an active connection or if URL changed
-      const needsNewConnection = !ws.current || 
-                                ws.current.readyState === WebSocket.CLOSED || 
+      // Only reconnect if we don't have an active connection, or URL/token changed
+      const needsNewConnection = !ws.current ||
+                                ws.current.readyState === WebSocket.CLOSED ||
                                 ws.current.readyState === WebSocket.CLOSING ||
-                                currentUrl.current !== url;
+                                activeToken.current !== token;
 
       if (needsNewConnection) {
         // If there's an existing connection, close it first
@@ -249,7 +242,6 @@ const useWebSocket = (url, token, options = {}) => {
   // Cleanup effect - runs only on unmount
   useEffect(() => {
     return () => {
-  // debug: cleanup unmount
       shouldReconnect.current = false;
       isConnecting.current = false;
       if (reconnectTimeoutId.current) {

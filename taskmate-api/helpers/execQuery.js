@@ -1,63 +1,53 @@
-const getConnection = require('./getConnection');
-const Request = require('tedious').Request;
+const pool = require('./pool');
+const { Request } = require('tedious');
 
-const execQuery = (query, params, callbackEvent) => {
-    const command = new Promise((resolve, reject) => {
-        getConnection().connect()
-        .then(instance => {
-            const request = new Request(query, (error) => {
-                if (error) {
-                    reject(error);
-                }
-            });
-            if (params) {
-                params.forEach(param => {
-                    request.addParameter(param.name, param.type, param.value);
-                });
-            }
-            const close = () => instance.close();
+const execQuery = async (query, params, callbackEvent) => {
+    const conn = await pool.acquire();
+    const release = () => pool.release(conn);
 
-            request.on('error', error => {
-                close();
-                reject(error);
-            });
-            callbackEvent(request, close, resolve);
-            instance.execSql(request);
-        })
-        .catch(error => reject(error));
+    return new Promise((resolve, reject) => {
+        const request = new Request(query, err => {
+            if (err) reject(err);
+        });
+
+        if (params) {
+            params.forEach(p => request.addParameter(p.name, p.type, p.value));
+        }
+
+        request.on('error', err => {
+            release();
+            reject(err);
+        });
+
+        callbackEvent(request, release, resolve);
+        conn.execSql(request);
     });
-    return command;
 };
 
 const execWriteCommand = (query, params) => {
-    const callbackEvent = (request, close, resolve) => {
-        request.on('requestCompleted', (rowCount, more) => {
-            close();
-            resolve(rowCount, more);
+    const callbackEvent = (request, release, resolve) => {
+        request.on('requestCompleted', (rowCount) => {
+            release();
+            resolve(rowCount);
         });
     };
     return execQuery(query, params, callbackEvent);
 };
 
 const execReadCommand = (query, params = null) => {
-    const callbackEvent = (request, close, resolve) => {
+    const callbackEvent = (request, release, resolve) => {
         request.on('doneInProc', (rowCount, more, rows) => {
             const responseRows = [];
             if (rows) rows.forEach(row => {
                 const currentRow = {};
-                if (row) row.forEach(column => {
-                    currentRow[column.metadata.colName] = column.value;
-                });
-                responseRows.push(currentRow); 
+                if (row) row.forEach(col => { currentRow[col.metadata.colName] = col.value; });
+                responseRows.push(currentRow);
             });
             resolve(responseRows);
         });
-        request.on('requestCompleted', () => close());
+        request.on('requestCompleted', () => release());
     };
     return execQuery(query, params, callbackEvent);
 };
 
-module.exports = {
-    execWriteCommand,
-    execReadCommand
-};
+module.exports = { execWriteCommand, execReadCommand };

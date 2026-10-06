@@ -1,70 +1,108 @@
-# Getting Started with Create React App
+# TaskMate
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+Plataforma colaborativa de gestión de proyectos con IA integrada. Permite a equipos crear grupos, asignar tareas, visualizar dependencias con diagramas de flujo, analizar el rendimiento del equipo y chatear con un asistente de IA.
 
-## Available Scripts
+## Stack
 
-In the project directory, you can run:
+| Capa | Tecnología |
+|------|-----------|
+| Frontend | React 18, MUI v6, ReactFlow 11, react-big-calendar |
+| Backend | Node.js, Express 4, tedious (SQL Server), ws 8 |
+| AI/MCP | Python 3, FastAPI, Google Gemini 2.5 Flash |
+| Base de datos | Microsoft SQL Server (Docker) |
 
-### `npm start`
+## Requisitos
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+- Node.js 18+
+- Python 3.9+
+- Docker Desktop
+- npm
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+## Inicio rápido
 
-### `npm test`
+```bash
+# 1. Clonar el repositorio
+git clone <repo-url>
+cd proyecto-is-cc6
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+# 2. Instalar dependencias
+npm install
 
-### `npm run build`
+# 3. Configurar variables de entorno
+cp .env.example .env   # editar con tus credenciales
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+# 4. Iniciar todos los servicios (Docker SQL Server + API + Python MCP)
+chmod +x start.sh
+./start.sh
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+# 5. En otra terminal, iniciar el frontend
+npm start
+```
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+La app estará disponible en `http://localhost:3000`.
 
-### `npm run eject`
+## Scripts
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+```bash
+npm start          # Frontend React (puerto 3000)
+npm run start:api  # Backend Node.js (puerto 9000)
+npm test           # Tests del frontend
+cd taskmate-api && npm test   # Tests del backend
+```
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+## Estructura
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+```
+proyecto-is-cc6/
+├── src/                        # Frontend React
+│   ├── components/             # Componentes UI
+│   │   ├── flow/               # Diagrama de flujo (ReactFlow)
+│   │   ├── hooks/              # Custom hooks
+│   │   └── ui/                 # Componentes base (Button, Card, TextField)
+│   ├── theme/                  # Sistema de temas MUI
+│   └── context/                # GroupContext
+├── taskmate-api/               # Backend
+│   ├── controllers/            # Rutas y lógica HTTP
+│   ├── models/                 # Queries a SQL Server
+│   ├── services/               # WebSocket, LLM, Analytics, Sessions
+│   ├── helpers/                # DB connection pool, execQuery
+│   ├── middleware/             # Auth JWT
+│   ├── mcp/                    # Servidor Python FastAPI + Agentes IA
+│   ├── tests/                  # Tests Jest
+│   └── server.js               # Entry point API (puerto 9000)
+├── start.sh                    # Script de inicio completo
+└── public/                     # Assets estáticos
+```
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+## Variables de entorno
 
-## Learn More
+Crear un archivo `.env` en la raíz con:
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+```env
+# Base de datos
+DB_SERVER=localhost
+DB_USERNAME=sqladmin
+DB_PASSWORD=yourpassword
+DB_NAME=taskmate-db
+DB_PORT=1433
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+# Auth
+JWT_SECRET=your_jwt_secret
 
-### Code Splitting
+# IA
+LLM_API_KEY=your_gemini_api_key
+LLM_WEBSOCKET_URL=ws://localhost:8001/ws
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+## Base de datos
 
-### Analyzing the Bundle Size
+Ver [db-setup.md](db-setup.md) para instrucciones de configuración del contenedor Docker con SQL Server.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+## Puertos
 
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+| Servicio | Puerto |
+|---------|--------|
+| Frontend React | 3000 |
+| Backend Node.js API | 9000 |
+| Python MCP / IA | 8001 |
+| SQL Server | 1433 |

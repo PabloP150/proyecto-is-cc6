@@ -13,10 +13,9 @@ completeRoute.post('/', async (req, res) => {
         percentage,
         datetime
     } = req.body;
-    
+
     try {
-        // Add to completed tasks
-        const result = await CompleteModel.addComplete({ 
+        const result = await CompleteModel.addComplete({
             tid,
             gid,
             name,
@@ -26,40 +25,37 @@ completeRoute.post('/', async (req, res) => {
         });
 
         // Record task completion in analytics (non-blocking)
-        // Assume successful completion if it's moved to Complete table
         AnalyticsIntegration.onTaskCompletion(tid, true, {
             percentage,
             completedAt: datetime
         }).catch(error => {
             console.error('Analytics tracking failed for task completion:', error);
-            // Don't fail the main operation
         });
 
-        res.status(200).json({
-            data: {
-                rowCount: result,
-                tid
-            },
-        });
+        res.status(200).json({ data: { rowCount: result, tid } });
     } catch (error) {
-        res.status(500).json({ error });
+        res.status(500).json({ error: error.message || 'Internal server error' });
     }
 });
 
 completeRoute.get('/:gid', async (req, res) => {
     const { gid } = req.params;
-    CompleteModel.getCompletados(gid)
-    .then((data) => res.status(200).json({ data }));
+    try {
+        const data = await CompleteModel.getCompletados(gid);
+        res.status(200).json({ data });
+    } catch (error) {
+        res.status(500).json({ error: error.message || 'Internal server error' });
+    }
 });
 
 completeRoute.delete('/:gid', async (req, res) => {
-  const { gid } = req.params;
-  try {
-    await CompleteModel.deleteAll(gid); // Implementa esta función en el modelo
-    res.status(200).json({ message: 'Todos los completados han sido vaciados' });
-  } catch (error) {
-    res.status(500).json({ error });
-  }
+    const { gid } = req.params;
+    try {
+        await CompleteModel.deleteAll(gid);
+        res.status(200).json({ message: 'Todos los completados han sido vaciados' });
+    } catch (error) {
+        res.status(500).json({ error: error.message || 'Internal server error' });
+    }
 });
 
 

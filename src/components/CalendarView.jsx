@@ -4,6 +4,7 @@ import {
   CssBaseline,
   Typography,
 } from '@mui/material';
+import { API_BASE } from '../config';
 import { ThemeProvider } from '@mui/material/styles';
 import moment from 'moment';
 import { useContext, useEffect, useState } from 'react';
@@ -27,9 +28,10 @@ function CalendarView() {
       setEvents([]);
       return;
     }
+    const controller = new AbortController();
     const fetchTasks = async () => {
       try {
-        const response = await fetch(`http://localhost:9000/api/nodes/tasks/${selectedGroupId}`);
+        const response = await fetch(`${API_BASE}/api/nodes/tasks/${selectedGroupId}`, { signal: controller.signal });
         if (response.ok) {
           const data = await response.json();
           const tasks = data.data.map((task) => ({
@@ -40,10 +42,11 @@ function CalendarView() {
           setEvents(tasks);
         }
       } catch (error) {
-        console.error('Error fetching tasks:', error);
+        if (error.name !== 'AbortError') console.error('Error fetching tasks:', error);
       }
     };
     fetchTasks();
+    return () => controller.abort();
   }, [selectedGroupId]);
 
   return (

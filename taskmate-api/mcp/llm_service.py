@@ -1,58 +1,62 @@
 import os
-import google.generativeai as genai
+from groq import AsyncGroq
 from dotenv import load_dotenv
 
-# Load environment variables at the module level
 load_dotenv()
-API_KEY = os.getenv('GOOGLE_API_KEY', os.getenv('LLM_API_KEY'))
 
-def get_configured_model(model_name_override=None):
-    """Creates and returns a model instance with explicit configuration."""
-    if not API_KEY:
-        raise ValueError("GOOGLE_API_KEY or LLM_API_KEY not found in environment.")
-    
-    genai.configure(api_key=API_KEY)
-    
-    model_name = model_name_override or os.getenv('LLM_MODEL', 'gemini-2.5-flash')
-    return genai.GenerativeModel(model_name)
+API_KEY = os.getenv('GROQ_API_KEY', os.getenv('LLM_API_KEY'))
+MODEL = os.getenv('LLM_MODEL', 'llama-3.1-8b-instant')
+TEMPERATURE = float(os.getenv('LLM_TEMPERATURE', 0.7))
 
-async def generate(prompt: str, generation_config_override: dict = None) -> str:
+if not API_KEY:
+    raise ValueError("GROQ_API_KEY or LLM_API_KEY not found in environment.")
+
+_client = AsyncGroq(api_key=API_KEY)
+
+MAX_TOKENS_CHAT = int(os.getenv('LLM_MAX_TOKENS_CHAT', 1000))
+MAX_TOKENS_PLAN = int(os.getenv('LLM_MAX_TOKENS_PLAN', 8192))
+
+async def generate(prompt: str, generation_config_override=None, max_tokens: int = None) -> str:
     """Generates a non-streaming response from the model."""
     try:
-        model = get_configured_model()
-        response = await model.generate_content_async(
-            prompt,
-            generation_config=generation_config_override
+        limit = max_tokens or MAX_TOKENS_CHAT
+        response = await _client.chat.completions.create(
+            model=MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=TEMPERATURE,
+            max_tokens=limit,
         )
-        
-        # Debug: Print response details when blocked
-        if not response.parts:
-            print(f"Content blocked or empty response:")
-            print(f"  - Prompt: {prompt[:100]}...")
-            print(f"  - Response: {response}")
-            print(f"  - Candidates: {getattr(response, 'candidates', 'None')}")
-            if hasattr(response, 'prompt_feedback'):
-                print(f"  - Prompt feedback: {response.prompt_feedback}")
-        
-        if response.parts:
-            return response.parts[0].text.strip()
-        return "" # Return empty string if blocked
+        return response.choices[0].message.content.strip()
     except Exception as e:
+        err_str = str(e)
+        if '429' in err_str or 'rate_limit_exceeded' in err_str:
+            import re
+            m_s = re.search(r'try again in (\d+)m([\d.]+)s', err_str, re.IGNORECASE)
+            only_s = re.search(r'try again in ([\d.]+)s', err_str, re.IGNORECASE)
+            if m_s:
+                wait = f"{m_s.group(1)}m {round(float(m_s.group(2)))}s"
+            elif only_s:
+                wait = f"{round(float(only_s.group(1)))}s"
+            else:
+                wait = 'a few minutes'
+            print(f"LLM Rate Limit: retry in {wait}")
+            return f"⏳ Rate limit reached. Try again in {wait}."
         print(f"LLM Generation Error: {e}")
         return f"Error during text generation: {e}"
 
-async def generate_stream(prompt: str, generation_config_override: dict = None):
+async def generate_stream(prompt: str, generation_config_override=None):
     """Generates a streaming response from the model."""
     try:
-        model = get_configured_model()
-        response_stream = await model.generate_content_async(
-            prompt,
+        stream = await _client.chat.completions.create(
+            model=MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=TEMPERATURE,
             stream=True,
-            generation_config=generation_config_override
         )
-        async for chunk in response_stream:
-            if chunk.parts:
-                yield chunk.parts[0].text
+        async for chunk in stream:
+            delta = chunk.choices[0].delta.content
+            if delta:
+                yield delta
     except Exception as e:
         print(f"LLM Stream Error: {e}")
         yield f"Error during stream generation: {e}"

@@ -14,9 +14,9 @@ const addGroupRole = async (roleData) => {
   const params = [
     { name: 'gr_id', type: TYPES.UniqueIdentifier, value: gr_id },
     { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
-    { name: 'gr_name', type: TYPES.VarChar, value: gr_name },
-    { name: 'gr_color', type: TYPES.VarChar, value: gr_color },
-    { name: 'gr_icon', type: TYPES.VarChar, value: gr_icon },
+    { name: 'gr_name', type: TYPES.NVarChar, value: gr_name },
+    { name: 'gr_color', type: TYPES.NVarChar, value: gr_color },
+    { name: 'gr_icon', type: TYPES.NVarChar, value: gr_icon },
   ];
   await execWriteCommand(query, params);
   return { success: true };
@@ -28,25 +28,24 @@ const updateGroupRole = async (roleData) => {
   const params = [
     { name: 'gr_id', type: TYPES.UniqueIdentifier, value: gr_id },
     { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
-    { name: 'gr_name', type: TYPES.VarChar, value: gr_name },
-    { name: 'gr_color', type: TYPES.VarChar, value: gr_color },
-    { name: 'gr_icon', type: TYPES.VarChar, value: gr_icon },
+    { name: 'gr_name', type: TYPES.NVarChar, value: gr_name },
+    { name: 'gr_color', type: TYPES.NVarChar, value: gr_color },
+    { name: 'gr_icon', type: TYPES.NVarChar, value: gr_icon },
   ];
   await execWriteCommand(query, params);
   return { success: true };
 };
 
 const deleteGroupRole = async (gr_id, gid) => {
-  // Primero elimina las asignaciones de ese rol
-  const deleteAssignments = `DELETE FROM dbo.UserGroupRoles WHERE gr_id = @gr_id AND gid = @gid`;
   const params = [
     { name: 'gr_id', type: TYPES.UniqueIdentifier, value: gr_id },
     { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
   ];
-  await execWriteCommand(deleteAssignments, params);
-  // Luego elimina el rol
-  const deleteRole = `DELETE FROM dbo.GroupRoles WHERE gr_id = @gr_id AND gid = @gid`;
-  await execWriteCommand(deleteRole, params);
+  await execWriteCommand(
+    `DELETE FROM dbo.UserGroupRoles WHERE gr_id = @gr_id AND gid = @gid;
+     DELETE FROM dbo.GroupRoles WHERE gr_id = @gr_id AND gid = @gid`,
+    params
+  );
   return { success: true };
 };
 

@@ -24,7 +24,7 @@ edgesRoute.post('/', async (req, res) => {
         });
     } catch (error) {
         console.error("Error adding edge:", error);
-        res.status(500).json({ error: error.message || "An error occurred" });
+        res.status(500).json({ error: error.message || 'Internal server error' });
     }
 });
 
@@ -38,7 +38,7 @@ edgesRoute.get('/group/:gid', async (req, res) => {
         const data = await EdgesModel.getEdgesByGroupId(gid);
         res.status(200).json({ data });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: error.message || 'Internal server error' });
     }
 });
 
@@ -48,7 +48,7 @@ edgesRoute.get('/:eid', async (req, res) => {
         const data = await EdgesModel.getEdgesById(eid);
         res.status(200).json({ data });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: error.message || 'Internal server error' });
     }
 });
 
@@ -62,7 +62,7 @@ edgesRoute.put('/:eid', async (req, res) => {
         });
         res.status(200).json({ message: 'Edge prerequisite updated successfully' });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: error.message || 'Internal server error' });
     }
 });
 
@@ -72,7 +72,7 @@ edgesRoute.delete('/:id', async (req, res) => {
         await EdgesModel.deleteEdge(eid);
         res.status(200).json({ message: 'Edge deleted successfully' });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: error.message || 'Internal server error' });
     }
 });
 
@@ -82,7 +82,7 @@ edgesRoute.delete('/source/:id', async (req, res) => {
         await EdgesModel.deleteEdgeBySource(nid);
         res.status(200).json({ message: 'Edge deleted successfully' });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: error.message || 'Internal server error' });
     }
 });
 
