@@ -63,3 +63,9 @@ export const syncGroup = (gid, { signal } = {}) =>
 
 export const setAiAnalysis = (gid, enabled, { signal } = {}) =>
   request(`/groups/${seg(gid)}/ai-analysis`, { method: 'PUT', body: { enabled: Boolean(enabled) }, signal });
+
+export const getTaskFiles = (tid, { signal } = {}) =>
+  request(`/tasks/${seg(tid)}/files`, { signal });
+
+export const getTaskOverlaps = (tid, { signal } = {}) =>
+  request(`/tasks/${seg(tid)}/overlaps`, { signal });

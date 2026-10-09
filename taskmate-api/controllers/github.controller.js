@@ -10,6 +10,7 @@ const installFlow = require('../services/github/installFlow');
 const repoService = require('../services/github/repoService');
 const branchService = require('../services/github/branchService');
 const syncService = require('../services/github/syncService');
+const taskFileService = require('../services/github/taskFileService');
 const { githubWebhookHandler } = require('../services/github/webhookHandler');
 
 const SELECTION_ID_RE = /^[A-Za-z0-9_-]{43}$/;
@@ -117,6 +118,42 @@ const createGithubRouter = ({ auth = requireAuth } = {}) => {
     router.post('/tasks/:tid/branch', requireResourceMember('task', 'tid', { notFoundCode: 'TASK_NOT_FOUND' }), branchLimiter, route(async (req, res) => {
         const { status, data } = await branchService.createTaskBranch({ tid: req.resourceId, gid: req.groupId, uid: req.user.userId });
         res.status(status).json({ data });
+    }));
+
+    // The files a task touched. Recorded automatically when its PR merges; fetched on demand
+    // here for a task whose PR merged before this feature existed, or merged into a base other
+    // than the default branch (which does not complete the task, so nothing recorded it).
+    router.get('/tasks/:tid/files', requireResourceMember('task', 'tid', { notFoundCode: 'TASK_NOT_FOUND' }), browseLimiter, route(async (req, res) => {
+        const tid = req.resourceId;
+        let files = await githubModel.getTaskFiles(tid);
+        let backfilled = false;
+
+        if (files.length === 0 && req.query.refresh !== 'false') {
+            const links = await githubModel.getTaskLinksByGroup(req.groupId);
+            const link = links.find((item) => String(item.tid).toLowerCase() === String(tid).toLowerCase());
+            if (link && link.pr && link.pr.number) {
+                const repo = await repoService.getConnectedRepo(req.groupId);
+                const result = await taskFileService.recordFilesForTask({ tid, repo, prNumber: link.pr.number });
+                if (result.recorded) {
+                    files = await githubModel.getTaskFiles(tid);
+                    backfilled = true;
+                }
+            }
+        }
+
+        res.json({ data: { files, backfilled } });
+    }));
+
+    // Which other tasks of the group touch the same paths. Fase 7 (colision de archivos)
+    // is the consumer; exposed now because the data is already here.
+    router.get('/tasks/:tid/overlaps', requireResourceMember('task', 'tid', { notFoundCode: 'TASK_NOT_FOUND' }), route(async (req, res) => {
+        const files = await githubModel.getTaskFiles(req.resourceId);
+        const overlaps = await githubModel.findTasksTouchingPaths(
+            req.groupId,
+            files.map((f) => f.path),
+            { excludeTid: req.resourceId },
+        );
+        res.json({ data: { overlaps } });
     }));
 
     router.get('/groups/:gid/task-links', requireGroupMember('gid'), route(async (req, res) => {

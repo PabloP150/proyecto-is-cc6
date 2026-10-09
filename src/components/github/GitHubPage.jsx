@@ -9,6 +9,7 @@ import { getRepository, syncGroup } from '../../api/github';
 import { GroupContext } from '../GroupContext';
 import Button from '../ui/Button';
 import Card from '../ui/Card';
+import DeploymentPanel from '../deploy/DeploymentPanel';
 import CommitList from './CommitList';
 import RepoExplorer from './RepoExplorer';
 import RepoSelection from './RepoSelection';
@@ -253,6 +254,7 @@ export default function GitHubPage() {
           <Tab value="repo" label="Repositorio" id="gh-tab-repo" aria-controls="gh-panel" />
           <Tab value="files" label="Archivos" id="gh-tab-files" aria-controls="gh-panel" disabled={!usable} />
           <Tab value="commits" label="Commits" id="gh-tab-commits" aria-controls="gh-panel" disabled={!usable} />
+          <Tab value="deploys" label="Despliegues" id="gh-tab-deploys" aria-controls="gh-panel" />
         </Tabs>
         <Box role="tabpanel" id="gh-panel" aria-labelledby={`gh-tab-${tab}`}>
           {tab === 'repo' &&
@@ -282,6 +284,7 @@ export default function GitHubPage() {
               />
             ))}
           {tab === 'files' && usable && <RepoExplorer gid={gid} repo={repo} />}
+          {tab === 'deploys' && <DeploymentPanel gid={gid} isAdmin={isAdmin} />}
           {tab === 'commits' && usable && (
             <Card variant="default" component="section" sx={staticCardSx}>
               <CommitList gid={gid} gitRef={repo.defaultBranch || undefined} />
