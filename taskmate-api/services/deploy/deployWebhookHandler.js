@@ -56,8 +56,13 @@ const processDelivery = async (deliveryId, body) => {
  *
  * Expects req.body to be the raw Buffer (mount with express.raw before express.json), because
  * the signature covers the exact bytes received.
+ *
+ * A factory rather than a plain (req, res, deadlineMs) handler: Express calls route handlers
+ * with (req, res, next), so a third parameter would receive `next` -- and a function passed as
+ * a setTimeout delay is coerced to 0, firing the deadline immediately on every request. The
+ * GitHub webhook handler is built the same way for the same reason.
  */
-const vercelWebhookHandler = async (req, res, deadlineMs = RESPONSE_DEADLINE_MS) => {
+const createVercelWebhookHandler = ({ deadlineMs = RESPONSE_DEADLINE_MS } = {}) => async (req, res) => {
     const rawBody = req.body;
     if (!verifyVercelSignature(rawBody, req.get('x-vercel-signature'))) {
         return sendError(res, new AppError('UNAUTHENTICATED', 'Invalid webhook signature', 401));
@@ -99,4 +104,6 @@ const vercelWebhookHandler = async (req, res, deadlineMs = RESPONSE_DEADLINE_MS)
     return res.status(200).json({ status });
 };
 
-module.exports = { vercelWebhookHandler, processEvent, RESPONSE_DEADLINE_MS };
+const vercelWebhookHandler = createVercelWebhookHandler();
+
+module.exports = { vercelWebhookHandler, createVercelWebhookHandler, processEvent, RESPONSE_DEADLINE_MS };

@@ -12,7 +12,7 @@ const express = require('express');
 const request = require('supertest');
 const deploymentModel = require('../../models/deployment.model');
 const githubModel = require('../../models/github.model');
-const { vercelWebhookHandler } = require('../../services/deploy/deployWebhookHandler');
+const { createVercelWebhookHandler } = require('../../services/deploy/deployWebhookHandler');
 const { signVercelPayload } = require('../../services/deploy/deploySignature');
 
 const SECRET = 'vercel-whsec-test';
@@ -20,8 +20,9 @@ const GID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
 const buildApp = () => {
     const app = express();
-    app.post('/api/deploy/webhook/vercel', express.raw({ type: '*/*' }), (req, res) =>
-        vercelWebhookHandler(req, res, 2000));
+    // Mounted exactly as app.js mounts it, so the handler receives Express's (req, res, next)
+    // and the deadline cannot be clobbered by `next`.
+    app.post('/api/deploy/webhook/vercel', express.raw({ type: '*/*' }), createVercelWebhookHandler({ deadlineMs: 2000 }));
     return app;
 };
 
@@ -158,5 +159,26 @@ describe('vercel webhook', () => {
             .send(payload);
 
         expect(res.status).toBe(400);
+    });
+});
+
+describe('mounting', () => {
+    // Regression: the handler used to take (req, res, deadlineMs). Express calls route handlers
+    // with (req, res, next), so `next` landed on deadlineMs; a function coerced to a setTimeout
+    // delay is 0, which made every request answer "timeout" while the work actually succeeded.
+    // Only caught by running the real server -- the unit tests passed a number explicitly.
+    test('the default export works when mounted directly on a route', async () => {
+        const { vercelWebhookHandler } = require('../../services/deploy/deployWebhookHandler');
+        const app = express();
+        app.post('/hook', express.raw({ type: '*/*' }), vercelWebhookHandler);
+
+        const payload = body('deployment.succeeded');
+        const res = await request(app)
+            .post('/hook')
+            .set('content-type', 'application/json')
+            .set('x-vercel-signature', signVercelPayload(Buffer.from(payload), SECRET))
+            .send(payload);
+
+        expect(res.body.status).toBe('processed');
     });
 });

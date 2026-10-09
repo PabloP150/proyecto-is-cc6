@@ -6,7 +6,7 @@ const requireAuth = require('../middleware/auth.middleware');
 const { requireGroupMember, requireGroupAdmin } = require('../middleware/groupAccess');
 const { createLimiter } = require('../middleware/rateLimit');
 const deploymentModel = require('../models/deployment.model');
-const { vercelWebhookHandler } = require('../services/deploy/deployWebhookHandler');
+const { vercelWebhookHandler, createVercelWebhookHandler } = require('../services/deploy/deployWebhookHandler');
 
 const PROJECT_REF_RE = /^[A-Za-z0-9_-]{1,128}$/;
 
@@ -82,5 +82,6 @@ const createDeployRouter = ({ auth = requireAuth } = {}) => {
 module.exports = {
     deployRouter: createDeployRouter(),
     vercelWebhookHandler,
+    createVercelWebhookHandler,
     createDeployRouter,
 };
