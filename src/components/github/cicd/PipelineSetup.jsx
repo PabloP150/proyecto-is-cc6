@@ -5,7 +5,6 @@ import {
   Box,
   Chip,
   CircularProgress,
-  Collapse,
   Dialog,
   DialogActions,
   DialogContent,
@@ -398,7 +397,7 @@ export default function PipelineSetup({ open, gid, defaultBranch, onClose, onApp
         )}
 
         {data && spec && project && !result && (
-          <Box sx={{ display: 'grid', gap: 2 }} aria-busy={proposal.loading}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 2 }} aria-busy={proposal.loading}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
               <AutoAwesomeIcon fontSize="small" sx={{ color: '#fbbf24' }} aria-hidden />
               <Typography variant="body2">
@@ -475,7 +474,8 @@ export default function PipelineSetup({ open, gid, defaultBranch, onClose, onApp
               <Button variant="ghost" size="small" onClick={() => setShowYaml((v) => !v)} aria-expanded={showYaml} aria-controls="ci-yaml">
                 {showYaml ? 'Ocultar el archivo YAML' : 'Ver el archivo YAML'}
               </Button>
-              <Collapse in={showYaml}>
+              {/* Rendered only while open: long YAML lines must never widen the dialog. */}
+              {showYaml && (
                 <Box
                   id="ci-yaml"
                   component="pre"
@@ -484,7 +484,9 @@ export default function PipelineSetup({ open, gid, defaultBranch, onClose, onApp
                   sx={{
                     ...monoSx,
                     mt: 1,
+                    mb: 0,
                     p: 1.5,
+                    maxWidth: '100%',
                     maxHeight: 360,
                     overflow: 'auto',
                     fontSize: '0.75rem',
@@ -495,7 +497,7 @@ export default function PipelineSetup({ open, gid, defaultBranch, onClose, onApp
                 >
                   {rendered.yaml}
                 </Box>
-              </Collapse>
+              )}
             </Box>
 
             <Alert severity="warning" icon={<CloudUploadIcon />}>
