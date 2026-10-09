@@ -109,6 +109,13 @@ describe('GitHubApp — installation tokens', () => {
         await expect(app.getInstallationToken(77, { repoIds: [1] })).rejects.toMatchObject({ code: 'REPO_NOT_ACCESSIBLE', status: 403 });
     });
 
+    test('permission the installation was not granted (e.g. Phase 4 not accepted yet) → APP_PERMISSIONS_MISSING', async () => {
+        const { app } = createTestApp({
+            'POST /app/installations/77/access_tokens': { status: 422, body: { message: 'The permissions requested are not granted to this installation.' } },
+        });
+        await expect(app.getInstallationToken(77, { permissions: { actions: 'read' } })).rejects.toMatchObject({ code: 'APP_PERMISSIONS_MISSING', status: 409 });
+    });
+
     test('rejects a non-numeric installation id', async () => {
         const { app } = createTestApp({});
         await expect(app.getInstallationToken('abc')).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });

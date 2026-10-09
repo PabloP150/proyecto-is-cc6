@@ -19,6 +19,15 @@ const PERMISSIONS = Object.freeze({
     snapshot: Object.freeze({ contents: 'read', issues: 'read' }),
     pulls: Object.freeze({ pull_requests: 'read' }),
     writeRefs: Object.freeze({ contents: 'write' }),
+    // Phase 4 (CI/CD). Writing a file under .github/workflows/ needs `workflows` on top of `contents`.
+    actionsRead: Object.freeze({ actions: 'read' }),
+    actionsWrite: Object.freeze({ actions: 'write' }),
+    checksRead: Object.freeze({ checks: 'read' }),
+    writeWorkflow: Object.freeze({ contents: 'write', workflows: 'write' }),
+    deploymentsRead: Object.freeze({ deployments: 'read' }),
+    pagesRead: Object.freeze({ pages: 'read' }),
+    // Creating a Pages site needs Administration on top of Pages; only the "enable Pages" action asks for it.
+    pagesAdmin: Object.freeze({ administration: 'write', pages: 'write' }),
 });
 
 const notConfigured = () => new AppError('GITHUB_NOT_CONFIGURED', 'GitHub integration is not configured', 503);
@@ -69,6 +78,11 @@ const mapGitHubError = (status, headers, data, { nowMs, tokenMint = false, notFo
     if (tokenMint) {
         if (status === 403 && /suspend/i.test(message)) {
             return withStatus(new AppError('INSTALLATION_SUSPENDED', 'The GitHub App installation is suspended', 409), status);
+        }
+        // The App (or this installation) has not been granted a permission the operation asks for,
+        // e.g. the Phase 4 permissions before the owner accepted them.
+        if (status === 422 && /permission/i.test(message)) {
+            return withStatus(new AppError('APP_PERMISSIONS_MISSING', 'The GitHub App installation lacks a permission this action needs', 409), status);
         }
         if (status === 403 || status === 404 || status === 422) {
             return withStatus(new AppError('REPO_NOT_ACCESSIBLE', 'The repository is not accessible to the GitHub App', 403), status);

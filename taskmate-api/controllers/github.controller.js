@@ -10,9 +10,12 @@ const installFlow = require('../services/github/installFlow');
 const repoService = require('../services/github/repoService');
 const branchService = require('../services/github/branchService');
 const syncService = require('../services/github/syncService');
+const pipelineService = require('../services/github/pipelineService');
+const actionsService = require('../services/github/actionsService');
 const { githubWebhookHandler } = require('../services/github/webhookHandler');
 
 const SELECTION_ID_RE = /^[A-Za-z0-9_-]{43}$/;
+const MAX_PROJECT_DIR = 200;
 
 // GitHub rate limits are relayed with Retry-After so the client can back off.
 const sendGitHubError = (res, err) => {
@@ -44,6 +47,24 @@ const queryString = (req, name) => {
     return value;
 };
 
+const isPlainObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+
+const bodySpec = (req) => {
+    const spec = req.body && req.body.spec;
+    if (!isPlainObject(spec)) throw new AppError('VALIDATION_ERROR', 'spec must be an object', 400);
+    return spec;
+};
+
+// Optional project switch for a new proposal: both strings (validated again against the repository).
+const bodyProject = (req) => {
+    const { dir, stack } = req.body || {};
+    if (dir !== undefined && (typeof dir !== 'string' || !dir || dir.length > MAX_PROJECT_DIR)) {
+        throw new AppError('VALIDATION_ERROR', 'dir must be a non-empty string', 400);
+    }
+    if (stack !== undefined && typeof stack !== 'string') throw new AppError('VALIDATION_ERROR', 'stack must be a string', 400);
+    return { dir, stack };
+};
+
 const createGithubRouter = ({ auth = requireAuth } = {}) => {
     const router = express.Router();
     // All limits are per user (these routes run after auth). The hourly browse cap keeps one member from
@@ -55,6 +76,9 @@ const createGithubRouter = ({ auth = requireAuth } = {}) => {
     ];
     const branchLimiter = createLimiter({ windowMs: 60 * 1000, limit: 20, keyByUser: true });
     const syncLimiter = createLimiter({ windowMs: 30 * 1000, limit: 1, keyByUser: true, message: 'Sync is limited to once every 30 seconds.' });
+    // A proposal or an apply reads several files of the repository; previews only re-render.
+    const pipelineLimiter = createLimiter({ windowMs: 60 * 1000, limit: 10, keyByUser: true });
+    const previewLimiter = createLimiter({ windowMs: 60 * 1000, limit: 60, keyByUser: true });
 
     router.use(auth);
 
@@ -125,6 +149,47 @@ const createGithubRouter = ({ auth = requireAuth } = {}) => {
 
     router.post('/groups/:gid/sync', requireGroupMember('gid'), syncLimiter, route(async (req, res) => {
         res.json({ data: await syncService.syncGroup(req.groupId) });
+    }));
+
+    // ------------------------------------------------------------ Phase 4: CI/CD
+
+    router.get('/groups/:gid/pipeline', requireGroupMember('gid'), browseLimiter, route(async (req, res) => {
+        res.json({ data: await pipelineService.getPipeline(req.groupId) });
+    }));
+
+    router.post('/groups/:gid/pipeline/proposal', requireGroupAdmin('gid'), pipelineLimiter, route(async (req, res) => {
+        const { dir, stack } = bodyProject(req);
+        res.json({ data: await pipelineService.proposePipeline({ gid: req.groupId, uid: req.user.userId, dir, stack }) });
+    }));
+
+    router.post('/groups/:gid/pipeline/preview', requireGroupAdmin('gid'), previewLimiter, route(async (req, res) => {
+        res.json({ data: await pipelineService.previewPipeline({ gid: req.groupId, uid: req.user.userId, spec: bodySpec(req) }) });
+    }));
+
+    router.put('/groups/:gid/pipeline', requireGroupAdmin('gid'), pipelineLimiter, route(async (req, res) => {
+        const spec = bodySpec(req);
+        res.json({
+            data: await pipelineService.applyPipeline({ gid: req.groupId, uid: req.user.userId, username: req.user.username, spec }),
+        });
+    }));
+
+    router.get('/groups/:gid/actions/workflows', requireGroupMember('gid'), browseLimiter, route(async (req, res) => {
+        res.json({ data: await actionsService.listWorkflows(req.groupId) });
+    }));
+
+    router.get('/groups/:gid/actions/runs', requireGroupMember('gid'), browseLimiter, route(async (req, res) => {
+        res.json({
+            data: await actionsService.listRuns(req.groupId, {
+                branch: queryString(req, 'branch'),
+                status: queryString(req, 'status'),
+                workflow: queryString(req, 'workflow'),
+                page: queryString(req, 'page'),
+            }),
+        });
+    }));
+
+    router.get('/groups/:gid/actions/runs/:runId', requireGroupMember('gid'), browseLimiter, route(async (req, res) => {
+        res.json({ data: await actionsService.getRun(req.groupId, req.params.runId) });
     }));
 
     return router;

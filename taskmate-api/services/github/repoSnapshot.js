@@ -136,7 +136,9 @@ const pickManifests = (entries) => entries
 
 // Errors that only mean "this optional section is unavailable" (no README, no Issues permission…).
 // Anything else — rate limit, suspension, missing config, unexpected errors — aborts the analysis.
-const SOFT_ERRORS = new Set(['FILE_NOT_FOUND', 'FILE_TOO_LARGE', 'VALIDATION_ERROR', 'NOT_FOUND', 'REPO_NOT_ACCESSIBLE', 'GITHUB_ERROR']);
+const SOFT_ERRORS = new Set([
+    'FILE_NOT_FOUND', 'FILE_TOO_LARGE', 'VALIDATION_ERROR', 'NOT_FOUND', 'REPO_NOT_ACCESSIBLE', 'APP_PERMISSIONS_MISSING', 'GITHUB_ERROR',
+]);
 
 const optional = async (promise, fallback) => {
     try {
