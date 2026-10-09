@@ -25,6 +25,19 @@ const ERROR_MESSAGES = {
   INTERNAL_ERROR: 'Ocurrió un error inesperado en el servidor.',
   GITHUB_NOT_CONFIGURED: 'La integración con GitHub no está configurada en el servidor.',
   AI_ANALYSIS_DISABLED: 'El análisis con IA está desactivado para este repositorio. Un administrador puede activarlo en la página GitHub.',
+  // Phase 4 (CI/CD)
+  APP_PERMISSIONS_MISSING:
+    'La GitHub App todavía no tiene los permisos de CI/CD en este repositorio. Quien la instaló debe aceptarlos en GitHub.',
+  PAGES_UNAVAILABLE:
+    'GitHub Pages no está disponible para este repositorio con su plan actual (en repositorios privados requiere GitHub Pro).',
+  WORKFLOW_CONFLICT:
+    'Ya existe un workflow .github/workflows/taskmate-ci.yml que no creó TaskMate. Renómbralo o bórralo para continuar.',
+  WORKFLOW_CHANGED: 'El workflow cambió en GitHub mientras lo configurabas. Vuelve a intentarlo.',
+  BRANCH_PROTECTED:
+    'La rama principal está protegida y solo acepta cambios por pull request, así que TaskMate no puede subir el pipeline.',
+  INVALID_PIPELINE: 'La configuración del pipeline no es válida para este repositorio.',
+  PIPELINE_UNSUPPORTED: 'No se encontró un proyecto de Node.js, Python ni un sitio estático en el repositorio.',
+  RUN_NOT_FOUND: 'Esa ejecución ya no existe en GitHub.',
 };
 
 // Codes the OAuth/installation callback may put in ?status=error&code=<CODE>.

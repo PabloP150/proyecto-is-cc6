@@ -63,3 +63,27 @@ export const syncGroup = (gid, { signal } = {}) =>
 
 export const setAiAnalysis = (gid, enabled, { signal } = {}) =>
   request(`/groups/${seg(gid)}/ai-analysis`, { method: 'PUT', body: { enabled: Boolean(enabled) }, signal });
+
+// ---------------------------------------------------------------- Phase 4: CI/CD
+
+export const getPipeline = (gid, { signal } = {}) =>
+  request(`/groups/${seg(gid)}/pipeline`, { signal });
+
+/** New proposal for the setup screen; `dir`/`stack` switch to another project of the repository. */
+export const proposePipeline = (gid, { dir, stack } = {}, { signal } = {}) =>
+  request(`/groups/${seg(gid)}/pipeline/proposal`, { method: 'POST', body: { dir, stack }, signal });
+
+export const previewPipeline = (gid, spec, { signal } = {}) =>
+  request(`/groups/${seg(gid)}/pipeline/preview`, { method: 'POST', body: { spec }, signal });
+
+export const applyPipeline = (gid, spec, { signal } = {}) =>
+  request(`/groups/${seg(gid)}/pipeline`, { method: 'PUT', body: { spec }, signal });
+
+export const listWorkflows = (gid, { signal } = {}) =>
+  request(`/groups/${seg(gid)}/actions/workflows`, { signal });
+
+export const listRuns = (gid, { branch, status, workflow, page, signal } = {}) =>
+  request(`/groups/${seg(gid)}/actions/runs${query({ branch, status, workflow, page })}`, { signal });
+
+export const getRun = (gid, runId, { signal } = {}) =>
+  request(`/groups/${seg(gid)}/actions/runs/${seg(runId)}`, { signal });

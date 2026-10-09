@@ -22,6 +22,13 @@ jest.mock('../../../api/github', () => ({
   getCommits: jest.fn(),
   syncGroup: jest.fn(),
   setAiAnalysis: jest.fn(),
+  getPipeline: jest.fn(),
+  listRuns: jest.fn(),
+  listWorkflows: jest.fn(),
+  getRun: jest.fn(),
+  proposePipeline: jest.fn(),
+  previewPipeline: jest.fn(),
+  applyPipeline: jest.fn(),
 }));
 jest.mock('../githubUtils', () => ({ ...jest.requireActual('../githubUtils'), assignLocation: jest.fn() }));
 
@@ -121,6 +128,20 @@ describe('GitHubPage', () => {
     expect(await screen.findByRole('button', { name: /Conectar repositorio/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Ya instalé la App/ })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Archivos' })).toBeDisabled();
+    expect(screen.getByRole('tab', { name: 'CI/CD' })).toBeDisabled();
+  });
+
+  it('opens the CI/CD tab of a connected repository', async () => {
+    github.getRepository.mockResolvedValue(REPO);
+    github.getPipeline.mockResolvedValue({ pipeline: null, workflowPath: '.github/workflows/taskmate-ci.yml', pages: null });
+    github.listRuns.mockResolvedValue({ runs: [], totalCount: 0, page: 1 });
+    github.listWorkflows.mockResolvedValue([]);
+    showPage();
+    await screen.findByRole('link', { name: 'acme/app' });
+    fireEvent.click(screen.getByRole('tab', { name: 'CI/CD' }));
+    expect(await screen.findByRole('button', { name: 'Configurar pipeline' })).toBeInTheDocument();
+    expect(github.getPipeline).toHaveBeenCalledWith('G1', expect.any(Object));
+    expect(await screen.findByText(/todavía no tiene ejecuciones/)).toBeInTheDocument();
   });
 
   it('tells non-admins that only the admin can connect', async () => {
