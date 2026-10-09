@@ -26,7 +26,9 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const CLIENT_ID_RE = /^[A-Za-z0-9_.:-]{1,100}$/;
 const DEMO_GROUP_RE = /^test-group-[A-Za-z0-9_-]+$/;
 // Not stored in chatHistory (history_restore would replay them).
-const TRANSIENT_TYPES = new Set(['pong', 'context', 'repo_analysis_status']);
+// assistant_chunk is the streamed text of a reply that is about to arrive whole as 'assistant': storing
+// the chunks too would make history_restore replay every fragment after a reconnect.
+const TRANSIENT_TYPES = new Set(['pong', 'context', 'repo_analysis_status', 'assistant_chunk']);
 
 // Same rule as the REST analytics endpoints: team-level data only for group leaders.
 const TEAM_ANALYTICS_ACTIONS = new Set([
@@ -516,12 +518,17 @@ class UserSession {
             if (pending) message.requestId = pending.clientRequestId;
             this.sendMessage(message);
         } else if (event === 'response_chunk') {
+            // Streamed text of a chat reply. Only for a request still in flight: once it has
+            // timed out or been answered, a late chunk would paint a bubble under that outcome.
+            const pending = response.requestId ? this.pendingRequests.get(response.requestId) : null;
             const content = typeof response.data === 'string' ? response.data : data.content;
-            if (typeof content === 'string' && content) {
-                this.sendMessage({ type: 'assistant_chunk', content, timestamp: new Date() });
+            if (pending && typeof content === 'string' && content) {
+                // The client groups chunks into one bubble by its own request id; the final
+                // 'assistant' message carries the same id and replaces the streamed text.
+                this.sendMessage({ type: 'assistant_chunk', content, requestId: pending.clientRequestId, timestamp: new Date() });
             }
         } else if (event === 'response_stream_end') {
-            // The stream end event can be used to signify the end of a stream on the client.
+            // Nothing to do: the final 'response' event closes the stream on the client.
         } else if (event === 'save_plan') {
             this.clearRequest(response.requestId);
             await this.saveProjectPlan(response.requestId, data);

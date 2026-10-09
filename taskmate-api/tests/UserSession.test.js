@@ -574,12 +574,53 @@ describe('UserSession', () => {
             expect(session.pendingRequests.size).toBe(0);
         });
 
-        test('assistant_chunk only forwards text content', async () => {
-            llmService.emit(session.sessionId, { event: 'response_chunk', sessionId: session.sessionId, data: { content: 'par' } });
-            llmService.emit(session.sessionId, { event: 'response_chunk', sessionId: session.sessionId, data: { weird: true } });
-            await new Promise((r) => setImmediate(r));
-            const chunks = sent(ws).filter((m) => m.type === 'assistant_chunk');
-            expect(chunks).toEqual([expect.objectContaining({ content: 'par' })]);
+        describe('streamed replies', () => {
+            const chunk = (requestId, content) => llmService.emit(session.sessionId,
+                { event: 'response_chunk', sessionId: session.sessionId, requestId, data: { content } });
+            const tick = () => new Promise((r) => setImmediate(r));
+
+            test('chunks are forwarded with the client requestId, text only', async () => {
+                await session.handleMessage({ type: 'user', content: 'hola', requestId: 'c-s1' });
+                const { requestId } = pythonRequests()[0];
+                chunk(requestId, 'Ho');
+                chunk(requestId, 'la');
+                llmService.emit(session.sessionId, { event: 'response_chunk', sessionId: session.sessionId, requestId, data: { weird: true } });
+                await tick();
+                const chunks = sent(ws).filter((m) => m.type === 'assistant_chunk');
+                expect(chunks.map((m) => [m.content, m.requestId])).toEqual([['Ho', 'c-s1'], ['la', 'c-s1']]);
+            });
+
+            test('chunks never enter the chat history; the final reply does, once', async () => {
+                await session.handleMessage({ type: 'user', content: 'hola', requestId: 'c-s2' });
+                const { requestId } = pythonRequests()[0];
+                chunk(requestId, 'Ho');
+                chunk(requestId, 'la');
+                llmService.emit(session.sessionId, { event: 'response', sessionId: session.sessionId, requestId, data: { content: 'Hola' } });
+                await tick();
+                // Otherwise history_restore would replay every fragment after a reconnect.
+                expect(session.chatHistory.map((m) => [m.type, m.content])).toEqual([['user', 'hola'], ['assistant', 'Hola']]);
+            });
+
+            test('a chunk for a request that is not in flight is dropped', async () => {
+                chunk('unknown-request', 'stray');
+                await session.handleMessage({ type: 'user', content: 'hola', requestId: 'c-s3' });
+                const { requestId } = pythonRequests()[0];
+                llmService.emit(session.sessionId, { event: 'response', sessionId: session.sessionId, requestId, data: { content: 'done' } });
+                await tick();
+                chunk(requestId, 'late');   // after the final reply
+                await tick();
+                expect(sent(ws).filter((m) => m.type === 'assistant_chunk')).toEqual([]);
+            });
+
+            test('a chunk after LLM_TIMEOUT does not paint a bubble under the error', async () => {
+                jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] });
+                await session.handleMessage({ type: 'user', content: 'hola', requestId: 'c-s4' });
+                const { requestId } = pythonRequests()[0];
+                jest.advanceTimersByTime(UserSession.REQUEST_TIMEOUT_MS);
+                chunk(requestId, 'too late');
+                await tick();
+                expect(sent(ws).filter((m) => m.type === 'assistant_chunk')).toEqual([]);
+            });
         });
     });
 

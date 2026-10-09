@@ -36,9 +36,14 @@ def test_rejection_kinds():
 def llm(monkeypatch):
     calls = {"generate": [], "json": []}
 
-    async def fake_generate(prompt, generation_config_override=None, max_tokens=None, timeout=None):
+    async def fake_generate(prompt, generation_config_override=None, max_tokens=None, timeout=None, on_delta=None):
         calls["generate"].append(prompt)
-        return "NO" if "Respond with ONLY: YES or NO" in prompt else "Tell me more about your project."
+        text = "NO" if "Respond with ONLY: YES or NO" in prompt else "Tell me more about your project."
+        if on_delta is not None:
+            # Stream it the way llm_service does: pieces through the callback, whole text returned.
+            for piece in (text[:8], text[8:]):
+                await on_delta(piece)
+        return text
 
     async def fake_generate_json(messages, **kwargs):
         calls["json"].append(messages)
