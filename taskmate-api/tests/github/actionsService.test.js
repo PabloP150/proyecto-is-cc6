@@ -561,7 +561,7 @@ describe('dispatchPipeline', () => {
 });
 
 describe('rerunFailed / cancelRun', () => {
-    const deployRun = run({ event: 'workflow_dispatch', display_title: 'Deploy a production desde TaskMate', conclusion: 'failure' });
+    const deployRun = run({ event: 'workflow_dispatch', display_title: 'Deploy a producción desde TaskMate', conclusion: 'failure' });
 
     test('re-runs the failed jobs of a failed run', async () => {
         const fetchImpl = useFakeGitHub({

@@ -49,7 +49,7 @@ describe('toNotice', () => {
   const deployRun = (conclusion, runId = 77) => ({
     event: 'ci_run',
     gid: 'G1',
-    data: { action: 'completed', runId, conclusion, title: 'Deploy a production desde TaskMate', branch: 'main', isTaskmate: true, isDeploy: true },
+    data: { action: 'completed', runId, conclusion, title: 'Deploy a producción desde TaskMate', branch: 'main', isTaskmate: true, isDeploy: true },
   });
   const deployFailed = (runId = 77, extra = {}) => ({
     event: 'deployment',
@@ -63,13 +63,13 @@ describe('toNotice', () => {
     expect(toNotice(deployRun('failure'), ctx)).toEqual({
       severity: 'error',
       gid: 'G1',
-      message: '[Demo CI/CD] Falló «Deploy a production desde TaskMate» en main.',
+      message: '[Demo CI/CD] Falló «Deploy a producción desde TaskMate» en main.',
     });
     expect(toNotice(deployRun('failure'), member).severity).toBe('error');
     expect(toNotice(deployRun('cancelled'), ctx)).toEqual({
       severity: 'warning',
       gid: 'G1',
-      message: '[Demo CI/CD] Se canceló «Deploy a production desde TaskMate» antes de publicar.',
+      message: '[Demo CI/CD] Se canceló «Deploy a producción desde TaskMate» antes de publicar.',
     });
     expect(toNotice(deployRun('cancelled'), member)).toBeNull();
     expect(toNotice({ ...deployRun('cancelled'), data: { ...deployRun('cancelled').data, action: 'in_progress' } }, ctx)).toBeNull();
@@ -185,7 +185,7 @@ describe('CicdNotifications', () => {
   const deployRun = (conclusion) => ({
     event: 'ci_run',
     gid: 'G1',
-    data: { action: 'completed', runId: 77, conclusion, title: 'Deploy a production desde TaskMate', branch: 'main', isTaskmate: true, isDeploy: true },
+    data: { action: 'completed', runId: 77, conclusion, title: 'Deploy a producción desde TaskMate', branch: 'main', isTaskmate: true, isDeploy: true },
   });
   const deployFailed = { event: 'deployment', gid: 'G1', data: { state: 'failure', environment: 'production', shortSha: 'bbbbbbb', logUrl: 'https://github.com/acme/app/actions/runs/77' } };
   const toasts = () => screen.queryAllByRole('alert').map((alert) => alert.textContent);
@@ -210,7 +210,7 @@ describe('CicdNotifications', () => {
     renderToasts();
     emit(deployRun('failure'));
     advance(RUN_NOTICE_DELAY_MS + 100);
-    expect(toasts()).toEqual([expect.stringContaining('[Demo CI/CD] Falló «Deploy a production desde TaskMate» en main.')]);
+    expect(toasts()).toEqual([expect.stringContaining('[Demo CI/CD] Falló «Deploy a producción desde TaskMate» en main.')]);
   });
 });
 

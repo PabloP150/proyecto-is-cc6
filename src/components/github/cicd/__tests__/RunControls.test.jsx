@@ -108,17 +108,17 @@ describe('run controls', () => {
   });
 
   test('deploy runs: members see why they cannot act, admins get the buttons', async () => {
-    const deploy = run(3, { event: 'workflow_dispatch', title: 'Deploy a production desde TaskMate', conclusion: 'failure' });
+    const deploy = run(3, { event: 'workflow_dispatch', title: 'Deploy a producción desde TaskMate', conclusion: 'failure' });
     listRuns.mockResolvedValue({ runs: [deploy], totalCount: 1, page: 1 });
     getRun.mockResolvedValue({ run: deploy, jobs: [] });
     const { unmount } = renderList({ isAdmin: false });
-    fireEvent.click(await screen.findByRole('button', { name: /Deploy a production/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Deploy a producción/ }));
     expect(await screen.findByText(/Solo el administrador del grupo puede re-ejecutar o cancelar un deploy/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Re-ejecutar fallidos' })).not.toBeInTheDocument();
     unmount();
 
     renderList({ isAdmin: true });
-    fireEvent.click(await screen.findByRole('button', { name: /Deploy a production/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Deploy a producción/ }));
     expect(await screen.findByRole('button', { name: 'Re-ejecutar fallidos' })).toBeInTheDocument();
   });
 

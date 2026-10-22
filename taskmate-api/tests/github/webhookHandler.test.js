@@ -413,7 +413,7 @@ describe('CI/CD events (relayed live, never stored)', () => {
     test('a deploy run dispatched by TaskMate is flagged; a non-GitHub html_url is dropped', async () => {
         await send(buildApp(), 'workflow_run', {
             action: 'requested', repository,
-            workflow_run: workflowRun({ event: 'workflow_dispatch', display_title: 'Deploy a production desde TaskMate', html_url: 'javascript:alert(1)' }),
+            workflow_run: workflowRun({ event: 'workflow_dispatch', display_title: 'Deploy a producción desde TaskMate', html_url: 'javascript:alert(1)' }),
         });
         expect(realtime.publish).toHaveBeenCalledWith('G1', 'ci_run', expect.objectContaining({ isDeploy: true, htmlUrl: null }));
     });

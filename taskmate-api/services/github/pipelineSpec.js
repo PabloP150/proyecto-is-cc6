@@ -1046,7 +1046,7 @@ const renderWorkflow = (spec) => {
     out.add(0, '# TaskMate lo reemplaza la próxima vez que alguien configure el pipeline.');
     out.add(0, WORKFLOW_MARKER);
     out.add(0, "name: 'TaskMate CI/CD'");
-    out.add(0, "run-name: ${{ inputs.environment && inputs.environment != 'none' && format('Deploy a {0} desde TaskMate', inputs.environment) || '' }}");
+    out.add(0, "run-name: ${{ inputs.environment == 'production' && 'Deploy a producción desde TaskMate' || inputs.environment == 'staging' && 'Deploy a staging desde TaskMate' || '' }}");
     out.add(0);
     out.add(0, 'on:');
     out.add(2, 'push:');
