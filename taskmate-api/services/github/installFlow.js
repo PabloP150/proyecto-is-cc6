@@ -99,8 +99,18 @@ const linkRepository = async ({ gid, uid, option }) => {
     });
 };
 
-// Repos the *user* can reach through the installation(s): the explicit installation_id must be
+// Linking hands the group the App's own token for that repository (branches, workflow, production
+// deploys and rollbacks), so the user must be able to write to it themselves: push, maintain or
+// admin in the `permissions` GitHub returns per repository for the user token. Read-only (pull,
+// triage) or a missing permissions object is left out.
+const userCanWrite = (repo) => {
+    const permissions = repo && repo.permissions;
+    return Boolean(permissions) && (permissions.push === true || permissions.maintain === true || permissions.admin === true);
+};
+
+// Repos the *user* can write to through the installation(s): the explicit installation_id must be
 // one of the user's installations; without it (authorize-only flow) all of them are used.
+// Throws NO_WRITABLE_REPOSITORIES when the user reaches repositories but can write to none.
 const collectRepoOptions = async (userToken, installationId) => {
     const installations = await oauth.listUserInstallations(userToken);
     const notFound = () => new AppError('INSTALLATION_NOT_FOUND', 'The installation is not accessible to this user', 403);
@@ -114,9 +124,16 @@ const collectRepoOptions = async (userToken, installationId) => {
         targets = installations.slice(0, oauth.MAX_INSTALLATIONS).map((inst) => Number(inst.id));
     }
     const options = [];
+    let readOnly = 0;
     for (const id of targets) {
         const repos = await oauth.listUserInstallationRepos(userToken, id);
-        repos.forEach((repo) => options.push(toRepoOption(repo, id)));
+        repos.forEach((repo) => {
+            if (userCanWrite(repo)) options.push(toRepoOption(repo, id));
+            else readOnly += 1;
+        });
+    }
+    if (options.length === 0 && readOnly > 0) {
+        throw new AppError('NO_WRITABLE_REPOSITORIES', 'The user cannot write to any repository of the installation', 403);
     }
     return options;
 };

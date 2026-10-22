@@ -125,13 +125,28 @@ const toRequest = (r) => ({
     note: r.note,
 });
 
+const pendingSlotTaken = () => new AppError('DEPLOY_REQUEST_PENDING', 'There is already a pending deploy request for this environment', 409);
+
 /**
  * createDeployRequest({gid, repoId, environment, versionSha, requestedBy}) → request
- * Throws DEPLOY_REQUEST_PENDING (409) when the group already has a pending request for that environment.
+ * Throws DEPLOY_REQUEST_PENDING (409) when the group already has a pending request for that environment,
+ * DEPLOY_REQUEST_STALE (409) when the group is linked to another repository by now, REPO_NOT_CONNECTED
+ * (409) when it has none.
  */
 const createDeployRequest = async ({ gid, repoId, environment, versionSha, requestedBy }, options = {}) => {
     try {
         return await useTransaction(options, async (tx) => {
+            // Same lock (and lock order) as github.model link/unlink, which delete the pending requests
+            // of other repositories: a request for the old repository cannot slip in after that delete
+            // and hold the pending slot where nobody sees it.
+            const link = await tx.read(
+                'SELECT repo_id FROM dbo.GroupRepositories WITH (UPDLOCK, HOLDLOCK) WHERE gid = @gid',
+                [guid('gid', gid)]
+            );
+            if (link.length === 0) throw new AppError('REPO_NOT_CONNECTED', 'This group has no connected repository', 409);
+            if (Number(link[0].repo_id) !== Number(repoId)) {
+                throw new AppError('DEPLOY_REQUEST_STALE', 'The group is linked to another repository now', 409);
+            }
             const rows = await tx.read(
                 `INSERT INTO dbo.DeployRequests (gid, repo_id, environment, version_sha, requested_by)
                  OUTPUT INSERTED.request_id
@@ -147,9 +162,7 @@ const createDeployRequest = async ({ gid, repoId, environment, versionSha, reque
             return getDeployRequest(rows[0].request_id, { tx });
         });
     } catch (err) {
-        if (isUniqueViolation(err)) {
-            throw new AppError('DEPLOY_REQUEST_PENDING', 'There is already a pending deploy request for this environment', 409);
-        }
+        if (isUniqueViolation(err)) throw pendingSlotTaken();
         if (isFkViolation(err)) throw new AppError('NOT_FOUND', 'Group, repository or user not found', 404);
         throw err;
     }
@@ -163,15 +176,20 @@ const getDeployRequest = async (requestId, options = {}) => {
     return rows.length > 0 ? toRequest(rows[0]) : null;
 };
 
-// Newest first; pending ones are always included.
-const listDeployRequests = async (gid, { limit = 20 } = {}, options = {}) => {
+// Newest first; pending ones are always included. With repoId, only that repository's requests
+// (the group's current one: requests made for a repository it used before are history of that repo).
+const listDeployRequests = async (gid, { limit = 20, repoId } = {}, options = {}) => {
     const top = Math.min(Math.max(Number(limit) || 20, 1), 100);
     const rows = await read(options,
         `SELECT TOP (@top) ${REQUEST_COLUMNS}
          FROM dbo.DeployRequests r ${REQUEST_JOINS}
-         WHERE r.gid = @gid
+         WHERE r.gid = @gid AND (@repoId IS NULL OR r.repo_id = @repoId)
          ORDER BY CASE WHEN r.status = 'pending' THEN 0 ELSE 1 END, r.requested_at DESC, r.request_id`,
-        [guid('gid', gid), { name: 'top', type: TYPES.Int, value: top }]
+        [
+            guid('gid', gid),
+            { name: 'top', type: TYPES.Int, value: top },
+            repoId === undefined || repoId === null ? { name: 'repoId', type: TYPES.BigInt, value: null } : bigIntParam('repoId', repoId),
+        ]
     );
     return rows.map(toRequest);
 };
@@ -199,12 +217,52 @@ const decideDeployRequest = async ({ requestId, gid, status, decidedBy, note = n
     });
 };
 
-// Puts an approved request back to pending (the dispatch to GitHub failed after the approval).
-const reopenDeployRequest = async ({ requestId, gid }, options = {}) => (await write(options,
-    `UPDATE dbo.DeployRequests SET status = 'pending', decided_by = NULL, decided_at = NULL, note = NULL
-     WHERE request_id = @id AND gid = @gid AND status = 'approved'`,
-    [guid('id', requestId), guid('gid', gid)]
-)) > 0;
+/**
+ * reopenDeployRequest({requestId, gid}) → true when the request is pending again
+ * Puts an approved request back to pending (the dispatch to GitHub failed after the approval).
+ * false when it is not approved (anymore) or the group no longer uses its repository; throws
+ * DEPLOY_REQUEST_PENDING (409) when another request took the pending slot meanwhile.
+ */
+const reopenDeployRequest = async ({ requestId, gid }, options = {}) => {
+    try {
+        return await useTransaction(options, async (tx) => {
+            // Same lock (and order) as createDeployRequest and github.model link/unlink: an approved
+            // request is not "pending", so a repository switch during the dispatch left it alone, and
+            // reopening it for the old repository would hold the pending slot where nobody sees it.
+            const link = await tx.read(
+                'SELECT repo_id FROM dbo.GroupRepositories WITH (UPDLOCK, HOLDLOCK) WHERE gid = @gid',
+                [guid('gid', gid)]
+            );
+            if (link.length === 0) return false;
+            return (await tx.write(
+                `UPDATE dbo.DeployRequests SET status = 'pending', decided_by = NULL, decided_at = NULL, note = NULL
+                 WHERE request_id = @id AND gid = @gid AND status = 'approved' AND repo_id = @linkedRepoId`,
+                [guid('id', requestId), guid('gid', gid), bigIntParam('linkedRepoId', link[0].repo_id)]
+            )) > 0;
+        });
+    } catch (err) {
+        if (isUniqueViolation(err)) throw pendingSlotTaken();
+        throw err;
+    }
+};
+
+/**
+ * cancelApprovedDeployRequest({requestId, gid, note}) → request | null
+ * Closes an approved request whose deploy never started and that cannot go back to pending; the
+ * approver stays as who decided it. null when the request is not approved (anymore).
+ */
+const cancelApprovedDeployRequest = async ({ requestId, gid, note }, options = {}) => useTransaction(options, async (tx) => {
+    const updated = await tx.write(
+        `UPDATE dbo.DeployRequests SET status = 'cancelled', decided_at = SYSDATETIMEOFFSET(), note = @note
+         WHERE request_id = @id AND gid = @gid AND status = 'approved'`,
+        [
+            guid('id', requestId),
+            guid('gid', gid),
+            { name: 'note', type: TYPES.NVarChar, value: note === null || note === undefined ? null : String(note).slice(0, 500) },
+        ]
+    );
+    return updated > 0 ? getDeployRequest(requestId, { tx }) : null;
+});
 
 module.exports = {
     getPipeline,
@@ -215,4 +273,5 @@ module.exports = {
     listDeployRequests,
     decideDeployRequest,
     reopenDeployRequest,
+    cancelApprovedDeployRequest,
 };

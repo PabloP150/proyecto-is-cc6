@@ -3,7 +3,7 @@
 // dispatched from here. The deploy history is GitHub's (Deployments with task deploy:taskmate,
 // written by the workflow with the exact commit); TaskMate only stores the production requests that
 // wait for a group admin (DeployRequests).
-const { AppError } = require('../../helpers/errors');
+const { AppError, isAppError } = require('../../helpers/errors');
 const cicdModel = require('../../models/cicd.model');
 const { githubApp, PERMISSIONS } = require('./githubApp');
 const repoService = require('./repoService');
@@ -14,30 +14,57 @@ const { realtime } = require('../realtime');
 
 const SHA_RE = /^[0-9a-f]{40}$/i;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const HISTORY_SIZE = 30;
+// Per environment: frequent staging deploys must never push production out of the history.
+const HISTORY_SIZE = 20;
 const MAX_ROLLBACK_CANDIDATES = 10;
 const MAX_NOTE = 500;
 const MAX_USERNAME = 40;
 const WORKFLOW_FILE = WORKFLOW_PATH.slice(WORKFLOW_PATH.lastIndexOf('/') + 1);
 const ACTIVE_STATES = new Set(['queued', 'pending', 'in_progress', 'waiting']);
 const DEPLOYED_STATES = new Set(['success', 'inactive']);
+// The workflow creates the deployment (in_progress) at the start of the build job (timeout 30 min)
+// and marks it success at the end of the deploy job (timeout 20 min, after waiting for a runner), so
+// a live deploy can stay in progress for about 50 minutes. One still unfinished after an hour was
+// abandoned (runner lost, run cancelled before its failure step) and counts as failed.
+const ABANDONED_STATES = new Set(['pending', 'queued', 'in_progress']);
+const ABANDONED_AFTER_MS = 60 * 60 * 1000;
+// The CI job of the generated workflow is named "CI (Node.js)", "CI (Python)" or "CI (sitio estático)".
+const CI_CHECK_PREFIX = 'CI (';
+const CI_APP_SLUG = 'github-actions';
+const MAX_CHECK_RUNS = 100;
+
+const STALE_REPOSITORY_NOTE = 'El grupo cambió de repositorio.';
+const STALE_STAGING_NOTE = 'La versión de staging cambió; pide de nuevo.';
+const DISPATCH_FAILED_NOTE = 'No se pudo iniciar el deploy en GitHub; pide de nuevo.';
+
+// GitHub's check runs and compare results lag a few seconds behind a push, so a negative answer
+// is asked once more before a version is refused. Replaceable in tests.
+const timing = {
+    retryDelayMs: 2000,
+    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+};
 
 const { repoAuth, repoPath, scope } = repoService;
 const invalid = (message) => new AppError('VALIDATION_ERROR', message, 400);
 const short = (sha) => (typeof sha === 'string' ? sha.slice(0, 7) : null);
 const githubUrl = (value) => (typeof value === 'string' && value.startsWith('https://github.com/') ? value : null);
 const httpsUrl = (value) => (typeof value === 'string' && value.startsWith('https://') ? value : null);
+const encodeRef = (ref) => String(ref).split('/').map(encodeURIComponent).join('/');
 
 const DEPLOYMENTS_QUERY = `query($owner: String!, $name: String!, $first: Int!) {
   repository(owner: $owner, name: $name) {
-    deployments(first: $first, environments: ["staging", "production"], orderBy: {field: CREATED_AT, direction: DESC}) {
-      nodes {
-        databaseId environment task commitOid createdAt description payload
-        creator { login }
-        latestStatus { state environmentUrl logUrl createdAt }
-      }
+    staging: deployments(first: $first, environments: ["staging"], orderBy: {field: CREATED_AT, direction: DESC}) {
+      nodes { ...TaskmateDeploy }
+    }
+    production: deployments(first: $first, environments: ["production"], orderBy: {field: CREATED_AT, direction: DESC}) {
+      nodes { ...TaskmateDeploy }
     }
   }
+}
+fragment TaskmateDeploy on Deployment {
+  databaseId environment task commitOid createdAt description payload
+  creator { login }
+  latestStatus { state environmentUrl logUrl createdAt }
 }`;
 
 const validateEnvironment = (environment) => {
@@ -70,16 +97,26 @@ const parsePayload = (value) => {
     return payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : null;
 };
 
-const toDeploy = (node) => {
+// A deploy with no final status long after it was created is reported as failed ("error",
+// abandoned: true) instead of "deploying" forever.
+const isAbandoned = (state, createdAt, now) => {
+    const created = Date.parse(createdAt || '');
+    return ABANDONED_STATES.has(state) && Number.isFinite(created) && now - created > ABANDONED_AFTER_MS;
+};
+
+const toDeploy = (node, { now = Date.now() } = {}) => {
     const status = node.latestStatus || {};
     const payload = parsePayload(node.payload) || {};
     const requestedBy = typeof payload.requestedBy === 'string' && payload.requestedBy ? payload.requestedBy.slice(0, MAX_USERNAME) : null;
+    const reported = typeof status.state === 'string' ? status.state.toLowerCase() : 'pending';
+    const abandoned = isAbandoned(reported, node.createdAt, now);
     return {
         id: Number(node.databaseId) || null,
         environment: node.environment,
         sha: node.commitOid,
         shortSha: short(node.commitOid),
-        state: typeof status.state === 'string' ? status.state.toLowerCase() : 'pending',
+        state: abandoned ? 'error' : reported,
+        abandoned,
         createdAt: node.createdAt || null,
         finishedAt: status.createdAt || null,
         url: httpsUrl(status.environmentUrl),
@@ -89,7 +126,9 @@ const toDeploy = (node) => {
     };
 };
 
-/** TaskMate deploys of the repository, newest first (one GraphQL request). */
+const nodesOf = (connection) => (connection && Array.isArray(connection.nodes) ? connection.nodes : []);
+
+/** TaskMate deploys of the repository, newest first (one GraphQL request, each environment on its own). */
 const fetchDeploys = async (repo) => {
     const { data } = await githubApp.request(repoAuth(repo), 'POST', '/graphql', {
         ...scope(repo, PERMISSIONS.deploymentsRead),
@@ -98,10 +137,12 @@ const fetchDeploys = async (repo) => {
     if (!data || data.errors || !data.data || !data.data.repository) {
         throw new AppError('GITHUB_ERROR', 'GitHub could not list the deployments', 502);
     }
-    const nodes = data.data.repository.deployments ? data.data.repository.deployments.nodes || [] : [];
-    return nodes
+    const { staging, production } = data.data.repository;
+    const now = Date.now();
+    return [...nodesOf(staging), ...nodesOf(production)]
         .filter((node) => node && node.task === DEPLOY_TASK && ENVIRONMENTS.includes(node.environment) && SHA_RE.test(node.commitOid || ''))
-        .map(toDeploy);
+        .map((node) => toDeploy(node, { now }))
+        .sort((a, b) => (Date.parse(b.createdAt || '') || 0) - (Date.parse(a.createdAt || '') || 0) || (b.id || 0) - (a.id || 0));
 };
 
 /** {staging: {live, inProgress}, production: {...}} from the history (newest first). */
@@ -134,20 +175,53 @@ const requireDeployPipeline = async (repo) => {
     return pipeline;
 };
 
+// compare/{sha}...{default branch}: "ahead" means the default branch contains the commit plus newer
+// ones, "identical" that it is its head. "behind"/"diverged" (a feature branch or fork commit) and
+// 404 (unknown commit) are not on the default branch.
+const isOnDefaultBranch = async (repo, sha) => {
+    const { status, data } = await githubApp.request(repoAuth(repo), 'GET', `${repoPath(repo)}/compare/${sha}...${encodeRef(repo.defaultBranch)}`, {
+        ...scope(repo, PERMISSIONS.read),
+        query: { per_page: 1 },
+        allowStatus: [404],
+    });
+    return status !== 404 && Boolean(data) && (data.status === 'ahead' || data.status === 'identical');
+};
+
+// The CI job's own check run, not the workflow run: a deploy dispatched from TaskMate runs the
+// workflow with the CI job skipped and still ends "success" on the default branch head.
+const passedTaskmateCi = async (repo, sha) => {
+    const { status, data } = await githubApp.request(repoAuth(repo), 'GET', `${repoPath(repo)}/commits/${sha}/check-runs`, {
+        ...scope(repo, PERMISSIONS.checksRead),
+        query: { filter: 'latest', per_page: MAX_CHECK_RUNS },
+        allowStatus: [404, 422],
+    });
+    if (status === 404 || status === 422) return false;
+    const runs = data && Array.isArray(data.check_runs) ? data.check_runs : [];
+    return runs.some((run) => run
+        && typeof run.name === 'string' && run.name.startsWith(CI_CHECK_PREFIX)
+        && run.app && run.app.slug === CI_APP_SLUG
+        && run.status === 'completed' && run.conclusion === 'success'
+        && String(run.head_sha || '').toLowerCase() === sha);
+};
+
+const verifiedOnGitHub = async (repo, sha) => (await isOnDefaultBranch(repo, sha)) && passedTaskmateCi(repo, sha);
+
 /**
- * Only versions that passed the TaskMate CI (or were already deployed by it) are deployed:
- * a successful TaskMate workflow run for that exact commit.
+ * Only verified versions are deployed: one TaskMate already deployed (rollbacks, promotions), or a
+ * commit of the default branch whose TaskMate CI job passed.
  */
 const assertVersionPassedCi = async (repo, version, history) => {
-    if (history && history.some((deploy) => deploy.sha === version && DEPLOYED_STATES.has(deploy.state))) return;
-    const { data } = await githubApp.request(repoAuth(repo), 'GET', `${repoPath(repo)}/actions/workflows/${WORKFLOW_FILE}/runs`, {
-        ...scope(repo, PERMISSIONS.actionsRead),
-        query: { head_sha: version, status: 'success', per_page: 1 },
-        notFoundCode: 'PIPELINE_NOT_CONFIGURED',
-    });
-    if (!data || !Number(data.total_count)) {
-        throw new AppError('VERSION_NOT_VERIFIED', 'That commit has no successful run of the TaskMate pipeline', 409);
-    }
+    const sha = String(version).toLowerCase();
+    if (history && history.some((deploy) => deploy.sha === sha && DEPLOYED_STATES.has(deploy.state))) return;
+    if (await verifiedOnGitHub(repo, sha)) return;
+    await timing.sleep(timing.retryDelayMs);
+    if (await verifiedOnGitHub(repo, sha)) return;
+    throw new AppError('VERSION_NOT_VERIFIED', 'That commit is not on the default branch with a passing TaskMate CI', 409);
+};
+
+const liveStagingSha = (history) => {
+    const live = summarize(history).staging.live;
+    return live ? String(live.sha).toLowerCase() : null;
 };
 
 const dispatchDeploy = async (repo, { environment, version, username }) => {
@@ -178,7 +252,8 @@ const getDeployments = async (gid) => {
     const repo = await repoService.getConnectedRepo(gid);
     const pipeline = await cicdModel.getPipeline(repo.repoId);
     const deploys = Boolean(pipeline && pipeline.spec && pipeline.spec.deploy);
-    const requests = await cicdModel.listDeployRequests(gid);
+    // Requests made for a repository the group used before are not shown.
+    const requests = await cicdModel.listDeployRequests(gid, { repoId: repo.repoId });
     if (!deploys) return { deploys: false, environments: null, history: [], rollbackCandidates: [], requests, pages: null };
     const history = await fetchDeploys(repo);
     const environments = summarize(history);
@@ -203,13 +278,21 @@ const deployNow = async ({ gid, username, environment, version }) => {
     return { dispatched: true, environment, version: sha };
 };
 
-/** Member: ask the admins to deploy a verified version (production by default). */
+/**
+ * Member: ask the admins to promote the version live in staging to production. That is the only
+ * request a member can make; any other version or environment goes through an admin's deployNow.
+ */
 const requestDeploy = async ({ gid, uid, environment = 'production', version }) => {
     validateEnvironment(environment);
+    if (environment !== 'production') throw invalid('members can only ask to promote the staging version to production');
     const sha = validateVersion(version);
     const repo = await repoService.getConnectedRepo(gid);
     await requireDeployPipeline(repo);
-    await assertVersionPassedCi(repo, sha, await fetchDeploys(repo));
+    const history = await fetchDeploys(repo);
+    if (liveStagingSha(history) !== sha) {
+        throw new AppError('VERSION_NOT_STAGING', 'Only the version live in staging can be requested for production', 409);
+    }
+    await assertVersionPassedCi(repo, sha, history);
     const request = await cicdModel.createDeployRequest({ gid, repoId: repo.repoId, environment, versionSha: sha, requestedBy: uid });
     publishRequest(gid, request);
     return request;
@@ -230,19 +313,58 @@ const decided = (request) => {
     return request;
 };
 
+// A request that no longer applies is closed (cancelled, with the reason for the requester) instead
+// of deploying something nobody asked for.
+const closeStaleRequest = async ({ gid, uid, requestId, note }) => {
+    const cancelled = decided(await cicdModel.decideDeployRequest({ requestId, gid, status: 'cancelled', decidedBy: uid, note }));
+    publishRequest(gid, cancelled);
+    throw new AppError('DEPLOY_REQUEST_STALE', 'The request no longer applies and was cancelled', 409);
+};
+
+// The dispatch failed after the approval: the request goes back to pending so an admin can retry.
+// When that is impossible (a new request took the pending slot meanwhile, the group switched
+// repositories, or the database failed) it is closed as cancelled, never left "approved" for a
+// deploy that did not start.
+const undoApproval = async (gid, requestId) => {
+    try {
+        if (await cicdModel.reopenDeployRequest({ requestId, gid })) return;
+    } catch (err) {
+        if (!isAppError(err) || err.code !== 'DEPLOY_REQUEST_PENDING') {
+            console.error('Reopening the deploy request after a failed dispatch failed:', err && err.message);
+        }
+    }
+    try {
+        const cancelled = await cicdModel.cancelApprovedDeployRequest({ requestId, gid, note: DISPATCH_FAILED_NOTE });
+        if (cancelled) publishRequest(gid, cancelled);
+    } catch (err) {
+        console.error('Cancelling the deploy request after a failed dispatch failed:', err && err.message);
+    }
+};
+
 /**
- * Admin: approve a pending request and dispatch its deploy. The approval is written first (so two
- * admins cannot both dispatch); if GitHub refuses the dispatch the request goes back to pending.
+ * Admin: approve a pending request and dispatch its deploy. The request must still apply: same
+ * repository, and its version still the one live in staging (otherwise it is cancelled). The
+ * approval is written first (so two admins cannot both dispatch); if GitHub refuses the dispatch
+ * the request goes back to pending.
  */
 const approveRequest = async ({ gid, uid, username, requestId }) => {
     const pending = await loadPendingRequest(gid, requestId);
     const repo = await repoService.getConnectedRepo(gid);
+    if (Number(pending.repoId) !== Number(repo.repoId)) {
+        await closeStaleRequest({ gid, uid, requestId, note: STALE_REPOSITORY_NOTE });
+    }
     await requireDeployPipeline(repo);
+    const history = await fetchDeploys(repo);
+    const version = String(pending.versionSha).toLowerCase();
+    if (liveStagingSha(history) !== version) {
+        await closeStaleRequest({ gid, uid, requestId, note: STALE_STAGING_NOTE });
+    }
+    await assertVersionPassedCi(repo, version, history);
     const approved = decided(await cicdModel.decideDeployRequest({ requestId, gid, status: 'approved', decidedBy: uid }));
     try {
-        await dispatchDeploy(repo, { environment: pending.environment, version: pending.versionSha, username: pending.requestedByUsername || username });
+        await dispatchDeploy(repo, { environment: pending.environment, version, username: pending.requestedByUsername || username });
     } catch (err) {
-        await cicdModel.reopenDeployRequest({ requestId, gid }).catch(() => {});
+        await undoApproval(gid, requestId);
         throw err;
     }
     publishRequest(gid, approved);
@@ -283,4 +405,5 @@ module.exports = {
     approveRequest,
     rejectRequest,
     cancelRequest,
+    _timing: timing,
 };
