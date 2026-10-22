@@ -10,6 +10,7 @@ import { JobAnnotations, JobLog } from './JobLog';
 import useVisibleInterval from './useVisibleInterval';
 
 const POLL_MS = 10 * 1000;
+const SAFETY_POLL_MS = 60 * 1000;
 
 function JobCard({ gid, job }) {
   const state = stateOf(job.status, job.conclusion);
@@ -90,11 +91,13 @@ export default function RunDetail({ gid, runId }) {
   const { loading, error, data } = state;
   const running = Boolean(data && data.run && data.run.status !== 'completed');
   const { connected } = useRealtime();
-  useGroupEvents(gid, ['ci_run', 'ci_job'], (event) => {
-    if (event && Number(event.runId) === Number(runId)) reload();
-  }, { debounceMs: 800 });
-  // Live events keep it fresh; polling is only the fallback without the /events connection.
-  useVisibleInterval(reload, POLL_MS, running && !loading && !connected);
+  // Filtered before the debounce: an event of another run right after one of this run must not
+  // replace it (and so drop the reload).
+  const isThisRun = useCallback((event) => Boolean(event) && Number(event.runId) === Number(runId), [runId]);
+  useGroupEvents(gid, ['ci_run', 'ci_job'], reload, { debounceMs: 800, filter: isThisRun });
+  // Live events keep it fresh; polling is the fallback without the /events connection and, slowly,
+  // a safety net with it (an event can be lost).
+  useVisibleInterval(reload, connected ? SAFETY_POLL_MS : POLL_MS, running && !loading);
 
   if (loading && !data) {
     return (

@@ -52,14 +52,14 @@ const realtime = (connected) => ({
 });
 const emit = (message) => act(() => listeners.forEach((fn) => fn(message)));
 
-const renderList = ({ isAdmin = false, connected = true, canRun = true } = {}) =>
-  render(
-    <ThemeProvider theme={theme}>
-      <RealtimeContext.Provider value={realtime(connected)}>
-        <RunList gid="G1" isAdmin={isAdmin} canRun={canRun} defaultBranch="main" />
-      </RealtimeContext.Provider>
-    </ThemeProvider>
-  );
+const listTree = ({ isAdmin = false, connected = true, canRun = true, epoch = 0 } = {}) => (
+  <ThemeProvider theme={theme}>
+    <RealtimeContext.Provider value={{ ...realtime(connected), epoch }}>
+      <RunList gid="G1" isAdmin={isAdmin} canRun={canRun} defaultBranch="main" />
+    </RealtimeContext.Provider>
+  </ThemeProvider>
+);
+const renderList = (options) => render(listTree(options));
 
 beforeEach(() => {
   listeners.clear();
@@ -137,6 +137,23 @@ describe('run controls', () => {
     expect(within(log).getByText('3:7 error x is not defined', { normalizer: (t) => t.replace(/\s+/g, ' ').trim() })).toBeInTheDocument();
   });
 
+  test('annotations that cannot be loaded say why instead of disappearing', async () => {
+    getJobAnnotations.mockRejectedValue(Object.assign(new Error('x'), { code: 'APP_PERMISSIONS_MISSING' }));
+    renderList();
+    fireEvent.click(await screen.findByRole('button', { name: /Commit 1/ }));
+    expect(
+      await screen.findByText(/No se pudieron cargar los errores y advertencias: La GitHub App todavía no tiene los permisos de CI\/CD/)
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: 'Errores y advertencias' })).not.toBeInTheDocument();
+  });
+
+  test('annotations failing with an unknown error get a generic note', async () => {
+    getJobAnnotations.mockRejectedValue(new Error('boom'));
+    renderList();
+    fireEvent.click(await screen.findByRole('button', { name: /Commit 1/ }));
+    expect(await screen.findByText('No se pudieron cargar los errores y advertencias de este job.')).toBeInTheDocument();
+  });
+
   test('a log that is not available yet', async () => {
     getJobLog.mockRejectedValue(Object.assign(new Error('x'), { code: 'LOG_NOT_AVAILABLE' }));
     renderList();
@@ -187,14 +204,94 @@ describe('live updates', () => {
     await waitFor(() => expect(listRuns).toHaveBeenCalledTimes(2));
   });
 
-  test('with the live connection there is no polling', async () => {
+  test('with the live connection an active run is only checked every minute (a lost event cannot freeze it)', async () => {
     jest.useFakeTimers();
     listRuns.mockResolvedValue({ runs: [run(1, { status: 'in_progress', conclusion: null })], totalCount: 1, page: 1 });
     renderList({ connected: true });
     await screen.findByText('Commit 1');
     await act(async () => {
-      jest.advanceTimersByTime(60000);
+      jest.advanceTimersByTime(59000);
     });
     expect(listRuns).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+    await waitFor(() => expect(listRuns).toHaveBeenCalledTimes(2));
+  });
+
+  test('the open run in progress is checked every 10 s without the live connection and every minute with it', async () => {
+    jest.useFakeTimers();
+    listRuns.mockResolvedValue({ runs: [run(1, { status: 'in_progress', conclusion: null })], totalCount: 1, page: 1 });
+    getRun.mockResolvedValue({ run: run(1, { status: 'in_progress', conclusion: null }), jobs: [] });
+    const { unmount } = renderList({ connected: false });
+    fireEvent.click(await screen.findByRole('button', { name: /Commit 1/ }));
+    await screen.findByText('Esta ejecución todavía no tiene jobs.');
+    expect(getRun).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      jest.advanceTimersByTime(10000);
+    });
+    await waitFor(() => expect(getRun).toHaveBeenCalledTimes(2));
+    unmount();
+
+    getRun.mockClear();
+    renderList({ connected: true });
+    fireEvent.click(await screen.findByRole('button', { name: /Commit 1/ }));
+    await screen.findByText('Esta ejecución todavía no tiene jobs.');
+    expect(getRun).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      jest.advanceTimersByTime(59000);
+    });
+    expect(getRun).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+    await waitFor(() => expect(getRun).toHaveBeenCalledTimes(2));
+  });
+
+  test('nothing active: no safety poll either', async () => {
+    jest.useFakeTimers();
+    listRuns.mockResolvedValue({ runs: [run(1)], totalCount: 1, page: 1 });
+    renderList({ connected: true });
+    await screen.findByText('Commit 1');
+    await act(async () => {
+      jest.advanceTimersByTime(180000);
+    });
+    expect(listRuns).toHaveBeenCalledTimes(1);
+  });
+
+  test('after a reconnection the list and the open run reload once to catch up', async () => {
+    listRuns.mockResolvedValue({ runs: [run(1, { status: 'completed', conclusion: 'success' })], totalCount: 1, page: 1 });
+    getRun.mockResolvedValue({ run: run(1), jobs: [] });
+    const { rerender } = render(listTree({ epoch: 1 }));
+    fireEvent.click(await screen.findByRole('button', { name: /Commit 1/ }));
+    await screen.findByText('Esta ejecución todavía no tiene jobs.');
+    expect(listRuns).toHaveBeenCalledTimes(1);
+    expect(getRun).toHaveBeenCalledTimes(1);
+    rerender(listTree({ epoch: 2 }));
+    await waitFor(() => expect(listRuns).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(getRun).toHaveBeenCalledTimes(2));
+  });
+
+  test("the open run reloads on its own events even when another run's event follows within the debounce", async () => {
+    jest.useFakeTimers();
+    listRuns.mockResolvedValue({ runs: [run(1, { status: 'in_progress', conclusion: null })], totalCount: 1, page: 1 });
+    getRun.mockResolvedValue({ run: run(1, { status: 'in_progress', conclusion: null }), jobs: [] });
+    renderList({ connected: true });
+    fireEvent.click(await screen.findByRole('button', { name: /Commit 1/ }));
+    await screen.findByText('Esta ejecución todavía no tiene jobs.');
+    expect(getRun).toHaveBeenCalledTimes(1);
+    emit({ type: 'event', event: 'ci_job', gid: 'G1', data: { runId: 1, jobId: 11, status: 'completed' } });
+    emit({ type: 'event', event: 'ci_job', gid: 'G1', data: { runId: 2, jobId: 21, status: 'in_progress' } });
+    await act(async () => {
+      jest.advanceTimersByTime(900);
+    });
+    await waitFor(() => expect(getRun).toHaveBeenCalledTimes(2));
+
+    // Only another run's events: no reload.
+    emit({ type: 'event', event: 'ci_job', gid: 'G1', data: { runId: 2, jobId: 21, status: 'completed' } });
+    await act(async () => {
+      jest.advanceTimersByTime(900);
+    });
+    expect(getRun).toHaveBeenCalledTimes(2);
   });
 });

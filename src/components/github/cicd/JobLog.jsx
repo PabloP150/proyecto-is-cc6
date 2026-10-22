@@ -124,20 +124,37 @@ export function JobLog({ gid, jobId }) {
   );
 }
 
-/** Errors and warnings of a job with their file and line (GitHub annotations). Props: gid, jobId. */
+/**
+ * Errors and warnings of a job with their file and line (GitHub annotations). Props: gid, jobId.
+ * When they cannot be loaded it says why (e.g. the App still lacks the CI/CD permissions) instead
+ * of looking like a job without errors.
+ */
 export function JobAnnotations({ gid, jobId }) {
-  const [state, setState] = useState({ loading: true, items: [] });
+  const [state, setState] = useState({ loading: true, items: [], error: null });
 
   useEffect(() => {
     const controller = new AbortController();
     getJobAnnotations(gid, jobId, { signal: controller.signal })
-      .then((items) => setState({ loading: false, items: Array.isArray(items) ? items : [] }))
+      .then((items) => setState({ loading: false, items: Array.isArray(items) ? items : [], error: null }))
       .catch((err) => {
-        if (!isAbortError(err)) setState({ loading: false, items: [] });
+        if (isAbortError(err)) return;
+        const reason = errorMessage(err, null);
+        setState({
+          loading: false,
+          items: [],
+          error: reason ? `No se pudieron cargar los errores y advertencias: ${reason}` : 'No se pudieron cargar los errores y advertencias de este job.',
+        });
       });
     return () => controller.abort();
   }, [gid, jobId]);
 
+  if (state.error) {
+    return (
+      <Typography variant="caption" component="p" role="status" sx={{ mt: 1, color: 'warning.light' }}>
+        {state.error}
+      </Typography>
+    );
+  }
   if (state.loading || state.items.length === 0) return null;
   return (
     <Box component="ul" aria-label="Errores y advertencias" sx={{ listStyle: 'none', m: 0, mt: 1, p: 0, display: 'grid', gap: 0.5 }}>

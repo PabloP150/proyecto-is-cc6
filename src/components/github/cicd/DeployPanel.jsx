@@ -36,7 +36,28 @@ import { monoSx, safeHttpsUrl } from './cicdUtils';
 import useVisibleInterval from './useVisibleInterval';
 
 const POLL_MS = 15 * 1000;
+// With the live connection, a deploy in progress is still checked now and then: an event can be lost.
+const SAFETY_POLL_MS = 60 * 1000;
+// A deploy TaskMate just started has no GitHub Deployment until its run reaches the step that creates
+// it (the run may queue behind another deploy): until the panel shows it, it is checked as if it
+// were in progress, for at most this long.
+const AWAIT_DEPLOY_MS = 10 * 60 * 1000;
+// The newest deploy of an environment (history is newest first); a different one means a new Deployment.
+const newestDeployKey = (history, environment) => {
+  const newest = (Array.isArray(history) ? history : []).find((deploy) => deploy.environment === environment);
+  return newest ? [newest.id, newest.sha, newest.createdAt].join('|') : '';
+};
 const ENV_LABELS = { staging: 'Staging', production: 'Producción' };
+const envName = (environment) => (ENV_LABELS[environment] || String(environment || '')).toLowerCase();
+// The request or the version changed under the user (someone else acted, staging moved): reload so
+// the panel shows what is true now; the error stays in the dialog.
+const OUTDATED_CODES = new Set([
+  'DEPLOY_REQUEST_STALE',
+  'DEPLOY_REQUEST_DECIDED',
+  'DEPLOY_REQUEST_NOT_FOUND',
+  'DEPLOY_REQUEST_PENDING',
+  'VERSION_NOT_STAGING',
+]);
 const STATE_LABELS = {
   success: 'Publicado',
   inactive: 'Reemplazado',
@@ -172,7 +193,7 @@ function RequestRow({ request, repo, uid, isAdmin, onAct, busy }) {
       <Chip size="small" color={REQUEST_COLORS[request.status] || 'default'} label={REQUEST_LABELS[request.status] || request.status} />
       <Typography variant="body2" sx={{ flex: '1 1 240px', minWidth: 0 }}>
         {request.requestedByUsername || 'Un miembro'} pidió publicar <Sha repo={repo} sha={request.versionSha} /> en{' '}
-        {(ENV_LABELS[request.environment] || request.environment).toLowerCase()}
+        {envName(request.environment)}
         <Typography component="span" variant="caption" color="text.secondary">
           {' · '}
           {formatRelativeDate(request.requestedAt)}
@@ -214,6 +235,7 @@ export default function DeployPanel({ gid, repo, isAdmin, uid, refreshKey = 0 })
   const [rollbackSha, setRollbackSha] = useState('');
   const [note, setNote] = useState('');
   const [showHistory, setShowHistory] = useState(false);
+  const [awaiting, setAwaiting] = useState(null); // {environment, since}: a deploy started here, not shown yet
   const reload = useCallback(() => setVersion((v) => v + 1), []);
 
   useEffect(() => {
@@ -233,7 +255,18 @@ export default function DeployPanel({ gid, repo, isAdmin, uid, refreshKey = 0 })
   const deploying = Boolean(environments && (environments.staging.inProgress || environments.production.inProgress));
   const { connected } = useRealtime();
   useGroupEvents(gid, ['deployment', 'deploy_request'], reload, { debounceMs: 800 });
-  useVisibleInterval(reload, POLL_MS, deploying && !state.loading && !connected);
+
+  // The started deploy shows up (in progress, or already finished): the usual checks take over.
+  useEffect(() => {
+    if (awaiting && data && newestDeployKey(data.history, awaiting.environment) !== awaiting.since) setAwaiting(null);
+  }, [awaiting, data]);
+  // A run that fails before creating its Deployment (or never starts) never shows up.
+  useEffect(() => {
+    if (!awaiting) return undefined;
+    const id = setTimeout(() => setAwaiting(null), AWAIT_DEPLOY_MS);
+    return () => clearTimeout(id);
+  }, [awaiting]);
+  useVisibleInterval(reload, connected ? SAFETY_POLL_MS : POLL_MS, (deploying || Boolean(awaiting)) && !state.loading);
 
   if (state.loading && !data) {
     return (
@@ -268,16 +301,19 @@ export default function DeployPanel({ gid, repo, isAdmin, uid, refreshKey = 0 })
     setDialog(next);
   };
 
-  const run = async (action, success) => {
+  // deployTo: the environment the action starts a deploy in (none for requests and rejections).
+  const run = async (action, success, deployTo) => {
     setBusy(true);
     setDialogError(null);
     try {
       await action();
       setDialog(null);
       setNotice(success);
+      if (deployTo) setAwaiting({ environment: deployTo, since: newestDeployKey(data.history, deployTo) });
       reload();
     } catch (err) {
       setDialogError(errorMessage(err, 'No se pudo completar la acción.'));
+      if (err && OUTDATED_CODES.has(err.code)) reload();
     } finally {
       setBusy(false);
     }
@@ -285,18 +321,28 @@ export default function DeployPanel({ gid, repo, isAdmin, uid, refreshKey = 0 })
 
   const confirm = () => {
     if (!dialog) return undefined;
+    // The version shown when the dialog opened: a live reload meanwhile must not change what is promoted.
     if (dialog.kind === 'promote' && isAdmin) {
-      return run(() => deployNow(gid, { environment: 'production', version: staging.sha }), `Se está publicando ${staging.shortSha} en producción.`);
+      const { sha: version, shortSha } = dialog.version;
+      return run(() => deployNow(gid, { environment: 'production', version }), `Se está publicando ${shortSha} en producción.`, 'production');
     }
     if (dialog.kind === 'promote') {
-      return run(() => requestDeploy(gid, { environment: 'production', version: staging.sha }), 'Solicitud enviada a los administradores del grupo.');
+      return run(() => requestDeploy(gid, { environment: 'production', version: dialog.version.sha }), 'Solicitud enviada a los administradores del grupo.');
     }
     if (dialog.kind === 'rollback') {
       const target = data.rollbackCandidates.find((d) => d.sha === rollbackSha);
-      return run(() => deployNow(gid, { environment: 'production', version: rollbackSha }), `Producción vuelve a ${target ? target.shortSha : rollbackSha.slice(0, 7)}.`);
+      return run(
+        () => deployNow(gid, { environment: 'production', version: rollbackSha }),
+        `Producción vuelve a ${target ? target.shortSha : rollbackSha.slice(0, 7)}.`,
+        'production'
+      );
     }
     if (dialog.kind === 'approve') {
-      return run(() => approveDeployRequest(gid, dialog.request.requestId), 'Solicitud aprobada: se está publicando en producción.');
+      return run(
+        () => approveDeployRequest(gid, dialog.request.requestId),
+        `Solicitud aprobada: se está publicando en ${envName(dialog.request.environment)}.`,
+        dialog.request.environment || 'production'
+      );
     }
     if (dialog.kind === 'reject') {
       return run(() => rejectDeployRequest(gid, dialog.request.requestId, note.trim()), 'Solicitud rechazada.');
@@ -312,7 +358,10 @@ export default function DeployPanel({ gid, repo, isAdmin, uid, refreshKey = 0 })
           setNotice('Solicitud cancelada.');
           reload();
         })
-        .catch((err) => setNotice(errorMessage(err, 'No se pudo cancelar la solicitud.')))
+        .catch((err) => {
+          setNotice(errorMessage(err, 'No se pudo cancelar la solicitud.'));
+          if (err && OUTDATED_CODES.has(err.code)) reload();
+        })
         .finally(() => setBusy(false));
       return;
     }
@@ -335,7 +384,12 @@ export default function DeployPanel({ gid, repo, isAdmin, uid, refreshKey = 0 })
       );
     } else {
       stagingActions = (
-        <Button variant="primary" size="small" startIcon={<RocketLaunchIcon />} onClick={() => openDialog({ kind: 'promote' })}>
+        <Button
+          variant="primary"
+          size="small"
+          startIcon={<RocketLaunchIcon />}
+          onClick={() => openDialog({ kind: 'promote', version: { sha: staging.sha, shortSha: staging.shortSha } })}
+        >
           {isAdmin ? 'Publicar en producción' : 'Solicitar producción'}
         </Button>
       );
@@ -345,20 +399,30 @@ export default function DeployPanel({ gid, repo, isAdmin, uid, refreshKey = 0 })
   const dialogContent = () => {
     if (!dialog) return null;
     if (dialog.kind === 'promote') {
+      const { version } = dialog;
+      const moved = Boolean(staging && staging.sha !== version.sha);
       return (
-        <DialogContentText component="div">
-          {isAdmin ? (
-            <>
-              Se publicará la versión de staging <Sha repo={repo} sha={staging.sha} short={staging.shortSha} /> en producción (la raíz del
-              sitio). GitHub Pages se actualiza en aproximadamente un minuto.
-            </>
-          ) : (
-            <>
-              Se enviará una solicitud a los administradores del grupo para publicar <Sha repo={repo} sha={staging.sha} short={staging.shortSha} /> en
-              producción. Te avisaremos cuando la respondan.
-            </>
+        <>
+          <DialogContentText component="div">
+            {isAdmin ? (
+              <>
+                Se publicará la versión de staging <Sha repo={repo} sha={version.sha} short={version.shortSha} /> en producción (la raíz del
+                sitio). GitHub Pages se actualiza en aproximadamente un minuto.
+              </>
+            ) : (
+              <>
+                Se enviará una solicitud a los administradores del grupo para publicar <Sha repo={repo} sha={version.sha} short={version.shortSha} /> en
+                producción. Te avisaremos cuando la respondan.
+              </>
+            )}
+          </DialogContentText>
+          {moved && (
+            <Typography variant="caption" component="p" role="status" sx={{ mt: 1.5, color: 'warning.light' }}>
+              Staging cambió a <Sha repo={repo} sha={staging.sha} short={staging.shortSha} /> mientras este diálogo estaba abierto. Esta acción
+              usa {version.shortSha || String(version.sha).slice(0, 7)}; para usar la nueva versión, cancela y vuelve a abrir.
+            </Typography>
           )}
-        </DialogContentText>
+        </>
       );
     }
     if (dialog.kind === 'rollback') {
@@ -392,8 +456,8 @@ export default function DeployPanel({ gid, repo, isAdmin, uid, refreshKey = 0 })
     if (dialog.kind === 'approve') {
       return (
         <DialogContentText component="div">
-          {dialog.request.requestedByUsername || 'Un miembro'} pidió publicar <Sha repo={repo} sha={dialog.request.versionSha} /> en producción. Al
-          aprobar, TaskMate lo despliega de inmediato.
+          {dialog.request.requestedByUsername || 'Un miembro'} pidió publicar <Sha repo={repo} sha={dialog.request.versionSha} /> en{' '}
+          {envName(dialog.request.environment)}. Al aprobar, TaskMate lo despliega de inmediato.
         </DialogContentText>
       );
     }

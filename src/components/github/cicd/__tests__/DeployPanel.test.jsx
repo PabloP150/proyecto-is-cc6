@@ -61,16 +61,20 @@ const pendingRequest = (extra = {}) => ({
 });
 
 const listeners = new Set();
-const realtime = { connected: true, subscribe: (fn) => { listeners.add(fn); return () => listeners.delete(fn); } };
+const realtime = { connected: true, epoch: 0, subscribe: (fn) => { listeners.add(fn); return () => listeners.delete(fn); } };
 
-const renderPanel = ({ isAdmin = true, uid = ADMIN } = {}) =>
-  render(
-    <ThemeProvider theme={theme}>
-      <RealtimeContext.Provider value={realtime}>
-        <DeployPanel gid="G1" repo={REPO} isAdmin={isAdmin} uid={uid} />
-      </RealtimeContext.Provider>
-    </ThemeProvider>
-  );
+const panel = ({ isAdmin = true, uid = ADMIN, connected = true, epoch = 0 } = {}) => (
+  <ThemeProvider theme={theme}>
+    <RealtimeContext.Provider value={{ ...realtime, connected, epoch }}>
+      <DeployPanel gid="G1" repo={REPO} isAdmin={isAdmin} uid={uid} />
+    </RealtimeContext.Provider>
+  </ThemeProvider>
+);
+const renderPanel = (options) => render(panel(options));
+const emit = (message) => act(() => listeners.forEach((fn) => fn(message)));
+const apiError = (code) => Object.assign(new Error(code), { code });
+// Staging moved to a newer version (what a live reload brings while a dialog is open).
+const STAGING_MOVED = { ...DATA, environments: { ...DATA.environments, staging: { live: deploy('staging', 'd'), inProgress: null, lastFailed: null } } };
 
 beforeEach(() => {
   listeners.clear();
@@ -137,6 +141,8 @@ describe('DeployPanel', () => {
     fireEvent.change(within(dialog).getByLabelText('Motivo (opcional)'), { target: { value: '  falta QA ' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Rechazar' }));
     await waitFor(() => expect(rejectDeployRequest).toHaveBeenCalledWith('G1', 'R1', 'falta QA'));
+    // The action finishes (notice, reload) before the test ends.
+    expect(await screen.findByText('Solicitud rechazada.')).toBeInTheDocument();
   });
 
   test('the requester cancels their own request; others only see it', async () => {
@@ -187,6 +193,172 @@ describe('DeployPanel', () => {
     expect(screen.getByText('Falló el último deploy')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Historial de deploys' }));
     expect(within(screen.getByRole('list', { name: 'Historial de deploys' })).getAllByRole('listitem')).toHaveLength(3);
+  });
+
+  test('admin: a live reload while the dialog is open does not change the version that gets published', async () => {
+    renderPanel();
+    fireEvent.click(await screen.findByRole('button', { name: 'Publicar en producción' }));
+    const dialog = screen.getByRole('dialog', { name: 'Publicar en producción' });
+    expect(within(dialog).getByRole('link', { name: 'bbbbbbb' })).toBeInTheDocument();
+
+    getDeployments.mockResolvedValue(STAGING_MOVED);
+    emit({ type: 'event', event: 'deployment', gid: 'G1', data: { state: 'success', environment: 'staging' } });
+    expect(await within(dialog).findByText(/Staging cambió a/)).toBeInTheDocument();
+    expect(within(dialog).getByRole('link', { name: 'ddddddd' })).toBeInTheDocument();
+    expect(within(dialog).getByText(/Esta acción usa bbbbbbb/)).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Publicar' }));
+    expect(await screen.findByText('Se está publicando bbbbbbb en producción.')).toBeInTheDocument();
+    expect(deployNow).toHaveBeenCalledWith('G1', { environment: 'production', version: sha('b') });
+  });
+
+  test('member: the request is for the version shown; if staging moved, the API refusal is explained and the panel reloads', async () => {
+    requestDeploy.mockRejectedValue(apiError('VERSION_NOT_STAGING'));
+    renderPanel({ isAdmin: false, uid: MEMBER });
+    fireEvent.click(await screen.findByRole('button', { name: 'Solicitar producción' }));
+    const dialog = screen.getByRole('dialog', { name: 'Solicitar producción' });
+    getDeployments.mockResolvedValue(STAGING_MOVED);
+    emit({ type: 'event', event: 'deployment', gid: 'G1', data: { state: 'success', environment: 'staging' } });
+    await within(dialog).findByText(/Staging cambió a/);
+    const calls = getDeployments.mock.calls.length;
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Enviar solicitud' }));
+    expect(await within(dialog).findByText('Solo se puede pedir publicar en producción la versión que está en staging.')).toBeInTheDocument();
+    expect(requestDeploy).toHaveBeenCalledWith('G1', { environment: 'production', version: sha('b') });
+    await waitFor(() => expect(getDeployments.mock.calls.length).toBeGreaterThan(calls));
+  });
+
+  test('approving a request that went stale: the reason stays in the dialog and the list reloads', async () => {
+    getDeployments.mockResolvedValue({ ...DATA, requests: [pendingRequest()] });
+    approveDeployRequest.mockRejectedValue(apiError('DEPLOY_REQUEST_STALE'));
+    renderPanel();
+    fireEvent.click(await screen.findByRole('button', { name: 'Aprobar' }));
+    const dialog = screen.getByRole('dialog', { name: 'Aprobar y publicar' });
+    expect(within(dialog).getByText(/en producción\. Al aprobar/)).toBeInTheDocument();
+    getDeployments.mockResolvedValue({ ...DATA, requests: [pendingRequest({ status: 'cancelled' })] });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Aprobar' }));
+    expect(await within(dialog).findByText(/La solicitud quedó desactualizada/)).toBeInTheDocument();
+    expect(await screen.findByText('Cancelada')).toBeInTheDocument();
+  });
+
+  test('request labels follow request.environment', async () => {
+    getDeployments.mockResolvedValue({ ...DATA, requests: [pendingRequest({ environment: 'staging' })] });
+    renderPanel();
+    expect(await screen.findByText(/beto pidió publicar/)).toHaveTextContent('beto pidió publicar bbbbbbb en staging');
+    fireEvent.click(screen.getByRole('button', { name: 'Aprobar' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Aprobar' }));
+    expect(await screen.findByText('Solicitud aprobada: se está publicando en staging.')).toBeInTheDocument();
+  });
+
+  test('a deploy in progress is checked every 15 s without the live connection and every minute with it', async () => {
+    jest.useFakeTimers();
+    const deploying = {
+      ...DATA,
+      environments: { ...DATA.environments, production: { live: deploy('production', 'a'), inProgress: deploy('production', 'b', { state: 'in_progress' }), lastFailed: null } },
+    };
+    getDeployments.mockResolvedValue(deploying);
+    const { unmount } = renderPanel({ connected: false });
+    await screen.findByText('Desplegando…');
+    await act(async () => {
+      jest.advanceTimersByTime(15000);
+    });
+    await waitFor(() => expect(getDeployments).toHaveBeenCalledTimes(2));
+    unmount();
+
+    getDeployments.mockClear();
+    renderPanel({ connected: true });
+    await screen.findByText('Desplegando…');
+    await act(async () => {
+      jest.advanceTimersByTime(59000);
+    });
+    expect(getDeployments).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+    await waitFor(() => expect(getDeployments).toHaveBeenCalledTimes(2));
+    jest.useRealTimers();
+  });
+
+  test('a deploy started here is checked until its Deployment shows up, even if no event ever arrives', async () => {
+    jest.useFakeTimers();
+    renderPanel({ connected: true });
+    fireEvent.click(await screen.findByRole('button', { name: 'Publicar en producción' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Publicar' }));
+    expect(await screen.findByText('Se está publicando bbbbbbb en producción.')).toBeInTheDocument();
+    // The reload right after the action: the run is still queued, nothing in progress yet.
+    await waitFor(() => expect(getDeployments).toHaveBeenCalledTimes(2));
+    await screen.findByRole('button', { name: 'Publicar en producción' });
+
+    await act(async () => {
+      jest.advanceTimersByTime(60000);
+    });
+    await waitFor(() => expect(getDeployments).toHaveBeenCalledTimes(3));
+
+    // Its Deployment appears (already finished here): the extra checks stop.
+    const done = deploy('production', 'b', { id: 'new' });
+    getDeployments.mockResolvedValue({
+      ...DATA,
+      environments: { ...DATA.environments, production: { live: done, inProgress: null, lastFailed: null } },
+      history: [done, ...DATA.history],
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(60000);
+    });
+    await waitFor(() => expect(getDeployments).toHaveBeenCalledTimes(4));
+    await screen.findByText('Producción ya tiene esta versión.');
+    await act(async () => {
+      jest.advanceTimersByTime(5 * 60000);
+    });
+    expect(getDeployments).toHaveBeenCalledTimes(4);
+    jest.useRealTimers();
+  });
+
+  test('a deploy that never shows up is checked for 10 minutes at most (every 15 s without the live connection)', async () => {
+    jest.useFakeTimers();
+    getDeployments.mockResolvedValue({ ...DATA, requests: [pendingRequest()] });
+    renderPanel({ connected: false });
+    fireEvent.click(await screen.findByRole('button', { name: 'Aprobar' }));
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Aprobar y publicar' })).getByRole('button', { name: 'Aprobar' }));
+    await screen.findByText('Solicitud aprobada: se está publicando en producción.');
+    await waitFor(() => expect(getDeployments).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      jest.advanceTimersByTime(15000);
+    });
+    await waitFor(() => expect(getDeployments).toHaveBeenCalledTimes(3));
+
+    await act(async () => {
+      jest.advanceTimersByTime(10 * 60000);
+    });
+    const calls = getDeployments.mock.calls.length;
+    await act(async () => {
+      jest.advanceTimersByTime(60000);
+    });
+    expect(getDeployments).toHaveBeenCalledTimes(calls);
+    jest.useRealTimers();
+  });
+
+  test('a member request starts no deploy: no extra checks', async () => {
+    jest.useFakeTimers();
+    renderPanel({ isAdmin: false, uid: MEMBER, connected: true });
+    fireEvent.click(await screen.findByRole('button', { name: 'Solicitar producción' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Enviar solicitud' }));
+    await screen.findByText('Solicitud enviada a los administradores del grupo.');
+    await waitFor(() => expect(getDeployments).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      jest.advanceTimersByTime(2 * 60000);
+    });
+    expect(getDeployments).toHaveBeenCalledTimes(2);
+    jest.useRealTimers();
+  });
+
+  test('after a reconnection (not the first subscription) the environments reload to catch up', async () => {
+    const { rerender } = render(panel({ epoch: 0 }));
+    await screen.findByRole('region', { name: 'Entorno Staging' });
+    // rerender runs the effects: a reload would already have called the API.
+    rerender(panel({ epoch: 1 }));
+    expect(getDeployments).toHaveBeenCalledTimes(1);
+    rerender(panel({ epoch: 2 }));
+    await waitFor(() => expect(getDeployments).toHaveBeenCalledTimes(2));
   });
 
   test('a deployment event reloads the environments; a pipeline without deploy renders nothing', async () => {

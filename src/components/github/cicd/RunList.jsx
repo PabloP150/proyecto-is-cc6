@@ -33,6 +33,9 @@ import RunDetail from './RunDetail';
 import useVisibleInterval from './useVisibleInterval';
 
 const POLL_MS = 15 * 1000;
+// Live events can be lost (a reconnection, a webhook GitHub never delivered): while a run is
+// active the list is still checked now and then even with the live connection.
+const SAFETY_POLL_MS = 60 * 1000;
 const RERUNNABLE = new Set(['failure', 'cancelled', 'timed_out', 'startup_failure']);
 
 // Same rule as the API: deploys TaskMate dispatched are re-run or cancelled only by the admin.
@@ -214,9 +217,9 @@ function RunRow({ gid, run, expanded, onToggle, isAdmin, onChanged }) {
 }
 
 /**
- * Workflow runs of the group's repository with workflow/status filters, live (or polled while
- * something runs without the /events connection). Props: gid, refreshKey (bump to reload),
- * isAdmin, canRun (a TaskMate pipeline exists), defaultBranch.
+ * Workflow runs of the group's repository with workflow/status filters, live (and, while something
+ * runs, polled every 15 s without the /events connection or every minute with it as a safety net).
+ * Props: gid, refreshKey (bump to reload), isAdmin, canRun (a TaskMate pipeline exists), defaultBranch.
  */
 export default function RunList({ gid, refreshKey = 0, isAdmin = false, canRun = false, defaultBranch }) {
   const [runOpen, setRunOpen] = useState(false);
@@ -271,7 +274,7 @@ export default function RunList({ gid, refreshKey = 0, isAdmin = false, canRun =
   const anyActive = useMemo(() => state.runs.some((run) => isActive(stateOf(run.status, run.conclusion))), [state.runs]);
   const { connected } = useRealtime();
   useGroupEvents(gid, ['ci_run'], reload, { debounceMs: 1000 });
-  useVisibleInterval(reload, POLL_MS, anyActive && !state.loading && !connected);
+  useVisibleInterval(reload, connected ? SAFETY_POLL_MS : POLL_MS, anyActive && !state.loading);
 
   // GitHub creates the run a few seconds after the dispatch; the ci_run event (or this) shows it.
   const handleDispatched = (branch) => {

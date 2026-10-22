@@ -50,6 +50,13 @@ const ERROR_MESSAGES = {
   DEPLOY_REQUEST_NOT_FOUND: 'La solicitud ya no existe.',
   DEPLOY_REQUEST_DECIDED: 'Otro administrador ya respondió esa solicitud.',
   NOT_REQUESTER: 'Solo quien pidió el deploy puede cancelar la solicitud.',
+  BRANCH_WORKFLOW_OUTDATED:
+    'Esa rama no tiene el workflow actual de TaskMate: actualízala con la rama principal (merge o rebase) y vuelve a intentarlo.',
+  VERSION_NOT_STAGING: 'Solo se puede pedir publicar en producción la versión que está en staging.',
+  DEPLOY_REQUEST_STALE:
+    'La solicitud quedó desactualizada (cambió la versión de staging o el repositorio) y se canceló; pide de nuevo.',
+  WORKFLOW_DISABLED:
+    'El workflow de TaskMate está desactivado en GitHub. Actívalo en la pestaña Actions del repositorio y vuelve a intentarlo.',
 };
 
 // Codes the OAuth/installation callback may put in ?status=error&code=<CODE>.
@@ -60,6 +67,8 @@ const CALLBACK_ERROR_MESSAGES = {
   ACCESS_DENIED: 'Se canceló la autorización en GitHub.',
   INSTALLATION_NOT_FOUND: 'Tu cuenta de GitHub no tiene acceso a esa instalación de la App.',
   NO_REPOSITORIES: 'La instalación no tiene acceso a ningún repositorio.',
+  NO_WRITABLE_REPOSITORIES:
+    'Tu cuenta de GitHub no tiene permiso de escritura en ningún repositorio de la instalación. Solo quien puede escribir en un repositorio puede conectarlo.',
 };
 
 export function errorMessage(err, fallback = 'Ocurrió un error inesperado.') {
