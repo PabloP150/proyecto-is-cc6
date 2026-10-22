@@ -69,9 +69,12 @@ export const setAiAnalysis = (gid, enabled, { signal } = {}) =>
 export const getPipeline = (gid, { signal } = {}) =>
   request(`/groups/${seg(gid)}/pipeline`, { signal });
 
-/** New proposal for the setup screen; `dir`/`stack` switch to another project of the repository. */
-export const proposePipeline = (gid, { dir, stack } = {}, { signal } = {}) =>
-  request(`/groups/${seg(gid)}/pipeline/proposal`, { method: 'POST', body: { dir, stack }, signal });
+/**
+ * New proposal for the setup screen; `dir`/`stack` switch to another project of the repository.
+ * `ai: true` asks the AI for it (the group must allow AI analysis).
+ */
+export const proposePipeline = (gid, { dir, stack, ai } = {}, { signal } = {}) =>
+  request(`/groups/${seg(gid)}/pipeline/proposal`, { method: 'POST', body: { dir, stack, ai }, signal });
 
 export const previewPipeline = (gid, spec, { signal } = {}) =>
   request(`/groups/${seg(gid)}/pipeline/preview`, { method: 'POST', body: { spec }, signal });

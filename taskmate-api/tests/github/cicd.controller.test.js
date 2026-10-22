@@ -110,11 +110,37 @@ describe('pipeline', () => {
         expect(pipelineService.proposePipeline).toHaveBeenCalledWith({ gid: GID, uid: UID, dir: 'api', stack: 'python' });
     });
 
+    test('proposal passes the optional ai flag through', async () => {
+        await request(app).post(`/api/github/groups/${GID}/pipeline/proposal`).send({ dir: '.', stack: 'node', ai: true }).expect(200);
+        expect(pipelineService.proposePipeline).toHaveBeenLastCalledWith({ gid: GID, uid: UID, dir: '.', stack: 'node', ai: true });
+        await request(app).post(`/api/github/groups/${GID}/pipeline/proposal`).send({ ai: false }).expect(200);
+        expect(pipelineService.proposePipeline).toHaveBeenLastCalledWith({ gid: GID, uid: UID, dir: undefined, stack: undefined, ai: false });
+        await request(app).post(`/api/github/groups/${GID}/pipeline/proposal`).send({}).expect(200);
+        expect(pipelineService.proposePipeline.mock.calls[2][0].ai).toBeUndefined();
+    });
+
+    test('ai: true is admin only too', async () => {
+        accessModel.isGroupAdmin.mockResolvedValue(false);
+        const res = await request(app).post(`/api/github/groups/${GID}/pipeline/proposal`).send({ ai: true });
+        expect(res.status).toBe(403);
+        expect(pipelineService.proposePipeline).not.toHaveBeenCalled();
+    });
+
+    test('AI analysis disabled for the group is a 409', async () => {
+        pipelineService.proposePipeline.mockRejectedValue(new AppError('AI_ANALYSIS_DISABLED', 'disabled', 409));
+        const res = await request(app).post(`/api/github/groups/${GID}/pipeline/proposal`).send({ ai: true });
+        expect(res.status).toBe(409);
+        expect(res.body.code).toBe('AI_ANALYSIS_DISABLED');
+    });
+
     test.each([
         [{ dir: '' }],
         [{ dir: 5 }],
         [{ dir: 'x'.repeat(201) }],
         [{ stack: ['node'] }],
+        [{ ai: 'true' }],
+        [{ ai: 1 }],
+        [{ ai: null }],
     ])('proposal rejects %j', async (body) => {
         const res = await request(app).post(`/api/github/groups/${GID}/pipeline/proposal`).send(body);
         expect(res.status).toBe(400);

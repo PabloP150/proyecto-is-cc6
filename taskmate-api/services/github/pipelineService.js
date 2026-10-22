@@ -1,11 +1,12 @@
 // Phase 4: configure the group's CI/CD pipeline from TaskMate. Reads the repository (facts),
-// proposes and validates a spec (pipelineSpec.js), enables GitHub Pages when the pipeline deploys,
-// and commits the rendered workflow to the default branch.
+// proposes (or asks the AI for, pipelineAi.js) and validates a spec (pipelineSpec.js), enables
+// GitHub Pages when the pipeline deploys, and commits the rendered workflow to the default branch.
 const { AppError, isAppError } = require('../../helpers/errors');
 const cicdModel = require('../../models/cicd.model');
 const { githubApp, PERMISSIONS } = require('./githubApp');
 const repoService = require('./repoService');
 const pipelineSpec = require('./pipelineSpec');
+const pipelineAi = require('./pipelineAi');
 const { TtlStore } = require('./ttlStore');
 
 const MAX_MANIFEST_BYTES = 256 * 1024;
@@ -231,19 +232,52 @@ const getPipeline = async (gid) => {
     };
 };
 
+// Why the AI proposal was not used, for the note above the detected one.
+const AI_FAILURE_REASONS = {
+    LLM_TIMEOUT: 'tardó demasiado en responder',
+    LLM_RATE_LIMIT: 'alcanzó su límite de uso; inténtalo en unos minutos',
+    LLM_INVALID_OUTPUT: 'propuso algo que no coincide con el repositorio',
+    LLM_ERROR: 'no está disponible en este momento',
+};
+
+/**
+ * The AI's spec validated against the facts → {spec, explanation}, or {error: code} on any failure
+ * (the caller then keeps the detected proposal). With a project switch the AI must keep that project.
+ */
+const aiProposal = async ({ repo, facts, detected, project }) => {
+    try {
+        const { spec, explanation } = await pipelineAi.proposeWithAi({ repo, facts, detected, options: options() });
+        const validated = pipelineSpec.validateSpec(spec, facts);
+        if (project && (validated.project.dir !== detected.project.dir || validated.project.stack !== detected.project.stack)) {
+            return { error: 'LLM_INVALID_OUTPUT' };
+        }
+        return { spec: validated, explanation };
+    } catch (err) {
+        if (!isAppError(err)) console.error('[pipeline] AI proposal failed:', err.message);
+        if (isAppError(err) && err.code === 'INVALID_PIPELINE') return { error: 'LLM_INVALID_OUTPUT' };
+        return { error: isAppError(err) && AI_FAILURE_REASONS[err.code] ? err.code : 'LLM_ERROR' };
+    }
+};
+
 /**
  * Proposal for the setup screen: detected from the repository (or the saved spec when it still
- * validates). `dir`/`stack` switch to another project of the repository.
+ * validates). `dir`/`stack` switch to another project of the repository. `ai: true` asks the AI
+ * (the group must allow AI analysis); with `ai` omitted the AI proposes when the group allows it,
+ * there is no saved spec and no project switch. Any AI failure falls back to the detected spec.
  */
-const proposePipeline = async ({ gid, uid, dir, stack }) => {
+const proposePipeline = async ({ gid, uid, dir, stack, ai }) => {
     const repo = await repoService.getConnectedRepo(gid);
+    const aiAvailable = repo.aiAnalysisEnabled === true;
+    if (ai === true && !aiAvailable) throw new AppError('AI_ANALYSIS_DISABLED', 'AI analysis is disabled for this group', 409);
     const facts = await collectFacts(repo);
     factsCache.set(factsKey(repo, uid), facts);
 
+    const switching = dir !== undefined || stack !== undefined;
     let spec = null;
     let notes = [];
     let source = 'detected';
-    if (dir === undefined && stack === undefined) {
+    let aiError = null;
+    if (!switching && ai !== true) {
         const row = await cicdModel.getPipeline(repo.repoId);
         if (row && row.spec) {
             try {
@@ -255,12 +289,34 @@ const proposePipeline = async ({ gid, uid, dir, stack }) => {
         }
     }
     if (!spec) {
-        const proposal = pipelineSpec.proposeSpec(facts, dir === undefined && stack === undefined ? {} : { dir, stack });
-        spec = pipelineSpec.validateSpec(proposal.spec, facts);
-        notes = [...notes, ...proposal.notes];
+        const proposal = pipelineSpec.proposeSpec(facts, switching ? { dir, stack } : {});
+        const detected = pipelineSpec.validateSpec(proposal.spec, facts);
+        const useAi = ai === true || (ai === undefined && aiAvailable && !switching);
+        const fromAi = useAi ? await aiProposal({ repo, facts, detected, project: switching }) : null;
+        if (fromAi && fromAi.spec) {
+            // The explanation replaces the detection notes (they describe the detected spec).
+            spec = fromAi.spec;
+            source = 'ai';
+            notes = [...(fromAi.explanation ? [fromAi.explanation] : []), ...notes];
+        } else {
+            spec = detected;
+            if (fromAi) {
+                aiError = fromAi.error;
+                notes.unshift(`No se pudo usar la IA (${AI_FAILURE_REASONS[aiError]}); esta es la propuesta de la detección automática.`);
+            }
+            notes = [...notes, ...proposal.notes];
+        }
     }
     if (facts.truncated) notes.push('El repositorio es muy grande: solo se revisó parte de sus archivos.');
-    return { source, notes, facts, options: options(), workflowExists: facts.workflowExists, ...rendered(spec) };
+    return {
+        source,
+        notes,
+        facts,
+        options: options(),
+        workflowExists: facts.workflowExists,
+        ai: { available: aiAvailable, used: source === 'ai', error: aiError },
+        ...rendered(spec),
+    };
 };
 
 /** Validated spec rendered to YAML, for the live preview while the admin edits. */

@@ -67,6 +67,13 @@ const bodyProject = (req) => {
     return { dir, stack };
 };
 
+// Optional: true asks the AI for the proposal, false never uses it (omitted: the service decides).
+const bodyAi = (req) => {
+    const ai = req.body ? req.body.ai : undefined;
+    if (ai !== undefined && typeof ai !== 'boolean') throw new AppError('VALIDATION_ERROR', 'ai must be a boolean', 400);
+    return ai;
+};
+
 const createGithubRouter = ({ auth = requireAuth } = {}) => {
     const router = express.Router();
     // All limits are per user (these routes run after auth). The hourly browse cap keeps one member from
@@ -163,7 +170,8 @@ const createGithubRouter = ({ auth = requireAuth } = {}) => {
 
     router.post('/groups/:gid/pipeline/proposal', requireGroupAdmin('gid'), pipelineLimiter, route(async (req, res) => {
         const { dir, stack } = bodyProject(req);
-        res.json({ data: await pipelineService.proposePipeline({ gid: req.groupId, uid: req.user.userId, dir, stack }) });
+        const ai = bodyAi(req);
+        res.json({ data: await pipelineService.proposePipeline({ gid: req.groupId, uid: req.user.userId, dir, stack, ai }) });
     }));
 
     router.post('/groups/:gid/pipeline/preview', requireGroupAdmin('gid'), previewLimiter, route(async (req, res) => {

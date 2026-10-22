@@ -10,9 +10,16 @@ from typing import Any, Dict, Optional
 import llm_service
 from agents.recommendations_agent import RecommendationsAgent
 from agents.analytics_agent import AnalyticsAgent
+from agents.pipeline_agent import PipelineAgent, PipelineAgentError
 from agents.repo_analysis_agent import RepoAnalysisAgent, RepoAnalysisError
 
 logger = logging.getLogger(__name__)
+
+# Stateless one-shot methods: no session lock, and errors carry {"code", "message"} under their own event.
+_ONE_SHOT_ERROR_EVENTS = {
+    "analyze_repository": "repo_analysis_error",
+    "propose_pipeline": "pipeline_proposal_error",
+}
 
 SESSION_TTL_SEC = float(os.getenv('MCP_SESSION_TTL_SEC', 2 * 60 * 60))
 MAX_SESSIONS = int(os.getenv('MCP_MAX_SESSIONS', 1000))
@@ -122,6 +129,7 @@ class OrchestratorAgent:
         self.recommendations_agent = RecommendationsAgent()
         self.analytics_agent = AnalyticsAgent()
         self.repo_analysis_agent = RepoAnalysisAgent()
+        self.pipeline_agent = PipelineAgent()
 
     def get_session_state(self, session_id: str):
         now = time.monotonic()
@@ -172,16 +180,22 @@ class OrchestratorAgent:
         state["waiting_for_confirmation"] = True
 
     @staticmethod
+    def _one_shot_error_event(request: Dict[str, Any]) -> Optional[str]:
+        method = request.get("method")
+        return _ONE_SHOT_ERROR_EVENTS.get(method) if isinstance(method, str) else None
+
+    @staticmethod
     def requires_session_lock(request: Dict[str, Any]) -> bool:
-        """Only conversation messages touch session state; analytics and repo analysis are stateless."""
-        return request.get("type") != "analytics" and request.get("method") != "analyze_repository"
+        """Only conversation messages touch session state; analytics, repo analysis and pipeline proposals are stateless."""
+        return request.get("type") != "analytics" and OrchestratorAgent._one_shot_error_event(request) is None
 
     @staticmethod
     def error_reply(session_id: Optional[str], request: Dict[str, Any], message: str,
                     code: Optional[str] = None) -> Dict[str, Any]:
         base = {"sessionId": session_id, "requestId": request.get("requestId")}
-        if request.get("method") == "analyze_repository":
-            return {"event": "repo_analysis_error", **base, "error": {"code": code or "INTERNAL_ERROR", "message": message}}
+        event = OrchestratorAgent._one_shot_error_event(request)
+        if event:
+            return {"event": event, **base, "error": {"code": code or "INTERNAL_ERROR", "message": message}}
         reply = {"event": "analytics_error" if request.get("type") == "analytics" else "error", **base, "error": message}
         if code:
             reply["code"] = code
@@ -209,6 +223,8 @@ class OrchestratorAgent:
         method = request.get("method") or "handle_user_message"
         if method == "analyze_repository":
             return await self._handle_repo_analysis(session_id, websocket, request)
+        if method == "propose_pipeline":
+            return await self._handle_pipeline_proposal(session_id, websocket, request)
         if method == "save_plan_result":
             return self._handle_save_plan_result(session_id, request)
         if method != "handle_user_message":
@@ -550,6 +566,22 @@ Respond with ONLY: YES or NO"""
                      "error": {"code": "INTERNAL_ERROR", "message": "No se pudo analizar el repositorio."}}
         else:
             reply = {"event": "repo_analysis_plan", **base, "data": {"plan": plan}}
+        await websocket.send_json(reply)
+
+    async def _handle_pipeline_proposal(self, session_id: str, websocket, request: dict):
+        request_id = request.get("requestId")
+        base = {"requestId": request_id, "sessionId": session_id}
+        try:
+            proposal = await self.pipeline_agent.propose(request.get("params"))
+        except PipelineAgentError as exc:
+            logger.info("[Session: %s] Pipeline proposal %s failed: %s", session_id, request_id, exc.code)
+            reply = {"event": "pipeline_proposal_error", **base, "error": exc.to_dict()}
+        except Exception:
+            logger.exception("[Session: %s] Pipeline proposal %s crashed", session_id, request_id)
+            reply = {"event": "pipeline_proposal_error", **base,
+                     "error": {"code": "INTERNAL_ERROR", "message": "No se pudo proponer el pipeline."}}
+        else:
+            reply = {"event": "pipeline_proposal", **base, "data": {"proposal": proposal}}
         await websocket.send_json(reply)
 
 

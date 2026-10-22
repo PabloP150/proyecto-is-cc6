@@ -167,6 +167,65 @@ describe('PipelineSetup', () => {
     expect(await screen.findByText('Nota de prueba.')).toBeInTheDocument();
   });
 
+  test('an AI proposal is labeled as such and shows its explanation', async () => {
+    proposePipeline.mockResolvedValue({
+      ...PROPOSAL,
+      source: 'ai',
+      notes: ['Activé npm audit porque no hay lint.'],
+      ai: { available: true, used: true, error: null },
+    });
+    renderSetup();
+    expect(await screen.findByText('Activé npm audit porque no hay lint.')).toBeInTheDocument();
+    expect(screen.getByText('La IA revisó el repositorio y propone este pipeline. Ajústalo antes de subirlo.')).toBeInTheDocument();
+    expect(screen.getByText('Propuesto por IA')).toBeInTheDocument();
+    expect(screen.queryByText('Detectado')).not.toBeInTheDocument();
+  });
+
+  test('"Proponer con IA" asks the AI for the current project', async () => {
+    proposePipeline.mockResolvedValue({ ...PROPOSAL, ai: { available: true, used: false, error: null } });
+    renderSetup();
+    await screen.findByText('Nota de prueba.');
+    expect(screen.getByText('Detectado')).toBeInTheDocument();
+    expect(screen.getByText(/Se envía a Groq la lista de proyectos y scripts del repositorio, nunca el código fuente/)).toBeInTheDocument();
+
+    let answer;
+    proposePipeline.mockReturnValue(
+      new Promise((resolve) => {
+        answer = resolve;
+      })
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Proponer con IA' }));
+    expect(proposePipeline).toHaveBeenLastCalledWith('G1', { dir: '.', stack: 'node', ai: true }, expect.anything());
+    expect(await screen.findByText('La IA está revisando el repositorio…')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Proponer con IA' })).toBeDisabled();
+
+    answer({ ...PROPOSAL, source: 'ai', notes: ['Explicación de la IA.'], ai: { available: true, used: true, error: null } });
+    expect(await screen.findByText('Propuesto por IA')).toBeInTheDocument();
+    expect(screen.getByText('Explicación de la IA.')).toBeInTheDocument();
+    expect(screen.queryByText('La IA está revisando el repositorio…')).not.toBeInTheDocument();
+  });
+
+  test('without the AI permission there is no AI button, only how to enable it', async () => {
+    proposePipeline.mockResolvedValue({ ...PROPOSAL, ai: { available: false, used: false, error: null } });
+    renderSetup();
+    await screen.findByText('Nota de prueba.');
+    expect(screen.queryByRole('button', { name: 'Proponer con IA' })).not.toBeInTheDocument();
+    expect(
+      screen.getByText('Activa «Permitir análisis con IA» en la pestaña Repositorio para que la IA proponga el pipeline.')
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Se envía a Groq/)).not.toBeInTheDocument();
+  });
+
+  test('a refused AI request is explained and the proposal stays', async () => {
+    proposePipeline.mockResolvedValue({ ...PROPOSAL, ai: { available: true, used: false, error: null } });
+    renderSetup();
+    await screen.findByText('Nota de prueba.');
+    proposePipeline.mockRejectedValue(Object.assign(new Error('x'), { code: 'AI_ANALYSIS_DISABLED' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Proponer con IA' }));
+    expect(await screen.findByText(/El análisis con IA está desactivado/)).toBeInTheDocument();
+    expect(screen.getByText('Nota de prueba.')).toBeInTheDocument();
+  });
+
   test('an invalid edit blocks the upload until it is fixed', async () => {
     previewPipeline.mockRejectedValue(Object.assign(new Error('x'), { code: 'INVALID_PIPELINE' }));
     renderSetup();

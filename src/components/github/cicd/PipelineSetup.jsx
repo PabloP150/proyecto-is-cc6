@@ -32,6 +32,13 @@ const FRAMEWORKS = [
 
 const projectKey = (p) => `${p.stack}:${p.dir}`;
 
+const INTROS = {
+  saved: 'Esta es la configuración actual del pipeline. Cámbiala y vuelve a subirla.',
+  ai: 'La IA revisó el repositorio y propone este pipeline. Ajústalo antes de subirlo.',
+  detected: 'TaskMate revisó el repositorio y propone este pipeline. Ajústalo antes de subirlo.',
+};
+const SOURCE_LABELS = { saved: 'Guardado', ai: 'Propuesto por IA', detected: 'Detectado' };
+
 // Servers and watchers never finish, so they are listed (the admin sees why) but cannot be chosen.
 function ScriptSelect({ id, label, value, scripts, longRunning = [], noneLabel, onChange, helperText }) {
   return (
@@ -270,7 +277,8 @@ function Stages({ stages }) {
  * Props: open, gid, defaultBranch, onClose(), onApplied(result).
  */
 export default function PipelineSetup({ open, gid, defaultBranch, onClose, onApplied }) {
-  const [proposal, setProposal] = useState({ loading: false, error: null, data: null });
+  // `ai`: the request in flight asked the AI (it can take several seconds).
+  const [proposal, setProposal] = useState({ loading: false, error: null, data: null, ai: false });
   const [spec, setSpec] = useState(null);
   const [rendered, setRendered] = useState({ stages: [], yaml: '' });
   const [preview, setPreview] = useState({ loading: false, error: null });
@@ -279,25 +287,28 @@ export default function PipelineSetup({ open, gid, defaultBranch, onClose, onApp
   const [applyError, setApplyError] = useState(null);
   const [result, setResult] = useState(null);
   const dirty = useRef(false);
+  const inflight = useRef(null);
 
+  // A new request supersedes the one in flight (an AI proposal may arrive after a project switch).
   const load = useCallback(
     (project) => {
+      if (inflight.current) inflight.current.abort();
       const controller = new AbortController();
-      setProposal((prev) => ({ ...prev, loading: true, error: null }));
+      inflight.current = controller;
+      setProposal((prev) => ({ ...prev, loading: true, error: null, ai: Boolean(project && project.ai) }));
       setApplyError(null);
       proposePipeline(gid, project || {}, { signal: controller.signal })
         .then((data) => {
           dirty.current = false;
-          setProposal({ loading: false, error: null, data });
+          setProposal({ loading: false, error: null, data, ai: false });
           setSpec(data.spec);
           setRendered({ stages: data.stages || [], yaml: data.yaml || '' });
           setPreview({ loading: false, error: null });
         })
         .catch((err) => {
           if (isAbortError(err)) return;
-          setProposal((prev) => ({ ...prev, loading: false, error: errorMessage(err, 'No se pudo analizar el repositorio.') }));
+          setProposal((prev) => ({ ...prev, loading: false, ai: false, error: errorMessage(err, 'No se pudo analizar el repositorio.') }));
         });
-      return controller;
     },
     [gid]
   );
@@ -306,8 +317,10 @@ export default function PipelineSetup({ open, gid, defaultBranch, onClose, onApp
     if (!open) return undefined;
     setResult(null);
     setShowYaml(false);
-    const controller = load();
-    return () => controller.abort();
+    load();
+    return () => {
+      if (inflight.current) inflight.current.abort();
+    };
   }, [open, load]);
 
   // Every edit is re-validated and re-rendered by the backend (single source of the YAML).
@@ -352,6 +365,7 @@ export default function PipelineSetup({ open, gid, defaultBranch, onClose, onApp
   };
 
   const data = proposal.data;
+  const aiInfo = (data && data.ai) || null;
   const projects = (data && data.facts && data.facts.projects) || [];
   const project = spec ? projects.find((p) => p.dir === spec.project.dir && p.stack === spec.project.stack) : null;
   const branch = defaultBranch || 'la rama principal';
@@ -409,13 +423,37 @@ export default function PipelineSetup({ open, gid, defaultBranch, onClose, onApp
 
         {data && spec && project && !result && (
           <Box sx={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 2 }} aria-busy={proposal.loading}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-              <AutoAwesomeIcon fontSize="small" sx={{ color: '#fbbf24' }} aria-hidden />
-              <Typography variant="body2">
-                {data.source === 'saved'
-                  ? 'Esta es la configuración actual del pipeline. Cámbiala y vuelve a subirla.'
-                  : 'TaskMate revisó el repositorio y propone este pipeline. Ajústalo antes de subirlo.'}
-              </Typography>
+            <Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: '1 1 260px', minWidth: 0 }}>
+                  <AutoAwesomeIcon fontSize="small" sx={{ color: '#fbbf24' }} aria-hidden />
+                  <Typography variant="body2">{INTROS[data.source] || INTROS.detected}</Typography>
+                </Box>
+                {aiInfo && aiInfo.available && (
+                  <Button
+                    variant="ghost"
+                    size="small"
+                    onClick={() => load({ dir: spec.project.dir, stack: spec.project.stack, ai: true })}
+                    disabled={busy}
+                    startIcon={proposal.loading && proposal.ai ? <CircularProgress size={16} color="inherit" /> : <AutoAwesomeIcon />}
+                    aria-describedby="ci-ai-consent"
+                  >
+                    Proponer con IA
+                  </Button>
+                )}
+              </Box>
+              {aiInfo && (
+                <Typography id="ci-ai-consent" variant="caption" color="text.secondary" component="p" sx={{ mt: 0.5, mb: 0 }}>
+                  {aiInfo.available
+                    ? 'Se envía a Groq la lista de proyectos y scripts del repositorio, nunca el código fuente.'
+                    : 'Activa «Permitir análisis con IA» en la pestaña Repositorio para que la IA proponga el pipeline.'}
+                </Typography>
+              )}
+              {proposal.loading && proposal.ai && (
+                <Typography role="status" variant="caption" color="text.secondary" component="p" sx={{ mt: 0.5, mb: 0 }}>
+                  La IA está revisando el repositorio…
+                </Typography>
+              )}
             </Box>
             {(data.notes || []).length > 0 && (
               <Alert severity="info">
@@ -529,7 +567,9 @@ export default function PipelineSetup({ open, gid, defaultBranch, onClose, onApp
         )}
       </DialogContent>
       <DialogActions>
-        {data && data.source && !result && <Chip size="small" variant="outlined" label={data.source === 'saved' ? 'Guardado' : 'Detectado'} sx={{ mr: 'auto', ml: 1 }} />}
+        {data && data.source && !result && (
+          <Chip size="small" variant="outlined" label={SOURCE_LABELS[data.source] || SOURCE_LABELS.detected} sx={{ mr: 'auto', ml: 1 }} />
+        )}
         <Button variant="ghost" size="small" onClick={onClose} disabled={applying}>
           {result ? 'Cerrar' : 'Cancelar'}
         </Button>

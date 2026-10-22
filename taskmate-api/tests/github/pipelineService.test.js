@@ -1,10 +1,13 @@
 jest.mock('../../models/github.model', () => ({ getGroupRepository: jest.fn() }));
 jest.mock('../../models/cicd.model', () => ({ getPipeline: jest.fn(), upsertPipeline: jest.fn() }));
+jest.mock('../../services/github/pipelineAi', () => ({ proposeWithAi: jest.fn() }));
 
 const githubModel = require('../../models/github.model');
 const cicdModel = require('../../models/cicd.model');
+const pipelineAi = require('../../services/github/pipelineAi');
 const pipelineService = require('../../services/github/pipelineService');
 const pipelineSpec = require('../../services/github/pipelineSpec');
+const { AppError } = require('../../helpers/errors');
 const { useFakeGitHub, tokenRoute, REPO } = require('./helpers/fakeGitHub');
 
 const GID = REPO.gid;
@@ -109,6 +112,151 @@ describe('proposePipeline', () => {
         githubModel.getGroupRepository.mockResolvedValue(null);
         await expect(pipelineService.proposePipeline({ gid: GID, uid: UID })).rejects.toMatchObject({ code: 'REPO_NOT_CONNECTED' });
         expect(fetchImpl.calls).toHaveLength(0);
+    });
+});
+
+describe('proposePipeline with the AI', () => {
+    const DETECTED = {
+        version: 1,
+        project: { dir: '.', stack: 'node' },
+        runtime: '22',
+        install: { kind: 'npm-ci' },
+        lint: { kind: 'script', name: 'lint' },
+        audit: false,
+        test: { kind: 'script', name: 'test' },
+        build: { kind: 'script', name: 'build' },
+        deploy: { target: 'github-pages', framework: 'vite', outputDir: 'dist' },
+    };
+    const AI_SPEC = { ...DETECTED, lint: null, audit: true };
+    const EXPLANATION = 'Quité el lint y activé npm audit.';
+
+    beforeEach(() => {
+        githubModel.getGroupRepository.mockResolvedValue({ ...REPO, aiAnalysisEnabled: true });
+        pipelineAi.proposeWithAi.mockResolvedValue({ spec: AI_SPEC, explanation: EXPLANATION });
+    });
+
+    test('is used automatically when the group allows it: validated spec, explanation first', async () => {
+        useFakeGitHub(routes());
+        const result = await pipelineService.proposePipeline({ gid: GID, uid: UID });
+        expect(result.source).toBe('ai');
+        expect(result.spec).toEqual(AI_SPEC);
+        expect(result.notes).toEqual([EXPLANATION]);
+        expect(result.ai).toEqual({ available: true, used: true, error: null });
+        expect(result.stages.map((s) => s.key)).toEqual(['install', 'audit', 'test', 'build', 'deploy']);
+        expect(pipelineAi.proposeWithAi).toHaveBeenCalledTimes(1);
+        const [args] = pipelineAi.proposeWithAi.mock.calls[0];
+        expect(args.repo).toMatchObject({ fullName: 'octo/demo', defaultBranch: 'main' });
+        expect(args.detected).toEqual(DETECTED);
+        expect(args.facts.projects.map((p) => p.dir)).toEqual(['.', 'api']);
+        expect(args.options).toEqual({ nodeVersions: [...pipelineSpec.NODE_VERSIONS], pythonVersions: [...pipelineSpec.PYTHON_VERSIONS] });
+    });
+
+    test('is never asked when the group did not allow it', async () => {
+        githubModel.getGroupRepository.mockResolvedValue({ ...REPO });
+        useFakeGitHub(routes());
+        const result = await pipelineService.proposePipeline({ gid: GID, uid: UID });
+        expect(result.source).toBe('detected');
+        expect(result.ai).toEqual({ available: false, used: false, error: null });
+        expect(pipelineAi.proposeWithAi).not.toHaveBeenCalled();
+    });
+
+    test('a saved spec that still validates wins (no AI call)', async () => {
+        useFakeGitHub(routes());
+        cicdModel.getPipeline.mockResolvedValue({ spec: DETECTED });
+        const result = await pipelineService.proposePipeline({ gid: GID, uid: UID });
+        expect(result.source).toBe('saved');
+        expect(result.ai).toEqual({ available: true, used: false, error: null });
+        expect(pipelineAi.proposeWithAi).not.toHaveBeenCalled();
+    });
+
+    test('a saved spec that no longer validates lets the AI propose, keeping the note', async () => {
+        useFakeGitHub(routes());
+        cicdModel.getPipeline.mockResolvedValue({ spec: { ...DETECTED, test: { kind: 'script', name: 'gone' } } });
+        const result = await pipelineService.proposePipeline({ gid: GID, uid: UID });
+        expect(result.source).toBe('ai');
+        expect(result.notes[0]).toBe(EXPLANATION);
+        expect(result.notes[1]).toMatch(/ya no coincide/);
+    });
+
+    test('ai: true asks the AI even with a saved spec; ai: false never asks it', async () => {
+        useFakeGitHub(routes());
+        cicdModel.getPipeline.mockResolvedValue({ spec: DETECTED });
+        expect((await pipelineService.proposePipeline({ gid: GID, uid: UID, ai: true })).source).toBe('ai');
+        expect(cicdModel.getPipeline).not.toHaveBeenCalled();
+        pipelineAi.proposeWithAi.mockClear();
+        cicdModel.getPipeline.mockResolvedValue(null);
+        const result = await pipelineService.proposePipeline({ gid: GID, uid: UID, ai: false });
+        expect(result.source).toBe('detected');
+        expect(result.ai).toEqual({ available: true, used: false, error: null });
+        expect(pipelineAi.proposeWithAi).not.toHaveBeenCalled();
+    });
+
+    test('ai: true when the group did not allow it → AI_ANALYSIS_DISABLED before reading GitHub', async () => {
+        githubModel.getGroupRepository.mockResolvedValue({ ...REPO, aiAnalysisEnabled: false });
+        const fetchImpl = useFakeGitHub(routes());
+        await expect(pipelineService.proposePipeline({ gid: GID, uid: UID, ai: true })).rejects.toMatchObject({ code: 'AI_ANALYSIS_DISABLED', status: 409 });
+        expect(fetchImpl.calls).toHaveLength(0);
+        expect(pipelineAi.proposeWithAi).not.toHaveBeenCalled();
+    });
+
+    test('a project switch only asks the AI with ai: true, for that project', async () => {
+        useFakeGitHub(routes());
+        await pipelineService.proposePipeline({ gid: GID, uid: UID, dir: 'api', stack: 'python' });
+        expect(pipelineAi.proposeWithAi).not.toHaveBeenCalled();
+
+        const python = { version: 1, project: { dir: 'api', stack: 'python' }, runtime: '3.12', install: null, lint: { kind: 'ruff' }, audit: false, test: { kind: 'pytest' }, build: null, deploy: null };
+        pipelineAi.proposeWithAi.mockResolvedValue({ spec: python, explanation: '' });
+        const result = await pipelineService.proposePipeline({ gid: GID, uid: UID, dir: 'api', stack: 'python', ai: true });
+        expect(pipelineAi.proposeWithAi.mock.calls[0][0].detected.project).toEqual({ dir: 'api', stack: 'python' });
+        expect(result.source).toBe('ai');
+        expect(result.spec).toEqual(python);
+        expect(result.notes.every((note) => note !== '')).toBe(true);
+    });
+
+    test('an AI spec for another project than the one asked for falls back', async () => {
+        useFakeGitHub(routes());
+        const result = await pipelineService.proposePipeline({ gid: GID, uid: UID, dir: 'api', stack: 'python', ai: true });
+        expect(result.source).toBe('detected');
+        expect(result.spec.project).toEqual({ dir: 'api', stack: 'python' });
+        expect(result.ai).toEqual({ available: true, used: false, error: 'LLM_INVALID_OUTPUT' });
+    });
+
+    test('an AI spec that does not validate falls back to the detected one with a note', async () => {
+        useFakeGitHub(routes());
+        pipelineAi.proposeWithAi.mockResolvedValue({ spec: { ...AI_SPEC, build: { kind: 'script', name: 'x; rm -rf /' } }, explanation: EXPLANATION });
+        const result = await pipelineService.proposePipeline({ gid: GID, uid: UID });
+        expect(result.source).toBe('detected');
+        expect(result.spec).toEqual(DETECTED);
+        expect(result.notes[0]).toBe('No se pudo usar la IA (propuso algo que no coincide con el repositorio); esta es la propuesta de la detección automática.');
+        expect(result.notes).not.toContain(EXPLANATION);
+        expect(result.ai).toEqual({ available: true, used: false, error: 'LLM_INVALID_OUTPUT' });
+        expect(result.yaml).not.toContain('x; rm');
+    });
+
+    test.each([
+        ['LLM_TIMEOUT', 504, /tardó demasiado/],
+        ['LLM_RATE_LIMIT', 503, /límite de uso/],
+        ['LLM_INVALID_OUTPUT', 502, /no coincide con el repositorio/],
+        ['LLM_ERROR', 503, /no está disponible/],
+    ])('an AI failure (%s) falls back to the detected proposal', async (code, status, reason) => {
+        useFakeGitHub(routes());
+        pipelineAi.proposeWithAi.mockRejectedValue(new AppError(code, 'x', status));
+        const result = await pipelineService.proposePipeline({ gid: GID, uid: UID });
+        expect(result.source).toBe('detected');
+        expect(result.spec).toEqual(DETECTED);
+        expect(result.notes[0]).toMatch(reason);
+        expect(result.notes[0]).toMatch(/^No se pudo usar la IA \(.+\); esta es la propuesta de la detección automática\.$/);
+        expect(result.ai).toEqual({ available: true, used: false, error: code });
+    });
+
+    test('an unexpected failure in the AI path also falls back', async () => {
+        useFakeGitHub(routes());
+        const spy = jest.spyOn(console, 'error').mockImplementation(() => {});
+        pipelineAi.proposeWithAi.mockRejectedValue(new TypeError('bug'));
+        const result = await pipelineService.proposePipeline({ gid: GID, uid: UID });
+        expect(result.source).toBe('detected');
+        expect(result.ai.error).toBe('LLM_ERROR');
+        expect(spy).toHaveBeenCalled();
     });
 });
 
