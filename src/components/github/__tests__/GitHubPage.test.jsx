@@ -144,6 +144,17 @@ describe('GitHubPage', () => {
     expect(await screen.findByText(/todavía no tiene ejecuciones/)).toBeInTheDocument();
   });
 
+  it('?tab=cicd (from a CI/CD notification) opens the CI/CD tab once the repository loads', async () => {
+    github.getRepository.mockResolvedValue(REPO);
+    github.getPipeline.mockResolvedValue({ pipeline: null, workflowPath: '.github/workflows/taskmate-ci.yml', pages: null });
+    github.listRuns.mockResolvedValue({ runs: [], totalCount: 0, page: 1 });
+    github.listWorkflows.mockResolvedValue([]);
+    showPage({ url: '/github?tab=cicd' });
+    expect(await screen.findByRole('button', { name: 'Configurar pipeline' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'CI/CD' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/github$/);
+  });
+
   it('after the owner gives the App access on GitHub, an admin goes straight to the repository selection', async () => {
     github.install.mockResolvedValue({
       installUrl: 'https://github.com/apps/taskmate/installations/new?state=abc',

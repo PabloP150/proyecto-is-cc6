@@ -3,15 +3,19 @@ import { Alert, Box, CircularProgress, IconButton, List, ListItem, Tooltip, Typo
 import { useCallback, useEffect, useState } from 'react';
 import { getRun } from '../../../api/github';
 import Button from '../../ui/Button';
+import { useGroupEvents, useRealtime } from '../../realtime/RealtimeContext';
 import { errorMessage, isAbortError, safeGitHubUrl } from '../githubUtils';
 import { formatDuration, isActive, StateIcon, stateLabel, stateOf } from './cicdUtils';
+import { JobAnnotations, JobLog } from './JobLog';
 import useVisibleInterval from './useVisibleInterval';
 
 const POLL_MS = 10 * 1000;
 
-function JobCard({ job }) {
+function JobCard({ gid, job }) {
   const state = stateOf(job.status, job.conclusion);
   const href = safeGitHubUrl(job.htmlUrl);
+  const [showLog, setShowLog] = useState(false);
+  const finished = job.status === 'completed';
   return (
     <Box
       component="section"
@@ -52,6 +56,15 @@ function JobCard({ job }) {
           })}
         </List>
       )}
+      {state === 'failure' && <JobAnnotations gid={gid} jobId={job.id} />}
+      {finished && (
+        <Box sx={{ mt: 0.5 }}>
+          <Button variant="ghost" size="small" onClick={() => setShowLog((v) => !v)} aria-expanded={showLog}>
+            {showLog ? 'Ocultar log' : 'Ver log'}
+          </Button>
+          {showLog && <JobLog gid={gid} jobId={job.id} />}
+        </Box>
+      )}
     </Box>
   );
 }
@@ -76,7 +89,12 @@ export default function RunDetail({ gid, runId }) {
 
   const { loading, error, data } = state;
   const running = Boolean(data && data.run && data.run.status !== 'completed');
-  useVisibleInterval(reload, POLL_MS, running && !loading);
+  const { connected } = useRealtime();
+  useGroupEvents(gid, ['ci_run', 'ci_job'], (event) => {
+    if (event && Number(event.runId) === Number(runId)) reload();
+  }, { debounceMs: 800 });
+  // Live events keep it fresh; polling is only the fallback without the /events connection.
+  useVisibleInterval(reload, POLL_MS, running && !loading && !connected);
 
   if (loading && !data) {
     return (
@@ -110,7 +128,7 @@ export default function RunDetail({ gid, runId }) {
           Esta ejecución todavía no tiene jobs.
         </Typography>
       ) : (
-        jobs.map((job) => <JobCard key={job.id} job={job} />)
+        jobs.map((job) => <JobCard key={job.id} gid={gid} job={job} />)
       )}
     </Box>
   );

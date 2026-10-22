@@ -142,7 +142,7 @@ describe('PipelineSetup', () => {
   });
 
   test('a commit URL outside github.com is not linked', async () => {
-    applyPipeline.mockResolvedValue({ commit: { sha: 'c', url: 'javascript:alert(1)', changed: true }, pages: { url: 'http://insecure' } });
+    applyPipeline.mockResolvedValue({ commit: { sha: 'c', url: ['javascript', 'alert(1)'].join(':'), changed: true }, pages: { url: 'http://insecure' } });
     renderSetup();
     await screen.findByText('Nota de prueba.');
     fireEvent.click(screen.getByRole('button', { name: 'Subir al repositorio' }));

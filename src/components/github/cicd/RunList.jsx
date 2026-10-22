@@ -1,6 +1,9 @@
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import ReplayIcon from '@mui/icons-material/Replay';
+import StopIcon from '@mui/icons-material/Stop';
 import {
   Alert,
   Box,
@@ -8,6 +11,11 @@ import {
   Chip,
   CircularProgress,
   Collapse,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
   IconButton,
   Link,
   MenuItem,
@@ -16,7 +24,8 @@ import {
   Typography,
 } from '@mui/material';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { listRuns, listWorkflows } from '../../../api/github';
+import { cancelRun, dispatchPipeline, listRuns, listWorkflows, rerunFailed } from '../../../api/github';
+import { useGroupEvents, useRealtime } from '../../realtime/RealtimeContext';
 import Button from '../../ui/Button';
 import { errorMessage, formatDateTime, formatRelativeDate, isAbortError, safeGitHubUrl } from '../githubUtils';
 import { eventLabel, formatDuration, isActive, monoSx, StateIcon, stateLabel, stateOf, STATUS_FILTERS } from './cicdUtils';
@@ -24,8 +33,125 @@ import RunDetail from './RunDetail';
 import useVisibleInterval from './useVisibleInterval';
 
 const POLL_MS = 15 * 1000;
+const RERUNNABLE = new Set(['failure', 'cancelled', 'timed_out', 'startup_failure']);
 
-function RunRow({ gid, run, expanded, onToggle }) {
+// Same rule as the API: deploys TaskMate dispatched are re-run or cancelled only by the admin.
+const isDeployRun = (run) => run.isTaskmate && run.event === 'workflow_dispatch' && /^Deploy a /.test(run.title || '');
+
+function RunActions({ gid, run, isAdmin, onChanged }) {
+  const [busy, setBusy] = useState(null);
+  const [feedback, setFeedback] = useState(null);
+  const state = stateOf(run.status, run.conclusion);
+  const allowed = !isDeployRun(run) || isAdmin;
+  const canRerun = allowed && run.status === 'completed' && RERUNNABLE.has(run.conclusion);
+  const canCancel = allowed && isActive(state);
+  if (!canRerun && !canCancel) {
+    return isDeployRun(run) && !isAdmin ? (
+      <Typography variant="caption" color="text.secondary" component="p" sx={{ mb: 1 }}>
+        Solo el administrador del grupo puede re-ejecutar o cancelar un deploy.
+      </Typography>
+    ) : null;
+  }
+
+  const act = async (kind) => {
+    setBusy(kind);
+    setFeedback(null);
+    try {
+      if (kind === 'rerun') await rerunFailed(gid, run.id);
+      else await cancelRun(gid, run.id);
+      setFeedback({ severity: 'success', message: kind === 'rerun' ? 'Se re-ejecutan los jobs fallidos.' : 'Se pidió cancelar la ejecución.' });
+      if (onChanged) onChanged();
+    } catch (err) {
+      setFeedback({ severity: 'error', message: errorMessage(err, 'GitHub no aceptó la acción.') });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap', mb: 1 }}>
+      {canRerun && (
+        <Button variant="ghost" size="small" startIcon={busy === 'rerun' ? <CircularProgress size={14} color="inherit" /> : <ReplayIcon />} onClick={() => act('rerun')} disabled={Boolean(busy)}>
+          Re-ejecutar fallidos
+        </Button>
+      )}
+      {canCancel && (
+        <Button variant="ghost" size="small" startIcon={busy === 'cancel' ? <CircularProgress size={14} color="inherit" /> : <StopIcon />} onClick={() => act('cancel')} disabled={Boolean(busy)}>
+          Cancelar
+        </Button>
+      )}
+      {feedback && (
+        <Typography variant="caption" role="status" sx={{ color: feedback.severity === 'error' ? 'error.light' : 'success.light' }}>
+          {feedback.message}
+        </Typography>
+      )}
+    </Box>
+  );
+}
+
+function RunPipelineDialog({ open, gid, defaultBranch, onClose, onDone }) {
+  const [branch, setBranch] = useState(defaultBranch || '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (open) {
+      setBranch(defaultBranch || '');
+      setError(null);
+    }
+  }, [open, defaultBranch]);
+
+  const submit = async (event) => {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await dispatchPipeline(gid, branch.trim());
+      onDone(branch.trim());
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo ejecutar el pipeline.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onClose={() => !busy && onClose()} aria-labelledby="ci-run-title" fullWidth maxWidth="xs">
+      <Box component="form" onSubmit={submit}>
+        <DialogTitle id="ci-run-title">Ejecutar pipeline</DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ mb: 2 }}>
+            Corre el CI de TaskMate (instalar, análisis estático, pruebas y build) en una rama. No despliega nada.
+          </DialogContentText>
+          <TextField
+            autoFocus
+            fullWidth
+            size="small"
+            label="Rama"
+            value={branch}
+            onChange={(event) => setBranch(event.target.value)}
+            inputProps={{ maxLength: 255, spellCheck: false, style: monoSx }}
+          />
+          {error && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              {error}
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button variant="ghost" size="small" onClick={onClose} disabled={busy}>
+            Cancelar
+          </Button>
+          <Button type="submit" variant="primary" size="small" disabled={busy || !branch.trim()} startIcon={busy ? <CircularProgress size={14} color="inherit" /> : <PlayArrowIcon />}>
+            Ejecutar
+          </Button>
+        </DialogActions>
+      </Box>
+    </Dialog>
+  );
+}
+
+function RunRow({ gid, run, expanded, onToggle, isAdmin, onChanged }) {
   const state = stateOf(run.status, run.conclusion);
   const href = safeGitHubUrl(run.htmlUrl);
   const detailId = `ci-run-${run.id}`;
@@ -71,13 +197,15 @@ function RunRow({ gid, run, expanded, onToggle }) {
           {expanded ? <ExpandLessIcon fontSize="small" aria-hidden /> : <ExpandMoreIcon fontSize="small" aria-hidden />}
         </Box>
       </ButtonBase>
-      <Collapse in={expanded} unmountOnExit>
-        <Box id={detailId} sx={{ pb: 1.5, pl: { xs: 0, sm: 4 } }}>
+      {/* The flex wrapper of Collapse must let a wide log shrink instead of widening the page. */}
+      <Collapse in={expanded} unmountOnExit sx={{ '& .MuiCollapse-wrapperInner': { minWidth: 0 } }}>
+        <Box id={detailId} sx={{ pb: 1.5, pl: { xs: 0, sm: 4 }, minWidth: 0 }}>
           {href && (
             <Link href={href} target="_blank" rel="noopener noreferrer" variant="caption" sx={{ display: 'inline-block', mb: 1 }}>
               Ver la ejecución en GitHub
             </Link>
           )}
+          <RunActions gid={gid} run={run} isAdmin={isAdmin} onChanged={onChanged} />
           <RunDetail gid={gid} runId={run.id} />
         </Box>
       </Collapse>
@@ -86,10 +214,13 @@ function RunRow({ gid, run, expanded, onToggle }) {
 }
 
 /**
- * Workflow runs of the group's repository with workflow/status filters. Refreshes itself while
- * something is queued or running. Props: gid, refreshKey (bump to reload).
+ * Workflow runs of the group's repository with workflow/status filters, live (or polled while
+ * something runs without the /events connection). Props: gid, refreshKey (bump to reload),
+ * isAdmin, canRun (a TaskMate pipeline exists), defaultBranch.
  */
-export default function RunList({ gid, refreshKey = 0 }) {
+export default function RunList({ gid, refreshKey = 0, isAdmin = false, canRun = false, defaultBranch }) {
+  const [runOpen, setRunOpen] = useState(false);
+  const [notice, setNotice] = useState(null);
   const [workflows, setWorkflows] = useState([]);
   const [filters, setFilters] = useState({ workflow: '', status: '' });
   const [state, setState] = useState({ loading: true, error: null, runs: [], totalCount: 0, page: 1 });
@@ -138,7 +269,16 @@ export default function RunList({ gid, refreshKey = 0 }) {
   };
 
   const anyActive = useMemo(() => state.runs.some((run) => isActive(stateOf(run.status, run.conclusion))), [state.runs]);
-  useVisibleInterval(reload, POLL_MS, anyActive && !state.loading);
+  const { connected } = useRealtime();
+  useGroupEvents(gid, ['ci_run'], reload, { debounceMs: 1000 });
+  useVisibleInterval(reload, POLL_MS, anyActive && !state.loading && !connected);
+
+  // GitHub creates the run a few seconds after the dispatch; the ci_run event (or this) shows it.
+  const handleDispatched = (branch) => {
+    setRunOpen(false);
+    setNotice(`Listo: el pipeline se ejecutará en «${branch}» en unos segundos.`);
+    setTimeout(reload, 4000);
+  };
 
   const { loading, error, runs, totalCount } = state;
   const permissionsMissing = error && error.code === 'APP_PERMISSIONS_MISSING';
@@ -185,7 +325,18 @@ export default function RunList({ gid, refreshKey = 0 }) {
             </IconButton>
           </span>
         </Tooltip>
+        {canRun && (
+          <Button variant="primary" size="small" startIcon={<PlayArrowIcon />} onClick={() => setRunOpen(true)}>
+            Ejecutar pipeline
+          </Button>
+        )}
       </Box>
+
+      {notice && (
+        <Alert severity="success" onClose={() => setNotice(null)} sx={{ mb: 1 }}>
+          {notice}
+        </Alert>
+      )}
 
       {loading && runs.length === 0 && !error && (
         <Box role="status" sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 4, justifyContent: 'center' }}>
@@ -221,11 +372,17 @@ export default function RunList({ gid, refreshKey = 0 }) {
               key={run.id}
               gid={gid}
               run={run}
+              isAdmin={isAdmin}
+              onChanged={() => setTimeout(reload, 2000)}
               expanded={expanded === run.id}
               onToggle={() => setExpanded((current) => (current === run.id ? null : run.id))}
             />
           ))}
         </Box>
+      )}
+
+      {canRun && (
+        <RunPipelineDialog open={runOpen} gid={gid} defaultBranch={defaultBranch} onClose={() => setRunOpen(false)} onDone={handleDispatched} />
       )}
 
       {runs.length > 0 && runs.length < totalCount && (

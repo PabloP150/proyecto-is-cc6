@@ -37,9 +37,9 @@ function PagesStatus({ pages }) {
 
 /**
  * The TaskMate pipeline of the group's repository (or a prompt to configure it).
- * Props: gid, repo, isAdmin, refreshKey, onConfigure().
+ * Props: gid, repo, isAdmin, refreshKey, onConfigure(), onLoaded(data).
  */
-export default function PipelineCard({ gid, repo, isAdmin, refreshKey = 0, onConfigure }) {
+export default function PipelineCard({ gid, repo, isAdmin, refreshKey = 0, onConfigure, onLoaded }) {
   const [state, setState] = useState({ loading: true, error: null, data: null });
   const [version, setVersion] = useState(0);
   const reload = useCallback(() => setVersion((v) => v + 1), []);
@@ -48,12 +48,17 @@ export default function PipelineCard({ gid, repo, isAdmin, refreshKey = 0, onCon
     const controller = new AbortController();
     setState((prev) => ({ ...prev, loading: true, error: null }));
     getPipeline(gid, { signal: controller.signal })
-      .then((data) => setState({ loading: false, error: null, data }))
+      .then((data) => {
+        setState({ loading: false, error: null, data });
+        if (onLoaded) onLoaded(data);
+      })
       .catch((err) => {
         if (isAbortError(err)) return;
         setState({ loading: false, error: errorMessage(err, 'No se pudo cargar el pipeline.'), data: null });
       });
     return () => controller.abort();
+    // onLoaded is a notification for the parent; a new function identity must not refetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gid, refreshKey, version]);
 
   const { loading, error, data } = state;

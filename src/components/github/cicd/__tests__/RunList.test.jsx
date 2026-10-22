@@ -1,10 +1,19 @@
 import { ThemeProvider } from '@mui/material/styles';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { getRun, listRuns, listWorkflows } from '../../../../api/github';
+import { cancelRun, dispatchPipeline, getJobAnnotations, getJobLog, getRun, listRuns, listWorkflows, rerunFailed } from '../../../../api/github';
 import theme from '../../../../theme/theme';
 import RunList from '../RunList';
 
-jest.mock('../../../../api/github', () => ({ listRuns: jest.fn(), listWorkflows: jest.fn(), getRun: jest.fn() }));
+jest.mock('../../../../api/github', () => ({
+  listRuns: jest.fn(),
+  listWorkflows: jest.fn(),
+  getRun: jest.fn(),
+  getJobLog: jest.fn(),
+  getJobAnnotations: jest.fn(),
+  dispatchPipeline: jest.fn(),
+  rerunFailed: jest.fn(),
+  cancelRun: jest.fn(),
+}));
 
 const run = (id, extra = {}) => ({
   id,
@@ -56,6 +65,11 @@ beforeEach(() => {
   listWorkflows.mockReset().mockResolvedValue([{ id: 55, name: 'TaskMate CI/CD', isTaskmate: true }]);
   listRuns.mockReset().mockResolvedValue({ runs: [run(1), run(2, { conclusion: 'failure', title: 'Rompe pruebas' })], totalCount: 2, page: 1 });
   getRun.mockReset().mockResolvedValue(DETAIL);
+  getJobAnnotations.mockReset().mockResolvedValue([]);
+  getJobLog.mockReset().mockResolvedValue({ jobId: 11, lines: [], errors: [], truncated: false });
+  dispatchPipeline.mockReset().mockResolvedValue({ dispatched: true });
+  rerunFailed.mockReset().mockResolvedValue({ rerun: true });
+  cancelRun.mockReset().mockResolvedValue({ cancelled: true });
 });
 
 afterEach(() => {

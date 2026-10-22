@@ -1,6 +1,6 @@
 import { ThemeProvider } from '@mui/material/styles';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { getPipeline, listRuns, listWorkflows, proposePipeline } from '../../../../api/github';
+import { getDeployments, getPipeline, listRuns, listWorkflows, proposePipeline } from '../../../../api/github';
 import theme from '../../../../theme/theme';
 import CicdPanel from '../CicdPanel';
 
@@ -12,6 +12,8 @@ jest.mock('../../../../api/github', () => ({
   previewPipeline: jest.fn(),
   applyPipeline: jest.fn(),
   getRun: jest.fn(),
+  getDeployments: jest.fn(),
+  dispatchPipeline: jest.fn(),
 }));
 
 const REPO = { fullName: 'acme/app', htmlUrl: 'https://github.com/acme/app', defaultBranch: 'main' };
@@ -44,6 +46,7 @@ beforeEach(() => {
   listRuns.mockReset().mockResolvedValue({ runs: [], totalCount: 0, page: 1 });
   listWorkflows.mockReset().mockResolvedValue([]);
   proposePipeline.mockReset().mockReturnValue(new Promise(() => {}));
+  getDeployments.mockReset().mockResolvedValue({ deploys: true, environments: { staging: { live: null }, production: { live: null } }, history: [], rollbackCandidates: [], requests: [] });
 });
 
 describe('CicdPanel', () => {

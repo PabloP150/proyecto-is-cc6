@@ -83,6 +83,8 @@ export default function GitHubPage() {
   const [syncing, setSyncing] = useState(false);
   const [toast, setToast] = useState(null);
   const [reauth, setReauth] = useState(false);
+  // ?tab=cicd (the «Ver» of a CI/CD notification) opens that tab once the repository is usable.
+  const [wantedTab, setWantedTab] = useState(null);
   const reauthStarted = useRef(false);
   const toastCount = useRef(0);
 
@@ -125,6 +127,14 @@ export default function GitHubPage() {
     setSearchParams({}, { replace: true });
     // Only the query string drives this; `gid`/`groups` are read at that moment on purpose.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, setSearchParams]);
+
+  useEffect(() => {
+    if (searchParams.get('tab') !== 'cicd') return;
+    setWantedTab('cicd');
+    const next = new URLSearchParams(searchParams);
+    next.delete('tab');
+    setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams]);
 
   // Fresh list (admin changes, new groups); the context may be empty after a reload.
@@ -179,6 +189,12 @@ export default function GitHubPage() {
   useEffect(() => {
     if (!usable && tab !== 'repo') setTab('repo');
   }, [usable, tab]);
+
+  useEffect(() => {
+    if (!wantedTab || !usable) return;
+    setTab(wantedTab);
+    setWantedTab(null);
+  }, [wantedTab, usable]);
 
   // That return has no state, so it cannot be trusted to link anything: an admin of the selected
   // group is sent straight back through the normal, state-protected authorize flow (GitHub returns

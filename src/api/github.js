@@ -87,3 +87,39 @@ export const listRuns = (gid, { branch, status, workflow, page, signal } = {}) =
 
 export const getRun = (gid, runId, { signal } = {}) =>
   request(`/groups/${seg(gid)}/actions/runs/${seg(runId)}`, { signal });
+
+export const getJobLog = (gid, jobId, { signal } = {}) =>
+  request(`/groups/${seg(gid)}/actions/jobs/${seg(jobId)}/logs`, { signal });
+
+export const getJobAnnotations = (gid, jobId, { signal } = {}) =>
+  request(`/groups/${seg(gid)}/actions/jobs/${seg(jobId)}/annotations`, { signal });
+
+/** Runs the TaskMate CI (no deploy) on a branch. */
+export const dispatchPipeline = (gid, ref, { signal } = {}) =>
+  request(`/groups/${seg(gid)}/actions/runs`, { method: 'POST', body: { ref }, signal });
+
+export const rerunFailed = (gid, runId, { signal } = {}) =>
+  request(`/groups/${seg(gid)}/actions/runs/${seg(runId)}/rerun-failed`, { method: 'POST', signal });
+
+export const cancelRun = (gid, runId, { signal } = {}) =>
+  request(`/groups/${seg(gid)}/actions/runs/${seg(runId)}/cancel`, { method: 'POST', signal });
+
+export const getDeployments = (gid, { signal } = {}) =>
+  request(`/groups/${seg(gid)}/deployments`, { signal });
+
+/** Admin: deploy (or roll back to) a version right away. */
+export const deployNow = (gid, { environment, version }, { signal } = {}) =>
+  request(`/groups/${seg(gid)}/deployments`, { method: 'POST', body: { environment, version }, signal });
+
+/** Member: ask the admins to deploy a version. */
+export const requestDeploy = (gid, { environment = 'production', version }, { signal } = {}) =>
+  request(`/groups/${seg(gid)}/deploy-requests`, { method: 'POST', body: { environment, version }, signal });
+
+export const approveDeployRequest = (gid, requestId, { signal } = {}) =>
+  request(`/groups/${seg(gid)}/deploy-requests/${seg(requestId)}/approve`, { method: 'POST', signal });
+
+export const rejectDeployRequest = (gid, requestId, note, { signal } = {}) =>
+  request(`/groups/${seg(gid)}/deploy-requests/${seg(requestId)}/reject`, { method: 'POST', body: { note: note || undefined }, signal });
+
+export const cancelDeployRequest = (gid, requestId, { signal } = {}) =>
+  request(`/groups/${seg(gid)}/deploy-requests/${seg(requestId)}/cancel`, { method: 'POST', signal });

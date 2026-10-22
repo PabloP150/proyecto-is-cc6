@@ -38,6 +38,18 @@ const ERROR_MESSAGES = {
   INVALID_PIPELINE: 'La configuración del pipeline no es válida para este repositorio.',
   PIPELINE_UNSUPPORTED: 'No se encontró un proyecto de Node.js, Python ni un sitio estático en el repositorio.',
   RUN_NOT_FOUND: 'Esa ejecución ya no existe en GitHub.',
+  LOG_NOT_AVAILABLE: 'El log todavía no está disponible (el job sigue corriendo) o ya expiró.',
+  PIPELINE_NOT_CONFIGURED: 'Este repositorio todavía no tiene un pipeline de TaskMate.',
+  PIPELINE_OUTDATED: 'El workflow de esa rama es anterior y no se puede ejecutar desde TaskMate; vuelve a subir el pipeline.',
+  BRANCH_NOT_FOUND: 'Esa rama no existe en el repositorio.',
+  RUN_NOT_RERUNNABLE: 'Solo se pueden re-ejecutar ejecuciones terminadas con jobs fallidos (y de menos de un mes).',
+  RUN_NOT_CANCELLABLE: 'La ejecución ya terminó.',
+  DEPLOY_NOT_CONFIGURED: 'El pipeline de este repositorio no tiene deploy.',
+  VERSION_NOT_VERIFIED: 'Ese commit no pasó el CI de TaskMate, así que no se puede desplegar.',
+  DEPLOY_REQUEST_PENDING: 'Ya hay una solicitud pendiente para ese entorno.',
+  DEPLOY_REQUEST_NOT_FOUND: 'La solicitud ya no existe.',
+  DEPLOY_REQUEST_DECIDED: 'Otro administrador ya respondió esa solicitud.',
+  NOT_REQUESTER: 'Solo quien pidió el deploy puede cancelar la solicitud.',
 };
 
 // Codes the OAuth/installation callback may put in ?status=error&code=<CODE>.
