@@ -20,12 +20,20 @@ const scriptOf = (job, name) => workflow().jobs[job].steps.find((s) => s.name ==
  * deployments: [{id, environment, sha, payload, statuses: ['success', …] newest first}] newest first.
  * Every call is logged in `calls`, in order, with core outputs as ['output', name, value].
  */
-const fakeGitHub = ({ deployments = [], head = HEAD, failInProgress = false } = {}) => {
+const fakeGitHub = ({ deployments = [], head = HEAD, failInProgress = false, artifacts = null, artifactsError = null } = {}) => {
     const calls = [];
     const outputs = {};
     const statusesOf = (id) => (deployments.find((d) => d.id === id) || { statuses: [] }).statuses;
     const github = {
         rest: {
+            actions: {
+                // artifacts: {runId: [{expired}]}; null = every run still has its github-pages artifact.
+                listWorkflowRunArtifacts: jest.fn(async ({ run_id: runId, name }) => {
+                    calls.push(['listWorkflowRunArtifacts', runId, name]);
+                    if (artifactsError) throw artifactsError;
+                    return { data: { artifacts: artifacts ? artifacts[runId] || [] : [{ name, expired: false }] } };
+                }),
+            },
             git: {
                 getRef: jest.fn(async (args) => {
                     calls.push(['getRef', args.ref]);
@@ -142,6 +150,23 @@ describe('versions script', () => {
         });
         await run(script, { fake, env: pushEnv() });
         expect(fake.outputs).toMatchObject({ base_run: '', other_version: SHA('c') });
+    });
+
+    test('a published site GitHub no longer keeps is not downloaded: the other environment is rebuilt', async () => {
+        const deployments = [
+            { id: 4, environment: 'staging', sha: SHA('b'), payload: { runId: 40 }, statuses: ['success'] },
+            { id: 3, environment: 'production', sha: SHA('c'), payload: { runId: 30 }, statuses: ['success'] },
+        ];
+        const expired = fakeGitHub({ deployments, artifacts: { 40: [{ name: 'github-pages', expired: true }] } });
+        await run(script, { fake: expired, env: pushEnv() });
+        expect(expired.calls).toContainEqual(['listWorkflowRunArtifacts', 40, 'github-pages']);
+        expect(expired.outputs).toMatchObject({ base_run: '', other_version: SHA('c') });
+        expect(expired.core.info).toHaveBeenCalledWith(expect.stringMatching(/ya no está guardado en GitHub/));
+
+        // If GitHub cannot say, the download is still attempted (and falls back on its own).
+        const unknown = fakeGitHub({ deployments, artifactsError: new Error('boom') });
+        await run(script, { fake: unknown, env: pushEnv() });
+        expect(unknown.outputs).toMatchObject({ base_run: '40', other_version: SHA('c') });
     });
 
     test('the deployment id is an output before the in_progress status, so a failure there is still recorded', async () => {

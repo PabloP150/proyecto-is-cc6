@@ -679,9 +679,9 @@ const ciSteps = (out, spec) => {
 
 // What to publish and the GitHub Deployment that records it. Push runs whose commit is no longer the
 // head of the default branch (re-runs of old runs) deploy nothing: skip=true and no Deployment.
-// base_run is the run of the newest successful TaskMate deploy: its Pages artifact is the site live
-// now, so only the target environment is rebuilt; other_version is the other environment's live
-// commit, rebuilt only when that artifact cannot be downloaded.
+// base_run is the run of the newest successful TaskMate deploy whose Pages artifact GitHub still keeps:
+// that artifact is the site live now, so only the target environment is rebuilt; other_version is the
+// other environment's live commit, rebuilt only when that artifact cannot be downloaded.
 const VERSIONS_SCRIPT = [
     'const SHA = /^[0-9a-f]{40}$/;',
     `const TASK = '${DEPLOY_TASK}';`,
@@ -723,6 +723,19 @@ const VERSIONS_SCRIPT = [
     "  if (['staging', 'production'].includes(deployment.environment) && await succeeded(deployment)) {",
     '    baseRun = runIdOf(deployment);',
     '    break;',
+    '  }',
+    '}',
+    // Pages artifacts of older TaskMate workflows lasted one day: check it is still there, so a missing
+    // one means a quiet rebuild of the other environment instead of a red download error.
+    'if (baseRun) {',
+    '  try {',
+    `    const { data } = await github.rest.actions.listWorkflowRunArtifacts({ owner, repo, run_id: Number(baseRun), name: '${PAGES_ARTIFACT}', per_page: 10 });`,
+    '    if (!data.artifacts.some((artifact) => !artifact.expired)) {',
+    "      core.info('El sitio publicado por la ejecución ' + baseRun + ' ya no está guardado en GitHub: se reconstruye el otro entorno.');",
+    "      baseRun = '';",
+    '    }',
+    '  } catch (err) {',
+    "    core.info('No se pudo comprobar el sitio publicado (' + err.message + '): se intenta descargar igual.');",
     '  }',
     '}',
     "const other = target === 'staging' ? 'production' : 'staging';",
