@@ -221,6 +221,26 @@ const formatPipeline = (row) => {
 };
 
 /** The pipeline TaskMate configured for the group's repository (null if none) and the Pages status. */
+/**
+ * The workflow file as it is on the default branch: {present, templateVersion, currentVersion,
+ * outdated}. outdated = written by an older TaskMate template (it lacks fixes the current one has);
+ * null when it cannot be read right now (the card just shows no warning).
+ */
+const getWorkflowStatus = async (repo) => {
+    const current = pipelineSpec.TEMPLATE_VERSION;
+    try {
+        const file = await repoService.getFileForRepo(repo, { path: pipelineSpec.WORKFLOW_PATH });
+        const version = pipelineSpec.templateVersionOf(file.content);
+        return { present: true, templateVersion: version, currentVersion: current, outdated: version !== null && version < current };
+    } catch (err) {
+        if (isAppError(err) && err.code === 'FILE_NOT_FOUND') {
+            return { present: false, templateVersion: null, currentVersion: current, outdated: false };
+        }
+        if (isAppError(err)) return null;
+        throw err;
+    }
+};
+
 const getPipeline = async (gid) => {
     const repo = await repoService.getConnectedRepo(gid);
     const row = await cicdModel.getPipeline(repo.repoId);
@@ -228,6 +248,7 @@ const getPipeline = async (gid) => {
     return {
         pipeline,
         workflowPath: pipelineSpec.WORKFLOW_PATH,
+        workflow: pipeline ? await getWorkflowStatus(repo) : null,
         pages: pipeline && pipeline.deploys ? await getPagesStatus(repo) : null,
     };
 };

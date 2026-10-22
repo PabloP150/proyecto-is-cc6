@@ -391,7 +391,7 @@ describe('commitWorkflow', () => {
 describe('getPipeline', () => {
     test('nothing configured', async () => {
         const fetchImpl = useFakeGitHub(routes());
-        await expect(pipelineService.getPipeline(GID)).resolves.toEqual({ pipeline: null, workflowPath: pipelineSpec.WORKFLOW_PATH, pages: null });
+        await expect(pipelineService.getPipeline(GID)).resolves.toEqual({ pipeline: null, workflowPath: pipelineSpec.WORKFLOW_PATH, workflow: null, pages: null });
         expect(fetchImpl.calls).toHaveLength(0);
     });
 
@@ -404,6 +404,25 @@ describe('getPipeline', () => {
         expect(result.pages).toEqual({ enabled: true, buildType: 'workflow', url: 'https://octo.github.io/demo/', settingsUrl: 'https://github.com/octo/demo/settings/pages' });
 
         useFakeGitHub(routes({ 'POST /app/installations/77/access_tokens': { status: 422, body: { message: 'The permissions requested are not granted to this installation.' } } }));
-        expect((await pipelineService.getPipeline(GID)).pages).toMatchObject({ enabled: null, error: 'APP_PERMISSIONS_MISSING' });
+        const denied = await pipelineService.getPipeline(GID);
+        expect(denied.pages).toMatchObject({ enabled: null, error: 'APP_PERMISSIONS_MISSING' });
+        expect(denied.workflow).toBeNull();
+    });
+
+    test('flags a workflow written by an older template, and one that is gone', async () => {
+        const configured = () => cicdModel.getPipeline.mockResolvedValue({ workflowPath: pipelineSpec.WORKFLOW_PATH, spec: { project: { dir: '.', stack: 'python' }, deploy: null }, commitSha: COMMIT });
+        configured();
+        useFakeGitHub(routes({ [`GET ${WORKFLOW}`]: file('.github/workflows/taskmate-ci.yml', '# Generado por TaskMate\n# taskmate-pipeline: 1\nname: x\n') }));
+        expect((await pipelineService.getPipeline(GID)).workflow).toEqual({
+            present: true, templateVersion: 1, currentVersion: pipelineSpec.TEMPLATE_VERSION, outdated: true,
+        });
+
+        useFakeGitHub(routes({ [`GET ${WORKFLOW}`]: file('.github/workflows/taskmate-ci.yml', `# taskmate-pipeline: ${pipelineSpec.TEMPLATE_VERSION}\nname: x\n`) }));
+        expect((await pipelineService.getPipeline(GID)).workflow).toMatchObject({ present: true, outdated: false });
+
+        useFakeGitHub(routes());
+        expect((await pipelineService.getPipeline(GID)).workflow).toEqual({
+            present: false, templateVersion: null, currentVersion: pipelineSpec.TEMPLATE_VERSION, outdated: false,
+        });
     });
 });

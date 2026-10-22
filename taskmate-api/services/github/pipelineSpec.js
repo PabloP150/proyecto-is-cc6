@@ -6,9 +6,14 @@
 const { AppError } = require('../../helpers/errors');
 
 const SPEC_VERSION = 1;
+// Version of the generated workflow, written in its marker line. Bump it when the template changes
+// in a way repositories should pick up: TaskMate then flags older workflows as outdated. (The spec
+// format has its own SPEC_VERSION so saved pipelines stay valid across template changes.)
+// 2: build/deploy split, deploy queue, reuse of the published site, stale re-run guard.
+const TEMPLATE_VERSION = 2;
 const WORKFLOW_PATH = '.github/workflows/taskmate-ci.yml';
-const WORKFLOW_MARKER = `# taskmate-pipeline: ${SPEC_VERSION}`;
-const WORKFLOW_MARKER_RE = /^# taskmate-pipeline: \d+\s*$/m;
+const WORKFLOW_MARKER = `# taskmate-pipeline: ${TEMPLATE_VERSION}`;
+const WORKFLOW_MARKER_RE = /^# taskmate-pipeline: (\d+)\s*$/m;
 const DEPLOY_TASK = 'deploy:taskmate';
 const ENVIRONMENTS = Object.freeze(['staging', 'production']);
 
@@ -69,15 +74,27 @@ const LONG_RUNNING_SUBCOMMANDS = {
 };
 const RUNNERS = new Set(['npx', 'bunx', 'cross-env', 'dotenv', 'exec', 'pnpm', 'yarn', 'bun']);
 const SCRIPT_RUNNERS = new Set(['npm', 'pnpm', 'yarn', 'bun']);
+// Shell command separators of a package.json script (a newline also starts a new command).
+const COMMAND_SEPARATORS = /&&|\|\||[;|&\n]/;
+const ENV_ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
+
+// The words of one command without the runners, flags and VAR=value in front of the tool.
+const toolWords = (segment) => {
+    const words = segment.trim().split(/\s+/).filter(Boolean);
+    while (words.length && (RUNNERS.has(words[0]) || words[0].startsWith('-') || ENV_ASSIGNMENT.test(words[0]))) words.shift();
+    return words;
+};
+
+const toolName = (word) => word.slice(word.lastIndexOf('/') + 1);
 
 const longRunningSegment = (segment, scripts, seen) => {
-    const words = segment.trim().split(/\s+/).filter(Boolean);
-    const runsScript = SCRIPT_RUNNERS.has(words[0]) && words[1] === 'run' && typeof words[2] === 'string';
-    if (runsScript) return isLongRunningScript(words[2], scripts[words[2]], scripts, seen);
-    while (words.length && (RUNNERS.has(words[0]) || words[0].startsWith('-') || /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[0]))) words.shift();
+    const raw = segment.trim().split(/\s+/).filter(Boolean);
+    const runsScript = SCRIPT_RUNNERS.has(raw[0]) && raw[1] === 'run' && typeof raw[2] === 'string';
+    if (runsScript) return isLongRunningScript(raw[2], scripts[raw[2]], scripts, seen);
+    const words = toolWords(segment);
     if (words.length === 0) return false;
     if (words.some((word) => word.startsWith('--watch') || word === '-w' || word === '--serve')) return true;
-    const tool = words[0].slice(words[0].lastIndexOf('/') + 1);
+    const tool = toolName(words[0]);
     const sub = words[1];
     if (ALWAYS_LONG_RUNNING.has(tool)) return true;
     if (tool === 'vite' || tool === 'parcel') return sub !== 'build';
@@ -89,7 +106,20 @@ function isLongRunningScript(name, command, scripts = {}, seen = new Set()) {
     if (LONG_RUNNING_NAMES.has(name)) return true;
     if (typeof command !== 'string' || seen.has(name)) return false;
     seen.add(name);
-    return command.split(/&&|\|\||[;|&]/).some((segment) => longRunningSegment(segment, scripts, seen));
+    return command.split(COMMAND_SEPARATORS).some((segment) => longRunningSegment(segment, scripts, seen));
+}
+
+/**
+ * True when `npm run <script> -- --base=<path>` reaches Vite: npm appends the flag to the script's
+ * LAST command, so that command must be `vite build` itself ("vite build && cp …" hands --base to cp)
+ * and must not set --base already. A command cut at MAX_SCRIPT_COMMAND cannot be checked.
+ */
+function viteBuildTakesBase(command) {
+    if (typeof command !== 'string' || command.length >= MAX_SCRIPT_COMMAND) return false;
+    const segments = command.split(COMMAND_SEPARATORS);
+    const words = toolWords(segments[segments.length - 1]);
+    if (words.length < 2 || toolName(words[0]) !== 'vite' || words[1] !== 'build') return false;
+    return !words.some((word) => word === '--base' || word.startsWith('--base='));
 }
 
 // ---------------------------------------------------------------- paths
@@ -251,8 +281,36 @@ const staticFacts = (dir, siteDirs) => ({ dir, stack: 'static', siteDirs: [...si
 // A script that exists and finishes (not a server or a watcher).
 const usable = (project, name) => Boolean(project.scripts[name]) && !project.longRunning.includes(name);
 
+// Vite gets its base path through --base, which only works on a build script ending in `vite build`.
+const viteBaseBlocked = (project) => project.framework === 'vite' && usable(project, 'build') && !viteBuildTakesBase(project.scripts.build);
+
 const deployable = (project) => project.stack === 'static'
-    || (project.stack === 'node' && usable(project, 'build') && Boolean(project.framework));
+    || (project.stack === 'node' && usable(project, 'build') && Boolean(project.framework) && !viteBaseBlocked(project));
+
+// True when the repository path `dir` is `folder` or inside it ('.' holds everything).
+const isInside = (dir, folder) => folder === '.' || dir === folder || dir.startsWith(`${folder}/`);
+
+/**
+ * A static deploy publishes repository files as they are: true when `outputDir` of the project
+ * holds the code of another project (Node.js or Python; a site at the root would publish all of
+ * it). Static "projects" inside it (about/index.html) are just pages of the published site.
+ */
+const publishesOtherProjects = (projects, project, outputDir) => {
+    const published = joinPath(project.dir, outputDir);
+    return projects.some((other) => other.stack !== 'static'
+        && !(other.dir === project.dir && other.stack === project.stack)
+        && isInside(other.dir, published));
+};
+
+// The first site folder of a static project that publishes only the site (null when none does).
+const safeSiteDir = (projects, project) => project.siteDirs.find((site) => !publishesOtherProjects(projects, project, site)) || null;
+
+// A static project inside another static site's folder (about/ next to a root index.html) is a page
+// of that site: never proposed on its own as the whole site.
+const pageOfAnotherSite = (projects, project) => project.stack === 'static' && projects.some((other) => other.stack === 'static'
+    && other.dir !== project.dir && other.siteDirs.some((site) => isInside(project.dir, joinPath(other.dir, site))));
+
+const dirLabel = (dir) => (dir === '.' ? 'la raíz del repositorio' : `«${dir}»`);
 
 const defaultTest = (project) => (usable(project, 'test') && !NPM_DEFAULT_TEST.test(project.scripts.test) ? 'test' : null);
 
@@ -265,18 +323,26 @@ const proposeSpec = (facts, { dir, stack } = {}) => {
     if (projects.length === 0) {
         throw new AppError('PIPELINE_UNSUPPORTED', 'No Node.js, Python or static site project was found in the repository', 422);
     }
+    const notes = [];
+    const unsafeSite = (p) => p.stack === 'static' && !safeSiteDir(projects, p);
+    const siteToPropose = (p) => p.stack === 'static' && !unsafeSite(p) && !pageOfAnotherSite(projects, p);
     let project;
     if (dir !== undefined || stack !== undefined) {
         project = projects.find((p) => p.dir === dir && (stack === undefined || p.stack === stack));
         if (!project) throw invalid('Unknown project');
+        if (unsafeSite(project)) throw invalid('This static site would also publish the code of the other projects of the repository');
     } else {
         project = projects.find((p) => p.stack === 'node' && deployable(p))
-            || projects.find((p) => p.stack === 'static')
+            || projects.find(siteToPropose)
             || projects.find((p) => p.stack === 'node')
-            || projects[0];
+            || projects.find((p) => p.stack !== 'static' || siteToPropose(p));
+        if (!project) throw new AppError('PIPELINE_UNSUPPORTED', 'No project of the repository can be built or published safely', 422);
+        const skipped = projects.filter(unsafeSite);
+        if (skipped.length && !(project.stack === 'node' && deployable(project))) {
+            notes.push(`No se propone publicar el sitio estático de ${skipped.map((p) => dirLabel(p.dir)).join(', ')}: publicaría también el código de los otros proyectos del repositorio.`);
+        }
     }
 
-    const notes = [];
     const spec = {
         version: SPEC_VERSION,
         project: { dir: project.dir, stack: project.stack },
@@ -311,6 +377,8 @@ const proposeSpec = (facts, { dir, stack } = {}) => {
         }
         if (deployable(project)) {
             spec.deploy = { target: 'github-pages', framework: project.framework, outputDir: OUTPUT_DIRS[project.framework] };
+        } else if (viteBaseBlocked(project)) {
+            notes.push('El script «build» no termina en «vite build» (o ya fija --base): TaskMate le agrega --base para publicar staging y producción en su ruta, así que el pipeline no tendrá deploy.');
         } else {
             notes.push('El proyecto no genera un sitio estático conocido (Vite o Create React App): el pipeline no tendrá deploy.');
         }
@@ -323,7 +391,11 @@ const proposeSpec = (facts, { dir, stack } = {}) => {
         if (!project.usesPytest) notes.push('No se encontraron pruebas de pytest.');
         notes.push('Los proyectos de Python tienen CI (instalar, Ruff y pytest) pero no deploy a GitHub Pages.');
     } else {
-        spec.deploy = { target: 'github-pages', framework: 'static', outputDir: project.siteDirs[0] };
+        const site = safeSiteDir(projects, project);
+        if (site !== project.siteDirs[0]) {
+            notes.push(`Se publica la carpeta «${site}»: publicar ${dirLabel(joinPath(project.dir, project.siteDirs[0]))} incluiría el código de los otros proyectos del repositorio.`);
+        }
+        spec.deploy = { target: 'github-pages', framework: 'static', outputDir: site };
     }
     return { spec, notes };
 };
@@ -435,6 +507,12 @@ const validateSpec = (spec, facts) => {
             if (!out.build && framework !== 'static') throw invalid('deploy needs a build step');
             if (!out.build && !project.siteDirs.includes(outputDir)) throw invalid('deploy.outputDir needs a build step or an index.html');
             if (framework === 'static' && outputDir === '.') throw invalid('deploy.outputDir cannot be the whole Node.js project');
+            if (framework === 'vite' && !viteBuildTakesBase(project.scripts[out.build.name])) {
+                throw invalid(`deploy: the "${out.build.name}" script must end with a plain "vite build" (TaskMate appends --base=… to it for staging and production)`);
+            }
+        }
+        if (framework === 'static' && publishesOtherProjects(facts.projects, project, outputDir)) {
+            throw invalid('deploy.outputDir would also publish the code of other projects of the repository');
         }
         out.deploy = { target, framework, outputDir };
     } else if (stack === 'static') {
@@ -457,17 +535,31 @@ const installCommands = (spec) => {
 
 const scriptCommand = (step) => (step.name === 'test' ? 'npm test' : `npm run ${step.name}`);
 
+const AUDIT_COMMAND = 'npm audit --omit=dev --audit-level=high';
+// Ruff and pytest report in GitHub's format, so failures become annotations on the file and line
+// (the pytest plugin turns itself on inside Actions). Jest is left alone: CRA's Jest 27 has no
+// GitHub reporter; Vitest already annotates by itself.
+const RUFF_COMMAND = 'ruff check --output-format=github .';
+const PYTEST_INSTALL = 'python -m pip install pytest pytest-github-actions-annotate-failures';
+const PYTEST_COMMAND = 'python -m pytest';
+
 /** [{key, label, commands}] in pipeline order; deploy last. */
 const describeStages = (spec) => {
     const stages = [];
     const add = (key, label, commands) => stages.push({ key, label, commands });
     if (spec.install) add('install', 'Instalar dependencias', installCommands(spec));
-    if (spec.lint) add('lint', 'Análisis estático', spec.lint.kind === 'ruff' ? ['ruff check .'] : [scriptCommand(spec.lint)]);
-    if (spec.audit) add('audit', 'Auditoría de dependencias', ['npm audit --omit=dev --audit-level=high']);
-    if (spec.test) add('test', 'Pruebas', spec.test.kind === 'pytest' ? ['python -m pytest'] : [scriptCommand(spec.test)]);
+    if (spec.lint) add('lint', 'Análisis estático', spec.lint.kind === 'ruff' ? [RUFF_COMMAND] : [scriptCommand(spec.lint)]);
+    if (spec.audit) add('audit', 'Auditoría de dependencias', [AUDIT_COMMAND]);
+    if (spec.test) add('test', 'Pruebas', spec.test.kind === 'pytest' ? [PYTEST_COMMAND] : [scriptCommand(spec.test)]);
     if (spec.build) add('build', 'Build', [scriptCommand(spec.build)]);
     if (spec.project.stack === 'static' && spec.deploy) add('check', 'Verificar el sitio', [`test -f ${joinPath(spec.deploy.outputDir, 'index.html')}`]);
-    if (spec.deploy) add('deploy', 'Deploy a GitHub Pages', ['staging: /staging/ (automático en la rama principal)', 'producción: / (con aprobación en TaskMate)']);
+    if (spec.deploy) {
+        add('deploy', 'Deploy a GitHub Pages', [
+            'staging: /staging/ (automático en la rama principal)',
+            'producción: / (con aprobación en TaskMate)',
+            'solo se construye la versión que se despliega; el otro entorno se conserva del sitio publicado',
+        ]);
+    }
     return stages;
 };
 
@@ -504,13 +596,23 @@ const ACTIONS = Object.freeze({
     githubScript: 'actions/github-script@v9',
     configurePages: 'actions/configure-pages@v6',
     uploadPages: 'actions/upload-pages-artifact@v5',
+    downloadArtifact: 'actions/download-artifact@v8',
     deployPages: 'actions/deploy-pages@v5',
 });
 
-const step = (out, name, { id, uses, ifExpr, workingDirectory, withs, env, run } = {}) => {
+// The Pages artifact (upload-pages-artifact's default name; it holds artifact.tar) is kept 90 days
+// instead of 1: the next deploy downloads it to keep the environment it does not rebuild.
+const PAGES_ARTIFACT = 'github-pages';
+const PAGES_RETENTION_DAYS = 90;
+const PREVIOUS_DIR = '_taskmate/previous';
+const PREVIOUS_TAR = `${PREVIOUS_DIR}/artifact.tar`;
+const DEPLOY_GROUP = 'taskmate-pages';
+
+const step = (out, name, { id, ifExpr, continueOnError, uses, workingDirectory, withs, env, run } = {}) => {
     out.add(6, `- name: ${q(name)}`);
     if (id) out.add(8, `id: ${id}`);
     if (ifExpr) out.add(8, `if: ${ifExpr}`);
+    if (continueOnError) out.add(8, 'continue-on-error: true');
     if (uses) out.add(8, `uses: ${uses}`);
     if (workingDirectory) out.add(8, `working-directory: ${q(workingDirectory)}`);
     if (withs) {
@@ -525,12 +627,18 @@ const step = (out, name, { id, uses, ifExpr, workingDirectory, withs, env, run }
         Object.entries(env).forEach(([key, value]) => out.add(10, `${key}: ${value}`));
     }
     if (run) {
-        if (run.length === 1) out.add(8, `run: ${run[0]}`);
+        // Always quoted: a script name may end in ":" and `run: npm run lint:` is not valid YAML.
+        if (run.length === 1) out.add(8, `run: ${q(run[0])}`);
         else out.block(8, 'run', run);
     }
 };
 
-const setupRuntime = (out, spec, { cache }) => {
+const permissions = (out, entries) => {
+    out.add(4, 'permissions:');
+    Object.entries(entries).forEach(([key, value]) => out.add(6, `${key}: ${value}`));
+};
+
+const setupRuntime = (out, spec, { cache, ifExpr }) => {
     const dir = spec.project.dir;
     if (spec.project.stack === 'node') {
         const withs = { 'node-version': q(spec.runtime) };
@@ -540,9 +648,9 @@ const setupRuntime = (out, spec, { cache }) => {
         } else {
             withs['package-manager-cache'] = 'false';
         }
-        step(out, `Node.js ${spec.runtime}`, { uses: ACTIONS.setupNode, withs });
+        step(out, `Node.js ${spec.runtime}`, { ifExpr, uses: ACTIONS.setupNode, withs });
     } else if (spec.project.stack === 'python') {
-        step(out, `Python ${spec.runtime}`, { uses: ACTIONS.setupPython, withs: { 'python-version': q(spec.runtime) } });
+        step(out, `Python ${spec.runtime}`, { ifExpr, uses: ACTIONS.setupPython, withs: { 'python-version': q(spec.runtime) } });
     }
 };
 
@@ -553,13 +661,13 @@ const ciSteps = (out, spec) => {
     if (install.length) step(out, 'Instalar dependencias', { run: install });
     if (spec.lint) {
         step(out, 'Análisis estático', {
-            run: spec.lint.kind === 'ruff' ? ['python -m pip install ruff', 'ruff check .'] : [scriptCommand(spec.lint)],
+            run: spec.lint.kind === 'ruff' ? ['python -m pip install ruff', RUFF_COMMAND] : [scriptCommand(spec.lint)],
         });
     }
-    if (spec.audit) step(out, 'Auditoría de dependencias', { run: ['npm audit --omit=dev --audit-level=high'] });
+    if (spec.audit) step(out, 'Auditoría de dependencias', { run: [AUDIT_COMMAND] });
     if (spec.test) {
         step(out, 'Pruebas', {
-            run: spec.test.kind === 'pytest' ? ['python -m pip install pytest', 'python -m pytest'] : [scriptCommand(spec.test)],
+            run: spec.test.kind === 'pytest' ? [PYTEST_INSTALL, PYTEST_COMMAND] : [scriptCommand(spec.test)],
         });
     }
     if (spec.build) step(out, 'Build', { run: [scriptCommand(spec.build)] });
@@ -569,36 +677,81 @@ const ciSteps = (out, spec) => {
     }
 };
 
-// Latest successful TaskMate deploy of the other environment, so one Pages site keeps both.
+// What to publish and the GitHub Deployment that records it. Push runs whose commit is no longer the
+// head of the default branch (re-runs of old runs) deploy nothing: skip=true and no Deployment.
+// base_run is the run of the newest successful TaskMate deploy: its Pages artifact is the site live
+// now, so only the target environment is rebuilt; other_version is the other environment's live
+// commit, rebuilt only when that artifact cannot be downloaded.
 const VERSIONS_SCRIPT = [
-    "const SHA = /^[0-9a-f]{40}$/;",
+    'const SHA = /^[0-9a-f]{40}$/;',
+    `const TASK = '${DEPLOY_TASK}';`,
     'const target = process.env.TARGET_ENV;',
     'const version = process.env.TARGET_VERSION;',
     "const requestedBy = String(process.env.REQUESTED_BY || '').replace(/[^A-Za-z0-9_.@ -]/g, '').slice(0, 60);",
     "if (!['staging', 'production'].includes(target)) throw new Error('Entorno inválido: ' + target);",
     "if (!SHA.test(version)) throw new Error('Versión inválida (se espera el SHA completo del commit): ' + version);",
     'const { owner, repo } = context.repo;',
-    'const live = async (environment) => {',
-    `  const { data } = await github.rest.repos.listDeployments({ owner, repo, environment, task: '${DEPLOY_TASK}', per_page: 30 });`,
-    '  for (const deployment of data) {',
-    '    const { data: statuses } = await github.rest.repos.listDeploymentStatuses({ owner, repo, deployment_id: deployment.id, per_page: 1 });',
-    "    if (statuses.length > 0 && statuses[0].state === 'success') return deployment.sha;",
+    "core.setOutput('skip', 'false');",
+    "if (context.eventName === 'push') {",
+    '  const branch = context.payload.repository.default_branch;',
+    "  const { data: head } = await github.rest.git.getRef({ owner, repo, ref: 'heads/' + branch });",
+    '  if (head.object.sha !== version) {',
+    "    core.notice('No se despliega ' + version.slice(0, 7) + ': ya no es la última versión de ' + branch + '.');",
+    "    core.setOutput('skip', 'true');",
+    '    return;',
     '  }',
-    "  return '';",
+    '}',
+    'const succeeded = async (deployment) => {',
+    '  const { data } = await github.rest.repos.listDeploymentStatuses({ owner, repo, deployment_id: deployment.id, per_page: 1 });',
+    "  return data.length > 0 && data[0].state === 'success';",
     '};',
+    'const runIdOf = (deployment) => {',
+    '  let payload = deployment.payload;',
+    "  for (let i = 0; i < 3 && typeof payload === 'string'; i += 1) {",
+    '    try {',
+    '      payload = JSON.parse(payload);',
+    '    } catch (err) {',
+    "      return '';",
+    '    }',
+    '  }',
+    "  const runId = payload && typeof payload === 'object' ? Number(payload.runId) : 0;",
+    "  return Number.isSafeInteger(runId) && runId > 0 ? String(runId) : '';",
+    '};',
+    "let baseRun = '';",
+    'const { data: recent } = await github.rest.repos.listDeployments({ owner, repo, task: TASK, per_page: 30 });',
+    'for (const deployment of recent) {',
+    "  if (['staging', 'production'].includes(deployment.environment) && await succeeded(deployment)) {",
+    '    baseRun = runIdOf(deployment);',
+    '    break;',
+    '  }',
+    '}',
     "const other = target === 'staging' ? 'production' : 'staging';",
-    'const versions = { [target]: version, [other]: await live(other) };',
+    "let otherVersion = '';",
+    'const { data: otherDeploys } = await github.rest.repos.listDeployments({ owner, repo, environment: other, task: TASK, per_page: 30 });',
+    'for (const deployment of otherDeploys) {',
+    '  if (SHA.test(deployment.sha) && await succeeded(deployment)) {',
+    '    otherVersion = deployment.sha;',
+    '    break;',
+    '  }',
+    '}',
+    "const pathOf = (environment) => (environment === 'staging' ? '/staging/' : '/');",
+    "core.setOutput('target', target);",
+    "core.setOutput('target_version', version);",
+    "core.setOutput('target_path', pathOf(target));",
+    "core.setOutput('other_version', otherVersion);",
+    "core.setOutput('other_path', pathOf(other));",
+    "core.setOutput('base_run', baseRun);",
     "const logUrl = context.serverUrl + '/' + owner + '/' + repo + '/actions/runs/' + context.runId;",
     'const { data: deployment } = await github.rest.repos.createDeployment({',
-    `  owner, repo, ref: version, task: '${DEPLOY_TASK}', environment: target,`,
+    '  owner, repo, ref: version, task: TASK, environment: target,',
     "  auto_merge: false, required_contexts: [], production_environment: target === 'production', transient_environment: false,",
     "  description: requestedBy ? 'Desde TaskMate, pedido por ' + requestedBy : 'Desde TaskMate',",
     '  payload: { taskmate: true, requestedBy, runId: context.runId },',
     '});',
-    "await github.rest.repos.createDeploymentStatus({ owner, repo, deployment_id: deployment.id, state: 'in_progress', log_url: logUrl });",
-    "core.setOutput('production', versions.production);",
-    "core.setOutput('staging', versions.staging);",
+    "if (!deployment.id) throw new Error('GitHub no creó el deployment: ' + (deployment.message || ''));",
+    '// Right away, so the failure step can close this deployment whatever fails next.',
     "core.setOutput('deployment_id', String(deployment.id));",
+    "await github.rest.repos.createDeploymentStatus({ owner, repo, deployment_id: deployment.id, state: 'in_progress', log_url: logUrl });",
 ];
 
 const SUCCESS_SCRIPT = [
@@ -612,12 +765,34 @@ const SUCCESS_SCRIPT = [
     '});',
 ];
 
+// Closes a deployment that is still open. Never over a final status: the close job may run after a
+// recorder already wrote one, and a deployment that ended (maybe live now) keeps it.
 const FAILURE_SCRIPT = [
     'const { owner, repo } = context.repo;',
+    'const deploymentId = Number(process.env.DEPLOYMENT_ID);',
+    'const { data: statuses } = await github.rest.repos.listDeploymentStatuses({ owner, repo, deployment_id: deploymentId, per_page: 1 });',
+    "const last = statuses.length > 0 ? statuses[0].state : '';",
+    "if (['success', 'failure', 'error', 'inactive'].includes(last)) {",
+    "  core.info('El deploy ya quedó registrado como ' + last + '.');",
+    '  return;',
+    '}',
     "const logUrl = context.serverUrl + '/' + owner + '/' + repo + '/actions/runs/' + context.runId;",
     'await github.rest.repos.createDeploymentStatus({',
-    "  owner, repo, deployment_id: Number(process.env.DEPLOYMENT_ID), state: 'failure', log_url: logUrl,",
+    "  owner, repo, deployment_id: deploymentId, state: 'failure', log_url: logUrl,",
     '});',
+];
+
+// The deploy job publishes the Pages artifact of this run with the deployment of the build job.
+// Re-running only the deploy job ("Re-run failed jobs" after a failed deploy, "Re-run this job")
+// would reuse the build outputs and artifact of an earlier attempt: the whole site as it was then,
+// over newer deploys, and its old deployment marked live. Only a build of this attempt deploys.
+const ATTEMPT_SCRIPT = [
+    "const built = String(process.env.BUILD_ATTEMPT || '');",
+    "const attempt = String(process.env.RUN_ATTEMPT || '');",
+    'if (built !== attempt) {',
+    "  core.setFailed('No se vuelve a ejecutar solo el deploy: publicaría el sitio que armó el intento ' + (built || '?')",
+    "    + ' de esta ejecución, que puede estar desactualizado. Vuelve a desplegar desde TaskMate (o vuelve a ejecutar todos los jobs).');",
+    '}',
 ];
 
 const PLACEHOLDER_HTML = [
@@ -627,58 +802,120 @@ const PLACEHOLDER_HTML = [
     '<p><a href="staging/">Ver staging</a></p></body></html>',
 ];
 
-const buildForEnvironment = (out, spec, environment, label) => {
-    const deploy = spec.deploy;
-    const checkoutDir = `_taskmate/${environment}`;
-    const projectDir = joinPath(checkoutDir, spec.project.dir);
-    const output = `steps.versions.outputs.${environment}`;
-    step(out, `Checkout de ${label}`, {
-        ifExpr: `${output} != ''`,
+const PRODUCTION_UNAVAILABLE_HTML = [
+    '<!doctype html>',
+    '<html lang="es"><head><meta charset="utf-8"><title>Producción no disponible</title></head>',
+    '<body><p>TaskMate no pudo reconstruir la versión publicada de producción. Vuelve a desplegarla desde TaskMate.</p>',
+    '<p><a href="staging/">Ver staging</a></p></body></html>',
+];
+
+const STAGING_UNAVAILABLE_HTML = [
+    '<!doctype html>',
+    '<html lang="es"><head><meta charset="utf-8"><title>Staging no disponible</title></head>',
+    '<body><p>TaskMate no pudo reconstruir la versión publicada de staging; vuelve con el próximo deploy a staging.</p></body></html>',
+];
+
+const SKIP = "steps.versions.outputs.skip != 'true'";
+
+// Checkout (and build, for Node) of one version: 'target' is the version being deployed; 'other'
+// is the live version of the other environment, a fallback that never fails the deploy.
+const versionSteps = (out, spec, which, { names, ifExpr, fallback }) => {
+    const checkoutDir = `_taskmate/${which}`;
+    step(out, names.checkout, {
+        id: `${which}_checkout`,
+        ifExpr,
+        continueOnError: fallback,
         uses: ACTIONS.checkout,
-        withs: { ref: `\${{ ${output} }}`, path: q(checkoutDir), 'persist-credentials': 'false' },
+        withs: { ref: `\${{ steps.versions.outputs.${which}_version }}`, path: q(checkoutDir), 'persist-credentials': 'false' },
     });
     if (spec.project.stack !== 'node') return;
-    const basePath = environment === 'staging' ? '${{ steps.pages.outputs.base_path }}/staging/' : '${{ steps.pages.outputs.base_path }}/';
     const run = [...installCommands(spec)];
     if (spec.build) {
-        if (deploy.framework === 'vite') run.push(`${scriptCommand(spec.build)} -- --base="$BASE_PATH"`);
-        else if (deploy.framework === 'cra') run.push(`PUBLIC_URL="\${BASE_PATH%/}" ${scriptCommand(spec.build)}`);
+        if (spec.deploy.framework === 'vite') run.push(`${scriptCommand(spec.build)} -- --base="$BASE_PATH"`);
+        // As is: CRA accepts the trailing slash, and "/" (user sites, custom domains) cut to "" is ignored.
+        else if (spec.deploy.framework === 'cra') run.push(`PUBLIC_URL="$BASE_PATH" ${scriptCommand(spec.build)}`);
         else run.push(scriptCommand(spec.build));
     }
-    step(out, `Build de ${label}`, {
-        ifExpr: `${output} != ''`,
-        workingDirectory: projectDir,
-        env: { BASE_PATH: basePath },
+    step(out, names.build, {
+        id: `${which}_build`,
+        ifExpr: `steps.${which}_checkout.outcome == 'success'`,
+        continueOnError: fallback,
+        workingDirectory: joinPath(checkoutDir, spec.project.dir),
+        env: { BASE_PATH: `\${{ steps.pages.outputs.base_path }}\${{ steps.versions.outputs.${which}_path }}` },
         run,
     });
 };
 
-const deployJob = (out, spec) => {
-    const site = (environment) => joinPath(`_taskmate/${environment}`, spec.project.dir, spec.deploy.outputDir);
-    out.add(2, 'deploy:');
-    out.add(4, "name: 'Deploy a GitHub Pages'");
+// The site to publish: the published one (or the other environment rebuilt, or a placeholder) with
+// the target environment replaced. Production is everything but staging/; staging is staging/.
+const assembleScript = (spec) => {
+    const site = (which) => q(joinPath(`_taskmate/${which}`, spec.project.dir, spec.deploy.outputDir));
+    const html = (lines) => lines.map(q).join(' ');
+    return [
+        'set -euo pipefail',
+        'copy_site() {',
+        '  local from="$1" to="$2"',
+        '  shift 2',
+        '  if [ ! -d "$from" ]; then echo "::error::No se encontró la carpeta del sitio: $from"; return 1; fi',
+        '  mkdir -p "$to"',
+        '  tar --exclude=./.git --exclude=./.github "$@" -C "$from" -cf - . | tar -C "$to" -xf -',
+        '}',
+        'copy_env() {',
+        '  if [ "$2" = production ]; then copy_site "$1" _site --exclude=./staging; else copy_site "$1" _site/staging; fi',
+        '}',
+        'clear_env() {',
+        '  if [ "$1" = production ]; then find _site -mindepth 1 -maxdepth 1 ! -name staging -exec rm -rf {} +; else rm -rf _site/staging; fi',
+        '}',
+        'if [ "$TARGET_ENV" = production ]; then OTHER_ENV=staging; else OTHER_ENV=production; fi',
+        'rm -rf _site',
+        'mkdir -p _site',
+        `if [ "$PREVIOUS" = success ] && [ -f ${q(PREVIOUS_TAR)} ]; then`,
+        `  tar -C _site -xf ${q(PREVIOUS_TAR)}`,
+        'elif [ -n "$OTHER_VERSION" ]; then',
+        `  if [ "$OTHER_BUILT" = success ] && copy_env ${site('other')} "$OTHER_ENV"; then`,
+        '    echo "No se pudo descargar el sitio publicado: se reconstruyó $OTHER_ENV desde ${OTHER_VERSION:0:7}."',
+        '  else',
+        '    echo "::warning::No se pudo reconstruir $OTHER_ENV (${OTHER_VERSION:0:7}): queda una página provisional hasta su próximo deploy."',
+        '    clear_env "$OTHER_ENV"',
+        '    if [ "$OTHER_ENV" = production ]; then',
+        `      printf '%s\\n' ${html(PRODUCTION_UNAVAILABLE_HTML)} > _site/index.html`,
+        '    else',
+        '      mkdir -p _site/staging',
+        `      printf '%s\\n' ${html(STAGING_UNAVAILABLE_HTML)} > _site/staging/index.html`,
+        '    fi',
+        '  fi',
+        'elif [ "$TARGET_ENV" = staging ]; then',
+        `  printf '%s\\n' ${html(PLACEHOLDER_HTML)} > _site/index.html`,
+        'fi',
+        'clear_env "$TARGET_ENV"',
+        `copy_env ${site('target')} "$TARGET_ENV"`,
+    ];
+};
+
+// Build job: installs and builds without the OIDC token or Pages write access (those are only in the
+// deploy job, which runs no code of the repository).
+const buildJob = (out, spec) => {
+    out.add(2, 'build:');
+    out.add(4, "name: 'Build del deploy'");
     out.add(4, 'needs: ci');
     // Pushes to the default branch that passed CI go to staging; TaskMate dispatches production,
     // promotions and rollbacks (CI is skipped then: TaskMate only deploys versions that passed it).
+    // !cancelled(), not always(): a job whose `if` uses always() keeps running when the run is cancelled.
     out.add(4, 'if: >-');
-    out.add(6, 'always() && github.ref_name == github.event.repository.default_branch && (');
+    out.add(6, '!cancelled() && github.ref_name == github.event.repository.default_branch && (');
     out.add(8, "(github.event_name == 'push' && needs.ci.result == 'success') ||");
     out.add(8, "(github.event_name == 'workflow_dispatch' && inputs.environment != 'none')");
     out.add(6, ')');
     out.add(4, 'runs-on: ubuntu-latest');
     out.add(4, 'timeout-minutes: 30');
-    out.add(4, 'permissions:');
-    out.add(6, 'actions: read');
-    out.add(6, 'contents: read');
-    out.add(6, 'deployments: write');
-    out.add(6, 'id-token: write');
-    out.add(6, 'pages: write');
-    out.add(4, 'concurrency:');
-    out.add(6, 'group: taskmate-pages');
-    out.add(6, 'cancel-in-progress: false');
-    out.add(4, 'environment:');
-    out.add(6, 'name: github-pages');
-    out.add(6, 'url: ${{ steps.publish.outputs.page_url }}');
+    // pages: read is what configure-pages needs to read the site's base path.
+    permissions(out, { actions: 'read', contents: 'read', deployments: 'write', pages: 'read' });
+    out.add(4, 'outputs:');
+    out.add(6, 'skip: ${{ steps.versions.outputs.skip }}');
+    out.add(6, 'target: ${{ steps.versions.outputs.target }}');
+    out.add(6, 'deployment_id: ${{ steps.versions.outputs.deployment_id }}');
+    // The deploy and close jobs only act on a build of their own attempt (see ATTEMPT_SCRIPT).
+    out.add(6, 'attempt: ${{ github.run_attempt }}');
     out.add(4, 'steps:');
     step(out, 'Versiones a publicar', {
         id: 'versions',
@@ -690,49 +927,112 @@ const deployJob = (out, spec) => {
         },
         withs: { script: VERSIONS_SCRIPT },
     });
-    step(out, 'Configurar GitHub Pages', { id: 'pages', uses: ACTIONS.configurePages });
-    if (spec.project.stack === 'node') setupRuntime(out, spec, { cache: false });
-    buildForEnvironment(out, spec, 'production', 'producción');
-    buildForEnvironment(out, spec, 'staging', 'staging');
-    step(out, 'Armar el sitio (producción en /, staging en /staging/)', {
-        env: {
-            PRODUCTION: '${{ steps.versions.outputs.production }}',
-            STAGING: '${{ steps.versions.outputs.staging }}',
+    step(out, 'Configurar GitHub Pages', { id: 'pages', ifExpr: SKIP, uses: ACTIONS.configurePages });
+    if (spec.project.stack === 'node') setupRuntime(out, spec, { cache: false, ifExpr: SKIP });
+    step(out, 'Descargar el sitio publicado', {
+        id: 'previous',
+        ifExpr: `${SKIP} && steps.versions.outputs.base_run != ''`,
+        continueOnError: true,
+        uses: ACTIONS.downloadArtifact,
+        withs: {
+            name: PAGES_ARTIFACT,
+            'run-id': '${{ steps.versions.outputs.base_run }}',
+            'github-token': '${{ github.token }}',
+            path: q(PREVIOUS_DIR),
         },
-        run: [
-            'set -euo pipefail',
-            'copy_site() {',
-            '  if [ ! -d "$1" ]; then echo "::error::No se encontró la carpeta del sitio: $1"; exit 1; fi',
-            '  mkdir -p "$2"',
-            '  tar --exclude=./.git --exclude=./.github -C "$1" -cf - . | tar -C "$2" -xf -',
-            '}',
-            'mkdir -p _site',
-            'if [ -n "$PRODUCTION" ]; then',
-            `  copy_site ${q(site('production'))} _site`,
-            'else',
-            `  printf '%s\\n' ${PLACEHOLDER_HTML.map(q).join(' ')} > _site/index.html`,
-            'fi',
-            'rm -rf _site/staging',
-            'if [ -n "$STAGING" ]; then',
-            `  copy_site ${q(site('staging'))} _site/staging`,
-            'fi',
-        ],
     });
-    step(out, 'Subir el sitio', { uses: ACTIONS.uploadPages, withs: { path: '_site' } });
-    step(out, 'Publicar en GitHub Pages', { id: 'publish', uses: ACTIONS.deployPages });
-    step(out, 'Registrar el deploy', {
-        uses: ACTIONS.githubScript,
+    versionSteps(out, spec, 'target', {
+        names: { checkout: 'Checkout de la versión a desplegar', build: 'Build de la versión a desplegar' },
+        ifExpr: SKIP,
+        fallback: false,
+    });
+    versionSteps(out, spec, 'other', {
+        names: { checkout: 'Checkout del otro entorno (respaldo)', build: 'Build del otro entorno (respaldo)' },
+        ifExpr: `${SKIP} && steps.versions.outputs.other_version != '' && (steps.previous.outcome != 'success' || hashFiles('${PREVIOUS_TAR}') == '')`,
+        fallback: true,
+    });
+    step(out, 'Armar el sitio (producción en /, staging en /staging/)', {
+        ifExpr: SKIP,
         env: {
-            DEPLOYMENT_ID: '${{ steps.versions.outputs.deployment_id }}',
-            TARGET_ENV: "${{ github.event_name == 'push' && 'staging' || inputs.environment }}",
-            PAGE_URL: '${{ steps.publish.outputs.page_url }}',
+            TARGET_ENV: '${{ steps.versions.outputs.target }}',
+            OTHER_VERSION: '${{ steps.versions.outputs.other_version }}',
+            PREVIOUS: '${{ steps.previous.outcome }}',
+            OTHER_BUILT: spec.project.stack === 'node' ? '${{ steps.other_build.outcome }}' : '${{ steps.other_checkout.outcome }}',
         },
-        withs: { script: SUCCESS_SCRIPT },
+        run: assembleScript(spec),
+    });
+    step(out, 'Subir el sitio', {
+        ifExpr: SKIP,
+        uses: ACTIONS.uploadPages,
+        withs: { path: '_site', 'retention-days': String(PAGES_RETENTION_DAYS) },
     });
     step(out, 'Registrar el deploy fallido', {
         ifExpr: "(failure() || cancelled()) && steps.versions.outputs.deployment_id != ''",
         uses: ACTIONS.githubScript,
         env: { DEPLOYMENT_ID: '${{ steps.versions.outputs.deployment_id }}' },
+        withs: { script: FAILURE_SCRIPT },
+    });
+};
+
+const deployJob = (out) => {
+    out.add(2, 'deploy:');
+    out.add(4, "name: 'Deploy a GitHub Pages'");
+    out.add(4, 'needs: build');
+    out.add(4, 'if: >-');
+    out.add(6, "!cancelled() && needs.build.result == 'success' && needs.build.outputs.skip != 'true'");
+    out.add(4, 'runs-on: ubuntu-latest');
+    out.add(4, 'timeout-minutes: 20');
+    permissions(out, { actions: 'read', deployments: 'write', 'id-token': 'write', pages: 'write' });
+    out.add(4, 'environment:');
+    out.add(6, 'name: github-pages');
+    out.add(6, 'url: ${{ steps.publish.outputs.page_url }}');
+    out.add(4, 'steps:');
+    step(out, 'Comprobar que el build es de este intento', {
+        id: 'current',
+        uses: ACTIONS.githubScript,
+        env: { BUILD_ATTEMPT: '${{ needs.build.outputs.attempt }}', RUN_ATTEMPT: '${{ github.run_attempt }}' },
+        withs: { script: ATTEMPT_SCRIPT },
+    });
+    step(out, 'Publicar en GitHub Pages', { id: 'publish', uses: ACTIONS.deployPages });
+    // Both recorders only after the attempt check passed: a refused re-run never writes a status on
+    // the old deployment (it may be the live one).
+    step(out, 'Registrar el deploy', {
+        ifExpr: "steps.current.outcome == 'success'",
+        uses: ACTIONS.githubScript,
+        env: {
+            DEPLOYMENT_ID: '${{ needs.build.outputs.deployment_id }}',
+            TARGET_ENV: '${{ needs.build.outputs.target }}',
+            PAGE_URL: '${{ steps.publish.outputs.page_url }}',
+        },
+        withs: { script: SUCCESS_SCRIPT },
+    });
+    step(out, 'Registrar el deploy fallido', {
+        ifExpr: "(failure() || cancelled()) && needs.build.outputs.deployment_id != '' && steps.current.outcome == 'success'",
+        uses: ACTIONS.githubScript,
+        env: { DEPLOYMENT_ID: '${{ needs.build.outputs.deployment_id }}' },
+        withs: { script: FAILURE_SCRIPT },
+    });
+};
+
+// Closes the deployment when the deploy job never ran its recorders: the run was cancelled between
+// build and deploy (deploy is then skipped), an environment rule of github-pages rejected the job
+// before its first step, a runner was lost. always() is safe here: the job runs no repository code
+// and only writes on a deployment that is still open (FAILURE_SCRIPT); the attempt check keeps a
+// partial re-run away from the deployment of an earlier attempt.
+const closeJob = (out) => {
+    out.add(2, 'close:');
+    out.add(4, "name: 'Cerrar el deploy'");
+    out.add(4, 'needs: [build, deploy]');
+    out.add(4, 'if: >-');
+    out.add(6, "always() && needs.build.outputs.deployment_id != '' && needs.build.outputs.attempt == github.run_attempt");
+    out.add(6, "&& needs.deploy.result != 'success'");
+    out.add(4, 'runs-on: ubuntu-latest');
+    out.add(4, 'timeout-minutes: 5');
+    permissions(out, { deployments: 'write' });
+    out.add(4, 'steps:');
+    step(out, 'Registrar el deploy fallido', {
+        uses: ACTIONS.githubScript,
+        env: { DEPLOYMENT_ID: '${{ needs.build.outputs.deployment_id }}' },
         withs: { script: FAILURE_SCRIPT },
     });
 };
@@ -771,15 +1071,32 @@ const renderWorkflow = (spec) => {
     out.add(0, 'permissions:');
     out.add(2, 'contents: read');
     out.add(0);
+    if (spec.deploy) {
+        // Runs that may deploy (pushes to the default branch, deploys from TaskMate) take turns, in
+        // order, none dropped: the build job reads the published site and replaces one environment,
+        // so the whole run holds the group (job-level groups would let another run's build slip in
+        // between this build and its deploy). queue: max keeps up to 100 waiting runs; the default
+        // keeps one and cancels the older one. Runs that cannot deploy get a group of their own.
+        out.add(0, 'concurrency:');
+        out.add(2, 'group: >-');
+        out.add(4, "${{ github.ref_name == github.event.repository.default_branch && (github.event_name == 'push' ||");
+        out.add(4, "(github.event_name == 'workflow_dispatch' && inputs.environment != 'none'))");
+        out.add(4, `&& '${DEPLOY_GROUP}' || format('taskmate-run-{0}', github.run_id) }}`);
+        out.add(2, 'cancel-in-progress: false');
+        out.add(2, 'queue: max');
+        out.add(0);
+    }
     out.add(0, 'jobs:');
     out.add(2, 'ci:');
     out.add(4, `name: ${q(CI_JOB_NAMES[spec.project.stack])}`);
     out.add(4, "if: github.event_name != 'workflow_dispatch' || inputs.environment == 'none'");
     out.add(4, 'runs-on: ubuntu-latest');
     out.add(4, 'timeout-minutes: 30');
+    // Per event and ref, so a manual run never cancels a push run. On the default branch nothing is
+    // cancelled (that push may still deploy); on other branches and PRs a newer commit wins.
     out.add(4, 'concurrency:');
-    out.add(6, 'group: taskmate-ci-${{ github.ref }}');
-    out.add(6, 'cancel-in-progress: true');
+    out.add(6, 'group: taskmate-ci-${{ github.event_name }}-${{ github.ref }}');
+    out.add(6, 'cancel-in-progress: ${{ github.ref_name != github.event.repository.default_branch }}');
     if (spec.project.dir !== '.') {
         out.add(4, 'defaults:');
         out.add(6, 'run:');
@@ -789,15 +1106,26 @@ const renderWorkflow = (spec) => {
     ciSteps(out, spec);
     if (spec.deploy) {
         out.add(0);
-        deployJob(out, spec);
+        buildJob(out, spec);
+        out.add(0);
+        deployJob(out);
+        out.add(0);
+        closeJob(out);
     }
     return out.toString();
 };
 
 const isTaskmateWorkflow = (text) => typeof text === 'string' && WORKFLOW_MARKER_RE.test(text);
 
+/** Template version of a TaskMate workflow file (its marker line), or null for any other file. */
+const templateVersionOf = (text) => {
+    const match = typeof text === 'string' ? text.match(WORKFLOW_MARKER_RE) : null;
+    return match ? Number(match[1]) : null;
+};
+
 module.exports = {
     SPEC_VERSION,
+    TEMPLATE_VERSION,
     WORKFLOW_PATH,
     DEPLOY_TASK,
     ENVIRONMENTS,
@@ -812,6 +1140,7 @@ module.exports = {
     filesUnder,
     findProjectDirs,
     isLongRunningScript,
+    viteBuildTakesBase,
     parseNodeVersion,
     parsePythonVersion,
     nodeFacts,
@@ -822,4 +1151,5 @@ module.exports = {
     describeStages,
     renderWorkflow,
     isTaskmateWorkflow,
+    templateVersionOf,
 };

@@ -35,6 +35,27 @@ function PagesStatus({ pages }) {
   ) : null;
 }
 
+// The workflow on GitHub was written by an older TaskMate template, or was removed from the repo.
+function WorkflowStatus({ workflow, isAdmin }) {
+  if (!workflow) return null;
+  if (workflow.present === false) {
+    return (
+      <Alert severity="warning" sx={{ mt: 1.5 }}>
+        El workflow de TaskMate ya no está en el repositorio, así que el pipeline no corre.{' '}
+        {isAdmin ? 'Pulsa «Editar pipeline» y vuelve a subirlo.' : 'Pide al administrador del grupo que vuelva a subirlo.'}
+      </Alert>
+    );
+  }
+  if (!workflow.outdated) return null;
+  return (
+    <Alert severity="info" sx={{ mt: 1.5 }}>
+      El workflow del repositorio es de una versión anterior de TaskMate y no tiene las últimas mejoras (deploys en cola, sin
+      reconstruir el otro entorno).{' '}
+      {isAdmin ? 'Pulsa «Editar pipeline» y vuelve a subirlo para actualizarlo.' : 'Pide al administrador del grupo que lo vuelva a subir.'}
+    </Alert>
+  );
+}
+
 /**
  * The TaskMate pipeline of the group's repository (or a prompt to configure it).
  * Props: gid, repo, isAdmin, refreshKey, onConfigure(), onLoaded(data).
@@ -129,6 +150,7 @@ export default function PipelineCard({ gid, repo, isAdmin, refreshKey = 0, onCon
               </>
             )}
           </Typography>
+          <WorkflowStatus workflow={data.workflow} isAdmin={isAdmin} />
           <PagesStatus pages={data.pages} />
         </>
       )}

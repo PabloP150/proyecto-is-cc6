@@ -76,6 +76,16 @@ describe('CicdPanel', () => {
     expect(screen.getByRole('button', { name: 'Editar pipeline' })).toBeInTheDocument();
   });
 
+  test('an outdated or missing workflow is flagged with what to do', async () => {
+    getPipeline.mockResolvedValue({ ...CONFIGURED, workflow: { present: true, templateVersion: 1, currentVersion: 2, outdated: true } });
+    const { unmount } = renderPanel(true);
+    expect(await screen.findByText(/versión anterior de TaskMate/)).toHaveTextContent('vuelve a subirlo para actualizarlo');
+    unmount();
+    getPipeline.mockResolvedValue({ ...CONFIGURED, workflow: { present: false, templateVersion: null, currentVersion: 2, outdated: false } });
+    renderPanel(false);
+    expect(await screen.findByText(/ya no está en el repositorio/)).toHaveTextContent('Pide al administrador');
+  });
+
   test('Pages problems are reported', async () => {
     getPipeline.mockResolvedValue({ ...CONFIGURED, pages: { enabled: null, error: 'APP_PERMISSIONS_MISSING' } });
     renderPanel(true);
