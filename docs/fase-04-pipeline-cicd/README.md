@@ -15,7 +15,7 @@
 | **Fechas Planificadas** | 18 sep 2026 — 9 oct 2026 |
 | **Fechas Reales** | 9 oct 2026 — 22 oct 2026 (alcance, plan y paso 1 el 9 oct, 14:40–15:28; mejoras y pasos 2–3 el 22 oct, 09:07–09:40; paso 4 (IA) a las 10:20; revisión, verificación y correcciones a las 11:03; E2E con GitHub real y documentación el 22 oct) |
 | **Estado** | ✅ Completada |
-| **Rama Git** | `feature/fase-4-cicd-github-actions` (creada desde `master` con las Fases 1–3 ya fusionadas) <!-- PR: se completa al final --> |
+| **Rama Git** | `feature/fase-4-cicd-github-actions` (creada desde `master` con las Fases 1–3 ya fusionadas) · PR [#5](https://github.com/PabloP150/proyecto-is-cc6/pull/5) |
 | **Responsable** | Pablo Pineda |
 
 ### Documentos de esta fase
