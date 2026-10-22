@@ -93,13 +93,26 @@ const CLOSE_PENDING_FACTS = (status, where) => `
 
 // GitHub branch links that the Tasks delete is about to cascade away, read first so the branch
 // can be cleaned up after the commit. Only a branch of the repository the group is linked to
-// right now counts (same rule as github.model findTaskByBranch). UPDLOCK, HOLDLOCK keeps a
-// branch linked concurrently from slipping in before the cascade: its insert waits, then fails
-// on the FK and createTaskBranch removes the ref it made.
+// right now counts (same rule as github.model findTaskByBranch).
+// The first statement keeps a branch linked concurrently from slipping in before the cascade:
+// UPDLOCK, HOLDLOCK on the key range of each of these tasks in PK_TaskBranches makes its insert
+// wait, then fail on the FK, and createTaskBranch removes the ref it made. The range must be the
+// one in the clustered PK, the index an INSERT takes its first key lock in, so the insert waits
+// holding nothing. Left to the optimizer, the lock went through UQ_TaskBranches_Repo_Branch (via
+// the repository join): the insert locked its new PK key, waited on that index, and the cascade
+// then waited on the new key, a deadlock. Hence the forced seek, in a statement of its own that
+// joins only Tasks, so no other join can skip it.
 const readLinkedBranches = async (tx, where, params) => {
+    await tx.read(
+        `SELECT tb.tid
+         FROM dbo.Tasks t
+         INNER JOIN dbo.TaskBranches tb WITH (UPDLOCK, HOLDLOCK, FORCESEEK (PK_TaskBranches (tid))) ON tb.tid = t.tid
+         WHERE ${where}`,
+        params
+    );
     const rows = await tx.read(
         `SELECT tb.tid, t.gid, tb.repo_id, tb.branch_name, tb.base_sha, i.account_login AS owner, r.name AS repo_name
-         FROM dbo.TaskBranches tb WITH (UPDLOCK, HOLDLOCK)
+         FROM dbo.TaskBranches tb
          INNER JOIN dbo.Tasks t ON t.tid = tb.tid
          INNER JOIN dbo.GroupRepositories gr ON gr.gid = t.gid AND gr.repo_id = tb.repo_id
          INNER JOIN dbo.GitHubRepositories r ON r.repo_id = tb.repo_id
