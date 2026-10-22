@@ -22,6 +22,13 @@ jest.mock('../../../api/github', () => ({
   getCommits: jest.fn(),
   syncGroup: jest.fn(),
   setAiAnalysis: jest.fn(),
+  getPipeline: jest.fn(),
+  listRuns: jest.fn(),
+  listWorkflows: jest.fn(),
+  getRun: jest.fn(),
+  proposePipeline: jest.fn(),
+  previewPipeline: jest.fn(),
+  applyPipeline: jest.fn(),
 }));
 jest.mock('../githubUtils', () => ({ ...jest.requireActual('../githubUtils'), assignLocation: jest.fn() }));
 
@@ -121,6 +128,57 @@ describe('GitHubPage', () => {
     expect(await screen.findByRole('button', { name: /Conectar repositorio/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Ya instalé la App/ })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Archivos' })).toBeDisabled();
+    expect(screen.getByRole('tab', { name: 'CI/CD' })).toBeDisabled();
+  });
+
+  it('opens the CI/CD tab of a connected repository', async () => {
+    github.getRepository.mockResolvedValue(REPO);
+    github.getPipeline.mockResolvedValue({ pipeline: null, workflowPath: '.github/workflows/taskmate-ci.yml', pages: null });
+    github.listRuns.mockResolvedValue({ runs: [], totalCount: 0, page: 1 });
+    github.listWorkflows.mockResolvedValue([]);
+    showPage();
+    await screen.findByRole('link', { name: 'acme/app' });
+    fireEvent.click(screen.getByRole('tab', { name: 'CI/CD' }));
+    expect(await screen.findByRole('button', { name: 'Configurar pipeline' })).toBeInTheDocument();
+    expect(github.getPipeline).toHaveBeenCalledWith('G1', expect.any(Object));
+    expect(await screen.findByText(/todavía no tiene ejecuciones/)).toBeInTheDocument();
+  });
+
+  it('?tab=cicd (from a CI/CD notification) opens the CI/CD tab once the repository loads', async () => {
+    github.getRepository.mockResolvedValue(REPO);
+    github.getPipeline.mockResolvedValue({ pipeline: null, workflowPath: '.github/workflows/taskmate-ci.yml', pages: null });
+    github.listRuns.mockResolvedValue({ runs: [], totalCount: 0, page: 1 });
+    github.listWorkflows.mockResolvedValue([]);
+    showPage({ url: '/github?tab=cicd' });
+    expect(await screen.findByRole('button', { name: 'Configurar pipeline' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'CI/CD' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/github$/);
+  });
+
+  it('after the owner gives the App access on GitHub, an admin goes straight to the repository selection', async () => {
+    github.install.mockResolvedValue({
+      installUrl: 'https://github.com/apps/taskmate/installations/new?state=abc',
+      authorizeUrl: 'https://github.com/login/oauth/authorize?client_id=1&state=def',
+    });
+    showPage({ url: '/github?status=updated' });
+    expect(await screen.findByText(/Abriendo la lista de repositorios/)).toBeInTheDocument();
+    await waitFor(() => expect(assignLocation).toHaveBeenCalledWith('https://github.com/login/oauth/authorize?client_id=1&state=def'));
+    expect(github.install).toHaveBeenCalledTimes(1);
+    expect(github.install).toHaveBeenCalledWith('G1');
+  });
+
+  it('after an update on GitHub, a member is told that only the admin can connect', async () => {
+    showPage({ url: '/github?status=updated', adminId: 'U2' });
+    expect(await screen.findByText(/Solo el administrador del grupo puede conectar el repositorio/)).toBeInTheDocument();
+    expect(github.install).not.toHaveBeenCalled();
+    expect(assignLocation).not.toHaveBeenCalled();
+  });
+
+  it('after an update on GitHub, a non-GitHub authorize URL is never followed', async () => {
+    github.install.mockResolvedValue({ installUrl: 'https://evil.example/x', authorizeUrl: 'https://evil.example/y' });
+    showPage({ url: '/github?status=updated' });
+    expect(await screen.findByText(/No se pudo abrir la selección de repositorios/)).toBeInTheDocument();
+    expect(assignLocation).not.toHaveBeenCalled();
   });
 
   it('tells non-admins that only the admin can connect', async () => {

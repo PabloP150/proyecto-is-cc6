@@ -31,6 +31,35 @@ describe('redactSecrets', () => {
         expect(redactSecrets('Run npm test to execute the suite.')).toBe('Run npm test to execute the suite.');
         expect(redactSecrets('dependencies: jsonwebtoken, bcryptjs')).toBe('dependencies: jsonwebtoken, bcryptjs');
     });
+
+    test.each([
+        ['curl -H "Authorization: Bearer abc.def-ghi_123" https://api.example.com', 'curl -H "Authorization: Bearer [REDACTED]" https://api.example.com'],
+        ['Authorization: Basic dXNlcjpwYXNzd29yZA==', 'Authorization: Basic [REDACTED]'],
+        ['> authorization: token 0123456789abcdef0123', '> authorization: token [REDACTED]'],
+        ['{"Authorization": "Bearer xyz123456"}', '{"Authorization": "Bearer [REDACTED]"}'],
+        ["headers: { 'authorization': 'Basic Zm9vOmJhcg==' }", "headers: { 'authorization': 'Basic [REDACTED]' }"],
+        ['Proxy-Authorization: Basic Zm9vOmJhcg==', 'Proxy-Authorization: Basic [REDACTED]'],
+        ['AUTHORIZATION=Bearer s3cr3t', 'AUTHORIZATION=Bearer [REDACTED]'],
+    ])('redacts the credentials of an Authorization header: %j', (input, expected) => {
+        expect(redactSecrets(input)).toBe(expected);
+    });
+
+    test('a secret\'s name or an Authorization scheme at the end of a line does not redact the next line', () => {
+        const text = 'Enter password:\nnext step runs\ncredentials =\n  user: ana\nAuthorization: Bearer\nsomething here';
+        expect(redactSecrets(text)).toBe(text);
+        // Spaces and tabs on the same line are still separators.
+        expect(redactSecrets('password:\thunter22\nAuthorization:\tBearer\tabc123\nnext')).toBe('password:\t[REDACTED]\nAuthorization:\tBearer\t[REDACTED]\nnext');
+    });
+
+    test.each([
+        ['curl -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com'],
+        ['Authorization: Bearer ${{ secrets.DEPLOY_TOKEN }}'],
+        ['headers: { Authorization: `Bearer ${token}` }'],
+        ['The Authorization header is required.'],
+        ['Use Bearer tokens for authorization.'],
+    ])('leaves variable references and prose readable: %j', (input) => {
+        expect(redactSecrets(input)).toBe(input);
+    });
 });
 
 describe('isExcludedPath', () => {

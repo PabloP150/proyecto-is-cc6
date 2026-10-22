@@ -4,15 +4,20 @@ const express = require('express');
 const { AppError, sendError } = require('../helpers/errors');
 const requireAuth = require('../middleware/auth.middleware');
 const { requireGroupMember, requireGroupAdmin, requireResourceMember } = require('../middleware/groupAccess');
+const accessModel = require('../models/access.model');
 const { createLimiter } = require('../middleware/rateLimit');
 const githubModel = require('../models/github.model');
 const installFlow = require('../services/github/installFlow');
 const repoService = require('../services/github/repoService');
 const branchService = require('../services/github/branchService');
 const syncService = require('../services/github/syncService');
+const pipelineService = require('../services/github/pipelineService');
+const actionsService = require('../services/github/actionsService');
+const deployService = require('../services/github/deployService');
 const { githubWebhookHandler } = require('../services/github/webhookHandler');
 
 const SELECTION_ID_RE = /^[A-Za-z0-9_-]{43}$/;
+const MAX_PROJECT_DIR = 200;
 
 // GitHub rate limits are relayed with Retry-After so the client can back off.
 const sendGitHubError = (res, err) => {
@@ -44,6 +49,31 @@ const queryString = (req, name) => {
     return value;
 };
 
+const isPlainObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+
+const bodySpec = (req) => {
+    const spec = req.body && req.body.spec;
+    if (!isPlainObject(spec)) throw new AppError('VALIDATION_ERROR', 'spec must be an object', 400);
+    return spec;
+};
+
+// Optional project switch for a new proposal: both strings (validated again against the repository).
+const bodyProject = (req) => {
+    const { dir, stack } = req.body || {};
+    if (dir !== undefined && (typeof dir !== 'string' || !dir || dir.length > MAX_PROJECT_DIR)) {
+        throw new AppError('VALIDATION_ERROR', 'dir must be a non-empty string', 400);
+    }
+    if (stack !== undefined && typeof stack !== 'string') throw new AppError('VALIDATION_ERROR', 'stack must be a string', 400);
+    return { dir, stack };
+};
+
+// Optional: true asks the AI for the proposal, false never uses it (omitted: the service decides).
+const bodyAi = (req) => {
+    const ai = req.body ? req.body.ai : undefined;
+    if (ai !== undefined && typeof ai !== 'boolean') throw new AppError('VALIDATION_ERROR', 'ai must be a boolean', 400);
+    return ai;
+};
+
 const createGithubRouter = ({ auth = requireAuth } = {}) => {
     const router = express.Router();
     // All limits are per user (these routes run after auth). The hourly browse cap keeps one member from
@@ -55,6 +85,11 @@ const createGithubRouter = ({ auth = requireAuth } = {}) => {
     ];
     const branchLimiter = createLimiter({ windowMs: 60 * 1000, limit: 20, keyByUser: true });
     const syncLimiter = createLimiter({ windowMs: 30 * 1000, limit: 1, keyByUser: true, message: 'Sync is limited to once every 30 seconds.' });
+    // A proposal or an apply reads several files of the repository; previews only re-render.
+    const pipelineLimiter = createLimiter({ windowMs: 60 * 1000, limit: 10, keyByUser: true });
+    const previewLimiter = createLimiter({ windowMs: 60 * 1000, limit: 60, keyByUser: true });
+    // Running, re-running or cancelling uses the repository's Actions minutes: a few per minute.
+    const controlLimiter = createLimiter({ windowMs: 60 * 1000, limit: 10, keyByUser: true });
 
     router.use(auth);
 
@@ -125,6 +160,114 @@ const createGithubRouter = ({ auth = requireAuth } = {}) => {
 
     router.post('/groups/:gid/sync', requireGroupMember('gid'), syncLimiter, route(async (req, res) => {
         res.json({ data: await syncService.syncGroup(req.groupId) });
+    }));
+
+    // ------------------------------------------------------------ Phase 4: CI/CD
+
+    router.get('/groups/:gid/pipeline', requireGroupMember('gid'), browseLimiter, route(async (req, res) => {
+        res.json({ data: await pipelineService.getPipeline(req.groupId) });
+    }));
+
+    router.post('/groups/:gid/pipeline/proposal', requireGroupAdmin('gid'), pipelineLimiter, route(async (req, res) => {
+        const { dir, stack } = bodyProject(req);
+        const ai = bodyAi(req);
+        res.json({ data: await pipelineService.proposePipeline({ gid: req.groupId, uid: req.user.userId, dir, stack, ai }) });
+    }));
+
+    router.post('/groups/:gid/pipeline/preview', requireGroupAdmin('gid'), previewLimiter, route(async (req, res) => {
+        res.json({ data: await pipelineService.previewPipeline({ gid: req.groupId, uid: req.user.userId, spec: bodySpec(req) }) });
+    }));
+
+    router.put('/groups/:gid/pipeline', requireGroupAdmin('gid'), pipelineLimiter, route(async (req, res) => {
+        const spec = bodySpec(req);
+        res.json({
+            data: await pipelineService.applyPipeline({ gid: req.groupId, uid: req.user.userId, username: req.user.username, spec }),
+        });
+    }));
+
+    router.get('/groups/:gid/actions/workflows', requireGroupMember('gid'), browseLimiter, route(async (req, res) => {
+        res.json({ data: await actionsService.listWorkflows(req.groupId) });
+    }));
+
+    router.get('/groups/:gid/actions/runs', requireGroupMember('gid'), browseLimiter, route(async (req, res) => {
+        res.json({
+            data: await actionsService.listRuns(req.groupId, {
+                branch: queryString(req, 'branch'),
+                status: queryString(req, 'status'),
+                workflow: queryString(req, 'workflow'),
+                page: queryString(req, 'page'),
+            }),
+        });
+    }));
+
+    router.get('/groups/:gid/actions/runs/:runId', requireGroupMember('gid'), browseLimiter, route(async (req, res) => {
+        res.json({ data: await actionsService.getRun(req.groupId, req.params.runId) });
+    }));
+
+    router.get('/groups/:gid/actions/jobs/:jobId/logs', requireGroupMember('gid'), browseLimiter, route(async (req, res) => {
+        res.json({ data: await actionsService.getJobLog(req.groupId, req.params.jobId) });
+    }));
+
+    router.get('/groups/:gid/actions/jobs/:jobId/annotations', requireGroupMember('gid'), browseLimiter, route(async (req, res) => {
+        res.json({ data: await actionsService.getJobAnnotations(req.groupId, req.params.jobId) });
+    }));
+
+    // Any member runs the CI on a branch; deploys go through /deployments (Phase 4, step 3).
+    router.post('/groups/:gid/actions/runs', requireGroupMember('gid'), controlLimiter, route(async (req, res) => {
+        const ref = req.body && req.body.ref;
+        if (typeof ref !== 'string' || !ref) throw new AppError('VALIDATION_ERROR', 'ref is required', 400);
+        res.status(202).json({ data: await actionsService.dispatchPipeline(req.groupId, { ref }) });
+    }));
+
+    // Members re-run or cancel CI runs; deploy runs dispatched by TaskMate need the group admin.
+    router.post('/groups/:gid/actions/runs/:runId/rerun-failed', requireGroupMember('gid'), controlLimiter, route(async (req, res) => {
+        const isAdmin = await accessModel.isGroupAdmin(req.user.userId, req.groupId);
+        res.status(202).json({ data: await actionsService.rerunFailed(req.groupId, req.params.runId, { isAdmin }) });
+    }));
+
+    router.post('/groups/:gid/actions/runs/:runId/cancel', requireGroupMember('gid'), controlLimiter, route(async (req, res) => {
+        const isAdmin = await accessModel.isGroupAdmin(req.user.userId, req.groupId);
+        res.status(202).json({ data: await actionsService.cancelRun(req.groupId, req.params.runId, { isAdmin }) });
+    }));
+
+    // ------------------------------------------------------------ Phase 4: continuous delivery
+
+    router.get('/groups/:gid/deployments', requireGroupMember('gid'), browseLimiter, route(async (req, res) => {
+        res.json({ data: await deployService.getDeployments(req.groupId) });
+    }));
+
+    // Admin: deploy (or roll back to) a version that passed CI, right away.
+    router.post('/groups/:gid/deployments', requireGroupAdmin('gid'), controlLimiter, route(async (req, res) => {
+        const { environment, version } = req.body || {};
+        res.status(202).json({
+            data: await deployService.deployNow({ gid: req.groupId, username: req.user.username, environment, version }),
+        });
+    }));
+
+    // Member: ask the admins to deploy a version (production by default).
+    router.post('/groups/:gid/deploy-requests', requireGroupMember('gid'), controlLimiter, route(async (req, res) => {
+        const { environment, version } = req.body || {};
+        res.status(201).json({
+            data: await deployService.requestDeploy({ gid: req.groupId, uid: req.user.userId, environment, version }),
+        });
+    }));
+
+    router.post('/groups/:gid/deploy-requests/:requestId/approve', requireGroupAdmin('gid'), controlLimiter, route(async (req, res) => {
+        res.json({
+            data: await deployService.approveRequest({
+                gid: req.groupId, uid: req.user.userId, username: req.user.username, requestId: req.params.requestId,
+            }),
+        });
+    }));
+
+    router.post('/groups/:gid/deploy-requests/:requestId/reject', requireGroupAdmin('gid'), controlLimiter, route(async (req, res) => {
+        const note = req.body ? req.body.note : undefined;
+        res.json({ data: await deployService.rejectRequest({ gid: req.groupId, uid: req.user.userId, requestId: req.params.requestId, note }) });
+    }));
+
+    // The requester withdraws their own pending request (checked in the service).
+    router.post('/groups/:gid/deploy-requests/:requestId/cancel', requireGroupMember('gid'), controlLimiter, route(async (req, res) => {
+        res.json({ data: await deployService.cancelRequest({ gid: req.groupId, uid: req.user.userId, requestId: req.params.requestId }) });
     }));
 
     return router;

@@ -56,9 +56,14 @@ const SECRET_PATTERNS = [
     /\bsk-[A-Za-z0-9_-]{20,}\b/g,
     /\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g,
     /\b[a-z][a-z0-9+.-]*:\/\/[^\s:@/]+:[^\s@/]+@/gi,
+    // HTTP Authorization headers (curl -H, logged requests, JSON): the scheme stays, the credentials
+    // go. A "$VAR" / "${{ secrets.X }}" reference is not a secret and is left readable. Spaces only
+    // ([^\S\r\n]), never a line break: a header cut at the end of a line must not eat the next one.
+    /(?<=\bauthorization["'`]?[^\S\r\n]*[:=][^\S\r\n]*["'`]?(?:basic|bearer|token)[^\S\r\n]+)(?!\$)[^\s"'`,;]+/gi,
 ];
-// key = value / key: value where the key names a secret; the value is replaced, the key kept.
-const KEY_VALUE_SECRET = /\b([A-Za-z0-9_.-]*(?:api[_-]?key|secret|token|passw(?:or)?d|pwd|access[_-]?key|private[_-]?key|client[_-]?secret|auth[_-]?key|credentials?)[A-Za-z0-9_.-]*)(\s*["']?\s*[:=]\s*["']?)([^\s"',;]{4,})/gi;
+// key = value / key: value where the key names a secret; the value is replaced, the key kept. The
+// separator stays on the key's line: "Enter password:" must not redact the line below it.
+const KEY_VALUE_SECRET = /\b([A-Za-z0-9_.-]*(?:api[_-]?key|secret|token|passw(?:or)?d|pwd|access[_-]?key|private[_-]?key|client[_-]?secret|auth[_-]?key|credentials?)[A-Za-z0-9_.-]*)([^\S\r\n]*["']?[^\S\r\n]*[:=][^\S\r\n]*["']?)([^\s"',;]{4,})/gi;
 
 const redactSecrets = (text) => {
     if (typeof text !== 'string' || !text) return text || '';
@@ -136,7 +141,9 @@ const pickManifests = (entries) => entries
 
 // Errors that only mean "this optional section is unavailable" (no README, no Issues permission…).
 // Anything else — rate limit, suspension, missing config, unexpected errors — aborts the analysis.
-const SOFT_ERRORS = new Set(['FILE_NOT_FOUND', 'FILE_TOO_LARGE', 'VALIDATION_ERROR', 'NOT_FOUND', 'REPO_NOT_ACCESSIBLE', 'GITHUB_ERROR']);
+const SOFT_ERRORS = new Set([
+    'FILE_NOT_FOUND', 'FILE_TOO_LARGE', 'VALIDATION_ERROR', 'NOT_FOUND', 'REPO_NOT_ACCESSIBLE', 'APP_PERMISSIONS_MISSING', 'GITHUB_ERROR',
+]);
 
 const optional = async (promise, fallback) => {
     try {
@@ -239,6 +246,7 @@ module.exports = {
     buildRepoSnapshot,
     buildExisting,
     redactSecrets,
+    REDACTED,
     isExcludedPath,
     condenseTree,
     manifestExcerpt,

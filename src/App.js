@@ -3,6 +3,8 @@ import { Navigate, Route, BrowserRouter as Router, Routes, useNavigate } from 'r
 import { Box, CircularProgress } from '@mui/material';
 import { UNAUTHORIZED_EVENT } from './api/client';
 import { GroupContext, GroupProvider } from './components/GroupContext';
+import CicdNotifications from './components/realtime/CicdNotifications';
+import { RealtimeProvider } from './components/realtime/RealtimeContext';
 import { ThemeProvider } from './theme';
 
 const AnalyticsDashboard = lazy(() => import('./components/AnalyticsDashboard'));
@@ -76,24 +78,27 @@ function AppRoutes({ user, setUser }) {
   }, [handleLogout, navigate]);
 
   return (
-    <Suspense fallback={<PageLoader />}>
-      {user && <Navbar user={user} onLogout={handleLogout} />}
-      <Routes>
-        <Route path="/" element={user ? <Navigate to="/home" /> : <Login onLogin={handleLogin} />} />
-        <Route path="/register" element={<Register />} />
-        <Route path="/home" element={user ? <HomePage /> : <Navigate to="/" />} />
-        <Route path="/calendar" element={user ? <CalendarView /> : <Navigate to="/" />} />
-        <Route path="/block-diagram" element={user ? <BlockDiagram className='block-diagram' /> : <Navigate to="/" />} />
-        <Route path="/flow" element={user ? <Flow /> : <Navigate to="/" />} />
-        <Route path="/tasks" element={user ? <Recordatorios /> : <Navigate to="/" />} />
-        <Route path="/create-group" element={user ? <CreateGroup /> : <Navigate to="/" />} />
-        <Route path="/groups" element={user ? <GroupsView /> : <Navigate to="/" />} />
-        <Route path="/chat" element={user ? <ChatPage /> : <Navigate to="/" />} />
-        <Route path="/analytics" element={user ? <AnalyticsDashboard /> : <Navigate to="/" />} />
-        <Route path="/github" element={user ? <GitHubPage /> : <Navigate to="/" />} />
-        <Route path="*" element={<Navigate to={user ? '/home' : '/'} replace />} />
-      </Routes>
-    </Suspense>
+    <RealtimeProvider user={user}>
+      <Suspense fallback={<PageLoader />}>
+        {user && <Navbar user={user} onLogout={handleLogout} />}
+        {user && <CicdNotifications />}
+        <Routes>
+          <Route path="/" element={user ? <Navigate to="/home" /> : <Login onLogin={handleLogin} />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/home" element={user ? <HomePage /> : <Navigate to="/" />} />
+          <Route path="/calendar" element={user ? <CalendarView /> : <Navigate to="/" />} />
+          <Route path="/block-diagram" element={user ? <BlockDiagram className='block-diagram' /> : <Navigate to="/" />} />
+          <Route path="/flow" element={user ? <Flow /> : <Navigate to="/" />} />
+          <Route path="/tasks" element={user ? <Recordatorios /> : <Navigate to="/" />} />
+          <Route path="/create-group" element={user ? <CreateGroup /> : <Navigate to="/" />} />
+          <Route path="/groups" element={user ? <GroupsView /> : <Navigate to="/" />} />
+          <Route path="/chat" element={user ? <ChatPage /> : <Navigate to="/" />} />
+          <Route path="/analytics" element={user ? <AnalyticsDashboard /> : <Navigate to="/" />} />
+          <Route path="/github" element={user ? <GitHubPage /> : <Navigate to="/" />} />
+          <Route path="*" element={<Navigate to={user ? '/home' : '/'} replace />} />
+        </Routes>
+      </Suspense>
+    </RealtimeProvider>
   );
 }
 

@@ -228,6 +228,27 @@ const theme = createTheme({
         },
       },
     },
+    // background.paper is almost transparent (for cards over the page gradient), so surfaces that
+    // float over other content need their own opaque background. Components that pass their own
+    // PaperProps/slotProps keep theirs (sx wins over these overrides).
+    MuiDialog: {
+      styleOverrides: {
+        paper: {
+          background: 'linear-gradient(135deg, #1c2847 0%, #252e40 100%)',
+          border: '1px solid rgba(59, 130, 246, 0.25)',
+          boxShadow: '0 24px 64px rgba(0, 0, 0, 0.55)',
+        },
+      },
+    },
+    MuiPopover: {
+      styleOverrides: {
+        paper: {
+          backgroundColor: '#1b2540',
+          border: '1px solid rgba(59, 130, 246, 0.25)',
+          boxShadow: '0 12px 32px rgba(0, 0, 0, 0.5)',
+        },
+      },
+    },
     MuiCard: {
       styleOverrides: {
         root: {

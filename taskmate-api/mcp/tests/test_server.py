@@ -94,6 +94,34 @@ def test_stateless_requests_do_not_wait_for_the_session_lock(ws):
     assert recv(ws)["requestId"] == "chat"
 
 
+def test_pipeline_proposals_do_not_wait_for_the_session_lock(ws, monkeypatch):
+    proposal = {"project": {"dir": ".", "stack": "static"}, "runtime": None, "install": None, "lint": None,
+                "audit": False, "test": None, "build": None,
+                "deploy": {"target": "github-pages", "framework": "static", "outputDir": "."},
+                "explanation": "Sitio estático publicado en GitHub Pages."}
+
+    async def fake_generate_json(messages, **kwargs):
+        return proposal
+
+    monkeypatch.setattr(llm_service, "generate_json", fake_generate_json)
+    ws.send_json(user_msg("A", "chat", "SLOW question"))
+    ws.send_json({"requestId": "pipe", "sessionId": "A", "method": "propose_pipeline", "params": {
+        "repo": {"fullName": "acme/site", "defaultBranch": "main"},
+        "projects": [{"dir": ".", "stack": "static", "siteDirs": ["."]}],
+        "detected": {}, "options": {"nodeVersions": ["24"], "pythonVersions": ["3.13"]}}})
+    first = recv(ws)
+    assert first == {"event": "pipeline_proposal", "requestId": "pipe", "sessionId": "A",
+                     "data": {"proposal": proposal}}
+    assert recv(ws)["requestId"] == "chat"
+
+
+def test_deeply_nested_json_gets_an_error_and_the_connection_stays_open(agent, ws):
+    ws.send_text('{"sessionId": "S1", "requestId": "deep", "params": ' + "[" * 100000)
+    assert recv(ws) == {"event": "error", "sessionId": "S1", "requestId": "deep", "error": "Invalid JSON format."}
+    ws.send_json(user_msg("S1", "after", "still here"))
+    assert recv(ws)["requestId"] == "after"
+
+
 def test_every_error_reply_carries_session_and_request_ids(agent, ws, monkeypatch):
     ws.send_text('{"sessionId": "S1", "requestId": "bad-json", "params": ')
     reply = recv(ws)
@@ -272,6 +300,11 @@ def test_oversized_frames_are_rejected_without_closing_the_shared_connection(age
     reply = recv(ws)
     assert (reply["event"], reply["sessionId"], reply["requestId"]) == ("repo_analysis_error", "B", "huge-repo")
     assert reply["error"]["code"] == "MESSAGE_TOO_LONG"
+
+    ws.send_json({"requestId": "huge-pipe", "sessionId": "P", "method": "propose_pipeline",
+                  "params": {"detected": {"blob": "p" * 3000}}})
+    assert recv(ws) == {"event": "pipeline_proposal_error", "sessionId": "P", "requestId": "huge-pipe",
+                        "error": {"code": "MESSAGE_TOO_LONG", "message": "The message is too large."}}
 
     ws.send_json({"requestId": "huge-an", "sessionId": "C", "type": "analytics", "action": "x", "data": {"p": "q" * 3000}})
     reply = recv(ws)

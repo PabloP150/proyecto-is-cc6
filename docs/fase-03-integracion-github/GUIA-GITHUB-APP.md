@@ -4,6 +4,8 @@
 
 Esta guía lleva de cero a un flujo completo contra **GitHub real**: registrar la App, configurar `.env`, recibir webhooks en `localhost` con smee.io, migrar la BD de desarrollo y ejecutar el checklist E2E manual. Todo lo demás de la fase ya se verificó con GitHub simulado; este recorrido es lo único que falta para validar la integración real.
 
+> **Actualizada para la Fase 4 (CI/CD, 22 oct 2026):** la App necesita permisos y eventos nuevos ([paso 4](#4-registrar-la-github-app)), las instalaciones existentes deben aceptarlos ([cómo](#aceptar-permisos-nuevos-en-una-instalación-existente)) y **«Redirect on update»** ahora va **marcado**. Además, conectar un repositorio ahora exige que tu cuenta de GitHub tenga permiso de **escritura** (push, maintain o admin) en él ([por qué](#9-checklist-e2e-manual)). El uso del CI/CD desde TaskMate está en [GUIA-CICD.md](../fase-04-pipeline-cicd/GUIA-CICD.md).
+
 ---
 
 ## Índice
@@ -30,6 +32,7 @@ Esta guía lleva de cero a un flujo completo contra **GitHub real**: registrar l
 - Una API key de Groq (para el análisis con IA).
 - `openssl` (viene con macOS).
 - Ser **administrador** de un grupo en TaskMate (quien crea el grupo es su admin).
+- Para probar el CI/CD de la Fase 4: un repositorio **público** (GitHub Pages en privados requiere GitHub Pro, Team o Enterprise) con un proyecto Node.js (npm) con script `build` (Vite o Create React App) o un sitio HTML, y cuya rama principal acepte commits de la App.
 
 ---
 
@@ -71,7 +74,7 @@ En GitHub: foto de perfil → **Settings** → **Developer settings** → **GitH
 | **Request user authorization (OAuth) during installation** | ✅ **Marcar (obligatorio)** | Sin esto el callback no recibe `code` y TaskMate no puede comprobar que el usuario tiene acceso a la instalación; el `installation_id` de la URL por sí solo es falsificable |
 | **Enable Device Flow** | Desmarcado | No se usa |
 | **Setup URL** | Queda deshabilitado al marcar la opción anterior | GitHub redirige al *Callback URL* después de instalar |
-| **Redirect on update** | Desmarcado | Si GitHub vuelve tras modificar una instalación desde su web, llega sin `state` y TaskMate muestra «El enlace de conexión expiró». Para conectar una App ya instalada usa **«Ya instalé la App»** en TaskMate |
+| **Redirect on update** | ✅ **Marcado** (desde la Fase 4) | Cuando el dueño cambia la instalación en github.com (le da acceso a otro repositorio, acepta permisos nuevos), GitHub vuelve al *Callback URL* **sin `state`**. TaskMate reconoce ese regreso (`setup_action=update` o `install` con `installation_id`), **no canjea ni vincula nada** y redirige a `/github?status=updated`. Si quien vuelve es admin del grupo seleccionado, `/github` lo manda directo por el flujo normal protegido con `state` (GitHub responde al instante porque la App ya está autorizada) y cae en la **selección de repositorio**; a un miembro, o sin grupo seleccionado, le explica qué hacer. (Antes estaba desmarcado y ese regreso mostraba «El enlace de conexión expiró».) |
 | **Webhook → Active** | ✅ Marcado | — |
 | **Webhook URL** | La URL de tu canal: `https://smee.io/<tu-canal>` | Paso 2 |
 | **Webhook secret** | El valor de `GITHUB_WEBHOOK_SECRET` | La API verifica la firma `X-Hub-Signature-256` de cada entrega |
@@ -79,16 +82,31 @@ En GitHub: foto de perfil → **Settings** → **Developer settings** → **GitH
 
 **Permisos → Repository permissions** (todo lo que no está en la tabla: *No access*):
 
-| Permiso | Nivel | Para qué lo usa TaskMate |
-|---------|-------|--------------------------|
-| **Contents** | **Read and write** | Leer árbol, archivos, README y commits (funcionalidades 2 y 3) y crear la rama de cada tarea (funcionalidad 5) |
-| **Metadata** | Read-only | Obligatorio para cualquier App |
-| **Pull requests** | Read-only | Sincronización manual de PRs (funcionalidad 6) |
-| **Issues** | Read-only | Títulos de issues abiertos para el análisis con IA (funcionalidad 2) |
+| Permiso | Nivel | Fase | Para qué lo usa TaskMate |
+|---------|-------|------|--------------------------|
+| **Contents** | **Read and write** | 3 | Leer árbol, archivos, README y commits (funcionalidades 2 y 3), crear la rama de cada tarea (funcionalidad 5) y, en la Fase 4, escribir el workflow, leer su versión y comprobar que una versión a desplegar está en la rama principal |
+| **Metadata** | Read-only | 3 | Obligatorio para cualquier App |
+| **Pull requests** | Read-only | 3 | Sincronización manual de PRs (funcionalidad 6) |
+| **Issues** | Read-only | 3 | Títulos de issues abiertos para el análisis con IA (funcionalidad 2) |
+| **Actions** | **Read and write** | 4 | Leer workflows, ejecuciones, jobs y logs; ejecutar el pipeline, re-ejecutar, cancelar y lanzar deploys (`workflow_dispatch`) |
+| **Administration** | **Read and write** | 4 | **Solo** para activar GitHub Pages (crear el sitio con fuente «GitHub Actions») al subir un pipeline con deploy. Ningún otro token lo pide |
+| **Checks** | Read-only | 4 | Anotaciones de los jobs (errores con archivo y línea) y comprobar que el job de CI de TaskMate pasó en una versión antes de desplegarla |
+| **Deployments** | Read-only | 4 | Historial de deploys y versión vigente de cada entorno (los Deployments los escribe el propio workflow) |
+| **Pages** | **Read and write** | 4 | Leer el estado y la URL del sitio y activarlo (junto con Administration) |
+| **Workflows** | **Read and write** | 4 | Escribir `.github/workflows/taskmate-ci.yml` (GitHub exige este permiso además de Contents para tocar `.github/workflows/`) |
 
 *Organization permissions* y *Account permissions*: ninguno.
 
-**Subscribe to events:** ✅ **Pull request**. Los eventos `installation` e `installation_repositories` se entregan siempre a una App con webhook; TaskMate los usa para detectar desinstalación, suspensión y repositorios agregados o quitados.
+**Subscribe to events:**
+
+| Evento | Fase | Para qué |
+|--------|------|----------|
+| ✅ **Pull request** | 3 | Progreso automático por PR |
+| ✅ **Workflow run** | 4 | Ejecuciones en vivo en la pestaña CI/CD y aviso de pipeline fallido |
+| ✅ **Workflow job** | 4 | Jobs y pasos en vivo en el detalle de una ejecución |
+| ✅ **Deployment status** | 4 | Entornos en vivo y aviso de deploy terminado o fallido |
+
+Los eventos solo aparecen en la lista cuando la App tiene el permiso correspondiente (*Workflow run* y *Workflow job* con **Actions**, *Deployment status* con **Deployments**): marca primero los permisos. Los eventos `installation` e `installation_repositories` se entregan siempre a una App con webhook; TaskMate los usa para detectar desinstalación, suspensión y repositorios agregados o quitados. Los de la Fase 4 **no se guardan**: TaskMate solo registra la entrega (idempotencia) y los reenvía en vivo por el WebSocket `/events` a los miembros de los grupos vinculados a ese repositorio.
 
 **Where can this GitHub App be installed?**
 - **Only on this account**: si el repositorio de prueba está en tu cuenta personal.
@@ -96,7 +114,31 @@ En GitHub: foto de perfil → **Settings** → **Developer settings** → **GitH
 
 Pulsa **Create GitHub App**.
 
-Aunque TaskMate pide a GitHub tokens de instalación con permisos **mínimos por operación** (solo lectura para explorar, `contents: write` solo al crear ramas) y **acotados al repositorio del grupo**, la App debe tener al menos los permisos de la tabla.
+Aunque TaskMate pide a GitHub tokens de instalación con permisos **mínimos por operación** (solo lectura para explorar, `contents: write` solo al crear ramas; en la Fase 4, `contents` + `workflows: write` solo al subir el workflow, `actions: write` solo para ejecutar, re-ejecutar, cancelar o desplegar, `checks: read` para anotaciones y para verificar versiones, y `administration` + `pages: write` solo al activar Pages) y **acotados al repositorio del grupo**, la App debe tener al menos los permisos de la tabla. Si una instalación no aceptó alguno, la acción que lo necesita responde `APP_PERMISSIONS_MISSING` y TaskMate muestra «La GitHub App todavía no tiene los permisos de CI/CD en este repositorio. Quien la instaló debe aceptarlos en GitHub.»
+
+> **Si no quieres dar Administration:** activa Pages a mano en el repositorio (**Settings → Pages → Build and deployment → Source: GitHub Actions**). TaskMate detecta que ya publica desde Actions y no pide ese permiso. Sin Pages activado y sin Administration, subir un pipeline con deploy falla con `APP_PERMISSIONS_MISSING`.
+
+### Agregar los permisos de la Fase 4 a una App ya registrada
+
+Si registraste la App en la Fase 3:
+
+1. GitHub → foto de perfil → **Settings → Developer settings → GitHub Apps** → tu App → **Edit**.
+2. Pestaña **General**: marca **Redirect on update** y pulsa **Save changes**.
+3. Pestaña **Permissions & events**: en *Repository permissions* sube **Actions**, **Administration**, **Pages** y **Workflows** a *Read and write*, y **Checks** y **Deployments** a *Read-only* (tabla de arriba). En *Subscribe to events* marca **Workflow run**, **Workflow job** y **Deployment status**.
+4. Pulsa **Save changes**. GitHub avisa que las instalaciones existentes deben aceptar los permisos nuevos: hasta entonces siguen con los anteriores.
+
+No hace falta cambiar `.env` ni la llave privada.
+
+### Aceptar permisos nuevos en una instalación existente
+
+Lo hace **quien instaló la App** (dueño de la cuenta, o un propietario de la organización). GitHub también le envía un correo con el enlace.
+
+1. Cuenta personal: GitHub → foto de perfil → **Settings → Applications → Installed GitHub Apps** → la App → **Configure**. Organización: **Settings de la organización → GitHub Apps** (*Third-party Access*) → la App → **Configure**.
+2. Arriba aparece el aviso de que la App pide permisos actualizados: pulsa **Review request**.
+3. Revisa la lista y pulsa **Accept new permissions**.
+4. En la misma página, en **Repository access**, confirma que el repositorio del grupo sigue seleccionado.
+
+Con «Redirect on update» marcado, al guardar GitHub vuelve a TaskMate (`/github?status=updated`): si eres admin del grupo seleccionado, TaskMate te lleva a la selección de repositorio; si el repositorio ya estaba vinculado no hace falta volver a vincularlo, basta con regresar a la pestaña **CI/CD**. No hace falta reiniciar la API: los tokens se piden por conjunto de permisos y un intento rechazado no queda en caché, así que la siguiente acción ya usa los permisos aceptados.
 
 ---
 
@@ -216,8 +258,11 @@ MIGRATION_DB_USERNAME=sa MIGRATION_DB_PASSWORD="$SA_PW" node migrations/runner.j
 #   [x] 004_repair_group_admins
 #   [x] 005_unicode_membership_github
 #   [x] 006_bfs_progress_triggers
+#   [x] 007_cicd                      (Fase 4: RepoPipelines y DeployRequests)
 unset SA_PW
 ```
+
+La Fase 4 agrega `007_cicd`. Si tu BD ya tenía 001–006, el mismo `npm run db:migrate` aplica solo la 007 (la de desarrollo de Pablo se respaldó en `~/taskmate-backups/` y se migró el 9 oct 2026).
 
 - Cada migración corre en **una transacción** junto con su registro en `dbo.SchemaMigrations`: si algo falla, no queda nada a medias. Todas son idempotentes.
 - Si 001 imprime `WARNING 001: duplicate ...`, había datos duplicados y esa restricción UNIQUE se omitió **sin borrar nada**. Corrige los datos y ejecuta `node migrations/runner.js reapply 1` (con las mismas variables).
@@ -259,11 +304,13 @@ Señales de que todo está bien:
 
 ## 9. Checklist E2E manual
 
-Recomendación: instala la App **desde TaskMate** («Conectar repositorio») para que el flujo lleve el `state` firmado. Si la instalas directamente en GitHub, en TaskMate usa «Ya instalé la App».
+Recomendación: instala la App **desde TaskMate** («Conectar repositorio») para que el flujo lleve el `state` firmado. Si la instalas directamente en GitHub, en TaskMate usa «Ya instalé la App». Con «Redirect on update» marcado, darle acceso a otro repositorio desde GitHub también te devuelve a la selección de repositorio.
+
+Este checklist cubre la Fase 3. El recorrido del CI/CD (Fase 4) está en [GUIA-CICD.md](../fase-04-pipeline-cicd/GUIA-CICD.md) y su resultado con GitHub real en el [README de la Fase 4](../fase-04-pipeline-cicd/README.md#pruebas-e2e-con-github-real).
 
 - [ ] **1. Preparación.** Los cinco procesos arriba, smee conectado y sesión iniciada de nuevo en `http://localhost:3000`.
 - [ ] **2. Conectar.** En **Groups** elige un grupo del que seas admin; en **GitHub** (`/github`) pulsa **«Conectar repositorio»**. En GitHub elige tu cuenta, **Only select repositories** → el repositorio de prueba → **Install & Authorize**.
-- [ ] **3. Seleccionar.** Vuelves a `/github` con la tarjeta «Conectando como @tu-login». Elige el repositorio y pulsa **«Vincular repositorio»** → aviso «Repositorio `dueño/repo` conectado correctamente.» La pestaña **Repositorio** muestra rama por defecto, cuenta de la instalación y quién lo conectó.
+- [ ] **3. Seleccionar.** Vuelves a `/github` con la tarjeta «Conectando como @tu-login». Elige el repositorio y pulsa **«Vincular repositorio»** → aviso «Repositorio `dueño/repo` conectado correctamente.» La pestaña **Repositorio** muestra rama por defecto, cuenta de la instalación y quién lo conectó. Desde la Fase 4 (`069da9a`) la tarjeta solo ofrece los repositorios donde tu cuenta de GitHub tiene permiso **push, maintain o admin**: conectar le da al grupo el token de la App para ese repositorio (crear ramas, subir el workflow, publicar producción, hacer rollback), y alguien con solo lectura no debe poder vincularlo a su propio grupo y publicar su producción. Con un usuario que solo tiene lectura, el regreso termina en `code=NO_WRITABLE_REPOSITORIES` (ver [Solución de problemas](#10-solución-de-problemas)).
 - [ ] **4. Permisos por rol (opcional).** Con otro usuario **miembro no admin** del grupo: ve el repositorio pero no los botones Conectar/Desconectar ni el interruptor de IA. Un usuario que no es miembro recibe 403 en cualquier ruta del grupo.
 - [ ] **5. Explorar.** Pestaña **Archivos**: navega el árbol, abre un archivo y el README (renderizado). Pestaña **Commits**: aparecen los últimos commits con autor y fecha.
 - [ ] **6. Permitir IA.** En **Repositorio**, activa **«Permitir análisis con IA»** y lee el aviso (qué se envía a Groq; nunca el código fuente).
@@ -298,9 +345,14 @@ Recomendación: instala la App **desde TaskMate** («Conectar repositorio») par
 | `code=ACCESS_DENIED` | Se canceló la autorización en GitHub | Repetir y aceptar |
 | `code=INSTALLATION_NOT_FOUND` | Tu usuario de GitHub no tiene acceso a esa instalación | Instalar la App en una cuenta u organización donde tengas acceso |
 | `code=NO_REPOSITORIES` | La instalación no tiene repositorios accesibles para ti | En GitHub, *Configure* la instalación y agrega el repositorio |
+| `code=NO_WRITABLE_REPOSITORIES` («Tu cuenta de GitHub no tiene permiso de escritura en ningún repositorio de la instalación…») | Tu usuario de GitHub solo tiene lectura (o *triage*) en los repositorios de la instalación. Si tiene escritura en algunos, solo esos aparecen en la selección | Que conecte el repositorio alguien con permiso push, maintain o admin, o pedir ese permiso al dueño del repositorio |
 | `status=pending` | La organización exige que un propietario apruebe la instalación | Tras la aprobación, pulsar «Ya instalé la App» |
 | «La selección de repositorios expiró» (`SELECTION_NOT_FOUND`) | Pasaron más de 10 min en la tarjeta de selección, ya se usó o se reinició la API | Repetir desde «Conectar repositorio» |
-| La App ya estaba instalada y «Conectar» no vuelve a TaskMate | GitHub muestra la configuración de la instalación existente | Usar **«Ya instalé la App»** (autorización OAuth sin reinstalar) |
+| La App ya estaba instalada y «Conectar» no vuelve a TaskMate | GitHub muestra la configuración de la instalación existente; sin «Redirect on update» GitHub no regresa al guardar | Marcar **Redirect on update** en la App (paso 4): al guardar, GitHub vuelve y el admin cae en la selección de repositorio. Si aun así no vuelve, usar **«Ya instalé la App»** (autorización OAuth sin reinstalar) |
+| `/github?status=updated` con «La instalación de la GitHub App cambió en GitHub. Solo el administrador del grupo puede conectar el repositorio.» | Volviste de GitHub tras cambiar la instalación, pero no eres admin del grupo seleccionado | Que el admin del grupo conecte el repositorio |
+| `/github?status=updated` con «… Elige el grupo y pulsa «Ya instalé la App» para conectar el repositorio.» | Volviste de GitHub sin un grupo seleccionado en TaskMate | Elegir el grupo en **Groups** y pulsar «Ya instalé la App» |
+| «La GitHub App todavía no tiene los permisos de CI/CD en este repositorio…» (`APP_PERMISSIONS_MISSING`, 409) | La App no tiene registrados los permisos de la Fase 4, o la instalación no los aceptó | Agregar los permisos a la App y aceptarlos en la instalación ([cómo](#aceptar-permisos-nuevos-en-una-instalación-existente)) |
+| La pestaña CI/CD no se actualiza sola y no llegan avisos de CI/CD | La App no está suscrita a **Workflow run**, **Workflow job** y **Deployment status**, o `smee-client` no corre | Suscribir los eventos (paso 4) y revisar smee; más casos en [GUIA-CICD.md](../fase-04-pipeline-cicd/GUIA-CICD.md#11-solución-de-problemas) |
 | *(nota)* Con smee, el código de respuesta de la API aparece en la salida de `smee-client` (`POST … - 401`), no en **Recent Deliveries** de GitHub, que solo ve la respuesta de smee.io | | |
 | Webhook responde **401** | `GITHUB_WEBHOOK_SECRET` vacío o distinto del *Webhook secret* de la App | Igualarlos y reiniciar la API; luego *Redeliver* |
 | Webhook responde **400** | Faltan las cabeceras `X-GitHub-Event`/`X-GitHub-Delivery` o el cuerpo no es un objeto JSON (no viene de GitHub) | Enviar solo a través de la App/smee |
@@ -331,5 +383,5 @@ Recomendación: instala la App **desde TaskMate** («Conectar repositorio») par
 
 ---
 
-**Documento generado:** 11 sep 2026 · **Última actualización:** 6 oct 2026 (E2E con GitHub real)
+**Documento generado:** 11 sep 2026 · **Última actualización:** 22 oct 2026 (permisos y eventos de la Fase 4, «Redirect on update» marcado, conectar exige permiso de escritura)
 **Autor:** Pablo Pineda

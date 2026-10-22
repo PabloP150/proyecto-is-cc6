@@ -1,10 +1,12 @@
-"""Pydantic models for the `analyze_repository` contract between Node and Python.
+"""Pydantic models for the `analyze_repository` and `propose_pipeline` contracts between Node and Python.
 
-Input models are lenient (malformed items are dropped, missing fields get defaults) because the
-snapshot is assembled from third-party repository data. Output models are strict: they describe
-exactly the plan shape Node receives.
+Repository-analysis input models are lenient (malformed items are dropped, missing fields get defaults)
+because the snapshot is assembled from third-party repository data. Output models are strict: they
+describe exactly the plan shape Node receives. Pipeline input comes from facts Node already bounded,
+so it is validated strictly (only unknown keys are ignored).
 """
-from typing import Any, List, Literal, Optional
+import json
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, ValidationError, field_validator
 
@@ -295,3 +297,89 @@ class RepoPlan(BaseModel):
     summary: str = Field(default='', max_length=SUMMARY_MAX)
     milestones: List[PlanMilestone] = Field(default_factory=list, max_length=HARD_MAX_MILESTONES)
     tasks: List[PlanTask] = Field(default_factory=list, max_length=HARD_MAX_TASKS)
+
+
+# ---------------------------------------------------------------- propose_pipeline input (Node -> Python)
+
+PIPELINE_MAX_PROJECTS = 6
+PIPELINE_MAX_SCRIPTS = 40
+PIPELINE_SCRIPT_NAME_MAX = 100
+PIPELINE_COMMAND_MAX = 200
+PIPELINE_DIR_MAX = 200
+PIPELINE_DETECTED_MAX_CHARS = 4000
+PIPELINE_EXPLANATION_MAX = 600
+_PIPELINE_SHORT_MAX = 20  # lockfile, runtime, framework and version names
+_PIPELINE_LIST_MAX = 10
+
+
+class _PipelineInput(BaseModel):
+    model_config = ConfigDict(extra='ignore')
+
+
+class PipelineRepo(_PipelineInput):
+    fullName: str = Field(min_length=1, max_length=140)
+    defaultBranch: Optional[str] = Field(default=None, max_length=255)
+
+
+class PipelineProject(_PipelineInput):
+    dir: str = Field(min_length=1, max_length=PIPELINE_DIR_MAX)
+    stack: Literal['node', 'python', 'static']
+    scripts: Dict[str, str] = Field(default_factory=dict, max_length=PIPELINE_MAX_SCRIPTS)
+    longRunning: List[str] = Field(default_factory=list, max_length=PIPELINE_MAX_SCRIPTS)
+    lockfile: Optional[str] = Field(default=None, max_length=_PIPELINE_SHORT_MAX)
+    runtime: Optional[str] = Field(default=None, max_length=_PIPELINE_SHORT_MAX)
+    framework: Optional[str] = Field(default=None, max_length=_PIPELINE_SHORT_MAX)
+    siteDirs: List[str] = Field(default_factory=list, max_length=_PIPELINE_LIST_MAX)
+    requirementFiles: List[str] = Field(default_factory=list, max_length=_PIPELINE_LIST_MAX)
+    pyproject: bool = False
+    usesPytest: bool = False
+
+    @field_validator('scripts')
+    @classmethod
+    def _bounded_scripts(cls, value: Dict[str, str]) -> Dict[str, str]:
+        for name, command in value.items():
+            if not name or len(name) > PIPELINE_SCRIPT_NAME_MAX or len(command) > PIPELINE_COMMAND_MAX:
+                raise ValueError('script name or command is too long')
+        return value
+
+    @field_validator('longRunning', 'siteDirs', 'requirementFiles')
+    @classmethod
+    def _bounded_items(cls, value: List[str]) -> List[str]:
+        if any(len(item) > PIPELINE_DIR_MAX for item in value):
+            raise ValueError('item is too long')
+        return value
+
+
+class PipelineOptions(_PipelineInput):
+    nodeVersions: List[str] = Field(default_factory=list, max_length=_PIPELINE_LIST_MAX)
+    pythonVersions: List[str] = Field(default_factory=list, max_length=_PIPELINE_LIST_MAX)
+
+    @field_validator('nodeVersions', 'pythonVersions')
+    @classmethod
+    def _short_versions(cls, value: List[str]) -> List[str]:
+        if any(len(item) > _PIPELINE_SHORT_MAX for item in value):
+            raise ValueError('version is too long')
+        return value
+
+
+class ProposePipelineParams(_PipelineInput):
+    repo: PipelineRepo
+    projects: List[PipelineProject] = Field(min_length=1, max_length=PIPELINE_MAX_PROJECTS)
+    detected: Dict[str, Any] = Field(default_factory=dict)
+    options: PipelineOptions
+
+    @field_validator('detected', mode='before')
+    @classmethod
+    def _detected(cls, value):
+        return {} if value is None else value
+
+    @field_validator('detected')
+    @classmethod
+    def _bounded_detected(cls, value: Dict[str, Any]) -> Dict[str, Any]:
+        try:
+            size = len(json.dumps(value, ensure_ascii=False, separators=(',', ':')))
+        except (TypeError, ValueError):
+            raise ValueError('detected is not JSON')
+        if size > PIPELINE_DETECTED_MAX_CHARS:
+            raise ValueError('detected is too large')
+        return value

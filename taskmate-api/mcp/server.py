@@ -114,7 +114,8 @@ class Connection:
             return
         try:
             request = json.loads(raw)
-        except ValueError:
+        except (ValueError, RecursionError):
+            # Deeply nested JSON raises RecursionError; uncaught it would close the shared connection.
             request = None
         if not isinstance(request, dict):
             fields = _fields_from_raw(raw)

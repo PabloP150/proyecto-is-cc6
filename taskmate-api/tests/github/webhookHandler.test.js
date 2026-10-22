@@ -9,7 +9,9 @@ jest.mock('../../models/github.model', () => ({
     applyPullRequest: jest.fn(),
     findTaskByBranch: jest.fn(),
     getGroupRepository: jest.fn(),
+    getGroupIdsByRepo: jest.fn(),
 }));
+jest.mock('../../services/realtime', () => ({ realtime: { publish: jest.fn() } }));
 jest.mock('../../helpers/transaction', () => ({ withTransaction: jest.fn(), isFkViolation: jest.fn() }));
 jest.mock('../../models/tasks.model', () => ({ completeTask: jest.fn() }));
 jest.mock('../../services/AnalyticsIntegration', () => ({ onTaskCompletion: jest.fn() }));
@@ -24,6 +26,7 @@ const AnalyticsIntegration = require('../../services/AnalyticsIntegration');
 const { githubApp } = require('../../services/github/githubApp');
 const { createWebhookHandler } = require('../../services/github/webhookHandler');
 const { signWebhookPayload } = require('../../services/github/webhookSignature');
+const { realtime } = require('../../services/realtime');
 const { useFakeGitHub, tokenRoute, REPO } = require('./helpers/fakeGitHub');
 
 const SECRET = 'whsec-test';
@@ -87,6 +90,8 @@ beforeEach(() => {
     githubModel.findTaskByBranch.mockResolvedValue({ tid: 'T1', gid: 'G1' });
     tasksModel.completeTask.mockResolvedValue({ status: 'completed' });
     AnalyticsIntegration.onTaskCompletion.mockResolvedValue({ success: true });
+    githubModel.getGroupIdsByRepo.mockResolvedValue(['G1', 'G2']);
+    realtime.publish.mockResolvedValue(1);
 });
 
 const sendRaw = (app, event, rawText) => request(app)
@@ -381,4 +386,75 @@ test('unhandled events → ignored', async () => {
     const res = await send(buildApp(), 'push', { installation: { id: 77 } });
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('ignored');
+});
+
+describe('CI/CD events (relayed live, never stored)', () => {
+    const repository = { id: 500, name: 'demo', full_name: 'octo/demo', default_branch: 'main', private: false };
+    const workflowRun = (extra = {}) => ({
+        id: 901, name: 'TaskMate CI/CD', display_title: 'feat: login', path: '.github/workflows/taskmate-ci.yml', event: 'push',
+        status: 'completed', conclusion: 'failure', head_branch: 'main', head_sha: HEAD_SHA,
+        actor: { login: 'ana' }, html_url: 'https://github.com/octo/demo/actions/runs/901', ...extra,
+    });
+
+    test('workflow_run → published to every linked group with a small payload', async () => {
+        const res = await send(buildApp(), 'workflow_run', { action: 'completed', repository, installation: { id: 77 }, workflow_run: workflowRun() });
+        expect(res.status).toBe(200);
+        expect(res.body.status).toBe('processed');
+        expect(githubModel.getGroupIdsByRepo).toHaveBeenCalledWith(500);
+        expect(githubModel.finishDelivery).toHaveBeenCalledWith(DELIVERY, 'processed');
+        expect(realtime.publish).toHaveBeenCalledTimes(2);
+        expect(realtime.publish).toHaveBeenCalledWith('G1', 'ci_run', {
+            action: 'completed', runId: 901, name: 'TaskMate CI/CD', title: 'feat: login', event: 'push', status: 'completed',
+            conclusion: 'failure', branch: 'main', shortSha: 'fffffff', actor: 'ana',
+            htmlUrl: 'https://github.com/octo/demo/actions/runs/901', isTaskmate: true, isDeploy: false,
+        });
+    });
+
+    test('a deploy run dispatched by TaskMate is flagged; a non-GitHub html_url is dropped', async () => {
+        await send(buildApp(), 'workflow_run', {
+            action: 'requested', repository,
+            workflow_run: workflowRun({ event: 'workflow_dispatch', display_title: 'Deploy a producción desde TaskMate', html_url: 'javascript:alert(1)' }),
+        });
+        expect(realtime.publish).toHaveBeenCalledWith('G1', 'ci_run', expect.objectContaining({ isDeploy: true, htmlUrl: null }));
+    });
+
+    test('workflow_job → ci_job', async () => {
+        await send(buildApp(), 'workflow_job', {
+            action: 'in_progress', repository,
+            workflow_job: { id: 77, run_id: 901, name: 'CI (Node.js)', status: 'in_progress', conclusion: null },
+        });
+        expect(realtime.publish).toHaveBeenCalledWith('G2', 'ci_job', { action: 'in_progress', runId: 901, jobId: 77, name: 'CI (Node.js)', status: 'in_progress', conclusion: null });
+    });
+
+    test('deployment_status of a TaskMate deploy → deployment; other deployments are ignored', async () => {
+        const deployment = { id: 5, task: 'deploy:taskmate', environment: 'production', sha: HEAD_SHA, payload: { taskmate: true, requestedBy: 'ana' } };
+        const status = { state: 'success', environment_url: 'https://octo.github.io/demo/', log_url: 'https://github.com/octo/demo/actions/runs/1' };
+        await send(buildApp(), 'deployment_status', { action: 'created', repository, deployment, deployment_status: status });
+        expect(realtime.publish).toHaveBeenCalledWith('G1', 'deployment', {
+            deploymentId: 5, environment: 'production', state: 'success', sha: HEAD_SHA, shortSha: 'fffffff',
+            url: 'https://octo.github.io/demo/', logUrl: 'https://github.com/octo/demo/actions/runs/1', requestedBy: 'ana',
+        });
+
+        realtime.publish.mockClear();
+        const res = await send(buildApp(), 'deployment_status', { action: 'created', repository, deployment: { ...deployment, task: 'deploy' }, deployment_status: status }, { delivery: '6c3f1a2e-0b9d-11f0-8a3e-0242ac120003' });
+        expect(res.body.status).toBe('ignored');
+        expect(realtime.publish).not.toHaveBeenCalled();
+    });
+
+    test('a repository no group uses is ignored', async () => {
+        githubModel.getGroupIdsByRepo.mockResolvedValue([]);
+        const res = await send(buildApp(), 'workflow_run', { action: 'completed', repository, workflow_run: workflowRun() });
+        expect(res.body.status).toBe('ignored');
+        expect(githubModel.finishDelivery).toHaveBeenCalledWith(DELIVERY, 'ignored');
+        expect(realtime.publish).not.toHaveBeenCalled();
+    });
+
+    test('a failing publish never fails the delivery', async () => {
+        realtime.publish.mockRejectedValue(new Error('socket gone'));
+        const spy = jest.spyOn(console, 'error').mockImplementation(() => {});
+        const res = await send(buildApp(), 'workflow_run', { action: 'completed', repository, workflow_run: workflowRun() });
+        expect(res.status).toBe(200);
+        await new Promise((r) => setImmediate(r));
+        spy.mockRestore();
+    });
 });

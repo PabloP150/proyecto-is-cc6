@@ -7,6 +7,7 @@ jest.mock('../../helpers/transaction', () => ({
 }));
 
 const { execReadCommand } = require('../../helpers/execQuery');
+const { useTransaction } = require('../../helpers/transaction');
 const githubModel = require('../../models/github.model');
 
 const GID = '11111111-1111-4111-8111-111111111111';
@@ -40,5 +41,39 @@ describe('getTaskLinksByGroup', () => {
             },
             { tid: 'T2', branchName: 'tm/nopr-2', pr: null },
         ]);
+    });
+});
+
+describe('pending deploy requests of other repositories (Phase 4)', () => {
+    const NEW_REPO = 501;
+    let tx;
+    beforeEach(() => {
+        tx = { read: jest.fn(), write: jest.fn().mockResolvedValue(1) };
+        useTransaction.mockImplementation((options, fn) => fn(tx));
+    });
+    const statements = () => tx.write.mock.calls.map(([sql, params]) => ({ sql: sql.replace(/\s+/g, ' ').trim(), params }));
+    const param = (params, name) => params.find((p) => p.name === name).value;
+    const deleteRequests = () => statements().find((s) => /DELETE FROM dbo\.DeployRequests/.test(s.sql));
+
+    test('switching repositories deletes the pending requests of any other repository, in the same transaction', async () => {
+        tx.read.mockResolvedValue([{ repo_id: '500' }]);
+        await expect(githubModel.linkGroupRepository({ gid: GID, repoId: NEW_REPO, connectedBy: GID })).resolves.toEqual({ previousRepoId: 500 });
+        const del = deleteRequests();
+        expect(del.sql).toMatch(/WHERE gid = @gid AND status = 'pending' AND \(@repoId IS NULL OR repo_id <> @repoId\)/);
+        expect(param(del.params, 'gid')).toBe(GID);
+        expect(param(del.params, 'repoId')).toBe(NEW_REPO);
+        // Locked link row first, then the update, then the cleanups.
+        expect(tx.read.mock.calls[0][0]).toMatch(/GroupRepositories WITH \(UPDLOCK, HOLDLOCK\)/);
+        expect(statements()[0].sql).toMatch(/^UPDATE dbo\.GroupRepositories/);
+    });
+
+    test('unlinking deletes every pending request of the group, after locking the link row', async () => {
+        tx.read.mockResolvedValue([{ repo_id: '500' }]);
+        await expect(githubModel.unlinkGroupRepository(GID)).resolves.toBe(true);
+        expect(tx.read.mock.calls[0][0]).toMatch(/GroupRepositories WITH \(UPDLOCK, HOLDLOCK\)/);
+        const del = deleteRequests();
+        expect(param(del.params, 'repoId')).toBeNull();
+        const order = statements().map((s) => s.sql.match(/^DELETE (?:\w+ )?FROM dbo\.(\w+)/)[1]);
+        expect(order).toEqual(['TaskBranches', 'DeployRequests', 'GroupRepositories']);
     });
 });

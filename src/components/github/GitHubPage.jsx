@@ -5,19 +5,22 @@ import SyncIcon from '@mui/icons-material/Sync';
 import { Alert, Box, Chip, CircularProgress, Container, Snackbar, Tab, Tabs, Typography } from '@mui/material';
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-dom';
-import { getRepository, syncGroup } from '../../api/github';
+import { getRepository, install, syncGroup } from '../../api/github';
 import { GroupContext } from '../GroupContext';
 import Button from '../ui/Button';
 import Card from '../ui/Card';
+import CicdPanel from './cicd/CicdPanel';
 import CommitList from './CommitList';
 import RepoExplorer from './RepoExplorer';
 import RepoSelection from './RepoSelection';
 import RepositoryPanel, { AI_CONSENT_TEXT } from './RepositoryPanel';
 import {
+  assignLocation,
   callbackErrorMessage,
   errorMessage,
   getCurrentUserId,
   isAbortError,
+  isGitHubUrl,
   sameId,
   staticCardSx,
 } from './githubUtils';
@@ -25,6 +28,11 @@ import {
 const PENDING_MESSAGE =
   'La instalación quedó pendiente: un propietario de la organización debe aprobarla en GitHub. ' +
   'Cuando la apruebe, vuelve aquí y pulsa «Ya instalé la App».';
+const UPDATED_REDIRECT_MESSAGE = 'Acceso actualizado en GitHub. Abriendo la lista de repositorios…';
+const UPDATED_NOT_ADMIN_MESSAGE =
+  'La instalación de la GitHub App cambió en GitHub. Solo el administrador del grupo puede conectar el repositorio.';
+const UPDATED_NO_GROUP_MESSAGE =
+  'La instalación de la GitHub App cambió en GitHub. Elige el grupo y pulsa «Ya instalé la App» para conectar el repositorio.';
 
 function CenteredStatus({ children }) {
   return (
@@ -51,7 +59,7 @@ function GroupPrompt({ title, message }) {
   );
 }
 
-/** Route /github: repository connection, file explorer, commits, PR sync and AI analysis. */
+/** Route /github: repository connection, file explorer, commits, CI/CD, PR sync and AI analysis. */
 export default function GitHubPage() {
   // GroupContext restores the selected group from storage and owns the user's group list.
   const {
@@ -74,6 +82,10 @@ export default function GitHubPage() {
   const [tab, setTab] = useState('repo');
   const [syncing, setSyncing] = useState(false);
   const [toast, setToast] = useState(null);
+  const [reauth, setReauth] = useState(false);
+  // ?tab=cicd (the «Ver» of a CI/CD notification) opens that tab once the repository is usable.
+  const [wantedTab, setWantedTab] = useState(null);
+  const reauthStarted = useRef(false);
   const toastCount = useRef(0);
 
   const groups = useMemo(() => (Array.isArray(contextGroups) ? contextGroups : []), [contextGroups]);
@@ -104,12 +116,25 @@ export default function GitHubPage() {
       setNotice({ severity: 'success', message: 'Repositorio conectado correctamente.' });
     } else if (status === 'pending') {
       setNotice({ severity: 'info', message: PENDING_MESSAGE });
+    } else if (status === 'updated') {
+      // GitHub came back after the owner changed the installation (e.g. gave access to another
+      // repository); see the effect below.
+      setReauth(true);
+      setNotice(null);
     } else if (status === 'error' || status === 'select') {
       setNotice({ severity: 'error', message: callbackErrorMessage(searchParams.get('code')) });
     }
     setSearchParams({}, { replace: true });
     // Only the query string drives this; `gid`/`groups` are read at that moment on purpose.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, setSearchParams]);
+
+  useEffect(() => {
+    if (searchParams.get('tab') !== 'cicd') return;
+    setWantedTab('cicd');
+    const next = new URLSearchParams(searchParams);
+    next.delete('tab');
+    setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams]);
 
   // Fresh list (admin changes, new groups); the context may be empty after a reload.
@@ -164,6 +189,43 @@ export default function GitHubPage() {
   useEffect(() => {
     if (!usable && tab !== 'repo') setTab('repo');
   }, [usable, tab]);
+
+  useEffect(() => {
+    if (!wantedTab || !usable) return;
+    setTab(wantedTab);
+    setWantedTab(null);
+  }, [wantedTab, usable]);
+
+  // That return has no state, so it cannot be trusted to link anything: an admin of the selected
+  // group is sent straight back through the normal, state-protected authorize flow (GitHub returns
+  // at once when the App is already authorized) and lands on the repository selection.
+  useEffect(() => {
+    if (!reauth || reauthStarted.current) return;
+    if (!gid) {
+      setReauth(false);
+      setNotice({ severity: 'info', message: UPDATED_NO_GROUP_MESSAGE });
+      return;
+    }
+    if (groupsState.loading) return;
+    if (!isAdmin) {
+      setReauth(false);
+      setNotice({ severity: 'info', message: UPDATED_NOT_ADMIN_MESSAGE });
+      return;
+    }
+    reauthStarted.current = true;
+    setNotice({ severity: 'info', message: UPDATED_REDIRECT_MESSAGE });
+    install(gid)
+      .then((data) => {
+        const url = data && data.authorizeUrl;
+        if (!isGitHubUrl(url)) throw new Error('invalid authorize URL');
+        assignLocation(url);
+      })
+      .catch((err) => {
+        reauthStarted.current = false;
+        setReauth(false);
+        setNotice({ severity: 'error', message: errorMessage(err, 'No se pudo abrir la selección de repositorios. Pulsa «Ya instalé la App».') });
+      });
+  }, [reauth, gid, isAdmin, groupsState.loading]);
 
   const handleLinked = (linkedRepo, linkedGid) => {
     setSelectionId(null);
@@ -253,6 +315,7 @@ export default function GitHubPage() {
           <Tab value="repo" label="Repositorio" id="gh-tab-repo" aria-controls="gh-panel" />
           <Tab value="files" label="Archivos" id="gh-tab-files" aria-controls="gh-panel" disabled={!usable} />
           <Tab value="commits" label="Commits" id="gh-tab-commits" aria-controls="gh-panel" disabled={!usable} />
+          <Tab value="cicd" label="CI/CD" id="gh-tab-cicd" aria-controls="gh-panel" disabled={!usable} />
         </Tabs>
         <Box role="tabpanel" id="gh-panel" aria-labelledby={`gh-tab-${tab}`}>
           {tab === 'repo' &&
@@ -287,6 +350,7 @@ export default function GitHubPage() {
               <CommitList gid={gid} gitRef={repo.defaultBranch || undefined} />
             </Card>
           )}
+          {tab === 'cicd' && usable && <CicdPanel gid={gid} repo={repo} isAdmin={isAdmin} />}
         </Box>
       </>
     );
@@ -304,7 +368,8 @@ export default function GitHubPage() {
             {gid && groupName && <Chip label={`Grupo: ${groupName}`} size="small" color="primary" variant="outlined" />}
           </Box>
           <Typography color="text.secondary" sx={{ mt: 0.5 }}>
-            Conecta el repositorio del grupo, explora su código y deja que la IA proponga las siguientes tareas.
+            Conecta el repositorio del grupo, explora su código, maneja su CI/CD y deja que la IA proponga las siguientes
+            tareas.
           </Typography>
         </Box>
         {gid && usable && !groupMissing && (

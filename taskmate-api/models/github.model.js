@@ -113,8 +113,15 @@ const DELETE_STALE_BRANCHES = `
     INNER JOIN dbo.Tasks t ON t.tid = tb.tid
     WHERE t.gid = @gid AND (@repoId IS NULL OR tb.repo_id <> @repoId)`;
 
+// Pending deploy requests (Phase 4) for a repository the group no longer uses: they could never be
+// approved, and the one pending slot per environment would stay taken. Decided ones stay as history.
+const DELETE_STALE_DEPLOY_REQUESTS = `
+    DELETE FROM dbo.DeployRequests
+    WHERE gid = @gid AND status = 'pending' AND (@repoId IS NULL OR repo_id <> @repoId)`;
+
 // linkGroupRepository({gid, repoId, connectedBy}) → {previousRepoId}
-// Switching repositories also drops the old repo's task branches and resets the AI opt-in.
+// Switching repositories also drops the old repo's task branches and pending deploy requests, and
+// resets the AI opt-in.
 const linkGroupRepository = async ({ gid, repoId, connectedBy }, options = {}) => {
     try {
         return await useTransaction(options, async (tx) => {
@@ -142,6 +149,7 @@ const linkGroupRepository = async ({ gid, repoId, connectedBy }, options = {}) =
                 );
             }
             await tx.write(DELETE_STALE_BRANCHES, params);
+            await tx.write(DELETE_STALE_DEPLOY_REQUESTS, params);
             return { previousRepoId: current.length > 0 ? toNumber(current[0].repo_id) : null };
         });
     } catch (err) {
@@ -150,13 +158,17 @@ const linkGroupRepository = async ({ gid, repoId, connectedBy }, options = {}) =
     }
 };
 
-// Also drops every task branch of the group. → true when a link existed.
+// Also drops every task branch and pending deploy request of the group. → true when a link existed.
+// The link row is locked first, like linkGroupRepository and cicd.model createDeployRequest, so the
+// three always take their locks in the same order.
 const unlinkGroupRepository = async (gid, options = {}) => useTransaction(options, async (tx) => {
     const params = [
         { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
         { name: 'repoId', type: TYPES.BigInt, value: null },
     ];
+    await tx.read('SELECT repo_id FROM dbo.GroupRepositories WITH (UPDLOCK, HOLDLOCK) WHERE gid = @gid', params);
     await tx.write(DELETE_STALE_BRANCHES, params);
+    await tx.write(DELETE_STALE_DEPLOY_REQUESTS, params);
     return (await tx.write('DELETE FROM dbo.GroupRepositories WHERE gid = @gid', params)) > 0;
 });
 
@@ -198,6 +210,15 @@ const getGroupRepository = async (gid, options = {}) => {
         connectedByUsername: r.connected_by_username,
         aiAnalysisEnabled: Boolean(r.ai_analysis_enabled),
     };
+};
+
+// Groups linked to a repository right now (one repository may serve several groups).
+const getGroupIdsByRepo = async (repoId, options = {}) => {
+    const rows = await read(options,
+        'SELECT gid FROM dbo.GroupRepositories WHERE repo_id = @repoId',
+        [bigIntParam('repoId', repoId)]
+    );
+    return rows.map((r) => r.gid);
 };
 
 // ---------------------------------------------------------------- task branches
@@ -509,6 +530,7 @@ module.exports = {
     linkGroupRepository,
     unlinkGroupRepository,
     getGroupRepository,
+    getGroupIdsByRepo,
     setAiAnalysisEnabled,
     getTaskBranch,
     insertTaskBranch,

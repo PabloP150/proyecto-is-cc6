@@ -29,11 +29,15 @@ describe('migrations', () => {
         expect(await objectExists('dbo.PullRequests')).toBe(false);
         expect(await objectExists('dbo.AnalyticsConfig')).toBe(false);
         expect(await objectExists('dbo.UpdateTargetNodePercentage')).toBe(false);
+        expect(await objectExists('dbo.RepoPipelines')).toBe(false);
+        expect(await objectExists('dbo.DeployRequests')).toBe(false);
         expect(await h.count('dbo.SchemaMigrations')).toBe(0);
 
         await expect(runner.up()).resolves.toEqual([...Array(LATEST)].map((_, i) => i + 1));
         expect(await objectExists('dbo.PullRequests')).toBe(true);
         expect(await objectExists('dbo.UpdateTargetNodePercentage')).toBe(true);
+        expect(await objectExists('dbo.RepoPipelines')).toBe(true);
+        expect(await indexExists('dbo.DeployRequests', 'UX_DeployRequests_Pending')).toBe(true);
         expect(await h.count('dbo.SchemaMigrations')).toBe(LATEST);
         expect(await h.count("sys.foreign_keys WHERE parent_object_id = OBJECT_ID('dbo.TaskAnalytics') AND referenced_object_id = OBJECT_ID('dbo.Tasks')")).toBe(0);
     });

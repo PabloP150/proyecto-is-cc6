@@ -19,6 +19,15 @@ const PERMISSIONS = Object.freeze({
     snapshot: Object.freeze({ contents: 'read', issues: 'read' }),
     pulls: Object.freeze({ pull_requests: 'read' }),
     writeRefs: Object.freeze({ contents: 'write' }),
+    // Phase 4 (CI/CD). Writing a file under .github/workflows/ needs `workflows` on top of `contents`.
+    actionsRead: Object.freeze({ actions: 'read' }),
+    actionsWrite: Object.freeze({ actions: 'write' }),
+    checksRead: Object.freeze({ checks: 'read' }),
+    writeWorkflow: Object.freeze({ contents: 'write', workflows: 'write' }),
+    deploymentsRead: Object.freeze({ deployments: 'read' }),
+    pagesRead: Object.freeze({ pages: 'read' }),
+    // Creating a Pages site needs Administration on top of Pages; only the "enable Pages" action asks for it.
+    pagesAdmin: Object.freeze({ administration: 'write', pages: 'write' }),
 });
 
 const notConfigured = () => new AppError('GITHUB_NOT_CONFIGURED', 'GitHub integration is not configured', 503);
@@ -58,17 +67,32 @@ const withStatus = (err, status) => {
     return err;
 };
 
-const mapGitHubError = (status, headers, data, { nowMs, tokenMint = false, notFoundCode } = {}) => {
+/**
+ * GITHUB_RATE_LIMITED (with retryAfterSec) when a response is a rate limit, else null: a 429, or a
+ * 403 with the primary limit spent or a "secondary rate limit" message. Exported for callers that
+ * accept a 403 themselves (allowStatus) and must still tell a rate limit apart from a refusal.
+ */
+const rateLimitError = (status, headers, data, nowMs = Date.now()) => {
     const message = data && typeof data.message === 'string' ? data.message : '';
     const rateLimited = status === 429
         || (status === 403 && (headers.get('x-ratelimit-remaining') === '0' || /rate limit/i.test(message)));
-    if (rateLimited) {
-        const retryAfterSec = retryAfterSeconds(headers, nowMs);
-        return withStatus(new AppError('GITHUB_RATE_LIMITED', 'GitHub rate limit reached, try again later', 503, { retryAfterSec }), status);
-    }
+    if (!rateLimited) return null;
+    const retryAfterSec = retryAfterSeconds(headers, nowMs);
+    return withStatus(new AppError('GITHUB_RATE_LIMITED', 'GitHub rate limit reached, try again later', 503, { retryAfterSec }), status);
+};
+
+const mapGitHubError = (status, headers, data, { nowMs, tokenMint = false, notFoundCode } = {}) => {
+    const message = data && typeof data.message === 'string' ? data.message : '';
+    const limited = rateLimitError(status, headers, data, nowMs);
+    if (limited) return limited;
     if (tokenMint) {
         if (status === 403 && /suspend/i.test(message)) {
             return withStatus(new AppError('INSTALLATION_SUSPENDED', 'The GitHub App installation is suspended', 409), status);
+        }
+        // The App (or this installation) has not been granted a permission the operation asks for,
+        // e.g. the Phase 4 permissions before the owner accepted them.
+        if (status === 422 && /permission/i.test(message)) {
+            return withStatus(new AppError('APP_PERMISSIONS_MISSING', 'The GitHub App installation lacks a permission this action needs', 409), status);
         }
         if (status === 403 || status === 404 || status === 422) {
             return withStatus(new AppError('REPO_NOT_ACCESSIBLE', 'The repository is not accessible to the GitHub App', 403), status);
@@ -252,12 +276,13 @@ class GitHubApp {
         return url.toString();
     }
 
-    async _send(url, method, headers, body) {
+    async _send(url, method, headers, body, redirect = 'follow') {
         try {
             return await this.fetch(url, {
                 method,
                 headers,
                 body: body === undefined ? undefined : JSON.stringify(body),
+                redirect,
                 signal: AbortSignal.timeout(this.timeoutMs),
             });
         } catch {
@@ -266,8 +291,10 @@ class GitHubApp {
     }
 
     // auth: {installationId} | {token} (user token) | {app: true}. Returns {status, data, headers}.
+    // redirect: 'manual' returns a 3xx as is (list it in allowStatus) instead of following it with
+    // the Authorization header, e.g. for job logs, which GitHub serves from a short-lived storage URL.
     async request(auth, method, path, options = {}) {
-        const { query, body, repoIds, permissions, allowStatus = [], notFoundCode, tokenMint = false, retried = false } = options;
+        const { query, body, repoIds, permissions, allowStatus = [], notFoundCode, tokenMint = false, retried = false, redirect } = options;
         if (auth && auth.installationId !== undefined) this._takeBudget(auth.installationId);
         const headers = {
             Accept: 'application/vnd.github+json',
@@ -277,7 +304,7 @@ class GitHubApp {
         };
         if (body !== undefined) headers['Content-Type'] = 'application/json';
 
-        const res = await this._send(this._url(path, query), method, headers, body);
+        const res = await this._send(this._url(path, query), method, headers, body, redirect);
         let data = null;
         if (res.status !== 204) {
             const text = await res.text().catch(() => '');
@@ -331,6 +358,7 @@ module.exports = {
     githubApp: defaultApp,
     PERMISSIONS,
     mapGitHubError,
+    rateLimitError,
     parseNextLink,
     decodePrivateKey,
     API_BASE,

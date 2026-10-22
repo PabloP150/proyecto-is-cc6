@@ -11,7 +11,7 @@ Bienvenido a la documentación de desarrollo de TaskMate. Este repositorio docum
 | 1 | Preparación de entornos, repositorio y CI inicial | Baja | 14 ago – 21 ago | ✅ Completo | [Link](fase-01-entornos-repositorio-ci/README.md) |
 | 2 | Optimización y mejora del rendimiento | Media | 21 ago – 4 sep | ✅ Completo | [Link](fase-02-optimizacion-rendimiento/README.md) |
 | 3 | Integración con GitHub | Media | 4 sep – 18 sep | ✅ Completo | [Link](fase-03-integracion-github/README.md) |
-| 4 | Pipeline CI/CD completo (build, pruebas, análisis estático, deploy y actualización automática) | Alta | 18 sep – 9 oct | ⏳ En curso | — |
+| 4 | Pipeline CI/CD completo (build, pruebas, análisis estático, deploy y actualización automática) | Alta | 18 sep – 9 oct | ✅ Completo | [Link](fase-04-pipeline-cicd/README.md) |
 | 5 | Testing automático (ciclo de pruebas por tarea) | Media | 9 oct – 23 oct | ⏳ Pendiente | — |
 | 6 | Integración con SonarQube | Media | 23 oct – 6 nov | ⏳ Pendiente | — |
 | 7 | Algoritmo de colisión de archivos (junto con Christian) | Alta | 6 nov – 20 nov | ⏳ Pendiente | — |
@@ -34,10 +34,13 @@ docs/
 │   ├── RESUMEN-VISUAL.md                        # Diagramas ASCII
 │   ├── CODIGO-LADO-A-LADO.md                    # Código antes/después
 │   └── COMO-LEER-ESTA-DOCUMENTACION.md          # Guía de navegación
-└── fase-03-integracion-github/
-    ├── README.md                                # Capítulo Fase 3 (principal)
-    ├── GUIA-GITHUB-APP.md                       # Registrar la GitHub App, .env, smee, checklist E2E
-    └── SEGURIDAD-Y-BASE-DE-DATOS.md             # Modelo de seguridad, diseño de BD, riesgos residuales
+├── fase-03-integracion-github/
+│   ├── README.md                                # Capítulo Fase 3 (principal)
+│   ├── GUIA-GITHUB-APP.md                       # Registrar la GitHub App (permisos de Fases 3 y 4), .env, smee, checklist E2E
+│   └── SEGURIDAD-Y-BASE-DE-DATOS.md             # Modelo de seguridad, diseño de BD, riesgos residuales
+└── fase-04-pipeline-cicd/
+    ├── README.md                                # Capítulo Fase 4 (principal): funcionalidades, arquitectura, workflow, seguridad, BD, rutas
+    └── GUIA-CICD.md                             # Guía de uso: configurar, ejecutar, logs, entornos, aprobar, rollback, problemas
 ```
 
 ---
@@ -75,12 +78,13 @@ docs/
 - **Fase 1:** Estructura de monorepo, CI inicial, documentación base
 - **Fase 2:** 7 optimizaciones implementadas, 6 documentos técnicos, benchmarks reales
 - **Fase 3:** GitHub dentro de TaskMate (conectar repo, explorador, rama por tarea, progreso automático por PR, la IA propone las siguientes tareas) + corrección de todos los problemas existentes detectados (ACID/3FN, JWT en todas las rutas, servidor de IA autenticado, XSS)
+- **Fase 4:** CI/CD del repositorio del grupo sin salir de TaskMate: TaskMate (o la IA) propone el pipeline y lo sube, ejecuciones y logs en vivo, ejecutar / re-ejecutar / cancelar, staging automático y producción con aprobación del admin en GitHub Pages, rollback y notificaciones; revisión con verificación adversarial y corrección de lo encontrado (plantilla v2 del workflow, solo versiones verificadas, vincular exige permiso de escritura)
 
-**Global:** -71% latencia, -97.5% operaciones BD y -65% bundle size (estimaciones de la Fase 2, no mediciones) | de 52 pruebas fallando a 1353 pasando (6 oct 2026)
+**Global:** -71% latencia, -97.5% operaciones BD y -65% bundle size (estimaciones de la Fase 2, no mediciones) | de 52 pruebas fallando a 1353 pasando (6 oct 2026) y 1914 al cierre de la Fase 4 (22 oct 2026: API 1228, frontend 404, Python 177, BD 105)
 
 ### ⏳ Próximas (Ordenadas)
-1. Fase 4: pipeline CI/CD completo (18 sep – 9 oct)
-2. Fases 5–8: testing automático, SonarQube, colisión de archivos (junto con Christian; se apoya en los datos de ramas y PRs de la Fase 3) y pruebas finales (hasta el 27 nov)
+1. Fase 5: testing automático, ciclo de pruebas por tarea (9 oct – 23 oct; recibe la idea «CI en el chip de la tarea» de la Fase 4)
+2. Fases 6–8: SonarQube, colisión de archivos (junto con Christian; se apoya en los datos de ramas y PRs de la Fase 3) y pruebas finales (hasta el 27 nov)
 
 ---
 
@@ -89,13 +93,14 @@ docs/
 ```
 14 ago   21 ago     4 sep      18 sep        9 oct      23 oct      6 nov      20 nov   27 nov
 |--F1----|----F2----|----F3----|-----F4------|----F5----|----F6----|----F7----|---F8---|
-   ✅         ✅         ✅          ⏳            ⏳          ⏳          ⏳        ⏳
+   ✅         ✅         ✅          ✅            ⏳          ⏳          ⏳        ⏳
 ```
 
 **F1:** Entornos, repositorio y CI inicial (14–21 ago)  
 **F2:** Optimización y rendimiento (21 ago – 4 sep; documentado 28 ago)  
 **F3:** Integración con GitHub (4–18 sep; implementada 10–11 sep, E2E real 5–6 oct)  
-**F4–F8:** CI/CD, testing automático, SonarQube, colisión de archivos (con Christian) y pruebas finales (18 sep – 27 nov)
+**F4:** Pipeline CI/CD completo (18 sep – 9 oct; implementada 9–22 oct)  
+**F5–F8:** testing automático, SonarQube, colisión de archivos (con Christian) y pruebas finales (9 oct – 27 nov)
 
 ---
 
@@ -115,6 +120,12 @@ docs/
 ### Bundle Size Reducido
 → [TABLA-COMPARATIVA-RAPIDA.md](fase-02-optimizacion-rendimiento/TABLA-COMPARATIVA-RAPIDA.md#8️⃣-code-splitting-frontend--reactlazy)  
 → [RESUMEN-VISUAL.md](fase-02-optimizacion-rendimiento/RESUMEN-VISUAL.md#-gráfico-5-bundle-size--code-splitting-frontend)
+
+### Pipeline CI/CD (Fase 4)
+→ [Cómo usarlo (miembros y admins)](fase-04-pipeline-cicd/GUIA-CICD.md)  
+→ [El workflow generado, job por job](fase-04-pipeline-cicd/README.md#el-workflow-generado-job-por-job)  
+→ [Revisión, verificación y correcciones](fase-04-pipeline-cicd/README.md#revisión-verificación-y-correcciones)  
+→ [Permisos y eventos de la GitHub App](fase-03-integracion-github/GUIA-GITHUB-APP.md#4-registrar-la-github-app)
 
 ---
 
@@ -143,4 +154,4 @@ Cada fase sigue esta plantilla: [_TEMPLATE-FASE.md](_TEMPLATE-FASE.md)
 ---
 
 **Documento generado:** 31 ago 2026  
-**Última actualización:** 6 oct 2026
+**Última actualización:** 22 oct 2026 (Fase 4)

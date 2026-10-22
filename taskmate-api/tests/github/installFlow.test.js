@@ -42,7 +42,11 @@ afterAll(() => {
     }
 });
 
-const repo = (id, name) => ({ id, name, full_name: `octo/${name}`, private: id % 2 === 0, default_branch: 'main', owner: { login: 'octo' } });
+const WRITE = Object.freeze({ admin: false, maintain: false, push: true, triage: true, pull: true });
+const READ_ONLY = Object.freeze({ admin: false, maintain: false, push: false, triage: false, pull: true });
+const repo = (id, name, permissions = WRITE) => ({
+    id, name, full_name: `octo/${name}`, private: id % 2 === 0, default_branch: 'main', owner: { login: 'octo' }, permissions,
+});
 
 const githubRoutes = ({ repos = [repo(500, 'demo')], installations = [{ id: 77 }], tokenBody } = {}) => ({
     'POST /login/oauth/access_token': { body: tokenBody || { access_token: 'ghu_user', token_type: 'bearer' } },
@@ -120,6 +124,25 @@ describe('handleCallback — state', () => {
         expect(parse(await installFlow.handleCallback({ state, code: 'c', installation_id: '77' })).status).toBe('select');
         const again = parse(await installFlow.handleCallback({ state, code: 'c', installation_id: '77' }));
         expect(again).toMatchObject({ status: 'error', code: 'INVALID_STATE' });
+    });
+
+    test('"Redirect on update" without state → updated: no code exchange, nothing linked', async () => {
+        const fetchImpl = useFakeGitHub(githubRoutes());
+        for (const setupAction of ['update', 'install']) {
+            const r = parse(await installFlow.handleCallback({ code: 'c', installation_id: '77', setup_action: setupAction }));
+            expect(r).toEqual({ origin: 'http://localhost:3000', path: '/github', status: 'updated' });
+        }
+        expect(fetchImpl.calls).toHaveLength(0);
+        expect(githubModel.linkGroupRepository).not.toHaveBeenCalled();
+    });
+
+    test('an update with a valid state keeps the normal flow; malformed stateless updates are INVALID_STATE', async () => {
+        useFakeGitHub(githubRoutes());
+        const r = parse(await installFlow.handleCallback({ state: newState(), code: 'c', installation_id: '77', setup_action: 'update' }));
+        expect(r.status).toBe('select');
+        for (const query of [{ installation_id: 'x', setup_action: 'update' }, { setup_action: 'update' }, { installation_id: '77', setup_action: 'request' }]) {
+            expect(parse(await installFlow.handleCallback(query))).toMatchObject({ status: 'error', code: 'INVALID_STATE' });
+        }
     });
 
     test('a state signed for another purpose is rejected', async () => {
@@ -234,6 +257,51 @@ describe('handleCallback — flow', () => {
         expect(parse(redirect)).toMatchObject({ status: 'error', code: 'INTERNAL_ERROR' });
         expect(redirect).not.toMatch(/Login failed/);
         spy.mockRestore();
+    });
+});
+
+describe('handleCallback — only repositories the user can write to', () => {
+    test('read-only and triage repositories, and ones without permissions, are left out of the selection', async () => {
+        useFakeGitHub(githubRoutes({
+            repos: [
+                repo(500, 'demo'),
+                repo(501, 'readonly', READ_ONLY),
+                repo(502, 'triage', { ...READ_ONLY, triage: true }),
+                repo(503, 'maintainer', { ...READ_ONLY, maintain: true }),
+                repo(504, 'admin', { ...READ_ONLY, admin: true }),
+                { ...repo(505, 'unknown'), permissions: undefined },
+                repo(506, 'truthy', { push: 'yes', pull: true }),
+            ],
+        }));
+        const r = parse(await installFlow.handleCallback({ state: newState(), code: 'abc', installation_id: '77' }));
+        expect(r.status).toBe('select');
+        expect(installFlow.getSelection(r.selection, UID).repos.map((x) => x.repoId)).toEqual([500, 503, 504]);
+    });
+
+    test('a read-only repository can never be linked, even by its id', async () => {
+        useFakeGitHub(githubRoutes({ repos: [repo(500, 'demo'), repo(501, 'readonly', READ_ONLY)] }));
+        const r = parse(await installFlow.handleCallback({ state: newState(), code: 'abc', installation_id: '77' }));
+        await expect(installFlow.completeSelection({ gid: GID, uid: UID, selectionId: r.selection, repoId: 501 }))
+            .rejects.toMatchObject({ code: 'REPO_NOT_ACCESSIBLE', status: 403 });
+        expect(githubModel.linkGroupRepository).not.toHaveBeenCalled();
+    });
+
+    test('only read access everywhere → NO_WRITABLE_REPOSITORIES, nothing to select; the token is still revoked', async () => {
+        const fetchImpl = useFakeGitHub(githubRoutes({ repos: [repo(500, 'demo', READ_ONLY), repo(501, 'two', READ_ONLY)] }));
+        const r = parse(await installFlow.handleCallback({ state: newState(), code: 'abc', installation_id: '77' }));
+        expect(r).toMatchObject({ status: 'error', code: 'NO_WRITABLE_REPOSITORIES', gid: GID });
+        expect(r.selection).toBeUndefined();
+        expect(installFlow._stores.selections.size).toBe(0);
+        expect(fetchImpl.calls.some((c) => c.method === 'DELETE' && c.path === '/applications/Iv1.client/token')).toBe(true);
+    });
+
+    test('authorize-only flow: writable repositories of every installation are kept', async () => {
+        useFakeGitHub({
+            ...githubRoutes({ installations: [{ id: 77 }, { id: 88 }], repos: [repo(500, 'demo', READ_ONLY)] }),
+            'GET /user/installations/88/repositories': { body: { total_count: 1, repositories: [repo(900, 'other')] } },
+        });
+        const r = parse(await installFlow.handleCallback({ state: newState(), code: 'abc' }));
+        expect(installFlow.getSelection(r.selection, UID).repos.map((x) => x.repoId)).toEqual([900]);
     });
 });
 

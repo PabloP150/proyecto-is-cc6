@@ -43,6 +43,7 @@ const ERROR_MESSAGES = {
     AI_ANALYSIS_DISABLED: 'El análisis con IA está desactivado para este proyecto; un administrador puede activarlo.',
     INSTALLATION_SUSPENDED: 'La instalación de la GitHub App está suspendida.',
     REPO_NOT_ACCESSIBLE: 'La GitHub App ya no tiene acceso al repositorio.',
+    APP_PERMISSIONS_MISSING: 'La instalación de la GitHub App no tiene todos los permisos; pide al dueño del repositorio que los acepte en GitHub.',
     REPO_EMPTY: 'El repositorio está vacío.',
     GITHUB_RATE_LIMITED: 'GitHub limitó las solicitudes; intenta más tarde.',
     GITHUB_ERROR: 'No se pudo leer el repositorio en GitHub.',

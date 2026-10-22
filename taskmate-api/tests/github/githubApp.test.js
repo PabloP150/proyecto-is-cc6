@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-const { GitHubApp, PERMISSIONS, parseNextLink } = require('../../services/github/githubApp');
+const { GitHubApp, PERMISSIONS, parseNextLink, rateLimitError } = require('../../services/github/githubApp');
 const { testKeys, createTestApp, tokenRoute, jsonResponse } = require('./helpers/fakeGitHub');
 
 describe('GitHubApp — app JWT', () => {
@@ -109,6 +109,13 @@ describe('GitHubApp — installation tokens', () => {
         await expect(app.getInstallationToken(77, { repoIds: [1] })).rejects.toMatchObject({ code: 'REPO_NOT_ACCESSIBLE', status: 403 });
     });
 
+    test('permission the installation was not granted (e.g. Phase 4 not accepted yet) → APP_PERMISSIONS_MISSING', async () => {
+        const { app } = createTestApp({
+            'POST /app/installations/77/access_tokens': { status: 422, body: { message: 'The permissions requested are not granted to this installation.' } },
+        });
+        await expect(app.getInstallationToken(77, { permissions: { actions: 'read' } })).rejects.toMatchObject({ code: 'APP_PERMISSIONS_MISSING', status: 409 });
+    });
+
     test('rejects a non-numeric installation id', async () => {
         const { app } = createTestApp({});
         await expect(app.getInstallationToken('abc')).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
@@ -163,6 +170,21 @@ describe('GitHubApp — request / paginate / errors', () => {
     ])('maps %j → %s', async (response, code, status) => {
         const { app } = createTestApp({ ...base, 'GET /repos/o/r': response });
         await expect(app.request({ installationId: 1 }, 'GET', '/repos/o/r')).rejects.toMatchObject({ code, status });
+    });
+
+    test('rateLimitError tells a rate limit apart from any other 403 (for callers that accept a 403)', () => {
+        const headers = (h) => new Headers(h);
+        const nowMs = Date.UTC(2026, 9, 22, 12, 0, 0);
+        expect(rateLimitError(403, headers({ 'retry-after': '30' }), { message: 'You have exceeded a secondary rate limit' }, nowMs))
+            .toMatchObject({ code: 'GITHUB_RATE_LIMITED', status: 503, details: { retryAfterSec: 30 }, githubStatus: 403 });
+        expect(rateLimitError(403, headers({ 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': String(nowMs / 1000 + 120) }), {}, nowMs))
+            .toMatchObject({ code: 'GITHUB_RATE_LIMITED', details: { retryAfterSec: 120 } });
+        // A secondary limit without Retry-After: GitHub asks to wait at least a minute.
+        expect(rateLimitError(403, headers({}), { message: 'secondary rate limit' }, nowMs)).toMatchObject({ details: { retryAfterSec: 60 } });
+        expect(rateLimitError(429, headers({ 'retry-after': '5' }), null, nowMs)).toMatchObject({ code: 'GITHUB_RATE_LIMITED', details: { retryAfterSec: 5 } });
+        expect(rateLimitError(403, headers({ 'x-ratelimit-remaining': '12' }), { message: 'Unable to retry this workflow run' }, nowMs)).toBeNull();
+        expect(rateLimitError(409, headers({}), { message: 'rate limit' }, nowMs)).toBeNull();
+        expect(rateLimitError(422, headers({}), null, nowMs)).toBeNull();
     });
 
     test('rate limit errors carry retryAfterSec', async () => {

@@ -25,6 +25,38 @@ const ERROR_MESSAGES = {
   INTERNAL_ERROR: 'Ocurrió un error inesperado en el servidor.',
   GITHUB_NOT_CONFIGURED: 'La integración con GitHub no está configurada en el servidor.',
   AI_ANALYSIS_DISABLED: 'El análisis con IA está desactivado para este repositorio. Un administrador puede activarlo en la página GitHub.',
+  // Phase 4 (CI/CD)
+  APP_PERMISSIONS_MISSING:
+    'La GitHub App todavía no tiene los permisos de CI/CD en este repositorio. Quien la instaló debe aceptarlos en GitHub.',
+  PAGES_UNAVAILABLE:
+    'GitHub Pages no está disponible para este repositorio con su plan actual (en repositorios privados requiere GitHub Pro).',
+  WORKFLOW_CONFLICT:
+    'Ya existe un workflow .github/workflows/taskmate-ci.yml que no creó TaskMate. Renómbralo o bórralo para continuar.',
+  WORKFLOW_CHANGED: 'El workflow cambió en GitHub mientras lo configurabas. Vuelve a intentarlo.',
+  BRANCH_PROTECTED:
+    'La rama principal está protegida y solo acepta cambios por pull request, así que TaskMate no puede subir el pipeline.',
+  INVALID_PIPELINE: 'La configuración del pipeline no es válida para este repositorio.',
+  PIPELINE_UNSUPPORTED: 'No se encontró un proyecto de Node.js, Python ni un sitio estático en el repositorio.',
+  RUN_NOT_FOUND: 'Esa ejecución ya no existe en GitHub.',
+  LOG_NOT_AVAILABLE: 'El log todavía no está disponible (el job sigue corriendo) o ya expiró.',
+  PIPELINE_NOT_CONFIGURED: 'Este repositorio todavía no tiene un pipeline de TaskMate.',
+  PIPELINE_OUTDATED: 'El workflow de esa rama es anterior y no se puede ejecutar desde TaskMate; vuelve a subir el pipeline.',
+  BRANCH_NOT_FOUND: 'Esa rama no existe en el repositorio.',
+  RUN_NOT_RERUNNABLE: 'Solo se pueden re-ejecutar ejecuciones terminadas con jobs fallidos (y de menos de un mes).',
+  RUN_NOT_CANCELLABLE: 'La ejecución ya terminó.',
+  DEPLOY_NOT_CONFIGURED: 'El pipeline de este repositorio no tiene deploy.',
+  VERSION_NOT_VERIFIED: 'Ese commit no pasó el CI de TaskMate, así que no se puede desplegar.',
+  DEPLOY_REQUEST_PENDING: 'Ya hay una solicitud pendiente para ese entorno.',
+  DEPLOY_REQUEST_NOT_FOUND: 'La solicitud ya no existe.',
+  DEPLOY_REQUEST_DECIDED: 'Otro administrador ya respondió esa solicitud.',
+  NOT_REQUESTER: 'Solo quien pidió el deploy puede cancelar la solicitud.',
+  BRANCH_WORKFLOW_OUTDATED:
+    'Esa rama no tiene el workflow actual de TaskMate: actualízala con la rama principal (merge o rebase) y vuelve a intentarlo.',
+  VERSION_NOT_STAGING: 'Solo se puede pedir publicar en producción la versión que está en staging.',
+  DEPLOY_REQUEST_STALE:
+    'La solicitud quedó desactualizada (cambió la versión de staging o el repositorio) y se canceló; pide de nuevo.',
+  WORKFLOW_DISABLED:
+    'El workflow de TaskMate está desactivado en GitHub. Actívalo en la pestaña Actions del repositorio y vuelve a intentarlo.',
 };
 
 // Codes the OAuth/installation callback may put in ?status=error&code=<CODE>.
@@ -35,6 +67,8 @@ const CALLBACK_ERROR_MESSAGES = {
   ACCESS_DENIED: 'Se canceló la autorización en GitHub.',
   INSTALLATION_NOT_FOUND: 'Tu cuenta de GitHub no tiene acceso a esa instalación de la App.',
   NO_REPOSITORIES: 'La instalación no tiene acceso a ningún repositorio.',
+  NO_WRITABLE_REPOSITORIES:
+    'Tu cuenta de GitHub no tiene permiso de escritura en ningún repositorio de la instalación. Solo quien puede escribir en un repositorio puede conectarlo.',
 };
 
 export function errorMessage(err, fallback = 'Ocurrió un error inesperado.') {
