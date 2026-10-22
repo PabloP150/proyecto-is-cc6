@@ -3,9 +3,9 @@
 const { StringDecoder } = require('string_decoder');
 const { AppError } = require('../../helpers/errors');
 const cicdModel = require('../../models/cicd.model');
-const { githubApp, PERMISSIONS } = require('./githubApp');
+const { githubApp, PERMISSIONS, rateLimitError } = require('./githubApp');
 const repoService = require('./repoService');
-const { redactSecrets } = require('./repoSnapshot');
+const { redactSecrets, REDACTED } = require('./repoSnapshot');
 const { WORKFLOW_PATH } = require('./pipelineSpec');
 
 const RUNS_PER_PAGE = 20;
@@ -17,8 +17,9 @@ const RUN_STATUSES = new Set([
     'success', 'failure', 'cancelled', 'skipped', 'timed_out', 'action_required', 'neutral', 'stale',
 ]);
 
-// Job logs: GitHub answers with a redirect to a short-lived storage URL. The whole log is streamed
-// (up to MAX_LOG_DOWNLOAD) but only its tail is kept: that is where a failure shows up.
+// Job logs: GitHub answers with a redirect to a short-lived storage URL. Only the tail of the log is
+// kept, that is where a failure shows up: a long log is asked for with a Range header, and a server
+// that ignores it is streamed (up to MAX_LOG_DOWNLOAD) keeping only the last bytes.
 const MAX_LOG_DOWNLOAD = 20 * 1024 * 1024;
 const LOG_TAIL_BYTES = 256 * 1024;
 const MAX_LOG_LINES = 3000;
@@ -185,14 +186,20 @@ const isAllowedLogUrl = (value) => {
 };
 
 const logUnavailable = () => new AppError('LOG_NOT_AVAILABLE', 'The log of this job is not available (still running or expired)', 404);
+const downloadFailed = () => new AppError('GITHUB_ERROR', 'The job log could not be downloaded', 502);
 
-// Keeps the last LOG_TAIL_BYTES of a streamed body. → {buffer, truncated}
+/**
+ * Keeps the last LOG_TAIL_BYTES of a streamed body, reading at most MAX_LOG_DOWNLOAD (plus the chunk
+ * that crosses it). → {buffer, truncated, endMissing}; endMissing: the cap stopped the read before
+ * the end, so the bytes kept are not the end of the log.
+ */
 const readTail = async (body) => {
     const reader = body.getReader();
-    let chunks = [];
+    const chunks = [];
     let kept = 0;
     let total = 0;
     let truncated = false;
+    let endMissing = false;
     try {
         for (;;) {
             const { done, value } = await reader.read();
@@ -207,6 +214,7 @@ const readTail = async (body) => {
             }
             if (total > MAX_LOG_DOWNLOAD) {
                 truncated = true;
+                endMissing = true;
                 break;
             }
         }
@@ -218,11 +226,83 @@ const readTail = async (body) => {
         buffer = buffer.subarray(buffer.length - LOG_TAIL_BYTES);
         truncated = true;
     }
-    return { buffer, truncated };
+    return { buffer, truncated, endMissing };
 };
 
 const ANSI_RE = /\x1b\[[0-9;]*[A-Za-z]/g;
 const TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z ?/;
+const KEY_BEGIN_RE = /-----BEGIN [A-Z0-9 ]*KEY( BLOCK)?-----/;
+const KEY_END_RE = /-----END [A-Z0-9 ]*KEY( BLOCK)?-----/;
+// The lines a printed key is made of: base64 (an armor checksum starts with '=') and PEM/PGP headers.
+const KEY_BASE64_RE = /^\s*=?[A-Za-z0-9+/]+={0,2}\s*$/;
+const KEY_HEADER_RE = /^\s*(Proc-Type|DEK-Info|Version|Comment|Hash|Charset):/i;
+const KEY_LINE_MIN = 16;
+
+// A tool that prefixes its output ("#5 0.123 " in BuildKit, "web-1  | " in compose, indentation)
+// puts the prefix of the marker line, digits aside, on every line of the key: it is skipped.
+const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const linePrefix = (prefix) => new RegExp(`^${escapeRegExp(prefix).replace(/\d+/g, '\\d+')}`);
+
+/**
+ * How many lines from `start` are the body of a printed key. A short base64 line counts only where
+ * the key ends (END line next, or the end of the text: a tail cut by the download cap), and a blank
+ * line only before more key lines (after the headers of an encrypted key), so a "Done" or a blank
+ * line after a lone BEGIN marker is still shown.
+ */
+const keyBodyLength = (lines, start, prefix) => {
+    const content = (line) => (line === undefined ? undefined : line.replace(prefix, ''));
+    const isFull = (text) => text !== undefined && KEY_BASE64_RE.test(text) && text.trim().length >= KEY_LINE_MIN;
+    let i = start;
+    for (; i < lines.length; i += 1) {
+        const text = content(lines[i]);
+        const next = lines[i + 1];
+        if (isFull(text) || KEY_HEADER_RE.test(text)) continue;
+        if (KEY_BASE64_RE.test(text) && (next === undefined || KEY_END_RE.test(next))) continue;
+        if (!text.trim() && isFull(content(next))) continue;
+        break;
+    }
+    return i - start;
+};
+
+/**
+ * A private key printed over several lines becomes one "[REDACTED]" line: its BEGIN line, its body
+ * and its END line. A BEGIN marker with no key after it (a secret scanner's finding, a test) only
+ * hides the rest of its own line, so the lines after it, ##[error] included, stay visible.
+ */
+const redactKeyBlocks = (lines) => {
+    const out = [];
+    for (let i = 0; i < lines.length; i += 1) {
+        const line = lines[i];
+        const begin = KEY_BEGIN_RE.exec(line);
+        // A key on one line ("\n" escapes in JSON) is left to redactSecrets.
+        if (!begin || KEY_END_RE.test(line.slice(begin.index))) {
+            out.push(line);
+            continue;
+        }
+        const prefix = line.slice(0, begin.index);
+        let last = i + keyBodyLength(lines, i + 1, linePrefix(prefix));
+        let rest = '';
+        const end = last + 1 < lines.length ? KEY_END_RE.exec(lines[last + 1]) : null;
+        if (end) {
+            last += 1;
+            rest = lines[last].slice(end.index + end[0].length);
+        }
+        out.push(`${prefix}${REDACTED}${rest}`);
+        i = last;
+    }
+    return out;
+};
+
+// A tail cut inside a private key starts with the rest of its body and its END line, with no BEGIN
+// before them: those lines are hidden. An END marker after ordinary lines hides nothing.
+const hideCutKey = (lines) => {
+    const at = lines.findIndex((line) => KEY_END_RE.test(line));
+    if (at === -1) return lines;
+    const endLine = lines[at];
+    const end = KEY_END_RE.exec(endLine);
+    if (keyBodyLength(lines, 0, linePrefix(endLine.slice(0, end.index))) !== at) return lines;
+    return [`${endLine.slice(0, end.index)}${REDACTED}${endLine.slice(end.index + end[0].length)}`, ...lines.slice(at + 1)];
+};
 
 /** Log text → {lines, errors}: no timestamps, no ANSI colors, secrets redacted, at most MAX_LOG_LINES. */
 const parseLog = (text, { truncated = false } = {}) => {
@@ -230,16 +310,44 @@ const parseLog = (text, { truncated = false } = {}) => {
     // A cut tail starts in the middle of a line.
     if (truncated && lines.length > 1) lines = lines.slice(1);
     if (lines.length && lines[lines.length - 1] === '') lines.pop();
-    lines = lines.map((line) => redactSecrets(line.replace(ANSI_RE, '').replace(TIMESTAMP_RE, '')).slice(0, MAX_LOG_LINE));
+    lines = lines.map((line) => line.replace(ANSI_RE, '').replace(TIMESTAMP_RE, ''));
+    if (truncated) lines = hideCutKey(lines);
+    // Keys span lines and go first; every other secret is redacted line by line, so no pattern
+    // reaches into the next line.
+    lines = redactKeyBlocks(lines);
     if (lines.length > MAX_LOG_LINES) {
         lines = lines.slice(lines.length - MAX_LOG_LINES);
         truncated = true;
     }
+    lines = lines.map((line) => redactSecrets(line).slice(0, MAX_LOG_LINE));
     const errors = lines.filter((line) => line.startsWith('##[error]')).map((line) => line.slice('##[error]'.length));
     return { lines, errors, truncated };
 };
 
-/** The end of a job's log: {jobId, lines, errors, truncated}. */
+const fetchLog = async (location, signal, range) => {
+    try {
+        return await githubApp.fetch(location, {
+            method: 'GET',
+            headers: range ? { Range: range } : {},
+            redirect: 'error',
+            signal,
+        });
+    } catch {
+        throw downloadFailed();
+    }
+};
+
+const contentLength = (res) => {
+    const value = res.headers.get('content-length');
+    const n = value === null ? NaN : Number(value);
+    return Number.isSafeInteger(n) && n >= 0 ? n : null;
+};
+
+/**
+ * The end of a job's log: {jobId, lines, errors, truncated, endMissing}. truncated: the start of the
+ * log is left out; endMissing: the log is over MAX_LOG_DOWNLOAD and its storage ignored the Range
+ * header, so the lines are not its end (rare: GitHub's log storage is Azure Blob, which honours it).
+ */
 const getJobLogForRepo = async (repo, jobId) => {
     const id = positiveId(jobId, 'jobId');
     const { status, headers } = await githubApp.request(repoAuth(repo), 'GET', `${repoPath(repo)}/actions/jobs/${id}/logs`, {
@@ -251,17 +359,30 @@ const getJobLogForRepo = async (repo, jobId) => {
     if (status === 404 || status === 410 || !location) throw logUnavailable();
     if (!isAllowedLogUrl(location)) throw new AppError('GITHUB_ERROR', 'GitHub returned an unexpected log location', 502);
 
-    let res;
-    try {
-        res = await githubApp.fetch(location, { method: 'GET', redirect: 'error', signal: AbortSignal.timeout(LOG_TIMEOUT_MS) });
-    } catch {
-        throw new AppError('GITHUB_ERROR', 'The job log could not be downloaded', 502);
-    }
+    // One deadline for the whole download, the ranged request included.
+    const signal = AbortSignal.timeout(LOG_TIMEOUT_MS);
+    let res = await fetchLog(location, signal);
     if (res.status === 404 || res.status === 410) throw logUnavailable();
-    if (!res.ok || !res.body) throw new AppError('GITHUB_ERROR', 'The job log could not be downloaded', 502);
-    const { buffer, truncated } = await readTail(res.body);
-    const text = new StringDecoder('utf8').end(buffer);
-    return { jobId: id, ...parseLog(text, { truncated }) };
+    if (!res.ok || !res.body) throw downloadFailed();
+    let ranged = false;
+    const length = contentLength(res);
+    if (length !== null && length > LOG_TAIL_BYTES) {
+        res.body.cancel().catch(() => {});
+        res = await fetchLog(location, signal, `bytes=${length - LOG_TAIL_BYTES}-`);
+        if (res.status === 404 || res.status === 410) throw logUnavailable();
+        // 206: only the tail came. 200: Range was ignored, the whole log is streamed below.
+        if ((res.status !== 206 && res.status !== 200) || !res.body) throw downloadFailed();
+        ranged = res.status === 206;
+    }
+    let tail;
+    try {
+        tail = await readTail(res.body);
+    } catch {
+        // The connection dropped ("terminated") or the deadline passed mid-download.
+        throw downloadFailed();
+    }
+    const text = new StringDecoder('utf8').end(tail.buffer);
+    return { jobId: id, ...parseLog(text, { truncated: tail.truncated || ranged }), endMissing: tail.endMissing };
 };
 
 const ANNOTATION_LEVELS = new Set(['notice', 'warning', 'failure']);
@@ -302,11 +423,18 @@ const requirePipeline = async (repo) => {
     return pipeline;
 };
 
+// A 422 about the workflow or its inputs: the branch has no TaskMate workflow, or one older than the
+// inputs TaskMate sends ("does not have 'workflow_dispatch' trigger", "Unexpected inputs provided",
+// "not in the list of allowed values"...). Merging the default branch into it fixes it.
+const WORKFLOW_REJECTED_RE = /workflow_dispatch|unexpected inputs|allowed values|input/i;
+
 /** Runs the TaskMate pipeline (CI only) on a branch. */
 const dispatchPipelineForRepo = async (repo, { ref } = {}) => {
     const branch = validateRef(ref);
-    if (!branch || /^[0-9a-f]{7,40}$/i.test(branch)) throw invalid('ref must be a branch name');
+    if (!branch) throw invalid('ref must be a branch name');
     await requirePipeline(repo);
+    // Names that look like a commit ('deadbeef', '20261022') are valid branch names; a real commit
+    // SHA is not a branch and this lookup answers 404.
     const encoded = branch.split('/').map(encodeURIComponent).join('/');
     await githubApp.request(repoAuth(repo), 'GET', `${repoPath(repo)}/branches/${encoded}`, {
         ...scope(repo),
@@ -321,7 +449,17 @@ const dispatchPipelineForRepo = async (repo, { ref } = {}) => {
     if (status === 404) throw new AppError('PIPELINE_NOT_CONFIGURED', 'The TaskMate workflow is not on GitHub', 409);
     if (status === 422) {
         const message = data && typeof data.message === 'string' ? data.message : '';
-        if (/workflow_dispatch/i.test(message)) throw new AppError('PIPELINE_OUTDATED', 'The workflow on that branch cannot be run from TaskMate', 409);
+        // "No ref found for: x": deleted (or renamed) since the lookup above. Checked first because
+        // the message carries the branch name, and 'feature/input-form' is not a workflow problem.
+        if (/no ref found/i.test(message)) throw new AppError('BRANCH_NOT_FOUND', 'Branch not found', 404);
+        // "Cannot trigger a 'workflow_dispatch' on a disabled workflow": repository-wide, merging
+        // the default branch does not fix it.
+        if (/disabled/i.test(message)) {
+            throw new AppError('WORKFLOW_DISABLED', 'The TaskMate workflow is disabled on GitHub; enable it in the Actions tab', 409);
+        }
+        if (WORKFLOW_REJECTED_RE.test(message)) {
+            throw new AppError('BRANCH_WORKFLOW_OUTDATED', 'The TaskMate workflow on that branch is missing or out of date; merge the default branch into it', 409);
+        }
         throw new AppError('GITHUB_ERROR', 'GitHub rejected the run', 502);
     }
     return { dispatched: true, ref: branch };
@@ -344,12 +482,14 @@ const rerunFailedForRepo = async (repo, runId, { isAdmin = false } = {}) => {
     if (run.status !== 'completed' || !RERUNNABLE.has(run.conclusion)) {
         throw new AppError('RUN_NOT_RERUNNABLE', 'Only a finished run with failed jobs can be re-run', 409);
     }
-    const { status } = await githubApp.request(repoAuth(repo), 'POST', `${repoPath(repo)}/actions/runs/${id}/rerun-failed-jobs`, {
+    const { status, data, headers } = await githubApp.request(repoAuth(repo), 'POST', `${repoPath(repo)}/actions/runs/${id}/rerun-failed-jobs`, {
         ...scope(repo, PERMISSIONS.actionsWrite),
         allowStatus: [403, 409, 422],
     });
     if (status === 403 || status === 409 || status === 422) {
-        throw new AppError('RUN_NOT_RERUNNABLE', 'GitHub cannot re-run this run (too old, or already running)', 409);
+        // A secondary rate limit is a 403 too: it is "try again later", not "cannot be re-run".
+        throw rateLimitError(status, headers, data, githubApp.now())
+            || new AppError('RUN_NOT_RERUNNABLE', 'GitHub cannot re-run this run (too old, or already running)', 409);
     }
     return { rerun: true, runId: id };
 };
@@ -360,6 +500,8 @@ const cancelRunForRepo = async (repo, runId, { isAdmin = false } = {}) => {
     const run = await fetchRun(repo, id);
     assertCanControl(run, isAdmin);
     if (run.status === 'completed') throw new AppError('RUN_NOT_CANCELLABLE', 'The run already finished', 409);
+    // Only a 409 means "already finished"; a 403 is not accepted here, so a rate limit still becomes
+    // GITHUB_RATE_LIMITED (and any other 403 REPO_NOT_ACCESSIBLE) in githubApp.
     const { status } = await githubApp.request(repoAuth(repo), 'POST', `${repoPath(repo)}/actions/runs/${id}/cancel`, {
         ...scope(repo, PERMISSIONS.actionsWrite),
         allowStatus: [409],

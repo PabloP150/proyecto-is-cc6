@@ -67,14 +67,24 @@ const withStatus = (err, status) => {
     return err;
 };
 
-const mapGitHubError = (status, headers, data, { nowMs, tokenMint = false, notFoundCode } = {}) => {
+/**
+ * GITHUB_RATE_LIMITED (with retryAfterSec) when a response is a rate limit, else null: a 429, or a
+ * 403 with the primary limit spent or a "secondary rate limit" message. Exported for callers that
+ * accept a 403 themselves (allowStatus) and must still tell a rate limit apart from a refusal.
+ */
+const rateLimitError = (status, headers, data, nowMs = Date.now()) => {
     const message = data && typeof data.message === 'string' ? data.message : '';
     const rateLimited = status === 429
         || (status === 403 && (headers.get('x-ratelimit-remaining') === '0' || /rate limit/i.test(message)));
-    if (rateLimited) {
-        const retryAfterSec = retryAfterSeconds(headers, nowMs);
-        return withStatus(new AppError('GITHUB_RATE_LIMITED', 'GitHub rate limit reached, try again later', 503, { retryAfterSec }), status);
-    }
+    if (!rateLimited) return null;
+    const retryAfterSec = retryAfterSeconds(headers, nowMs);
+    return withStatus(new AppError('GITHUB_RATE_LIMITED', 'GitHub rate limit reached, try again later', 503, { retryAfterSec }), status);
+};
+
+const mapGitHubError = (status, headers, data, { nowMs, tokenMint = false, notFoundCode } = {}) => {
+    const message = data && typeof data.message === 'string' ? data.message : '';
+    const limited = rateLimitError(status, headers, data, nowMs);
+    if (limited) return limited;
     if (tokenMint) {
         if (status === 403 && /suspend/i.test(message)) {
             return withStatus(new AppError('INSTALLATION_SUSPENDED', 'The GitHub App installation is suspended', 409), status);
@@ -348,6 +358,7 @@ module.exports = {
     githubApp: defaultApp,
     PERMISSIONS,
     mapGitHubError,
+    rateLimitError,
     parseNextLink,
     decodePrivateKey,
     API_BASE,

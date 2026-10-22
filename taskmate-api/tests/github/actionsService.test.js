@@ -177,9 +177,11 @@ describe('getJobLog', () => {
             ],
             errors: ['Process completed with exit code 1.'],
             truncated: false,
+            endMissing: false,
         });
         const blobCall = fetchImpl.calls.find((c) => c.path === '/logs/job-77.txt');
         expect(blobCall.headers.Authorization).toBeUndefined();
+        expect(blobCall.headers.Range).toBeUndefined();
         const apiCall = fetchImpl.calls.find((c) => c.path.endsWith('/actions/jobs/77/logs'));
         expect(apiCall.headers.Authorization).toBe('Bearer ghs_actions');
     });
@@ -212,6 +214,251 @@ describe('getJobLog', () => {
 
     test('rejects a bad job id before GitHub', async () => {
         await expect(actionsService.getJobLog(GID, '../x')).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    });
+
+    // ---- long logs: only the tail is downloaded
+    const TAIL = 256 * 1024;
+    const CAP = 20 * 1024 * 1024;
+    const LINE_BYTES = 128;
+    const logLine = (i) => `2026-10-09T21:00:00.0000000Z line ${String(i).padStart(7, '0')} `.padEnd(LINE_BYTES - 1, 'x') + '\n';
+    const logText = (from, count) => Array.from({ length: count }, (_, i) => logLine(from + i)).join('');
+
+    // A body produced on demand (nothing is held in memory up front); records what was read.
+    const lazyBody = (chunkAt, { count = Infinity, error } = {}) => {
+        const state = { pulled: 0, cancelled: false };
+        let i = 0;
+        const stream = new ReadableStream({
+            pull(controller) {
+                if (i >= count) {
+                    if (error) controller.error(error);
+                    else controller.close();
+                    return;
+                }
+                const chunk = Buffer.from(chunkAt(i));
+                i += 1;
+                state.pulled += chunk.length;
+                controller.enqueue(new Uint8Array(chunk));
+            },
+            cancel() {
+                state.cancelled = true;
+            },
+        });
+        return { stream, state };
+    };
+    const LINES_PER_CHUNK = 512;
+    const linesChunk = (i) => logText(i * LINES_PER_CHUNK, LINES_PER_CHUNK);
+
+    test('a long log: asks the storage only for its tail with a Range header (206)', async () => {
+        const length = 30 * 1024 * 1024;
+        const full = lazyBody(linesChunk);
+        // The last TAIL bytes of the log start in the middle of a line.
+        const tail = `${'x'.repeat(40)}\n${logText(0, Math.floor((TAIL - 41) / LINE_BYTES) - 1)}2026-10-09T21:00:09.0000000Z ##[error]boom\n`;
+        const fetchImpl = useFakeGitHub(logRoutes('', {
+            'GET /logs/job-77.txt': (call) => (call.headers.Range
+                ? new Response(tail, { status: 206, headers: { 'content-range': `bytes ${length - TAIL}-${length - 1}/${length}` } })
+                : new Response(full.stream, { status: 200, headers: { 'content-length': String(length) } })),
+        }));
+        const result = await actionsService.getJobLog(GID, 77);
+        const blobCalls = fetchImpl.calls.filter((c) => c.path === '/logs/job-77.txt');
+        expect(blobCalls.map((c) => c.headers.Range)).toEqual([undefined, `bytes=${length - TAIL}-`]);
+        expect(blobCalls.every((c) => c.headers.Authorization === undefined)).toBe(true);
+        expect(full.state.cancelled).toBe(true);
+        expect(full.state.pulled).toBeLessThan(1024 * 1024);
+        expect(result).toMatchObject({ truncated: true, endMissing: false, errors: ['boom'] });
+        expect(result.lines[0]).toMatch(/^line 0000000 x+$/);
+        expect(result.lines[result.lines.length - 1]).toBe('##[error]boom');
+    });
+
+    test('a log that fits in the tail is read in one request, without Range', async () => {
+        const text = logText(0, 10);
+        const fetchImpl = useFakeGitHub(logRoutes('', {
+            'GET /logs/job-77.txt': () => new Response(text, { status: 200, headers: { 'content-length': String(Buffer.byteLength(text)) } }),
+        }));
+        const result = await actionsService.getJobLog(GID, 77);
+        expect(result).toMatchObject({ truncated: false, endMissing: false });
+        expect(result.lines).toHaveLength(10);
+        expect(fetchImpl.calls.filter((c) => c.path === '/logs/job-77.txt')).toHaveLength(1);
+    });
+
+    test('Range ignored (200): the whole log is streamed and only its tail kept', async () => {
+        const text = logText(0, 3000);
+        const length = Buffer.byteLength(text);
+        expect(length).toBeGreaterThan(TAIL);
+        const fetchImpl = useFakeGitHub(logRoutes('', {
+            'GET /logs/job-77.txt': () => new Response(text, { status: 200, headers: { 'content-length': String(length) } }),
+        }));
+        const result = await actionsService.getJobLog(GID, 77);
+        expect(fetchImpl.calls.filter((c) => c.path === '/logs/job-77.txt')).toHaveLength(2);
+        expect(result).toMatchObject({ truncated: true, endMissing: false });
+        expect(result.lines[result.lines.length - 1]).toMatch(/^line 0002999 x+$/);
+        expect(result.lines.every((l) => /^line \d{7} x+$/.test(l))).toBe(true);
+    });
+
+    test('Range ignored and the log is over the cap: stops at the cap and says the end is missing', async () => {
+        const length = 30 * 1024 * 1024;
+        const bodies = [];
+        useFakeGitHub(logRoutes('', {
+            'GET /logs/job-77.txt': () => {
+                const body = lazyBody(linesChunk, { count: length / (LINES_PER_CHUNK * LINE_BYTES) });
+                bodies.push(body);
+                return new Response(body.stream, { status: 200, headers: { 'content-length': String(length) } });
+            },
+        }));
+        const result = await actionsService.getJobLog(GID, 77);
+        expect(result).toMatchObject({ truncated: true, endMissing: true });
+        expect(result.lines.length).toBeGreaterThan(0);
+        const streamed = bodies[1].state;
+        expect(streamed.cancelled).toBe(true);
+        // The chunk that crosses the cap, plus one the stream buffers ahead.
+        expect(streamed.pulled).toBeLessThanOrEqual(CAP + 2 * LINES_PER_CHUNK * LINE_BYTES);
+        expect(bodies[0].state.cancelled).toBe(true);
+    });
+
+    // ---- a dropped or slow download is GitHub's failure (502), not ours (500)
+    test.each([
+        ['the connection drops', () => new TypeError('terminated')],
+        ['the deadline passes', () => new DOMException('The operation was aborted due to timeout', 'TimeoutError')],
+    ])('%s while streaming → GITHUB_ERROR 502', async (_label, makeError) => {
+        useFakeGitHub(logRoutes('', {
+            'GET /logs/job-77.txt': () => new Response(lazyBody(linesChunk, { count: 2, error: makeError() }).stream, { status: 200 }),
+        }));
+        await expect(actionsService.getJobLog(GID, 77)).rejects.toMatchObject({ code: 'GITHUB_ERROR', status: 502 });
+    });
+
+    test('the ranged download dropping or timing out → GITHUB_ERROR 502', async () => {
+        const length = 1024 * 1024;
+        useFakeGitHub(logRoutes('', {
+            'GET /logs/job-77.txt': (call) => {
+                if (!call.headers.Range) return new Response(lazyBody(linesChunk).stream, { status: 200, headers: { 'content-length': String(length) } });
+                throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+            },
+        }));
+        await expect(actionsService.getJobLog(GID, 77)).rejects.toMatchObject({ code: 'GITHUB_ERROR', status: 502 });
+        useFakeGitHub(logRoutes('', {
+            'GET /logs/job-77.txt': (call) => new Response(
+                lazyBody(linesChunk, call.headers.Range ? { count: 1, error: new TypeError('terminated') } : {}).stream,
+                { status: call.headers.Range ? 206 : 200, headers: { 'content-length': String(length) } },
+            ),
+        }));
+        await expect(actionsService.getJobLog(GID, 77)).rejects.toMatchObject({ code: 'GITHUB_ERROR', status: 502 });
+    });
+
+    test('a ranged request the storage refuses → GITHUB_ERROR; an expired one → LOG_NOT_AVAILABLE', async () => {
+        const routeWith = (status) => logRoutes('', {
+            'GET /logs/job-77.txt': (call) => (call.headers.Range
+                ? new Response('', { status })
+                : new Response(lazyBody(linesChunk).stream, { status: 200, headers: { 'content-length': String(TAIL * 4) } })),
+        });
+        useFakeGitHub(routeWith(416));
+        await expect(actionsService.getJobLog(GID, 77)).rejects.toMatchObject({ code: 'GITHUB_ERROR', status: 502 });
+        useFakeGitHub(routeWith(404));
+        await expect(actionsService.getJobLog(GID, 77)).rejects.toMatchObject({ code: 'LOG_NOT_AVAILABLE', status: 404 });
+    });
+
+    test('a private key printed over several lines is hidden whole, not only its BEGIN line', async () => {
+        const log = [
+            '2026-10-09T21:00:00.0000000Z before',
+            '2026-10-09T21:00:00.1000000Z -----BEGIN RSA PRIVATE KEY-----',
+            '2026-10-09T21:00:00.2000000Z MIIEowIBAAKCAQEAsecretlineone',
+            '2026-10-09T21:00:00.3000000Z bW9yZXNlY3JldGxpbmV0d28=',
+            '2026-10-09T21:00:00.4000000Z -----END RSA PRIVATE KEY-----',
+            '2026-10-09T21:00:00.5000000Z > Authorization: Bearer abc123.def456',
+            '2026-10-09T21:00:00.6000000Z after',
+        ].join('\n');
+        useFakeGitHub(logRoutes(log));
+        const result = await actionsService.getJobLog(GID, 77);
+        expect(result.lines).toEqual(['before', '[REDACTED]', '> Authorization: Bearer [REDACTED]', 'after']);
+    });
+});
+
+describe('parseLog redaction', () => {
+    const ts = '2026-10-09T21:00:00.0000000Z ';
+
+    test('a key cut at the end of the log (download cap) is hidden up to the end', () => {
+        const text = [`${ts}before`, `${ts}-----BEGIN OPENSSH PRIVATE KEY-----`, `${ts}b3BlbnNzaC1rZXktdjEAAAAA`, `${ts}c2Vjb25kbGluZQ`].join('\n');
+        expect(actionsService.parseLog(text).lines).toEqual(['before', '[REDACTED]']);
+    });
+
+    test('a BEGIN marker with no key after it hides only the rest of its line, not the failure below', () => {
+        const text = [
+            `${ts}gitleaks: finding -----BEGIN RSA PRIVATE KEY----- in fixtures/key.txt`,
+            `${ts}step 2`,
+            `${ts}##[error]Process completed with exit code 1.`,
+        ].join('\n');
+        expect(actionsService.parseLog(text)).toEqual({
+            lines: ['gitleaks: finding [REDACTED]', 'step 2', '##[error]Process completed with exit code 1.'],
+            errors: ['Process completed with exit code 1.'],
+            truncated: false,
+        });
+        // A short word after a lone marker is not taken for the last line of a key.
+        const alone = [`${ts}-----BEGIN RSA PRIVATE KEY-----`, `${ts}Done`, `${ts}##[error]boom`].join('\n');
+        expect(actionsService.parseLog(alone).lines).toEqual(['[REDACTED]', 'Done', '##[error]boom']);
+    });
+
+    test('a lone BEGIN marker does not reach the END of a later key', () => {
+        const text = [
+            `${ts}-----BEGIN RSA PRIVATE KEY-----`, `${ts}step`, `${ts}##[error]a`,
+            `${ts}-----BEGIN EC PRIVATE KEY-----`, `${ts}${'A'.repeat(64)}`, `${ts}abc=`, `${ts}-----END EC PRIVATE KEY-----"`,
+            `${ts}after`,
+        ].join('\n');
+        expect(actionsService.parseLog(text)).toEqual({ lines: ['[REDACTED]', 'step', '##[error]a', '[REDACTED]"', 'after'], errors: ['a'], truncated: false });
+    });
+
+    test.each([
+        ['an encrypted PEM key (headers, blank line, indented)', [
+            '  -----BEGIN RSA PRIVATE KEY-----', '  Proc-Type: 4,ENCRYPTED', '  DEK-Info: AES-128-CBC,ABCDEF', '',
+            `  ${'B'.repeat(64)}`, `  ${'C'.repeat(20)}`, '  -----END RSA PRIVATE KEY-----', 'ok',
+        ], ['  [REDACTED]', 'ok']],
+        ['a PGP key block with its checksum line', [
+            '-----BEGIN PGP PRIVATE KEY BLOCK-----', 'Version: GnuPG v2', '', 'l'.repeat(64), '=AbCd', '-----END PGP PRIVATE KEY BLOCK-----', 'ok',
+        ], ['[REDACTED]', 'ok']],
+        ['a key printed by docker build (BuildKit prefixes)', [
+            '#5 0.123 -----BEGIN OPENSSH PRIVATE KEY-----', `#5 0.124 ${'b'.repeat(70)}`, `#5 0.124 ${'c'.repeat(10)}`,
+            '#5 0.125 -----END OPENSSH PRIVATE KEY-----', '#5 DONE 0.3s',
+        ], ['#5 0.123 [REDACTED]', '#5 DONE 0.3s']],
+    ])('%s is hidden whole', (_name, lines, expected) => {
+        expect(actionsService.parseLog(lines.map((line) => `${ts}${line}`).join('\n')).lines).toEqual(expected);
+    });
+
+    test('a line ending in a secret\'s name or an Authorization scheme leaves the next line alone', () => {
+        const text = [
+            'Configuring credentials:', 'next step runs', 'Enter password:', 'something here',
+            'token=', 'abc def', 'Authorization: Bearer', 'more text',
+        ].map((line) => `${ts}${line}`).join('\n');
+        expect(actionsService.parseLog(text).lines).toEqual([
+            'Configuring credentials:', 'next step runs', 'Enter password:', 'something here',
+            'token=', 'abc def', 'Authorization: Bearer', 'more text',
+        ]);
+    });
+
+    test('a tail cut inside a key (END without BEGIN) hides everything up to the END line', () => {
+        const text = [`ZXktdjEAAAAA`, `${ts}c2Vjb25kbGluZQ`, `${ts}-----END OPENSSH PRIVATE KEY-----`, `${ts}after`].join('\n');
+        expect(actionsService.parseLog(text, { truncated: true })).toEqual({ lines: ['[REDACTED]', 'after'], errors: [], truncated: true });
+    });
+
+    test('a cut tail where an END marker follows ordinary lines hides nothing', () => {
+        const text = ['cut', `${ts}step 1`, `${ts}##[error]boom`, `${ts}echo -----END RSA PRIVATE KEY-----`, `${ts}after`].join('\n');
+        expect(actionsService.parseLog(text, { truncated: true })).toEqual({
+            lines: ['step 1', '##[error]boom', 'echo -----END RSA PRIVATE KEY-----', 'after'],
+            errors: ['boom'],
+            truncated: true,
+        });
+    });
+
+    test('a cut tail inside a prefixed key hides it up to its END line', () => {
+        const text = ['MIIcut', `${ts}#5 0.1 ${'d'.repeat(64)}`, `${ts}#5 0.1 dd==`, `${ts}#5 0.2 -----END RSA PRIVATE KEY-----`, `${ts}after`].join('\n');
+        expect(actionsService.parseLog(text, { truncated: true }).lines).toEqual(['#5 0.2 [REDACTED]', 'after']);
+    });
+
+    test('a complete key in a cut tail is redacted as usual and the rest is kept', () => {
+        const text = ['cut', `${ts}keep`, `${ts}-----BEGIN PRIVATE KEY-----`, `${ts}MIIEvQIBADANBg`, `${ts}-----END PRIVATE KEY-----`, `${ts}##[error]x`].join('\n');
+        expect(actionsService.parseLog(text, { truncated: true })).toEqual({ lines: ['keep', '[REDACTED]', '##[error]x'], errors: ['x'], truncated: true });
+    });
+
+    test('a secret on a line longer than the line limit is redacted before the line is cut', () => {
+        const text = `${'a'.repeat(1990)} ghp_abcdefghijklmnopqrstuvwxyz0123456789`;
+        const [line] = actionsService.parseLog(text).lines;
+        expect(line).not.toMatch(/ghp_/);
     });
 });
 
@@ -252,20 +499,64 @@ describe('dispatchPipeline', () => {
     });
 
     test('needs a TaskMate pipeline and a real branch (not a commit)', async () => {
-        useFakeGitHub({ ...tokenRoutes, [`GET ${API}/branches/nope`]: { status: 404, body: { message: 'Branch not found' } } });
-        await expect(actionsService.dispatchPipeline(GID, { ref: 'a'.repeat(40) })).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+        const fetchImpl = useFakeGitHub({ ...tokenRoutes, [`GET ${API}/branches/nope`]: { status: 404, body: { message: 'Branch not found' } } });
+        // A commit SHA is not a branch: GitHub's branch lookup answers 404.
+        await expect(actionsService.dispatchPipeline(GID, { ref: 'a'.repeat(40) })).rejects.toMatchObject({ code: 'BRANCH_NOT_FOUND', status: 404 });
         await expect(actionsService.dispatchPipeline(GID, { ref: 'nope' })).rejects.toMatchObject({ code: 'BRANCH_NOT_FOUND' });
+        expect(fetchImpl.calls.some((c) => c.path.endsWith('/dispatches'))).toBe(false);
+        await expect(actionsService.dispatchPipeline(GID, { ref: '' })).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
         cicdModel.getPipeline.mockResolvedValue(null);
         await expect(actionsService.dispatchPipeline(GID, { ref: 'main' })).rejects.toMatchObject({ code: 'PIPELINE_NOT_CONFIGURED', status: 409 });
     });
 
-    test('a branch whose workflow cannot be dispatched → PIPELINE_OUTDATED', async () => {
+    test.each([['20261022'], ['deadbeef'], ['c0ffee1'], ['a'.repeat(40)]])('a branch named like a commit (%s) can be run', async (name) => {
+        const fetchImpl = useFakeGitHub({
+            ...tokenRoutes,
+            [`GET ${API}/branches/${name}`]: { body: { name } },
+            [DISPATCH]: { status: 204 },
+        });
+        await expect(actionsService.dispatchPipeline(GID, { ref: name })).resolves.toEqual({ dispatched: true, ref: name });
+        expect(fetchImpl.calls.find((c) => c.path.endsWith('/dispatches')).body.ref).toBe(name);
+    });
+
+    test.each([
+        ["Workflow does not have 'workflow_dispatch' trigger"],
+        ['Unexpected inputs provided: ["environment"]'],
+        ["Provided value 'none' for input 'environment' not in the list of allowed values"],
+        ["Required input 'version' not provided"],
+    ])('a branch with an old or missing TaskMate workflow (%s) → BRANCH_WORKFLOW_OUTDATED', async (message) => {
         useFakeGitHub({
             ...tokenRoutes,
             [`GET ${API}/branches/old`]: { body: { name: 'old' } },
-            [DISPATCH]: { status: 422, body: { message: "Workflow does not have 'workflow_dispatch' trigger" } },
+            [DISPATCH]: { status: 422, body: { message } },
         });
-        await expect(actionsService.dispatchPipeline(GID, { ref: 'old' })).rejects.toMatchObject({ code: 'PIPELINE_OUTDATED' });
+        await expect(actionsService.dispatchPipeline(GID, { ref: 'old' })).rejects.toMatchObject({ code: 'BRANCH_WORKFLOW_OUTDATED', status: 409 });
+    });
+
+    test.each([['feature/input-form'], ['fix/workflow_dispatch']])('a branch deleted before the dispatch (%s) → BRANCH_NOT_FOUND, even with "input" in its name', async (name) => {
+        useFakeGitHub({
+            ...tokenRoutes,
+            [`GET ${API}/branches/${name}`]: { body: { name } },
+            [DISPATCH]: { status: 422, body: { message: `No ref found for: ${name}` } },
+        });
+        await expect(actionsService.dispatchPipeline(GID, { ref: name })).rejects.toMatchObject({ code: 'BRANCH_NOT_FOUND', status: 404 });
+    });
+
+    test('other dispatch refusals: branch gone → BRANCH_NOT_FOUND, disabled → WORKFLOW_DISABLED, no workflow → PIPELINE_NOT_CONFIGURED, else GITHUB_ERROR', async () => {
+        const withDispatch = (response) => useFakeGitHub({
+            ...tokenRoutes,
+            [`GET ${API}/branches/old`]: { body: { name: 'old' } },
+            [DISPATCH]: response,
+        });
+        withDispatch({ status: 422, body: { message: 'No ref found for: old' } });
+        await expect(actionsService.dispatchPipeline(GID, { ref: 'old' })).rejects.toMatchObject({ code: 'BRANCH_NOT_FOUND', status: 404 });
+        // A disabled workflow is repository-wide: merging the default branch would not help.
+        withDispatch({ status: 422, body: { message: "Cannot trigger a 'workflow_dispatch' on a disabled workflow" } });
+        await expect(actionsService.dispatchPipeline(GID, { ref: 'old' })).rejects.toMatchObject({ code: 'WORKFLOW_DISABLED', status: 409 });
+        withDispatch({ status: 404, body: { message: 'Not Found' } });
+        await expect(actionsService.dispatchPipeline(GID, { ref: 'old' })).rejects.toMatchObject({ code: 'PIPELINE_NOT_CONFIGURED', status: 409 });
+        withDispatch({ status: 422, body: { message: 'Something unexpected' } });
+        await expect(actionsService.dispatchPipeline(GID, { ref: 'old' })).rejects.toMatchObject({ code: 'GITHUB_ERROR', status: 502 });
     });
 });
 
@@ -319,5 +610,59 @@ describe('rerunFailed / cancelRun', () => {
             [`POST ${API}/actions/runs/901/rerun-failed-jobs`]: { status: 403, body: { message: 'Unable to retry this workflow run because it was created over a month ago' } },
         });
         await expect(actionsService.rerunFailed(GID, 901)).rejects.toMatchObject({ code: 'RUN_NOT_RERUNNABLE' });
+    });
+
+    test.each([[409], [422]])('GitHub refusing the re-run with %i → RUN_NOT_RERUNNABLE', async (status) => {
+        useFakeGitHub({
+            ...tokenRoutes,
+            [`GET ${API}/actions/runs/901`]: { body: run({ conclusion: 'failure' }) },
+            [`POST ${API}/actions/runs/901/rerun-failed-jobs`]: { status, body: { message: 'This workflow is already running' } },
+        });
+        await expect(actionsService.rerunFailed(GID, 901)).rejects.toMatchObject({ code: 'RUN_NOT_RERUNNABLE', status: 409 });
+    });
+
+    const secondaryLimit = { status: 403, headers: { 'retry-after': '30' }, body: { message: 'You have exceeded a secondary rate limit. Please wait a few minutes before you try again.' } };
+    const primaryLimit = () => ({
+        status: 403,
+        headers: { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': String(Math.floor(Date.now() / 1000) + 90) },
+        body: { message: 'API rate limit exceeded for installation ID 77.' },
+    });
+
+    test('a rate limit (403) on re-run is GITHUB_RATE_LIMITED with retryAfterSec, not RUN_NOT_RERUNNABLE', async () => {
+        useFakeGitHub({
+            ...tokenRoutes,
+            [`GET ${API}/actions/runs/901`]: { body: run({ conclusion: 'failure' }) },
+            [`POST ${API}/actions/runs/901/rerun-failed-jobs`]: secondaryLimit,
+        });
+        await expect(actionsService.rerunFailed(GID, 901))
+            .rejects.toMatchObject({ code: 'GITHUB_RATE_LIMITED', status: 503, details: { retryAfterSec: 30 } });
+        useFakeGitHub({
+            ...tokenRoutes,
+            [`GET ${API}/actions/runs/901`]: { body: run({ conclusion: 'failure' }) },
+            [`POST ${API}/actions/runs/901/rerun-failed-jobs`]: primaryLimit(),
+        });
+        const err = await actionsService.rerunFailed(GID, 901).catch((e) => e);
+        expect(err).toMatchObject({ code: 'GITHUB_RATE_LIMITED', status: 503 });
+        expect(err.details.retryAfterSec).toBeGreaterThanOrEqual(85);
+        expect(err.details.retryAfterSec).toBeLessThanOrEqual(90);
+    });
+
+    test('a rate limit (403) on cancel is GITHUB_RATE_LIMITED with retryAfterSec, not RUN_NOT_CANCELLABLE', async () => {
+        useFakeGitHub({
+            ...tokenRoutes,
+            [`GET ${API}/actions/runs/901`]: { body: run({ status: 'in_progress', conclusion: null }) },
+            [`POST ${API}/actions/runs/901/cancel`]: secondaryLimit,
+        });
+        await expect(actionsService.cancelRun(GID, 901))
+            .rejects.toMatchObject({ code: 'GITHUB_RATE_LIMITED', status: 503, details: { retryAfterSec: 30 } });
+    });
+
+    test('GitHub answering 409 to the cancel (it just finished) → RUN_NOT_CANCELLABLE', async () => {
+        useFakeGitHub({
+            ...tokenRoutes,
+            [`GET ${API}/actions/runs/901`]: { body: run({ status: 'in_progress', conclusion: null }) },
+            [`POST ${API}/actions/runs/901/cancel`]: { status: 409, body: { message: 'Cannot cancel a workflow run that is completed.' } },
+        });
+        await expect(actionsService.cancelRun(GID, 901)).rejects.toMatchObject({ code: 'RUN_NOT_CANCELLABLE', status: 409 });
     });
 });
