@@ -200,6 +200,15 @@ const getGroupRepository = async (gid, options = {}) => {
     };
 };
 
+// Groups linked to a repository right now (one repository may serve several groups).
+const getGroupIdsByRepo = async (repoId, options = {}) => {
+    const rows = await read(options,
+        'SELECT gid FROM dbo.GroupRepositories WHERE repo_id = @repoId',
+        [bigIntParam('repoId', repoId)]
+    );
+    return rows.map((r) => r.gid);
+};
+
 // ---------------------------------------------------------------- task branches
 
 const getTaskBranch = async (tid, options = {}) => {
@@ -509,6 +518,7 @@ module.exports = {
     linkGroupRepository,
     unlinkGroupRepository,
     getGroupRepository,
+    getGroupIdsByRepo,
     setAiAnalysisEnabled,
     getTaskBranch,
     insertTaskBranch,

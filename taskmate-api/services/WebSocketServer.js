@@ -7,10 +7,13 @@ const llmService = require('./LLMService'); // Import LLMService for insights
 const { verifyAccessToken } = require('../helpers/tokens');
 const { AppError, isAppError } = require('../helpers/errors');
 const { isAllowedOrigin } = require('../middleware/cors');
+const { realtime } = require('./realtime');
 
 const MAX_PAYLOAD_BYTES = 64 * 1024;
 const TOKEN_EXPIRED_CLOSE_CODE = 4001;
 const MAX_TIMER_MS = 2 ** 31 - 1; // setTimeout limit
+// Each subscribe checks membership of up to 50 groups: one per second per socket is plenty.
+const SUBSCRIBE_INTERVAL_MS = 1000;
 
 const rejectUpgrade = (socket, status) => {
     socket.write(`HTTP/1.1 ${status}\r\nConnection: close\r\n\r\n`);
@@ -31,7 +34,7 @@ class WebSocketServer {
 
         this.setupEventHandlers();
         this.setupHeartbeat();
-        console.log('WebSocket server initialized to handle /chat and /insights');
+        console.log('WebSocket server initialized to handle /chat, /insights and /events');
     }
 
     handleUpgrade(request, socket, head) {
@@ -75,6 +78,10 @@ class WebSocketServer {
             this.wss.handleUpgrade(request, socket, head, (ws) => {
                 this.wss.emit('connection', ws, request, 'insights');
             });
+        } else if (pathname === '/events') {
+            this.wss.handleUpgrade(request, socket, head, (ws) => {
+                this.wss.emit('connection', ws, request, 'events');
+            });
         } else {
             console.log(`No handler for WebSocket path: ${pathname}`);
             rejectUpgrade(socket, '404 Not Found');
@@ -96,6 +103,8 @@ class WebSocketServer {
                 this.handleChatConnection(ws, req);
             } else if (connectionType === 'insights') {
                 this.handleInsightsConnection(ws, req);
+            } else if (connectionType === 'events') {
+                this.handleEventsConnection(ws, req);
             }
         });
 
@@ -194,6 +203,50 @@ class WebSocketServer {
             console.error(`Insights WebSocket error for user ${userId}:`, error);
             llmService.removeListener(clientId, llmListener);
             this.insightsClients.delete(clientId);
+        });
+    }
+
+    // Phase 4: live CI/CD events for the groups the user subscribes to (see services/realtime.js).
+    // Client → {type: 'subscribe', groups: [gid…]} | {type: 'ping'}; server → {type: 'subscribed', groups}
+    // and {type: 'event', event, gid, data}.
+    handleEventsConnection(ws, req) {
+        const client = realtime.addClient({
+            userId: req.userId,
+            send: (message) => {
+                if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(message));
+            },
+        });
+        let lastSubscribeAt = 0;
+
+        ws.on('message', async (data) => {
+            let request;
+            try {
+                request = JSON.parse(data.toString());
+            } catch {
+                return;
+            }
+            if (!request || typeof request !== 'object') return;
+            if (request.type === 'ping') {
+                client.send({ type: 'pong' });
+                return;
+            }
+            if (request.type === 'subscribe') {
+                const now = Date.now();
+                if (now - lastSubscribeAt < SUBSCRIBE_INTERVAL_MS) {
+                    client.send({ type: 'error', code: 'RATE_LIMITED' });
+                    return;
+                }
+                lastSubscribeAt = now;
+                const groups = await realtime.subscribe(client, request.groups);
+                client.send({ type: 'subscribed', groups });
+            }
+        });
+
+        const drop = () => realtime.removeClient(client);
+        ws.on('close', drop);
+        ws.on('error', (error) => {
+            console.error(`Events WebSocket error for user ${req.userId}:`, error && error.message);
+            drop();
         });
     }
 

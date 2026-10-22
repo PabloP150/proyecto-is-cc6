@@ -225,3 +225,49 @@ describe('JWT_SECRET strength (real startup path)', () => {
         }
     });
 });
+
+describe('/events (Phase 4 live CI/CD events)', () => {
+    const { realtime } = require('../../services/realtime');
+
+    const subscribed = async (userId, groups) => {
+        const { ws, status } = await connect('/events', { token: tokenFor(userId) });
+        expect(status).toBe(101);
+        const reply = nextMessage(ws);
+        ws.send(JSON.stringify({ type: 'subscribe', groups }));
+        return { ws, reply: await reply };
+    };
+
+    test('needs a token like the other paths', async () => {
+        expect((await connect('/events')).status).toBe(401);
+    });
+
+    test('subscribes only to the groups the user belongs to and receives their events', async () => {
+        const { ws, reply } = await subscribed(ids.BOB, [ids.GROUP_A, ids.GROUP_B]);
+        expect(reply).toEqual({ type: 'subscribed', groups: [ids.GROUP_A] });
+        const event = nextMessage(ws);
+        await realtime.publish(ids.GROUP_B, 'ci_run', { runId: 2 });
+        await realtime.publish(ids.GROUP_A, 'ci_run', { runId: 1 });
+        expect(await event).toMatchObject({ type: 'event', event: 'ci_run', gid: ids.GROUP_A, data: { runId: 1 } });
+        ws.close();
+    });
+
+    test('answers pings and limits subscribe floods', async () => {
+        const { ws } = await subscribed(ids.ALICE, [ids.GROUP_A]);
+        const pong = nextMessage(ws);
+        ws.send(JSON.stringify({ type: 'ping' }));
+        expect(await pong).toEqual({ type: 'pong' });
+        const limited = nextMessage(ws);
+        ws.send(JSON.stringify({ type: 'subscribe', groups: [ids.GROUP_A] }));
+        expect(await limited).toEqual({ type: 'error', code: 'RATE_LIMITED' });
+        ws.send('not json');
+        ws.close();
+    });
+
+    test('closed sockets leave the hub', async () => {
+        const { ws } = await subscribed(ids.CAROL, [ids.GROUP_B]);
+        expect(await realtime.publish(ids.GROUP_B, 'ci_run', {})).toBe(1);
+        await new Promise((resolve) => { ws.once('close', resolve); ws.close(); });
+        await new Promise((r) => setTimeout(r, 50));
+        expect(await realtime.publish(ids.GROUP_B, 'ci_run', {})).toBe(0);
+    });
+});

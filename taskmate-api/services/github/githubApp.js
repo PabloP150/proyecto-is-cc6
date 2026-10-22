@@ -266,12 +266,13 @@ class GitHubApp {
         return url.toString();
     }
 
-    async _send(url, method, headers, body) {
+    async _send(url, method, headers, body, redirect = 'follow') {
         try {
             return await this.fetch(url, {
                 method,
                 headers,
                 body: body === undefined ? undefined : JSON.stringify(body),
+                redirect,
                 signal: AbortSignal.timeout(this.timeoutMs),
             });
         } catch {
@@ -280,8 +281,10 @@ class GitHubApp {
     }
 
     // auth: {installationId} | {token} (user token) | {app: true}. Returns {status, data, headers}.
+    // redirect: 'manual' returns a 3xx as is (list it in allowStatus) instead of following it with
+    // the Authorization header, e.g. for job logs, which GitHub serves from a short-lived storage URL.
     async request(auth, method, path, options = {}) {
-        const { query, body, repoIds, permissions, allowStatus = [], notFoundCode, tokenMint = false, retried = false } = options;
+        const { query, body, repoIds, permissions, allowStatus = [], notFoundCode, tokenMint = false, retried = false, redirect } = options;
         if (auth && auth.installationId !== undefined) this._takeBudget(auth.installationId);
         const headers = {
             Accept: 'application/vnd.github+json',
@@ -291,7 +294,7 @@ class GitHubApp {
         };
         if (body !== undefined) headers['Content-Type'] = 'application/json';
 
-        const res = await this._send(this._url(path, query), method, headers, body);
+        const res = await this._send(this._url(path, query), method, headers, body, redirect);
         let data = null;
         if (res.status !== 204) {
             const text = await res.text().catch(() => '');

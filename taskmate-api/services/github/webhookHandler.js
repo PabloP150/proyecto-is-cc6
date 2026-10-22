@@ -5,6 +5,8 @@ const transaction = require('../../helpers/transaction');
 const { githubApp, PERMISSIONS } = require('./githubApp');
 const { verifyWebhookSignature } = require('./webhookSignature');
 const { isForkPullRequest, applyPullRequestInTx, notifyCompletion } = require('./pullRequestProcessor');
+const { runEvent, jobEvent, deploymentEvent } = require('./cicdEvents');
+const { realtime } = require('../realtime');
 
 const RESPONSE_DEADLINE_MS = 8 * 1000;
 const MAX_ADDED_REPOS = 50;
@@ -113,11 +115,29 @@ const handlePullRequest = async (deliveryId, payload) => {
     return status;
 };
 
+// Phase 4: workflow runs, jobs and TaskMate deploys are not stored (GitHub is the source of truth);
+// they are only relayed live to the members of the groups linked to the repository.
+const handleCicdEvent = async (deliveryId, payload, eventType, data) => {
+    const repoId = Number(payload.repository && payload.repository.id);
+    if (!data || !Number.isSafeInteger(repoId) || repoId <= 0) return ignore(deliveryId);
+    const gids = await githubModel.getGroupIdsByRepo(repoId);
+    if (gids.length === 0) return ignore(deliveryId);
+    await githubModel.finishDelivery(deliveryId, 'processed');
+    Promise.all(gids.map((gid) => realtime.publish(gid, eventType, data)))
+        .catch((err) => console.error('Realtime publish failed:', err && err.message));
+    return 'processed';
+};
+
 const route = async (delivery) => {
     const { deliveryId, event, action, payload } = delivery;
     if (event === 'installation') return handleInstallation(deliveryId, action, payload);
     if (event === 'installation_repositories') return handleInstallationRepositories(deliveryId, action, payload);
     if (event === 'pull_request') return handlePullRequest(deliveryId, payload);
+    if (event === 'workflow_run') return handleCicdEvent(deliveryId, payload, 'ci_run', runEvent(payload.workflow_run, action));
+    if (event === 'workflow_job') return handleCicdEvent(deliveryId, payload, 'ci_job', jobEvent(payload.workflow_job, action));
+    if (event === 'deployment_status') {
+        return handleCicdEvent(deliveryId, payload, 'deployment', deploymentEvent(payload.deployment, payload.deployment_status));
+    }
     return ignore(deliveryId);
 };
 

@@ -4,6 +4,7 @@ const express = require('express');
 const { AppError, sendError } = require('../helpers/errors');
 const requireAuth = require('../middleware/auth.middleware');
 const { requireGroupMember, requireGroupAdmin, requireResourceMember } = require('../middleware/groupAccess');
+const accessModel = require('../models/access.model');
 const { createLimiter } = require('../middleware/rateLimit');
 const githubModel = require('../models/github.model');
 const installFlow = require('../services/github/installFlow');
@@ -79,6 +80,8 @@ const createGithubRouter = ({ auth = requireAuth } = {}) => {
     // A proposal or an apply reads several files of the repository; previews only re-render.
     const pipelineLimiter = createLimiter({ windowMs: 60 * 1000, limit: 10, keyByUser: true });
     const previewLimiter = createLimiter({ windowMs: 60 * 1000, limit: 60, keyByUser: true });
+    // Running, re-running or cancelling uses the repository's Actions minutes: a few per minute.
+    const controlLimiter = createLimiter({ windowMs: 60 * 1000, limit: 10, keyByUser: true });
 
     router.use(auth);
 
@@ -190,6 +193,32 @@ const createGithubRouter = ({ auth = requireAuth } = {}) => {
 
     router.get('/groups/:gid/actions/runs/:runId', requireGroupMember('gid'), browseLimiter, route(async (req, res) => {
         res.json({ data: await actionsService.getRun(req.groupId, req.params.runId) });
+    }));
+
+    router.get('/groups/:gid/actions/jobs/:jobId/logs', requireGroupMember('gid'), browseLimiter, route(async (req, res) => {
+        res.json({ data: await actionsService.getJobLog(req.groupId, req.params.jobId) });
+    }));
+
+    router.get('/groups/:gid/actions/jobs/:jobId/annotations', requireGroupMember('gid'), browseLimiter, route(async (req, res) => {
+        res.json({ data: await actionsService.getJobAnnotations(req.groupId, req.params.jobId) });
+    }));
+
+    // Any member runs the CI on a branch; deploys go through /deployments (Phase 4, step 3).
+    router.post('/groups/:gid/actions/runs', requireGroupMember('gid'), controlLimiter, route(async (req, res) => {
+        const ref = req.body && req.body.ref;
+        if (typeof ref !== 'string' || !ref) throw new AppError('VALIDATION_ERROR', 'ref is required', 400);
+        res.status(202).json({ data: await actionsService.dispatchPipeline(req.groupId, { ref }) });
+    }));
+
+    // Members re-run or cancel CI runs; deploy runs dispatched by TaskMate need the group admin.
+    router.post('/groups/:gid/actions/runs/:runId/rerun-failed', requireGroupMember('gid'), controlLimiter, route(async (req, res) => {
+        const isAdmin = await accessModel.isGroupAdmin(req.user.userId, req.groupId);
+        res.status(202).json({ data: await actionsService.rerunFailed(req.groupId, req.params.runId, { isAdmin }) });
+    }));
+
+    router.post('/groups/:gid/actions/runs/:runId/cancel', requireGroupMember('gid'), controlLimiter, route(async (req, res) => {
+        const isAdmin = await accessModel.isGroupAdmin(req.user.userId, req.groupId);
+        res.status(202).json({ data: await actionsService.cancelRun(req.groupId, req.params.runId, { isAdmin }) });
     }));
 
     return router;

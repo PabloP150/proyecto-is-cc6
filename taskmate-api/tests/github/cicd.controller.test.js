@@ -14,6 +14,11 @@ jest.mock('../../services/github/actionsService', () => ({
     listWorkflows: jest.fn(),
     listRuns: jest.fn(),
     getRun: jest.fn(),
+    getJobLog: jest.fn(),
+    getJobAnnotations: jest.fn(),
+    dispatchPipeline: jest.fn(),
+    rerunFailed: jest.fn(),
+    cancelRun: jest.fn(),
 }));
 
 const express = require('express');
@@ -47,6 +52,11 @@ beforeEach(() => {
     actionsService.listWorkflows.mockResolvedValue([]);
     actionsService.listRuns.mockResolvedValue({ runs: [] });
     actionsService.getRun.mockResolvedValue({ run: { id: 1 }, jobs: [] });
+    actionsService.getJobLog.mockResolvedValue({ jobId: 7, lines: [], errors: [], truncated: false });
+    actionsService.getJobAnnotations.mockResolvedValue([]);
+    actionsService.dispatchPipeline.mockResolvedValue({ dispatched: true, ref: 'main' });
+    actionsService.rerunFailed.mockResolvedValue({ rerun: true, runId: 1 });
+    actionsService.cancelRun.mockResolvedValue({ cancelled: true, runId: 1 });
 });
 
 describe('pipeline', () => {
@@ -148,5 +158,43 @@ describe('actions', () => {
         expect((await request(app).get(`/api/github/groups/${GID}/actions/runs/1`)).status).toBe(403);
         expect(actionsService.listRuns).not.toHaveBeenCalled();
         expect(actionsService.getRun).not.toHaveBeenCalled();
+    });
+});
+
+describe('logs, annotations and run controls', () => {
+    test('members read the log and the annotations of a job', async () => {
+        accessModel.isGroupAdmin.mockResolvedValue(false);
+        await request(app).get(`/api/github/groups/${GID}/actions/jobs/7/logs`).expect(200);
+        await request(app).get(`/api/github/groups/${GID}/actions/jobs/7/annotations`).expect(200);
+        expect(actionsService.getJobLog).toHaveBeenCalledWith(GID, '7');
+        expect(actionsService.getJobAnnotations).toHaveBeenCalledWith(GID, '7');
+    });
+
+    test('members run the CI on a branch; ref is required', async () => {
+        accessModel.isGroupAdmin.mockResolvedValue(false);
+        const res = await request(app).post(`/api/github/groups/${GID}/actions/runs`).send({ ref: 'main' });
+        expect(res.status).toBe(202);
+        expect(actionsService.dispatchPipeline).toHaveBeenCalledWith(GID, { ref: 'main' });
+        for (const body of [{}, { ref: '' }, { ref: ['main'] }]) {
+            expect((await request(app).post(`/api/github/groups/${GID}/actions/runs`).send(body)).status).toBe(400);
+        }
+    });
+
+    test('re-run and cancel tell the service whether the user is the group admin', async () => {
+        accessModel.isGroupAdmin.mockResolvedValue(false);
+        await request(app).post(`/api/github/groups/${GID}/actions/runs/5/rerun-failed`).expect(202);
+        expect(actionsService.rerunFailed).toHaveBeenCalledWith(GID, '5', { isAdmin: false });
+        accessModel.isGroupAdmin.mockResolvedValue(true);
+        await request(app).post(`/api/github/groups/${GID}/actions/runs/5/cancel`).expect(202);
+        expect(actionsService.cancelRun).toHaveBeenCalledWith(GID, '5', { isAdmin: true });
+    });
+
+    test('non-members are refused before GitHub', async () => {
+        accessModel.isGroupMember.mockResolvedValue(false);
+        for (const [method, path] of [['get', 'actions/jobs/7/logs'], ['post', 'actions/runs'], ['post', 'actions/runs/5/rerun-failed'], ['post', 'actions/runs/5/cancel']]) {
+            expect((await request(app)[method](`/api/github/groups/${GID}/${path}`).send({ ref: 'main' })).status).toBe(403);
+        }
+        expect(actionsService.dispatchPipeline).not.toHaveBeenCalled();
+        expect(actionsService.rerunFailed).not.toHaveBeenCalled();
     });
 });
