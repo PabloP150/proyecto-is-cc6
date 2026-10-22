@@ -7,13 +7,19 @@ const llmService = require('./LLMService'); // Import LLMService for insights
 const { verifyAccessToken } = require('../helpers/tokens');
 const { AppError, isAppError } = require('../helpers/errors');
 const { isAllowedOrigin } = require('../middleware/cors');
-const { realtime } = require('./realtime');
+const { realtime, subscribedMessage } = require('./realtime');
 
 const MAX_PAYLOAD_BYTES = 64 * 1024;
 const TOKEN_EXPIRED_CLOSE_CODE = 4001;
 const MAX_TIMER_MS = 2 ** 31 - 1; // setTimeout limit
 // Each subscribe checks membership of up to 50 groups: one per second per socket is plenty.
 const SUBSCRIBE_INTERVAL_MS = 1000;
+// A page sends a few per load (its groups, then again when they change); more is a flood.
+const SUBSCRIBES_PER_MINUTE = 20;
+// One /events socket per open tab; past this the user's oldest one is closed.
+const MAX_EVENT_SOCKETS_PER_USER = 10;
+// An evicted socket whose peer ignores the close frame would linger for ws's 30 s close timeout.
+const EVICTED_CLOSE_GRACE_MS = 5000;
 
 const rejectUpgrade = (socket, status) => {
     socket.write(`HTTP/1.1 ${status}\r\nConnection: close\r\n\r\n`);
@@ -24,7 +30,9 @@ class WebSocketServer {
     constructor(server) {
         this.sessionManager = new SessionManager();
         this.insightsClients = new Map(); // Store clients for the /insights endpoint
-        
+        this.eventSockets = new Map(); // userId → Map(ws → drop) of its open /events sockets, oldest first
+        this.evictedCloseGraceMs = EVICTED_CLOSE_GRACE_MS;
+
         // Create WebSocket server without a specific path. Client messages are small JSON commands;
         // the 100 MiB default would let one client exhaust memory and flood the shared Python link.
         this.wss = new WebSocket.Server({ noServer: true, maxPayload: MAX_PAYLOAD_BYTES });
@@ -208,7 +216,9 @@ class WebSocketServer {
 
     // Phase 4: live CI/CD events for the groups the user subscribes to (see services/realtime.js).
     // Client → {type: 'subscribe', groups: [gid…]} | {type: 'ping'}; server → {type: 'subscribed', groups}
-    // and {type: 'event', event, gid, data}.
+    // (plus `pending`: groups whose membership check failed and is retried; sent again when one of
+    // them goes live), {type: 'event', event, gid, data} and {type: 'error', code: 'RATE_LIMITED'
+    // (with retryAfterMs) | 'SUBSCRIBE_FAILED'}.
     handleEventsConnection(ws, req) {
         const client = realtime.addClient({
             userId: req.userId,
@@ -216,9 +226,47 @@ class WebSocketServer {
                 if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(message));
             },
         });
-        let lastSubscribeAt = 0;
 
-        ws.on('message', async (data) => {
+        // Subscribes are never dropped: a page load sends [] and then its groups ~300 ms later, and
+        // the second one must win. They run one at a time (replies cannot arrive out of order), at
+        // most one per SUBSCRIBE_INTERVAL_MS, and only the latest waiting one runs: each replaces
+        // the whole list, so the ones in between are moot.
+        let waiting = null; // {groups} of the latest subscribe not applied yet
+        let running = false;
+        let lastAppliedAt = -Infinity;
+        let timer = null;
+        let closed = false;
+        const accepted = []; // times of the subscribes accepted in the last minute
+
+        const applyNext = async () => {
+            if (closed || running || !waiting) return;
+            const wait = lastAppliedAt + SUBSCRIBE_INTERVAL_MS - Date.now();
+            if (wait > 0) {
+                if (!timer) {
+                    timer = setTimeout(() => {
+                        timer = null;
+                        applyNext();
+                    }, wait);
+                }
+                return;
+            }
+            const { groups: gids } = waiting;
+            waiting = null;
+            running = true;
+            lastAppliedAt = Date.now();
+            try {
+                client.send(subscribedMessage(await realtime.subscribe(client, gids)));
+            } catch (error) {
+                // realtime.subscribe absorbs DB errors; this is a bug, but the client must not believe it is live.
+                console.error(`Events subscribe failed for user ${req.userId}:`, error && error.message);
+                client.send({ type: 'error', code: 'SUBSCRIBE_FAILED' });
+            } finally {
+                running = false;
+            }
+            applyNext();
+        };
+
+        ws.on('message', (data) => {
             let request;
             try {
                 request = JSON.parse(data.toString());
@@ -232,22 +280,57 @@ class WebSocketServer {
             }
             if (request.type === 'subscribe') {
                 const now = Date.now();
-                if (now - lastSubscribeAt < SUBSCRIBE_INTERVAL_MS) {
-                    client.send({ type: 'error', code: 'RATE_LIMITED' });
+                while (accepted.length > 0 && now - accepted[0] >= 60 * 1000) accepted.shift();
+                if (accepted.length >= SUBSCRIBES_PER_MINUTE) {
+                    client.send({ type: 'error', code: 'RATE_LIMITED', retryAfterMs: accepted[0] + 60 * 1000 - now });
                     return;
                 }
-                lastSubscribeAt = now;
-                const groups = await realtime.subscribe(client, request.groups);
-                client.send({ type: 'subscribed', groups });
+                accepted.push(now);
+                waiting = { groups: request.groups };
+                applyNext();
             }
         });
 
-        const drop = () => realtime.removeClient(client);
+        const drop = () => {
+            if (closed) return;
+            closed = true;
+            clearTimeout(timer);
+            realtime.removeClient(client);
+            this.untrackEventSocket(req.userId, ws);
+        };
         ws.on('close', drop);
         ws.on('error', (error) => {
             console.error(`Events WebSocket error for user ${req.userId}:`, error && error.message);
             drop();
         });
+        this.trackEventSocket(req.userId, ws, drop);
+    }
+
+    // drop: leaves the hub and the user's list (also run on close; it runs once).
+    trackEventSocket(userId, ws, drop) {
+        const id = String(userId).toLowerCase();
+        const open = this.eventSockets.get(id) || new Map();
+        open.set(ws, drop);
+        this.eventSockets.set(id, open);
+        for (const [oldest, dropOldest] of open) {
+            if (open.size <= MAX_EVENT_SOCKETS_PER_USER) break;
+            // Out of the hub right away, not when the close handshake ends: the cap must hold even
+            // for a peer that never answers the close frame, which is cut off after the grace time.
+            dropOldest();
+            // 1000 so the evicted tab does not reconnect and evict another one in turn (it falls back to polling).
+            oldest.close(1000, 'Too many connections');
+            const cutOff = setTimeout(() => oldest.terminate(), this.evictedCloseGraceMs);
+            cutOff.unref();
+            oldest.once('close', () => clearTimeout(cutOff));
+        }
+    }
+
+    untrackEventSocket(userId, ws) {
+        const id = String(userId).toLowerCase();
+        const open = this.eventSockets.get(id);
+        if (!open) return;
+        open.delete(ws);
+        if (open.size === 0) this.eventSockets.delete(id);
     }
 
     // Same rules as the /chat analytics path (shared helper, per action): team data for a real group
