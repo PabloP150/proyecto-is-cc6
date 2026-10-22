@@ -21,11 +21,21 @@ jest.mock('../../services/github/actionsService', () => ({
     cancelRun: jest.fn(),
 }));
 
+jest.mock('../../services/github/deployService', () => ({
+    getDeployments: jest.fn(),
+    deployNow: jest.fn(),
+    requestDeploy: jest.fn(),
+    approveRequest: jest.fn(),
+    rejectRequest: jest.fn(),
+    cancelRequest: jest.fn(),
+}));
+
 const express = require('express');
 const request = require('supertest');
 const accessModel = require('../../models/access.model');
 const pipelineService = require('../../services/github/pipelineService');
 const actionsService = require('../../services/github/actionsService');
+const deployService = require('../../services/github/deployService');
 const { createGithubRouter } = require('../../controllers/github.controller');
 const { AppError } = require('../../helpers/errors');
 
@@ -57,6 +67,12 @@ beforeEach(() => {
     actionsService.dispatchPipeline.mockResolvedValue({ dispatched: true, ref: 'main' });
     actionsService.rerunFailed.mockResolvedValue({ rerun: true, runId: 1 });
     actionsService.cancelRun.mockResolvedValue({ cancelled: true, runId: 1 });
+    deployService.getDeployments.mockResolvedValue({ deploys: true });
+    deployService.deployNow.mockResolvedValue({ dispatched: true });
+    deployService.requestDeploy.mockResolvedValue({ status: 'pending' });
+    deployService.approveRequest.mockResolvedValue({ status: 'approved' });
+    deployService.rejectRequest.mockResolvedValue({ status: 'rejected' });
+    deployService.cancelRequest.mockResolvedValue({ status: 'cancelled' });
 });
 
 describe('pipeline', () => {
@@ -196,5 +212,53 @@ describe('logs, annotations and run controls', () => {
         }
         expect(actionsService.dispatchPipeline).not.toHaveBeenCalled();
         expect(actionsService.rerunFailed).not.toHaveBeenCalled();
+    });
+});
+
+describe('continuous delivery routes', () => {
+    const REQ = '44444444-4444-4444-8444-444444444444';
+    const VERSION = 'b'.repeat(40);
+
+    test('members read the environments and ask for a deploy', async () => {
+        accessModel.isGroupAdmin.mockResolvedValue(false);
+        await request(app).get(`/api/github/groups/${GID}/deployments`).expect(200);
+        const res = await request(app).post(`/api/github/groups/${GID}/deploy-requests`).send({ environment: 'production', version: VERSION });
+        expect(res.status).toBe(201);
+        expect(deployService.requestDeploy).toHaveBeenCalledWith({ gid: GID, uid: UID, environment: 'production', version: VERSION });
+    });
+
+    test('only admins deploy directly, approve or reject', async () => {
+        accessModel.isGroupAdmin.mockResolvedValue(false);
+        for (const [path, body] of [['deployments', { environment: 'production', version: VERSION }], [`deploy-requests/${REQ}/approve`, {}], [`deploy-requests/${REQ}/reject`, {}]]) {
+            const res = await request(app).post(`/api/github/groups/${GID}/${path}`).send(body);
+            expect(res.status).toBe(403);
+            expect(res.body.code).toBe('NOT_GROUP_ADMIN');
+        }
+        expect(deployService.deployNow).not.toHaveBeenCalled();
+        expect(deployService.approveRequest).not.toHaveBeenCalled();
+        expect(deployService.rejectRequest).not.toHaveBeenCalled();
+    });
+
+    test('admins deploy, approve and reject with their identity', async () => {
+        await request(app).post(`/api/github/groups/${GID}/deployments`).send({ environment: 'production', version: VERSION }).expect(202);
+        expect(deployService.deployNow).toHaveBeenCalledWith({ gid: GID, username: 'ana', environment: 'production', version: VERSION });
+        await request(app).post(`/api/github/groups/${GID}/deploy-requests/${REQ}/approve`).expect(200);
+        expect(deployService.approveRequest).toHaveBeenCalledWith({ gid: GID, uid: UID, username: 'ana', requestId: REQ });
+        await request(app).post(`/api/github/groups/${GID}/deploy-requests/${REQ}/reject`).send({ note: 'falta QA' }).expect(200);
+        expect(deployService.rejectRequest).toHaveBeenCalledWith({ gid: GID, uid: UID, requestId: REQ, note: 'falta QA' });
+    });
+
+    test('a member cancels (the service checks it is their request)', async () => {
+        accessModel.isGroupAdmin.mockResolvedValue(false);
+        await request(app).post(`/api/github/groups/${GID}/deploy-requests/${REQ}/cancel`).expect(200);
+        expect(deployService.cancelRequest).toHaveBeenCalledWith({ gid: GID, uid: UID, requestId: REQ });
+    });
+
+    test('non-members get nothing', async () => {
+        accessModel.isGroupMember.mockResolvedValue(false);
+        expect((await request(app).get(`/api/github/groups/${GID}/deployments`)).status).toBe(403);
+        expect((await request(app).post(`/api/github/groups/${GID}/deploy-requests`).send({ version: VERSION })).status).toBe(403);
+        expect(deployService.getDeployments).not.toHaveBeenCalled();
+        expect(deployService.requestDeploy).not.toHaveBeenCalled();
     });
 });

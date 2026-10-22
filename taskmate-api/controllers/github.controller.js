@@ -13,6 +13,7 @@ const branchService = require('../services/github/branchService');
 const syncService = require('../services/github/syncService');
 const pipelineService = require('../services/github/pipelineService');
 const actionsService = require('../services/github/actionsService');
+const deployService = require('../services/github/deployService');
 const { githubWebhookHandler } = require('../services/github/webhookHandler');
 
 const SELECTION_ID_RE = /^[A-Za-z0-9_-]{43}$/;
@@ -219,6 +220,46 @@ const createGithubRouter = ({ auth = requireAuth } = {}) => {
     router.post('/groups/:gid/actions/runs/:runId/cancel', requireGroupMember('gid'), controlLimiter, route(async (req, res) => {
         const isAdmin = await accessModel.isGroupAdmin(req.user.userId, req.groupId);
         res.status(202).json({ data: await actionsService.cancelRun(req.groupId, req.params.runId, { isAdmin }) });
+    }));
+
+    // ------------------------------------------------------------ Phase 4: continuous delivery
+
+    router.get('/groups/:gid/deployments', requireGroupMember('gid'), browseLimiter, route(async (req, res) => {
+        res.json({ data: await deployService.getDeployments(req.groupId) });
+    }));
+
+    // Admin: deploy (or roll back to) a version that passed CI, right away.
+    router.post('/groups/:gid/deployments', requireGroupAdmin('gid'), controlLimiter, route(async (req, res) => {
+        const { environment, version } = req.body || {};
+        res.status(202).json({
+            data: await deployService.deployNow({ gid: req.groupId, username: req.user.username, environment, version }),
+        });
+    }));
+
+    // Member: ask the admins to deploy a version (production by default).
+    router.post('/groups/:gid/deploy-requests', requireGroupMember('gid'), controlLimiter, route(async (req, res) => {
+        const { environment, version } = req.body || {};
+        res.status(201).json({
+            data: await deployService.requestDeploy({ gid: req.groupId, uid: req.user.userId, environment, version }),
+        });
+    }));
+
+    router.post('/groups/:gid/deploy-requests/:requestId/approve', requireGroupAdmin('gid'), controlLimiter, route(async (req, res) => {
+        res.json({
+            data: await deployService.approveRequest({
+                gid: req.groupId, uid: req.user.userId, username: req.user.username, requestId: req.params.requestId,
+            }),
+        });
+    }));
+
+    router.post('/groups/:gid/deploy-requests/:requestId/reject', requireGroupAdmin('gid'), controlLimiter, route(async (req, res) => {
+        const note = req.body ? req.body.note : undefined;
+        res.json({ data: await deployService.rejectRequest({ gid: req.groupId, uid: req.user.userId, requestId: req.params.requestId, note }) });
+    }));
+
+    // The requester withdraws their own pending request (checked in the service).
+    router.post('/groups/:gid/deploy-requests/:requestId/cancel', requireGroupMember('gid'), controlLimiter, route(async (req, res) => {
+        res.json({ data: await deployService.cancelRequest({ gid: req.groupId, uid: req.user.userId, requestId: req.params.requestId }) });
     }));
 
     return router;
