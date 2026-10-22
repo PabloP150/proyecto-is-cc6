@@ -122,6 +122,25 @@ describe('handleCallback — state', () => {
         expect(again).toMatchObject({ status: 'error', code: 'INVALID_STATE' });
     });
 
+    test('"Redirect on update" without state → updated: no code exchange, nothing linked', async () => {
+        const fetchImpl = useFakeGitHub(githubRoutes());
+        for (const setupAction of ['update', 'install']) {
+            const r = parse(await installFlow.handleCallback({ code: 'c', installation_id: '77', setup_action: setupAction }));
+            expect(r).toEqual({ origin: 'http://localhost:3000', path: '/github', status: 'updated' });
+        }
+        expect(fetchImpl.calls).toHaveLength(0);
+        expect(githubModel.linkGroupRepository).not.toHaveBeenCalled();
+    });
+
+    test('an update with a valid state keeps the normal flow; malformed stateless updates are INVALID_STATE', async () => {
+        useFakeGitHub(githubRoutes());
+        const r = parse(await installFlow.handleCallback({ state: newState(), code: 'c', installation_id: '77', setup_action: 'update' }));
+        expect(r.status).toBe('select');
+        for (const query of [{ installation_id: 'x', setup_action: 'update' }, { setup_action: 'update' }, { installation_id: '77', setup_action: 'request' }]) {
+            expect(parse(await installFlow.handleCallback(query))).toMatchObject({ status: 'error', code: 'INVALID_STATE' });
+        }
+    });
+
     test('a state signed for another purpose is rejected', async () => {
         const { signPurposeToken } = require('../../helpers/tokens');
         const other = signPurposeToken('password_reset', { gid: GID, uid: UID, nonce: 'x' }, 600);

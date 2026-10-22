@@ -41,6 +41,57 @@ const SKIPPED_DIRS = new Set([
 
 const invalid = (message) => new AppError('INVALID_PIPELINE', message, 400);
 
+// ---------------------------------------------------------------- scripts that never finish
+
+// A script that starts a server or a watcher never ends: as a CI stage it would hang the job until
+// its timeout. Recognized by its name (start, dev, preview…) or by what it runs (vite without
+// build, next dev, nodemon, --watch…, also through `npm run <script>`); never offered for a stage.
+const LONG_RUNNING_NAMES = new Set(['start', 'dev', 'develop', 'serve', 'server', 'preview', 'watch']);
+const ALWAYS_LONG_RUNNING = new Set([
+    'nodemon', 'http-server', 'live-server', 'serve', 'browser-sync', 'json-server', 'lite-server',
+    'ts-node-dev', 'webpack-dev-server', 'electron', 'start-storybook',
+]);
+const LONG_RUNNING_SUBCOMMANDS = {
+    next: ['dev', 'start'],
+    nuxt: ['dev', 'start', 'preview'],
+    nuxi: ['dev', 'preview'],
+    astro: ['dev', 'preview'],
+    remix: ['dev'],
+    vitepress: ['dev', 'preview'],
+    docusaurus: ['start', 'serve'],
+    gatsby: ['develop', 'serve'],
+    'react-scripts': ['start'],
+    ng: ['serve'],
+    'vue-cli-service': ['serve'],
+    webpack: ['serve'],
+    expo: ['start'],
+    storybook: ['dev'],
+};
+const RUNNERS = new Set(['npx', 'bunx', 'cross-env', 'dotenv', 'exec', 'pnpm', 'yarn', 'bun']);
+const SCRIPT_RUNNERS = new Set(['npm', 'pnpm', 'yarn', 'bun']);
+
+const longRunningSegment = (segment, scripts, seen) => {
+    const words = segment.trim().split(/\s+/).filter(Boolean);
+    const runsScript = SCRIPT_RUNNERS.has(words[0]) && words[1] === 'run' && typeof words[2] === 'string';
+    if (runsScript) return isLongRunningScript(words[2], scripts[words[2]], scripts, seen);
+    while (words.length && (RUNNERS.has(words[0]) || words[0].startsWith('-') || /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[0]))) words.shift();
+    if (words.length === 0) return false;
+    if (words.some((word) => word.startsWith('--watch') || word === '-w' || word === '--serve')) return true;
+    const tool = words[0].slice(words[0].lastIndexOf('/') + 1);
+    const sub = words[1];
+    if (ALWAYS_LONG_RUNNING.has(tool)) return true;
+    if (tool === 'vite' || tool === 'parcel') return sub !== 'build';
+    return Boolean(LONG_RUNNING_SUBCOMMANDS[tool] && LONG_RUNNING_SUBCOMMANDS[tool].includes(sub));
+};
+
+/** True when the script (name + command) would start a server or a watcher. */
+function isLongRunningScript(name, command, scripts = {}, seen = new Set()) {
+    if (LONG_RUNNING_NAMES.has(name)) return true;
+    if (typeof command !== 'string' || seen.has(name)) return false;
+    seen.add(name);
+    return command.split(/&&|\|\||[;|&]/).some((segment) => longRunningSegment(segment, scripts, seen));
+}
+
 // ---------------------------------------------------------------- paths
 
 const isSafeDir = (dir) => typeof dir === 'string'
@@ -167,6 +218,7 @@ const nodeFacts = (dir, files, { packageJson, nodeVersion } = {}, siteDirs = [])
         stack: 'node',
         validManifest: valid,
         scripts,
+        longRunning: Object.keys(scripts).filter((name) => isLongRunningScript(name, scripts[name], scripts)).sort(),
         lockfile: has('package-lock.json') ? 'npm' : has('yarn.lock') ? 'yarn' : has('pnpm-lock.yaml') ? 'pnpm' : null,
         runtime: parseNodeVersion(nodeVersion) || parseNodeVersion(engines, { isRange: true }),
         framework: Object.prototype.hasOwnProperty.call(deps, 'vite') ? 'vite'
@@ -196,10 +248,13 @@ const staticFacts = (dir, siteDirs) => ({ dir, stack: 'static', siteDirs: [...si
 
 // ---------------------------------------------------------------- proposal
 
-const deployable = (project) => project.stack === 'static'
-    || (project.stack === 'node' && Boolean(project.scripts.build) && Boolean(project.framework));
+// A script that exists and finishes (not a server or a watcher).
+const usable = (project, name) => Boolean(project.scripts[name]) && !project.longRunning.includes(name);
 
-const defaultTest = (scripts) => (scripts.test && !NPM_DEFAULT_TEST.test(scripts.test) ? 'test' : null);
+const deployable = (project) => project.stack === 'static'
+    || (project.stack === 'node' && usable(project, 'build') && Boolean(project.framework));
+
+const defaultTest = (project) => (usable(project, 'test') && !NPM_DEFAULT_TEST.test(project.scripts.test) ? 'test' : null);
 
 /**
  * Spec for one project of the facts (the first deployable one unless `dir`/`stack` pick another).
@@ -242,14 +297,18 @@ const proposeSpec = (facts, { dir, stack } = {}) => {
         if (project.lockfile && project.lockfile !== 'npm') {
             notes.push(`El proyecto usa ${project.lockfile}; TaskMate instalará con npm (npm install).`);
         }
-        const lint = ['lint', 'eslint'].find((name) => scripts[name]);
+        const lint = ['lint', 'eslint'].find((name) => usable(project, name));
         spec.lint = lint ? { kind: 'script', name: lint } : null;
         spec.audit = !lint;
         if (!lint) notes.push('No hay script de lint: el análisis estático será la auditoría de dependencias (npm audit).');
-        const test = defaultTest(scripts);
+        const test = defaultTest(project);
         spec.test = test ? { kind: 'script', name: test } : null;
         if (!test) notes.push('No hay script de pruebas («test»).');
-        spec.build = scripts.build ? { kind: 'script', name: 'build' } : null;
+        spec.build = usable(project, 'build') ? { kind: 'script', name: 'build' } : null;
+        const skipped = ['lint', 'test', 'build'].filter((name) => scripts[name] && project.longRunning.includes(name));
+        if (skipped.length) {
+            notes.push(`No se usa ${skipped.map((name) => `«${name}»`).join(', ')}: inicia un servidor o se queda vigilando cambios y nunca terminaría.`);
+        }
         if (deployable(project)) {
             spec.deploy = { target: 'github-pages', framework: project.framework, outputDir: OUTPUT_DIRS[project.framework] };
         } else {
@@ -279,11 +338,14 @@ const onlyKeys = (value, keys, label) => {
     if (extra.length) throw invalid(`${label} has unknown fields: ${extra.join(', ')}`);
 };
 
-const scriptStep = (value, scripts, label) => {
+const scriptStep = (value, project, label) => {
     if (value === null || value === undefined) return null;
     onlyKeys(value, ['kind', 'name'], label);
     if (value.kind !== 'script' || typeof value.name !== 'string' || !SCRIPT_RE.test(value.name)) throw invalid(`${label} is invalid`);
-    if (!Object.prototype.hasOwnProperty.call(scripts, value.name)) throw invalid(`${label}: package.json has no "${value.name}" script`);
+    if (!Object.prototype.hasOwnProperty.call(project.scripts, value.name)) throw invalid(`${label}: package.json has no "${value.name}" script`);
+    if (project.longRunning.includes(value.name)) {
+        throw invalid(`${label}: "${value.name}" starts a server or a watcher and would never finish`);
+    }
     return { kind: 'script', name: value.name };
 };
 
@@ -327,10 +389,10 @@ const validateSpec = (spec, facts) => {
         if (spec.install.kind === 'npm-ci' && project.lockfile !== 'npm') throw invalid('npm ci needs a package-lock.json');
         if (!['npm-ci', 'npm-install'].includes(spec.install.kind)) throw invalid('install is invalid');
         out.install = { kind: spec.install.kind };
-        out.lint = scriptStep(spec.lint, project.scripts, 'lint');
+        out.lint = scriptStep(spec.lint, project, 'lint');
         out.audit = spec.audit === true;
-        out.test = scriptStep(spec.test, project.scripts, 'test');
-        out.build = scriptStep(spec.build, project.scripts, 'build');
+        out.test = scriptStep(spec.test, project, 'test');
+        out.build = scriptStep(spec.build, project, 'build');
     } else if (stack === 'python') {
         if (!PYTHON_VERSIONS.includes(spec.runtime)) throw invalid(`runtime must be one of ${PYTHON_VERSIONS.join(', ')}`);
         out.runtime = spec.runtime;
@@ -749,6 +811,7 @@ module.exports = {
     joinPath,
     filesUnder,
     findProjectDirs,
+    isLongRunningScript,
     parseNodeVersion,
     parsePythonVersion,
     nodeFacts,

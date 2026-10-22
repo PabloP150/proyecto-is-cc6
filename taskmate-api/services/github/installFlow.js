@@ -121,9 +121,20 @@ const collectRepoOptions = async (userToken, installationId) => {
     return options;
 };
 
+const INSTALLATION_ID_RE = /^\d{1,16}$/;
+
 // Returns the frontend URL to redirect to (never throws).
 const handleCallback = async (query = {}) => {
     const pick = (name) => (typeof query[name] === 'string' ? query[name] : undefined);
+    // With "Redirect on update", GitHub comes back here after the owner changes the installation on
+    // github.com (gives the App access to another repository, accepts new permissions). That redirect
+    // carries no `state`, so it cannot be tied to a TaskMate user: nothing is exchanged or linked (the
+    // OAuth `code` is ignored) and the frontend restarts the normal, state-protected authorize flow
+    // for the group the admin was working on.
+    const setupAction = pick('setup_action');
+    if (!pick('state') && INSTALLATION_ID_RE.test(pick('installation_id') || '') && (setupAction === 'update' || setupAction === 'install')) {
+        return buildRedirect({ status: 'updated' });
+    }
     let flow = null;
     try {
         flow = consumeState(pick('state'));

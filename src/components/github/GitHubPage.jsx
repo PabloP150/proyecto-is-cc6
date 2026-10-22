@@ -5,7 +5,7 @@ import SyncIcon from '@mui/icons-material/Sync';
 import { Alert, Box, Chip, CircularProgress, Container, Snackbar, Tab, Tabs, Typography } from '@mui/material';
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-dom';
-import { getRepository, syncGroup } from '../../api/github';
+import { getRepository, install, syncGroup } from '../../api/github';
 import { GroupContext } from '../GroupContext';
 import Button from '../ui/Button';
 import Card from '../ui/Card';
@@ -15,10 +15,12 @@ import RepoExplorer from './RepoExplorer';
 import RepoSelection from './RepoSelection';
 import RepositoryPanel, { AI_CONSENT_TEXT } from './RepositoryPanel';
 import {
+  assignLocation,
   callbackErrorMessage,
   errorMessage,
   getCurrentUserId,
   isAbortError,
+  isGitHubUrl,
   sameId,
   staticCardSx,
 } from './githubUtils';
@@ -26,6 +28,11 @@ import {
 const PENDING_MESSAGE =
   'La instalación quedó pendiente: un propietario de la organización debe aprobarla en GitHub. ' +
   'Cuando la apruebe, vuelve aquí y pulsa «Ya instalé la App».';
+const UPDATED_REDIRECT_MESSAGE = 'Acceso actualizado en GitHub. Abriendo la lista de repositorios…';
+const UPDATED_NOT_ADMIN_MESSAGE =
+  'La instalación de la GitHub App cambió en GitHub. Solo el administrador del grupo puede conectar el repositorio.';
+const UPDATED_NO_GROUP_MESSAGE =
+  'La instalación de la GitHub App cambió en GitHub. Elige el grupo y pulsa «Ya instalé la App» para conectar el repositorio.';
 
 function CenteredStatus({ children }) {
   return (
@@ -75,6 +82,8 @@ export default function GitHubPage() {
   const [tab, setTab] = useState('repo');
   const [syncing, setSyncing] = useState(false);
   const [toast, setToast] = useState(null);
+  const [reauth, setReauth] = useState(false);
+  const reauthStarted = useRef(false);
   const toastCount = useRef(0);
 
   const groups = useMemo(() => (Array.isArray(contextGroups) ? contextGroups : []), [contextGroups]);
@@ -105,6 +114,11 @@ export default function GitHubPage() {
       setNotice({ severity: 'success', message: 'Repositorio conectado correctamente.' });
     } else if (status === 'pending') {
       setNotice({ severity: 'info', message: PENDING_MESSAGE });
+    } else if (status === 'updated') {
+      // GitHub came back after the owner changed the installation (e.g. gave access to another
+      // repository); see the effect below.
+      setReauth(true);
+      setNotice(null);
     } else if (status === 'error' || status === 'select') {
       setNotice({ severity: 'error', message: callbackErrorMessage(searchParams.get('code')) });
     }
@@ -165,6 +179,37 @@ export default function GitHubPage() {
   useEffect(() => {
     if (!usable && tab !== 'repo') setTab('repo');
   }, [usable, tab]);
+
+  // That return has no state, so it cannot be trusted to link anything: an admin of the selected
+  // group is sent straight back through the normal, state-protected authorize flow (GitHub returns
+  // at once when the App is already authorized) and lands on the repository selection.
+  useEffect(() => {
+    if (!reauth || reauthStarted.current) return;
+    if (!gid) {
+      setReauth(false);
+      setNotice({ severity: 'info', message: UPDATED_NO_GROUP_MESSAGE });
+      return;
+    }
+    if (groupsState.loading) return;
+    if (!isAdmin) {
+      setReauth(false);
+      setNotice({ severity: 'info', message: UPDATED_NOT_ADMIN_MESSAGE });
+      return;
+    }
+    reauthStarted.current = true;
+    setNotice({ severity: 'info', message: UPDATED_REDIRECT_MESSAGE });
+    install(gid)
+      .then((data) => {
+        const url = data && data.authorizeUrl;
+        if (!isGitHubUrl(url)) throw new Error('invalid authorize URL');
+        assignLocation(url);
+      })
+      .catch((err) => {
+        reauthStarted.current = false;
+        setReauth(false);
+        setNotice({ severity: 'error', message: errorMessage(err, 'No se pudo abrir la selección de repositorios. Pulsa «Ya instalé la App».') });
+      });
+  }, [reauth, gid, isAdmin, groupsState.loading]);
 
   const handleLinked = (linkedRepo, linkedGid) => {
     setSelectionId(null);

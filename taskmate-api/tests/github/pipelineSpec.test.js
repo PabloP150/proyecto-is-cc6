@@ -48,6 +48,64 @@ describe('findProjectDirs', () => {
     });
 });
 
+describe('isLongRunningScript', () => {
+    test.each([
+        ['dev', 'vite'],
+        ['start', 'node src/index.js'],
+        ['preview', 'vite preview'],
+        ['web', 'vite --port 5173'],
+        ['web', 'npx vite'],
+        ['web', 'NODE_ENV=development node_modules/.bin/vite'],
+        ['web', 'next dev'],
+        ['web', 'react-scripts start'],
+        ['web', 'ng serve --open'],
+        ['web', 'nodemon server.js'],
+        ['web', 'tsc --watch'],
+        ['web', 'jest --watchAll'],
+        ['web', 'tsc -w'],
+        ['web', 'eleventy --serve'],
+        ['web', 'npm run lint && parcel index.html'],
+        ['web', 'cross-env PORT=3000 serve -s build'],
+        ['web', 'storybook dev -p 6006'],
+    ])('%s: %s never finishes', (name, command) => {
+        expect(spec.isLongRunningScript(name, command)).toBe(true);
+    });
+
+    test.each([
+        ['build', 'vite build'],
+        ['build', 'tsc && vite build --base=./'],
+        ['test', 'vitest run'],
+        ['test', 'vitest'],
+        ['test', 'jest --coverage'],
+        ['lint', 'eslint .'],
+        ['build', 'react-scripts build'],
+        ['build', 'next build'],
+        ['build', 'parcel build index.html'],
+        ['docs', 'storybook build'],
+    ])('%s: %s finishes', (name, command) => {
+        expect(spec.isLongRunningScript(name, command)).toBe(false);
+    });
+
+    test('follows npm run into other scripts, without looping', () => {
+        const scripts = { ci: 'npm run lint && npm run serve:web', 'serve:web': 'vite', lint: 'eslint .', a: 'npm run b', b: 'npm run a' };
+        expect(spec.isLongRunningScript('ci', scripts.ci, scripts)).toBe(true);
+        expect(spec.isLongRunningScript('a', scripts.a, scripts)).toBe(false);
+    });
+
+    test('node facts list them; proposals skip them and validation rejects them', () => {
+        const project = spec.nodeFacts('.', ['package.json', 'package-lock.json'], {
+            packageJson: pkg({ dev: 'vite', preview: 'vite preview', build: 'vite build', test: 'jest --watch', lint: 'eslint .' }, { devDependencies: { vite: '6' } }),
+        }, ['.']);
+        expect(project.longRunning).toEqual(['dev', 'preview', 'test']);
+        const { spec: proposal, notes } = spec.proposeSpec(facts(project));
+        expect(proposal.test).toBeNull();
+        expect(proposal.build).toEqual({ kind: 'script', name: 'build' });
+        expect(notes.join(' ')).toMatch(/«test».*nunca terminaría/);
+        expect(() => spec.validateSpec({ ...proposal, build: { kind: 'script', name: 'dev' } }, facts(project)))
+            .toThrow(/"dev" starts a server or a watcher/);
+    });
+});
+
 describe('versions', () => {
     test('node: .nvmrc and engines', () => {
         expect(spec.parseNodeVersion('v20.11.0')).toBe('20');
@@ -76,7 +134,7 @@ describe('facts', () => {
         }, ['public']);
         expect(project).toEqual({
             dir: 'web', stack: 'node', validManifest: true,
-            scripts: { build: 'react-scripts build', test: 'jest' },
+            scripts: { build: 'react-scripts build', test: 'jest' }, longRunning: [],
             lockfile: 'yarn', runtime: spec.DEFAULT_NODE, framework: 'cra', siteDirs: ['public'],
         });
     });

@@ -32,7 +32,8 @@ const FRAMEWORKS = [
 
 const projectKey = (p) => `${p.stack}:${p.dir}`;
 
-function ScriptSelect({ id, label, value, scripts, noneLabel, onChange, helperText }) {
+// Servers and watchers never finish, so they are listed (the admin sees why) but cannot be chosen.
+function ScriptSelect({ id, label, value, scripts, longRunning = [], noneLabel, onChange, helperText }) {
   return (
     <TextField
       id={id}
@@ -45,22 +46,31 @@ function ScriptSelect({ id, label, value, scripts, noneLabel, onChange, helperTe
       helperText={helperText}
     >
       <MenuItem value="">{noneLabel}</MenuItem>
-      {Object.entries(scripts).map(([name, command]) => (
-        <MenuItem key={name} value={name}>
-          <Box component="span" sx={monoSx}>
-            {name === 'test' ? 'npm test' : `npm run ${name}`}
-          </Box>
-          <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1, ...monoSx }} noWrap>
-            {command}
-          </Typography>
-        </MenuItem>
-      ))}
+      {Object.entries(scripts).map(([name, command]) => {
+        const neverEnds = longRunning.includes(name);
+        return (
+          <MenuItem key={name} value={name} disabled={neverEnds}>
+            <Box component="span" sx={monoSx}>
+              {name === 'test' ? 'npm test' : `npm run ${name}`}
+            </Box>
+            <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1, ...monoSx }} noWrap>
+              {command}
+            </Typography>
+            {neverEnds && (
+              <Typography component="span" variant="caption" color="warning.main" sx={{ ml: 1 }}>
+                (inicia un servidor o vigila cambios: nunca termina)
+              </Typography>
+            )}
+          </MenuItem>
+        );
+      })}
     </TextField>
   );
 }
 
 function NodeFields({ spec, project, options, onChange }) {
   const scripts = project.scripts || {};
+  const longRunning = project.longRunning || [];
   const setScript = (key) => (name) => onChange({ ...spec, [key]: name ? { kind: 'script', name } : null });
   return (
     <>
@@ -96,6 +106,7 @@ function NodeFields({ spec, project, options, onChange }) {
         label="Análisis estático (lint)"
         value={spec.lint && spec.lint.name}
         scripts={scripts}
+        longRunning={longRunning}
         noneLabel="Sin lint"
         onChange={setScript('lint')}
       />
@@ -103,8 +114,8 @@ function NodeFields({ spec, project, options, onChange }) {
         control={<Switch checked={spec.audit === true} onChange={(event) => onChange({ ...spec, audit: event.target.checked })} />}
         label="Auditoría de dependencias (npm audit)"
       />
-      <ScriptSelect id="ci-test" label="Pruebas" value={spec.test && spec.test.name} scripts={scripts} noneLabel="Sin pruebas" onChange={setScript('test')} />
-      <ScriptSelect id="ci-build" label="Build" value={spec.build && spec.build.name} scripts={scripts} noneLabel="Sin build" onChange={setScript('build')} />
+      <ScriptSelect id="ci-test" label="Pruebas" value={spec.test && spec.test.name} scripts={scripts} longRunning={longRunning} noneLabel="Sin pruebas" onChange={setScript('test')} />
+      <ScriptSelect id="ci-build" label="Build" value={spec.build && spec.build.name} scripts={scripts} longRunning={longRunning} noneLabel="Sin build" onChange={setScript('build')} />
     </>
   );
 }

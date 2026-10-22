@@ -154,8 +154,8 @@ export default function RepositoryPanel({ gid, repo, isAdmin, onUnlinked, onRepo
               </Button>
             </Box>
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
-              Se abrirá GitHub para instalar la TaskMate App y elegir el repositorio. Si la App ya está instalada en tu
-              cuenta u organización, usa «Ya instalé la App».
+              Se abrirá GitHub para instalar la TaskMate App o darle acceso a otro repositorio; al guardar vuelves aquí para
+              elegirlo. Si la App ya tiene acceso al repositorio, usa «Ya instalé la App».
             </Typography>
           </>
         ) : (

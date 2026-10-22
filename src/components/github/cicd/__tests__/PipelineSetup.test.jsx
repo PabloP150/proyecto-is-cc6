@@ -14,7 +14,8 @@ const NODE = {
   dir: '.',
   stack: 'node',
   validManifest: true,
-  scripts: { lint: 'eslint .', test: 'vitest run', build: 'vite build' },
+  scripts: { dev: 'vite', lint: 'eslint .', test: 'vitest run', build: 'vite build' },
+  longRunning: ['dev'],
   lockfile: 'npm',
   runtime: '22',
   framework: 'vite',
@@ -88,6 +89,16 @@ describe('PipelineSetup', () => {
     expect(spec.lint).toBeNull();
     expect(spec.audit).toBe(true);
     expect(spec.test).toEqual({ kind: 'script', name: 'test' });
+  });
+
+  test('scripts that start a server are listed but cannot be chosen', async () => {
+    renderSetup();
+    await screen.findByText('Nota de prueba.');
+    fireEvent.mouseDown(screen.getByLabelText('Build'));
+    const dev = await screen.findByRole('option', { name: /npm run dev/ });
+    expect(dev).toHaveAttribute('aria-disabled', 'true');
+    expect(dev).toHaveTextContent('nunca termina');
+    expect(screen.getByRole('option', { name: /npm run build/ })).not.toHaveAttribute('aria-disabled');
   });
 
   test('turning the deploy off drops it from the spec', async () => {
