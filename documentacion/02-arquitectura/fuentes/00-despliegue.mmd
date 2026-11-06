@@ -1,0 +1,38 @@
+---
+config:
+  architecture:
+    idealEdgeLengthMultiplier: 2
+---
+architecture-beta
+    group mac(logos:apple)[macOS]
+    service smeec(logos:npm-icon)[smee-client] in mac
+    junction jl in mac
+    service api(logos:nodejs-icon)[API node puerto 9000] in mac
+    junction ja in mac
+    service ia(logos:python)[IA uvicorn 127.0.0.1 puerto 8011] in mac
+    service browser(mdi:web)[Navegador] in mac
+    service cra(logos:react)[CRA npm start puerto 3000] in mac
+    group docker(logos:docker-icon)[Docker] in mac
+    service db(mdi:database)[taskmate-sql SQL Server 2019 puerto 1433] in docker
+
+    group github(logos:github-icon)[GitHub]
+    service gh(logos:github-icon)[API de GitHub] in github
+    service runners(logos:github-actions)[Runners ubuntu-latest] in github
+    service pages(mdi:web)[GitHub Pages] in github
+
+    service smeeio(cloud)[smee.io]
+    service groq(logos:groq)[Groq]
+
+    gh:L --> R:smeeio
+    smeeio:L --> T:smeec
+    smeec:R -- L:jl
+    browser:T -- B:jl
+    jl:R --> L:api
+    browser:L --> R:cra
+    api:T --> B:gh{group}
+    gh:R --> L:runners
+    runners:R --> L:pages
+    api:R -- L:ja
+    ja:R --> L:ia
+    ja:B --> T:db
+    ia:R --> L:groq

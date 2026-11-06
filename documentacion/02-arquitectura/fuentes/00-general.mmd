@@ -1,0 +1,43 @@
+---
+config:
+  architecture:
+    idealEdgeLengthMultiplier: 2
+---
+architecture-beta
+    service fe(logos:react)[Navegador React 18 y MUI]
+    junction j0
+    junction j1
+    junction j2
+
+    group api(logos:nodejs-icon)[API Express puerto 9000]
+    service rest(mdi:api)[REST con JWT] in api
+    service wss(logos:websocket)[WebSockets] in api
+    service hook(mdi:source-pull)[Webhook HMAC] in api
+
+    group ia(logos:python)[Servidor de IA]
+    service orch(logos:fastapi-icon)[FastAPI y agentes] in ia
+    service groq(logos:groq)[Groq]
+
+    group docker(logos:docker-icon)[Docker]
+    service db(mdi:database)[SQL Server 2019] in docker
+
+    group github(logos:github-icon)[GitHub]
+    service gh(logos:github-icon)[GitHub App] in github
+    service gha(logos:github-actions)[GitHub Actions] in github
+    service pages(mdi:web)[GitHub Pages] in github
+
+    service smee(mdi:lan)[smee en desarrollo]
+
+    fe:R -- L:j0
+    j0:T -- B:j1
+    j0:B -- T:j2
+    j1:R --> L:wss
+    j2:R --> L:rest
+    wss{group}:R --> L:orch
+    orch:R --> L:groq
+    rest{group}:R --> L:gh
+    gh:R --> L:gha
+    gha:R --> L:pages
+    gh{group}:B --> T:smee
+    smee:L --> R:hook
+    hook{group}:B --> T:db

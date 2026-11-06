@@ -1,0 +1,44 @@
+architecture-beta
+    group nav(logos:react)[Navegador]
+    service page(logos:react)[BlockDiagram] in nav
+    service flow(mdi:graph)[Flow con React Flow 12] in nav
+    service cal(mdi:calendar)[CalendarView] in nav
+
+    group api(logos:nodejs-icon)[API Express puerto 9000]
+    junction jf in api
+    junction jc in api
+    junction jn in api
+    service guard(mdi:shield-key)[Guardias JWT y miembro] in api
+    junction ja in api
+    junction ja0 in api
+    junction ja2 in api
+    service nodes(mdi:api)[Rutas api nodes] in api
+    service edges(mdi:api)[Rutas api edges] in api
+    service tasks(mdi:api)[Ruta api tasks nodes] in api
+
+    group docker(logos:docker-icon)[Docker]
+    junction jd0 in docker
+    junction jd1 in docker
+    junction jd2 in docker
+    service db(mdi:database)[SQL Server 2019] in docker
+    service trg(mdi:sitemap)[Triggers BFS migración 006] in docker
+
+    page:R --> L:flow
+    flow:R -- L:jf
+    cal:R -- L:jc
+    jf:B -- T:jn
+    jc:T -- B:jn
+    jn:R --> L:guard
+    guard:R -- L:ja
+    ja:T -- B:ja0
+    ja:B -- T:ja2
+    ja0:R --> L:nodes
+    ja:R --> L:edges
+    ja2:R --> L:tasks
+    nodes:R -- L:jd0
+    edges:R -- L:jd1
+    tasks:R -- L:jd2
+    jd0:B -- T:jd1
+    jd2:T -- B:jd1
+    jd1:R --> L:db
+    db:R <--> L:trg

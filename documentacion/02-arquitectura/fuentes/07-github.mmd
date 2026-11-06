@@ -1,0 +1,61 @@
+architecture-beta
+    group nav(logos:react)[Navegador]
+    service fe(logos:react)[Pantallas GitHub Tareas y Chat] in nav
+
+    service ghweb(logos:github-icon)[GitHub instalar y autorizar]
+    junction jf
+    junction jb2
+    junction jb4
+
+    group api(logos:nodejs-icon)[API Express puerto 9000]
+    service cb(mdi:shield-key)[Callback] in api
+    service rest(mdi:api)[Rutas REST] in api
+    service chat(logos:websocket)[Chat WebSocket] in api
+    service hook(mdi:shield-key)[Webhook HMAC] in api
+    service svc(mdi:source-branch)[Servicios GitHub] in api
+    junction k0 in api
+    junction k1 in api
+    junction k2 in api
+    junction z in api
+
+    junction m1
+    junction m2
+    junction m3
+    junction n0
+    junction n1
+    service ghapi(logos:github-icon)[GitHub API y webhooks]
+    service smee(mdi:web)[smee]
+    service db(mdi:database)[SQL Server 2019]
+    service ai(logos:fastapi-icon)[Servidor de IA]
+    service groq(logos:groq)[Groq]
+
+    fe:T -- B:jf
+    jf:R --> L:ghweb
+    ghweb:R --> L:cb
+    fe:R -- L:jb2
+    jb2:R --> L:rest
+    jb2:B -- T:jb4
+    jb4:R --> L:chat
+
+    hook:L -- R:k0
+    cb:R -- L:k1
+    k0:B -- T:k1
+    rest:R -- L:k2
+    k1:B -- T:k2
+    chat:T -- B:k2
+    k2:R --> L:svc
+
+    svc:R -- L:m2
+    m2:T -- B:m1
+    m1:R --> L:ghapi
+    m2:B -- T:m3
+    m3:R --> L:db
+
+    ghapi:R -- L:n1
+    n1:T -- B:n0
+    n0:L --> R:smee
+    smee:L --> R:hook
+
+    chat:R -- L:z
+    z:B --> T:ai
+    ai:R --> L:groq

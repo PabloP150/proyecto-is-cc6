@@ -535,7 +535,7 @@ describe('Performance Tests (requiere SQL Server real — NODE_ENV=integration-t
     });
 
     // testDatabaseOptimization() uses setTimeout simulation (not SQL real) — kept outside gate
-    // See docs/fase-02-optimizacion-rendimiento/README.md for notes on why
+    // See documentacion/08-fases/fase-02-optimizacion-rendimiento/README.md for notes on why
 });
 
 // Export for use in other test files

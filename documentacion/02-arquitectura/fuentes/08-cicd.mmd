@@ -1,0 +1,40 @@
+architecture-beta
+    group nav(mdi:web)[Navegador]
+    service fe(logos:react)[Pestaña CI CD] in nav
+    service avisos(mdi:bell)[Avisos en vivo] in nav
+
+    group api(logos:nodejs-icon)[API Express puerto 9000]
+    service rutas(logos:express)[Rutas CI CD] in api
+    service pipe(mdi:sitemap)[pipelineService] in api
+    service acts(mdi:rocket-launch)[Ejecuciones y deploys] in api
+    service hook(mdi:api)[webhookHandler] in api
+    service hub(logos:websocket)[Hub realtime] in api
+
+    group docker(logos:docker-icon)[Docker]
+    service db(mdi:database)[SQL Server 2019] in docker
+
+    group ia(logos:python)[Servidor de IA]
+    service agent(logos:fastapi-icon)[PipelineAgent] in ia
+
+    service groq(logos:groq)[Groq]
+
+    group github(logos:github-icon)[GitHub]
+    service ghapi(logos:github-icon)[API de GitHub] in github
+    service gha(logos:github-actions)[GitHub Actions] in github
+    service pages(mdi:web)[GitHub Pages] in github
+
+    service smee(mdi:lan)[smee]
+
+    fe:R --> L:rutas
+    rutas:R --> L:pipe
+    pipe:R --> L:acts
+    acts:R --> L:ghapi
+    ghapi:R --> L:gha
+    gha:R --> L:pages
+    pipe{group}:T --> B:agent{group}
+    agent:L --> R:groq
+    hook{group}:B --> T:db{group}
+    gha{group}:B --> T:smee
+    smee:L --> R:hook
+    hook:L --> R:hub
+    hub:L --> R:avisos
