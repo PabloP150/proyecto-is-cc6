@@ -1,7 +1,9 @@
 const { execReadCommand, execWriteCommand } = require('../helpers/execQuery');
 const { TYPES } = require('tedious');
+const { expertiseScore, GROUP_CAPACITY_SQL } = require('./analyticsContext');
 
 const VALID_CATEGORIES = ['frontend', 'backend', 'database', 'testing', 'general'];
+const VALID_CATEGORIES_SQL = VALID_CATEGORIES.map(c => `'${c}'`).join(', ');
 
 class AnalyticsService {
     /**
@@ -184,6 +186,8 @@ class AnalyticsService {
 
     /**
      * Get user expertise scores by category
+     * dbo.UserExpertise sums up the user's work in every group they belong to (their own analytics);
+     * the team ranking (getCategoryExpertiseRankings) is computed per group instead.
      * @param {string} userId - User UUID
      * @returns {Object} Expertise data by category
      */
@@ -221,6 +225,7 @@ class AnalyticsService {
 
     /**
      * Get historical capacity (max concurrent tasks) for a user
+     * Across all of the user's groups (their own analytics); the team views use GROUP_CAPACITY_SQL.
      * @param {string} userId - User UUID
      * @returns {number} Maximum concurrent tasks handled
      */
@@ -295,7 +300,9 @@ class AnalyticsService {
      * Recompute a user's expertise in one category from the TaskAnalytics facts (completed vs
      * failed). Recomputing instead of incrementing makes the refresh idempotent: running it
      * twice for the same completion never double-counts.
-     * score = min(100, success rate + time bonus), bonus = avg > 0 ? max(0, 20 - avg/2) : 10.
+     * score = min(100, success rate + time bonus), bonus = avg > 0 ? max(0, 20 - avg/2) : 10
+     * (analyticsContext.expertiseScore is the same formula in JS, used for the per-group scores).
+     * The facts of every group count here: UserExpertise is per user, not per group.
      * @private
      */
     async _updateUserExpertise(userId, category) {
@@ -397,6 +404,7 @@ class AnalyticsService {
 
     /**
      * Get team analytics summary for a group
+     * Everything is this group's only, historical_capacity included (GROUP_CAPACITY_SQL).
      * @param {string} groupId - Group UUID
      * @returns {Object} Team analytics data
      */
@@ -410,17 +418,13 @@ class AnalyticsService {
                     COUNT(CASE WHEN ta.success_status = 'completed' THEN 1 END) as completed_tasks,
                     COUNT(CASE WHEN ta.success_status = 'failed' THEN 1 END) as failed_tasks,
                     AVG(CASE WHEN ta.completion_time_hours IS NOT NULL THEN ta.completion_time_hours END) as avg_completion_time,
-                    um_max.max_cap as historical_capacity
+                    cap.max_cap as historical_capacity
                 FROM dbo.Users u
                 JOIN dbo.UserGroups ug ON u.uid = ug.uid
                 LEFT JOIN dbo.TaskAnalytics ta ON u.uid = ta.uid AND ta.gid = @gid
-                LEFT JOIN (
-                    SELECT uid, MAX(max_concurrent_tasks) as max_cap
-                    FROM dbo.UserMetrics
-                    GROUP BY uid
-                ) um_max ON u.uid = um_max.uid
+                LEFT JOIN (${GROUP_CAPACITY_SQL}) cap ON u.uid = cap.uid
                 WHERE ug.gid = @gid
-                GROUP BY u.uid, u.username, um_max.max_cap
+                GROUP BY u.uid, u.username, cap.max_cap
                 ORDER BY u.username
             `;
             const params = [
@@ -499,36 +503,47 @@ class AnalyticsService {
 
     /**
      * Get workload distribution across team members
+     * Every member of the group is listed, with or without a role in it. current_workload and capacity
+     * only count this group, so the bar and its status never depend on the member's other groups.
      * @param {string} groupId - Group UUID
-     * @returns {Object} Workload distribution data
+     * @returns {Object} Workload distribution data; each member has `roles` (their role names in this
+     *   group) and `role`, the same names as one display string ('N/A' without roles)
      */
     async getWorkloadDistribution(groupId) {
         try {
+            // Each LEFT JOINed table has one row per user, so several roles never repeat a member.
+            // The role names come as a JSON array (STRING_ESCAPE) because a name may contain any separator.
             const query = `
                 SELECT
                     u.uid,
                     u.username,
-                    MIN(gr.gr_name) as role_name,
+                    r.roles_json,
                     ISNULL(wl.cnt, 0) as current_workload,
                     cap.max_cap as capacity
-                FROM dbo.Users u
-                INNER JOIN dbo.UserGroupRoles ugr ON u.uid = ugr.uid
-                INNER JOIN dbo.GroupRoles gr ON gr.gr_id = ugr.gr_id
+                FROM dbo.UserGroups ug
+                INNER JOIN dbo.Users u ON u.uid = ug.uid
                 LEFT JOIN (
-                    -- Every assignment of an existing task: UserTask.completed is not a completion
-                    -- flag (the UI sends true for "assigned") and completed tasks leave UserTask.
+                    SELECT ugr.uid,
+                           N'[' + STRING_AGG(N'"' + STRING_ESCAPE(gr.gr_name, 'json') + N'"', N',')
+                                      WITHIN GROUP (ORDER BY gr.gr_name) + N']' as roles_json
+                    FROM dbo.UserGroupRoles ugr
+                    INNER JOIN dbo.GroupRoles gr ON gr.gr_id = ugr.gr_id AND gr.gid = @gid
+                    WHERE ugr.gid = @gid
+                    GROUP BY ugr.uid
+                ) r ON r.uid = u.uid
+                LEFT JOIN (
+                    -- Every assignment of an existing task of this group: UserTask.completed is not a
+                    -- completion flag (the UI sends true for "assigned") and completed tasks leave UserTask.
                     SELECT ut.uid, COUNT(*) as cnt
                     FROM dbo.UserTask ut
                     INNER JOIN dbo.Tasks t ON t.tid = ut.tid
+                    WHERE t.gid = @gid
                     GROUP BY ut.uid
                 ) wl ON wl.uid = u.uid
-                LEFT JOIN (
-                    SELECT uid, MAX(max_concurrent_tasks) as max_cap
-                    FROM dbo.UserMetrics
-                    GROUP BY uid
-                ) cap ON cap.uid = u.uid
-                WHERE ugr.gid = @gid
-                GROUP BY u.uid, u.username, wl.cnt, cap.max_cap
+                -- The most tasks the member had open at once in this group (not UserMetrics, which is
+                -- per user and would mix in their other groups)
+                LEFT JOIN (${GROUP_CAPACITY_SQL}) cap ON cap.uid = u.uid
+                WHERE ug.gid = @gid
                 ORDER BY u.username;
             `;
             const params = [
@@ -543,6 +558,7 @@ class AnalyticsService {
                     const capacity = row.capacity || 3; // Default capacity if null
                     const workload = row.current_workload || 0;
                     const workload_percentage = capacity > 0 ? (workload * 100.0) / capacity : 0;
+                    const roles = row.roles_json ? [...new Set(JSON.parse(row.roles_json))] : [];
 
                     return {
                         user_id: row.uid,
@@ -551,7 +567,8 @@ class AnalyticsService {
                         capacity: capacity,
                         utilization: parseFloat(workload_percentage.toFixed(2)),
                         status: this._getWorkloadStatus(workload_percentage),
-                        role: row.role_name || 'N/A'
+                        role: roles.length > 0 ? roles.join(', ') : 'N/A',
+                        roles
                     };
                 }),
                 updated_at: new Date().toISOString()
@@ -564,40 +581,53 @@ class AnalyticsService {
 
     /**
      * Get category expertise rankings for a group
+     * The ranking is per group: it is computed from this group's finished TaskAnalytics facts with the
+     * scoring of _updateUserExpertise, not read from dbo.UserExpertise (which mixes all of a user's groups).
      * @param {string} groupId - Group UUID
      * @param {string} category - Task category (optional)
      * @returns {Object} Expertise rankings
      */
     async getCategoryExpertiseRankings(groupId, category = null) {
         try {
+            // Members with no finished task here keep a NULL category (the 'no_expertise' bucket).
             let query = `
-                SELECT 
+                SELECT
                     u.uid,
                     u.username,
-                    ue.task_category,
-                    ue.expertise_score,
-                    ue.tasks_completed,
-                    ue.success_rate_percentage,
-                    ue.avg_completion_time_hours
-                FROM dbo.Users u
-                JOIN dbo.UserGroups ug ON u.uid = ug.uid
-                LEFT JOIN dbo.UserExpertise ue ON u.uid = ue.uid
+                    s.task_category,
+                    s.tasks_completed,
+                    s.success_rate_percentage,
+                    s.avg_completion_time_hours
+                FROM dbo.UserGroups ug
+                INNER JOIN dbo.Users u ON u.uid = ug.uid
+                LEFT JOIN (
+                    -- Same aggregates as _updateUserExpertise, over this group's facts only
+                    SELECT ta.uid, ta.task_category,
+                           COUNT(*) AS tasks_completed,
+                           CAST(100.0 * SUM(CASE WHEN ta.success_status = 'completed' THEN 1 ELSE 0 END) / COUNT(*) AS DECIMAL(5,2)) AS success_rate_percentage,
+                           CAST(ISNULL(AVG(CASE WHEN ta.success_status = 'completed' THEN ta.completion_time_hours END), 0) AS DECIMAL(10,2)) AS avg_completion_time_hours
+                    FROM dbo.TaskAnalytics ta
+                    WHERE ta.gid = @gid
+                      AND ta.success_status IN ('completed', 'failed')
+                      AND ta.task_category IN (${VALID_CATEGORIES_SQL})
+                    GROUP BY ta.uid, ta.task_category
+                ) s ON s.uid = u.uid
                 WHERE ug.gid = @gid
             `;
-            
+
             const params = [
                 { name: 'gid', type: TYPES.UniqueIdentifier, value: groupId }
             ];
-            
+
             if (category) {
-                query += ' AND ue.task_category = @category';
+                query += ' AND s.task_category = @category';
                 params.push({ name: 'category', type: TYPES.VarChar, value: category });
             }
-            
-            query += ' ORDER BY ue.task_category, ue.expertise_score DESC';
-            
+
+            query += ' ORDER BY s.task_category, u.username';
+
             const results = await execReadCommand(query, params);
-            
+
             // Group by category
             const expertiseByCategory = {};
             results.forEach(row => {
@@ -605,17 +635,22 @@ class AnalyticsService {
                 if (!expertiseByCategory[cat]) {
                     expertiseByCategory[cat] = [];
                 }
-                
+                const tasksCompleted = Number(row.tasks_completed) || 0;
+                const successRate = Number(row.success_rate_percentage) || 0;
+                const avgHours = Number(row.avg_completion_time_hours) || 0;
+
                 expertiseByCategory[cat].push({
                     user_id: row.uid,
                     username: row.username,
-                    expertise_score: row.expertise_score || 0,
-                    tasks_completed: row.tasks_completed || 0,
-                    success_rate_percentage: row.success_rate_percentage || 0,
-                    avg_completion_time_hours: row.avg_completion_time_hours || 0
+                    expertise_score: expertiseScore({ finished: tasksCompleted, successRate, avgHours }),
+                    tasks_completed: tasksCompleted,
+                    success_rate_percentage: successRate,
+                    avg_completion_time_hours: avgHours
                 });
             });
-            
+            // Best score first (the sort is stable: ties stay in username order)
+            Object.values(expertiseByCategory).forEach(list => list.sort((a, b) => b.expertise_score - a.expertise_score));
+
             return {
                 group_id: groupId,
                 category_filter: category,

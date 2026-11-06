@@ -19,14 +19,31 @@ const expertiseScore = ({ finished, successRate, avgHours }) => {
     return Math.min(100, Number((successRate + bonus).toFixed(2)));
 };
 
+// A member's capacity inside one group (needs @gid): the most tasks they have had open at the same time
+// in it. dbo.UserMetrics.max_concurrent_tasks is per user, so it would bring in their other groups.
+// For each of the member's facts here, it counts their facts of this group already assigned and still
+// open at that moment. One row (uid, max_cap) per member with history; none without (they get 3).
+const GROUP_CAPACITY_SQL = `
+    SELECT f.uid, MAX(o.open_count) AS max_cap
+    FROM dbo.TaskAnalytics f
+    CROSS APPLY (
+        SELECT COUNT(*) AS open_count
+        FROM dbo.TaskAnalytics x
+        WHERE x.gid = @gid AND x.uid = f.uid
+          AND x.assigned_at <= f.assigned_at
+          AND (x.completed_at IS NULL OR x.completed_at > f.assigned_at)
+    ) o
+    WHERE f.gid = @gid
+    GROUP BY f.uid`;
+
 /**
  * buildTeamContext(groupId) → {team_members: [{uid, username, current_workload, historical_capacity,
  *   expertise_by_category: {frontend|backend|database|testing|general: {expertise_score, success_rate_percentage}}}]}
- * Workload and expertise only use THIS group's data: a group admin can add any user to their group, so
- * nothing about the member's other projects may leak into it. current_workload = the member's
+ * Workload, capacity and expertise only use THIS group's data: a group admin can add any user to their
+ * group, so nothing about the member's other projects may leak into it. current_workload = the member's
  * assignments (UserTask rows) on this group's open tasks (UserTask.completed means "assigned", and
  * completed tasks leave Tasks/UserTask); expertise comes from this group's finished TaskAnalytics facts;
- * historical_capacity = the user's highest daily max_concurrent_tasks (a single number, 3 without history).
+ * historical_capacity = the most tasks they had open at once in this group (GROUP_CAPACITY_SQL, 3 without history).
  */
 async function buildTeamContext(groupId) {
     const params = [{ name: 'gid', type: TYPES.UniqueIdentifier, value: groupId }];
@@ -35,9 +52,10 @@ async function buildTeamContext(groupId) {
             `SELECT u.uid, u.username,
                     (SELECT COUNT(*) FROM dbo.UserTask ut INNER JOIN dbo.Tasks t ON t.tid = ut.tid
                       WHERE ut.uid = u.uid AND t.gid = @gid) AS current_workload,
-                    (SELECT MAX(um.max_concurrent_tasks) FROM dbo.UserMetrics um WHERE um.uid = u.uid) AS historical_capacity
+                    cap.max_cap AS historical_capacity
              FROM dbo.Users u
              INNER JOIN dbo.UserGroups ug ON ug.uid = u.uid
+             LEFT JOIN (${GROUP_CAPACITY_SQL}) cap ON cap.uid = u.uid
              WHERE ug.gid = @gid
              ORDER BY u.username`,
             params
@@ -82,4 +100,4 @@ async function buildTeamContext(groupId) {
     };
 }
 
-module.exports = { buildTeamContext, expertiseScore, CATEGORIES };
+module.exports = { buildTeamContext, expertiseScore, GROUP_CAPACITY_SQL, CATEGORIES };

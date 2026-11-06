@@ -1,4 +1,5 @@
 const AnalyticsService = require('../services/AnalyticsService');
+const { GROUP_CAPACITY_SQL } = require('../services/analyticsContext');
 const { execReadCommand, execWriteCommand } = require('../helpers/execQuery');
 
 // Mock the database helpers
@@ -340,6 +341,17 @@ describe('AnalyticsService', () => {
             await expect(AnalyticsService.getTeamAnalyticsSummary('group-123'))
                 .rejects.toThrow('Failed to get team analytics');
         });
+
+        it('takes historical_capacity from this group\'s facts (3 without history)', async () => {
+            execReadCommand.mockResolvedValue([{ uid: 'user-1', username: 'john', active_tasks: 0, completed_tasks: 0, failed_tasks: 0, historical_capacity: null }]);
+
+            const { team_members: [john] } = await AnalyticsService.getTeamAnalyticsSummary('group-123');
+
+            expect(john.historical_capacity).toBe(3);
+            const [sql] = execReadCommand.mock.calls[0];
+            expect(sql).not.toMatch(/dbo\.UserMetrics/);
+            expect(sql).toContain(GROUP_CAPACITY_SQL);
+        });
     });
 
     describe('getUserCompletionTrends', () => {
@@ -408,9 +420,52 @@ describe('AnalyticsService', () => {
                 capacity: 5,
                 utilization: 80,
                 status: 'high',
-                role: 'N/A'
+                role: 'N/A',
+                roles: []
             });
             expect(result.workload_distribution[1].status).toBe('light');
+        });
+
+        it('starts from the group\'s members, LEFT JOINs this group\'s roles and counts only its tasks', async () => {
+            execReadCommand.mockResolvedValue([]);
+
+            await AnalyticsService.getWorkloadDistribution('group-123');
+
+            const [sql, params] = execReadCommand.mock.calls[0];
+            expect(sql).toMatch(/FROM dbo\.UserGroups ug/);
+            expect(sql).toMatch(/WHERE ug\.gid = @gid/);
+            expect(sql).not.toMatch(/INNER JOIN dbo\.UserGroupRoles/);
+            expect(sql).toMatch(/LEFT JOIN \(\s*SELECT ugr\.uid,[\s\S]*FROM dbo\.UserGroupRoles ugr[\s\S]*WHERE ugr\.gid = @gid/);
+            expect(sql).toMatch(/gr\.gid = @gid/);
+            expect(sql).toMatch(/STRING_AGG\([\s\S]*WITHIN GROUP \(ORDER BY gr\.gr_name\)/);
+            expect(sql).toMatch(/INNER JOIN dbo\.Tasks t ON t\.tid = ut\.tid\s+WHERE t\.gid = @gid/);
+            expect(sql).not.toMatch(/MIN\(gr\.gr_name\)/);
+            expect(params).toEqual([expect.objectContaining({ name: 'gid', value: 'group-123' })]);
+        });
+
+        it('takes the capacity from this group\'s facts, not from the per-user UserMetrics', async () => {
+            execReadCommand.mockResolvedValue([]);
+
+            await AnalyticsService.getWorkloadDistribution('group-123');
+
+            const [sql] = execReadCommand.mock.calls[0];
+            expect(sql).not.toMatch(/dbo\.UserMetrics/);
+            expect(sql).toContain(GROUP_CAPACITY_SQL);
+            expect(sql).toMatch(/LEFT JOIN \(\s*SELECT f\.uid, MAX\(o\.open_count\) AS max_cap[\s\S]*\) cap ON cap\.uid = u\.uid/);
+        });
+
+        it('lists members without a role (roles []) and every role of the others', async () => {
+            execReadCommand.mockResolvedValue([
+                { uid: 'user-1', username: 'ana', roles_json: '["Backend","QA, \\"senior\\""]', current_workload: 1, capacity: 4 },
+                { uid: 'user-2', username: 'beto', roles_json: null, current_workload: 0, capacity: null },
+            ]);
+
+            const { workload_distribution: [ana, beto] } = await AnalyticsService.getWorkloadDistribution('group-123');
+
+            expect(ana).toEqual(expect.objectContaining({ roles: ['Backend', 'QA, "senior"'], role: 'Backend, QA, "senior"' }));
+            expect(beto).toEqual(expect.objectContaining({
+                user_id: 'user-2', roles: [], role: 'N/A', current_workload: 0, capacity: 3, status: 'available'
+            }));
         });
     });
 
@@ -418,22 +473,20 @@ describe('AnalyticsService', () => {
         it('should return expertise rankings by category', async () => {
             const mockExpertiseData = [
                 {
-                    uid: 'user-1',
-                    username: 'john',
-                    task_category: 'frontend',
-                    expertise_score: 85,
-                    tasks_completed: 10,
-                    success_rate_percentage: 90,
-                    avg_completion_time_hours: 4.5
-                },
-                {
                     uid: 'user-2',
                     username: 'jane',
                     task_category: 'frontend',
-                    expertise_score: 75,
                     tasks_completed: 8,
-                    success_rate_percentage: 87.5,
-                    avg_completion_time_hours: 5.2
+                    success_rate_percentage: 50,
+                    avg_completion_time_hours: 4
+                },
+                {
+                    uid: 'user-1',
+                    username: 'john',
+                    task_category: 'frontend',
+                    tasks_completed: 10,
+                    success_rate_percentage: 90,
+                    avg_completion_time_hours: 50
                 }
             ];
             execReadCommand.mockResolvedValue(mockExpertiseData);
@@ -443,7 +496,54 @@ describe('AnalyticsService', () => {
             expect(result.group_id).toBe('group-123');
             expect(result.category_filter).toBe('frontend');
             expect(result.expertise_rankings.frontend).toHaveLength(2);
-            expect(result.expertise_rankings.frontend[0].expertise_score).toBe(85);
+            // Sorted by score: 90 + 0 (50 h leave no time bonus) beats 50 + (20 - 4/2)
+            expect(result.expertise_rankings.frontend.map(e => [e.username, e.expertise_score])).toEqual([['john', 90], ['jane', 68]]);
+            expect(result.expertise_rankings.frontend[0]).toEqual({
+                user_id: 'user-1',
+                username: 'john',
+                expertise_score: 90,
+                tasks_completed: 10,
+                success_rate_percentage: 90,
+                avg_completion_time_hours: 50
+            });
+            const [sql, params] = execReadCommand.mock.calls[0];
+            expect(sql).toMatch(/AND s\.task_category = @category/);
+            expect(params).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'category', value: 'frontend' })]));
+        });
+
+        it('reads this group\'s TaskAnalytics facts instead of the cross-group UserExpertise table', async () => {
+            execReadCommand.mockResolvedValue([]);
+
+            await AnalyticsService.getCategoryExpertiseRankings('group-123');
+
+            const [sql, params] = execReadCommand.mock.calls[0];
+            expect(sql).not.toMatch(/dbo\.UserExpertise/);
+            expect(sql).toMatch(/FROM dbo\.UserGroups ug/);
+            expect(sql).toMatch(/FROM dbo\.TaskAnalytics ta\s+WHERE ta\.gid = @gid/);
+            expect(sql).toMatch(/success_status IN \('completed', 'failed'\)/);
+            expect(sql).toMatch(/GROUP BY ta\.uid, ta\.task_category/);
+            expect(sql).not.toMatch(/@category/);
+            expect(params).toEqual([expect.objectContaining({ name: 'gid', value: 'group-123' })]);
+        });
+
+        it('scores like _updateUserExpertise and keeps members with no finished task in no_expertise', async () => {
+            const { expertiseScore } = require('../services/analyticsContext');
+            execReadCommand.mockResolvedValue([
+                { uid: 'u1', username: 'a', task_category: 'backend', tasks_completed: 3, success_rate_percentage: 100, avg_completion_time_hours: 0 },
+                { uid: 'u2', username: 'b', task_category: 'backend', tasks_completed: 1, success_rate_percentage: 0, avg_completion_time_hours: 0 },
+                { uid: 'u3', username: 'c', task_category: 'testing', tasks_completed: 2, success_rate_percentage: 50, avg_completion_time_hours: 4 },
+                { uid: 'u4', username: 'd', task_category: null, tasks_completed: null, success_rate_percentage: null, avg_completion_time_hours: null },
+            ]);
+
+            const { expertise_rankings: rankings } = await AnalyticsService.getCategoryExpertiseRankings('group-123');
+
+            // score = min(100, success rate + bonus), bonus = avg > 0 ? max(0, 20 - avg/2) : 10
+            expect(rankings.backend.map(e => e.expertise_score)).toEqual([100, 10]);
+            expect(rankings.testing[0].expertise_score).toBe(68);
+            expect(rankings.testing[0].expertise_score).toBe(expertiseScore({ finished: 2, successRate: 50, avgHours: 4 }));
+            expect(rankings.no_expertise).toEqual([{
+                user_id: 'u4', username: 'd', expertise_score: 0, tasks_completed: 0, success_rate_percentage: 0, avg_completion_time_hours: 0
+            }]);
         });
     });
 

@@ -122,10 +122,70 @@ describe('analytics on top of the fact table', () => {
         const { team_members: inOther } = await buildTeamContext(other);
         const seen = inOther.find(t => String(t.uid).toLowerCase() === member.uid);
         expect(seen.current_workload).toBe(0);
+        expect(seen.historical_capacity).toBe(3);
         CATEGORIES.forEach(cat => expect(seen.expertise_by_category[cat]).toEqual({ expertise_score: 0, success_rate_percentage: 50 }));
 
         const { team_members: [inOwn] } = await buildTeamContext(own);
         expect(inOwn.current_workload).toBe(1);
+        expect(inOwn.historical_capacity).toBe(2);
         expect(Object.values(inOwn.expertise_by_category).some(e => e.success_rate_percentage === 100)).toBe(true);
+    });
+
+    it('the team panel (workload and expertise ranking) only counts the group it shows and lists members without a role', async () => {
+        const worker = await h.createUser('both');
+        const noRole = await h.createUser('norole');
+        const groupA = await h.createGroup(worker.uid, 'A');
+        const groupB = await h.createGroup((await h.createUser('ldrb')).uid, 'B');
+        await h.addMember(noRole.uid, groupA);
+        await h.addMember(worker.uid, groupB);
+        // Two roles in A; the one in B must not show up in A
+        await h.assignRole(worker.uid, groupA, await h.createRole(groupA, 'QA'));
+        await h.assignRole(worker.uid, groupA, await h.createRole(groupA, 'Dev'));
+        await h.assignRole(worker.uid, groupB, await h.createRole(groupB, 'Ops'));
+
+        // Open work: one task in A, two in B
+        await h.assignTask(worker.uid, await h.createTask(groupA), groupA, { category: 'backend' });
+        for (let i = 0; i < 2; i++) {
+            await h.assignTask(worker.uid, await h.createTask(groupB), groupB, { category: 'backend' });
+        }
+        // Finished work: a completed backend task in A and a failed one in B
+        const doneA = await h.createTask(groupA);
+        await h.assignTask(worker.uid, doneA, groupA, { category: 'backend' });
+        await tasksModel.completeTask(doneA);
+        await AnalyticsIntegration.onTaskCompletion(doneA, true);
+        const failedB = await h.createTask(groupB);
+        await h.assignTask(worker.uid, failedB, groupB, { category: 'backend' });
+        await tasksModel.trashTask(failedB);
+        await AnalyticsIntegration.onTaskDeletion(failedB);
+
+        const byUid = rows => Object.fromEntries(rows.map(r => [String(r.user_id).toLowerCase(), r]));
+        // Capacity = the most tasks open at once in that group: 2 in A (open + doneA), 3 in B (2 open +
+        // failedB). The hooks above wrote a UserMetrics row that mixes both groups; it must not be used.
+        const { workload_distribution: inA } = await AnalyticsService.getWorkloadDistribution(groupA);
+        expect(inA).toHaveLength(2);
+        expect(byUid(inA)[worker.uid]).toEqual(expect.objectContaining({
+            current_workload: 1, capacity: 2, utilization: 50, status: 'moderate', roles: ['Dev', 'QA'], role: 'Dev, QA'
+        }));
+        expect(byUid(inA)[noRole.uid]).toEqual(expect.objectContaining({ current_workload: 0, capacity: 3, roles: [], role: 'N/A' }));
+        const { workload_distribution: inB } = await AnalyticsService.getWorkloadDistribution(groupB);
+        expect(byUid(inB)[worker.uid]).toEqual(expect.objectContaining({ current_workload: 2, capacity: 3, utilization: 66.67, roles: ['Ops'] }));
+        const { team_members: summaryA } = await AnalyticsService.getTeamAnalyticsSummary(groupA);
+        expect(byUid(summaryA)[worker.uid].historical_capacity).toBe(2);
+        const { team_members: contextA } = await buildTeamContext(groupA);
+        expect(contextA.find(m => String(m.uid).toLowerCase() === worker.uid).historical_capacity).toBe(2);
+
+        // UserExpertise (the user's own analytics) mixes both groups; each group's ranking only its own facts.
+        expect(await expertiseOf(worker.uid, 'backend')).toEqual(expect.objectContaining({ tasks_completed: 2, success_rate_percentage: 50 }));
+        const { expertise_rankings: rankingA } = await AnalyticsService.getCategoryExpertiseRankings(groupA);
+        // 100 % success + a ~2 h time bonus, capped at 100
+        expect(rankingA.backend).toEqual([expect.objectContaining({
+            username: worker.username, tasks_completed: 1, success_rate_percentage: 100, expertise_score: 100,
+        })]);
+        expect(rankingA.no_expertise.map(e => e.username)).toEqual([noRole.username]);
+        const { expertise_rankings: rankingB } = await AnalyticsService.getCategoryExpertiseRankings(groupB, 'backend');
+        // 0 % success + 10 (a failed task has no completion time)
+        expect(rankingB).toEqual({ backend: [expect.objectContaining({
+            username: worker.username, tasks_completed: 1, success_rate_percentage: 0, expertise_score: 10,
+        })] });
     });
 });

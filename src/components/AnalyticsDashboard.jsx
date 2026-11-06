@@ -5,14 +5,20 @@ import './AnalyticsDashboard.css';
 import { WS_BASE } from '../config';
 import { api, errorMessage, getAuthToken } from '../api/client';
 
-const AVAILABLE_ROLES = [
-    'Frontend Developer',
-    'Backend Developer',
-    'QA Engineer',
-    'UI/UX Designer',
-    'DevOps Engineer',
-    'Product Manager'
-];
+// Role filter values: 'all', 'none' (members with no role in this group) or 'role:<name>', so a role
+// named "all" or "none" cannot clash with the two special options.
+const ALL_ROLES = 'all';
+const NO_ROLE = 'none';
+const NO_ROLE_LABEL = 'No role';
+const roleValue = (name) => `role:${name}`;
+
+const matchesRole = (member, selectedRole) => {
+    if (selectedRole === ALL_ROLES) return true;
+    if (selectedRole === NO_ROLE) return member.roles.length === 0;
+    return member.roles.some(name => roleValue(name) === selectedRole);
+};
+
+const roleLabel = (selectedRole) => (selectedRole === NO_ROLE ? NO_ROLE_LABEL : selectedRole.replace(/^role:/, ''));
 
 const getGradientColors = (utilization) => {
     if (utilization > 80) return { start: '#ef4444', end: '#dc2626' };
@@ -24,7 +30,7 @@ const AnalyticsDashboard = () => {
     const { selectedGroupId } = useContext(GroupContext);
     const [analytics, setAnalytics] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [selectedRole, setSelectedRole] = useState('all');
+    const [selectedRole, setSelectedRole] = useState(ALL_ROLES);
     
     // State for analytics recommendations
     const [analyticsResponse, setAnalyticsResponse] = useState(null);
@@ -68,18 +74,21 @@ const AnalyticsDashboard = () => {
             .map((member, index) => {
                 const baseScore = 95 - (index * 5) - member.utilization;
                 const roleBonus = member.role.includes('Frontend') ? 5 : member.role.includes('Backend') ? 3 : 0;
-                
+                // Without a role in this group there is no expertise to mention (not "Their No role expertise")
+                const hasRole = member.roles.length > 0;
+
                 return {
                     username: member.name,
                     score: Math.min(100, baseScore + roleBonus),
-                    reasoning: `${member.name} is currently at ${member.utilization}% capacity (${member.workload}/${member.capacity} tasks) with strong availability for new assignments. Their ${member.role} expertise aligns well with project requirements.`,
+                    reasoning: `${member.name} is currently at ${member.utilization}% capacity (${member.workload}/${member.capacity} tasks) with strong availability for new assignments.`
+                        + (hasRole ? ` Their ${member.role} expertise aligns well with project requirements.` : ''),
                     confidence_level: index === 0 ? 'high' : index === 1 ? 'medium' : 'low',
                     development_opportunity: index === 0 
                         ? `Leading this task would strengthen ${member.name}'s project leadership skills and provide exposure to cross-functional collaboration.`
                         : index === 1 
                         ? `This assignment offers ${member.name} an opportunity to expand their technical expertise and take on more complex challenges.`
                         : `Working on this task would help ${member.name} develop new skills while contributing meaningfully to the project.`,
-                    expertise_match: member.role,
+                    expertise_match: hasRole ? member.role : null,
                     availability_score: Math.round((100 - member.utilization) * 0.8),
                     skill_alignment: roleBonus > 0 ? 'High' : 'Medium',
                     workload_impact: member.utilization < 50 ? 'Low impact - good capacity' : 'Moderate impact - manageable load'
@@ -139,17 +148,21 @@ const AnalyticsDashboard = () => {
             const totalTasks = totalActive + totalCompleted;
             const completionRate = totalTasks > 0 ? ((totalCompleted / totalTasks) * 100).toFixed(1) : 0;
 
-            // Map workload_distribution
-            const workload = (workload_distribution?.workload_distribution || []).map(m => ({
-                name: m.username,
-                username: m.username,
-                workload: m.current_workload || 0,
-                capacity: m.capacity || 3,
-                utilization: m.utilization || 0,
-                active_tasks: m.current_workload || 0,
-                role: m.role || 'Member',
-                status: m.status || 'available'
-            }));
+            // Map workload_distribution (roles: the member's role names in this group, maybe none)
+            const workload = (workload_distribution?.workload_distribution || []).map(m => {
+                const roles = Array.isArray(m.roles) ? m.roles : [];
+                return {
+                    name: m.username,
+                    username: m.username,
+                    workload: m.current_workload || 0,
+                    capacity: m.capacity || 3,
+                    utilization: m.utilization || 0,
+                    active_tasks: m.current_workload || 0,
+                    roles,
+                    role: roles.length > 0 ? roles.join(', ') : NO_ROLE_LABEL,
+                    status: m.status || 'available'
+                };
+            });
 
             // Map expertise_rankings (object by category → flat array with top expert per category)
             const expertiseObj = expertise_rankings?.expertise_rankings || {};
@@ -208,6 +221,27 @@ const AnalyticsDashboard = () => {
         () => analytics?.workload_distribution || [],
         [analytics?.workload_distribution]
     );
+
+    // The filter offers the roles the loaded members really hold, plus "No role" when someone has none.
+    const roleOptions = useMemo(() => {
+        const names = [...new Set(workloadDistribution.flatMap(m => m.roles))].sort((a, b) => a.localeCompare(b));
+        const options = names.map(name => ({ value: roleValue(name), label: name }));
+        if (workloadDistribution.some(m => m.roles.length === 0)) {
+            options.push({ value: NO_ROLE, label: NO_ROLE_LABEL });
+        }
+        return options;
+    }, [workloadDistribution]);
+
+    // Another group starts unfiltered, and a role that is gone after a refresh stops filtering.
+    useEffect(() => {
+        setSelectedRole(ALL_ROLES);
+    }, [selectedGroupId]);
+
+    useEffect(() => {
+        if (selectedRole !== ALL_ROLES && !roleOptions.some(option => option.value === selectedRole)) {
+            setSelectedRole(ALL_ROLES);
+        }
+    }, [roleOptions, selectedRole]);
 
     if (loading) {
         return (
@@ -289,11 +323,12 @@ const AnalyticsDashboard = () => {
                         value={selectedRole}
                         onChange={handleRoleChange}
                         className="role-selector"
+                        aria-label="Filter by role"
                     >
-                        <option value="all">All Roles</option>
-                        {AVAILABLE_ROLES.map(role => (
-                            <option key={role} value={role}>
-                                {role}
+                        <option value={ALL_ROLES}>All Roles</option>
+                        {roleOptions.map(option => (
+                            <option key={option.value} value={option.value}>
+                                {option.label}
                             </option>
                         ))}
                     </select>
@@ -382,17 +417,17 @@ const MetricCard = React.memo(({ title, value, icon, color }) => (
 ));
 
 const WorkloadChart = React.memo(({ data, selectedRole }) => {
-    // Filter data by selected role if not 'all' (data may be missing: treat it as empty)
+    // A member matches when any of their roles is the selected one (data may be missing: treat it as empty)
     const filteredData = useMemo(() => {
         const workloadData = Array.isArray(data) ? data : [];
-        return selectedRole === 'all' ? workloadData : workloadData.filter(member => member.role === selectedRole);
+        return workloadData.filter(member => matchesRole(member, selectedRole));
     }, [data, selectedRole]);
 
     return (
         <div className="workload-chart">
             {filteredData.length === 0 ? (
                 <div className="no-data-message">
-                    {selectedRole === 'all' ? 'No workload data available' : `No team members found for role: ${selectedRole}`}
+                    {selectedRole === ALL_ROLES ? 'No workload data available' : `No team members found for role: ${roleLabel(selectedRole)}`}
                 </div>
             ) : (
                 filteredData.map((member, index) => {
