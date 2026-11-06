@@ -137,8 +137,9 @@ const readLinkedBranches = async (tx, where, params) => {
  *   → {status: 'completed' | 'already_completed' | 'not_found', task?, branch?}
  * Keeps the "move to Complete" semantics in one transaction: the Tasks row is locked
  * (UPDLOCK, HOLDLOCK) so two concurrent completions serialize and the loser sees
- * 'already_completed'. Complete gets percentage 100, pending TaskAnalytics facts become
- * 'completed', UserTask rows go away and TaskBranches is removed by the FK cascade.
+ * 'already_completed'. Complete gets percentage 100 and the task's created_at, pending
+ * TaskAnalytics facts become 'completed', UserTask rows go away and TaskBranches is removed by
+ * the FK cascade.
  * branch (only with 'completed'): the removed link {tid, gid, repoId, owner, repoName,
  * branchName, baseSha}, or null when the task had no branch in the group's linked repository.
  */
@@ -161,11 +162,12 @@ const completeTask = async (tid, options = {}) => {
 
         // A Complete row can already exist from the old two-request flow; refresh it instead of failing.
         await tx.write(
-            `UPDATE c SET gid = t.gid, name = t.name, description = t.description, percentage = 100, datetime = t.datetime
+            `UPDATE c SET gid = t.gid, name = t.name, description = t.description, percentage = 100, datetime = t.datetime,
+                          created_at = t.created_at, created_seq = t.created_seq
              FROM dbo.Complete c INNER JOIN dbo.Tasks t ON t.tid = c.tid
              WHERE c.tid = @tid;
-             INSERT INTO dbo.Complete (tid, gid, name, description, percentage, datetime)
-             SELECT t.tid, t.gid, t.name, t.description, 100, t.datetime
+             INSERT INTO dbo.Complete (tid, gid, name, description, percentage, datetime, created_at, created_seq)
+             SELECT t.tid, t.gid, t.name, t.description, 100, t.datetime, t.created_at, t.created_seq
              FROM dbo.Tasks t
              WHERE t.tid = @tid AND NOT EXISTS (SELECT 1 FROM dbo.Complete c WHERE c.tid = @tid)`,
             params
@@ -182,9 +184,10 @@ const completeTask = async (tid, options = {}) => {
 /**
  * trashTask(tid, {tx}) → {status: 'deleted' | 'not_found', task?, branch?}
  * The UI's "delete" (copy into DeleteTask, then remove the task) as one transaction: the task is
- * locked, archived in DeleteTask (refreshing a row left by the old two-request flow), its
- * pending analytics facts marked 'failed', its assignments removed and the Tasks row deleted
- * (TaskBranches goes by cascade; `branch` is the removed link, as in completeTask).
+ * locked, archived in DeleteTask with its created_at (refreshing a row left by the old
+ * two-request flow), its pending analytics facts marked 'failed', its assignments removed and the
+ * Tasks row deleted (TaskBranches goes by cascade; `branch` is the removed link, as in
+ * completeTask).
  */
 const trashTask = async (tid, options = {}) => useTransaction(options, async (tx) => {
     const params = [{ name: 'tid', type: TYPES.UniqueIdentifier, value: tid }];
@@ -197,11 +200,11 @@ const trashTask = async (tid, options = {}) => useTransaction(options, async (tx
 
     await tx.write(
         `UPDATE d SET gid = t.gid, name = t.name, description = t.description, datetime = t.datetime,
-                      percentage = ISNULL(t.percentage, 0)
+                      percentage = ISNULL(t.percentage, 0), created_at = t.created_at, created_seq = t.created_seq
          FROM dbo.DeleteTask d INNER JOIN dbo.Tasks t ON t.tid = d.tid
          WHERE d.tid = @tid;
-         INSERT INTO dbo.DeleteTask (tid, gid, name, description, datetime, percentage)
-         SELECT t.tid, t.gid, t.name, t.description, t.datetime, ISNULL(t.percentage, 0)
+         INSERT INTO dbo.DeleteTask (tid, gid, name, description, datetime, percentage, created_at, created_seq)
+         SELECT t.tid, t.gid, t.name, t.description, t.datetime, ISNULL(t.percentage, 0), t.created_at, t.created_seq
          FROM dbo.Tasks t
          WHERE t.tid = @tid AND NOT EXISTS (SELECT 1 FROM dbo.DeleteTask d WHERE d.tid = @tid)`,
         params
@@ -214,16 +217,20 @@ const trashTask = async (tid, options = {}) => useTransaction(options, async (tx
     return { status: 'deleted', task: rows[0], branch };
 });
 
+// Devuelve la fecha/hora como string exacto desde SQL (YYYY-MM-DD HH:mm). createdAt (migration 008)
+// is a DATETIMEOFFSET, an absolute instant: it comes back as a Date and reaches the client as ISO UTC.
+const TASK_COLUMNS = `tid, gid, name, description, list, CONVERT(VARCHAR(16), datetime, 120) AS datetimeStr, percentage,
+                      created_at AS createdAt`;
+
 const getTask = async (tid) => {
-    // Devuelve la fecha/hora como string exacto desde SQL (YYYY-MM-DD HH:mm)
-    const query = `SELECT tid, gid, name, description, list, CONVERT(VARCHAR(16), datetime, 120) AS datetimeStr, percentage FROM dbo.Tasks WHERE tid=@tid`;
+    const query = `SELECT ${TASK_COLUMNS} FROM dbo.Tasks WHERE tid=@tid`;
     const params = [{ name: 'tid', type: TYPES.UniqueIdentifier, value: tid }];
     return execReadCommand(query, params);
 };
 
+// Oldest first («Creation Date», the task list's default order); tid breaks ties.
 const getTasksByGroupId = async (gid) => {
-    // Devuelve la fecha/hora como string exacto desde SQL (YYYY-MM-DD HH:mm)
-    const query = `SELECT tid, gid, name, description, list, CONVERT(VARCHAR(16), datetime, 120) AS datetimeStr, percentage FROM dbo.Tasks WHERE gid=@gid`;
+    const query = `SELECT ${TASK_COLUMNS} FROM dbo.Tasks WHERE gid=@gid ORDER BY created_at, created_seq`;
     const params = [{ name: 'gid', type: TYPES.UniqueIdentifier, value: gid }];
     return execReadCommand(query, params);
 };

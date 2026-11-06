@@ -1,9 +1,12 @@
+const { v4: uuidv4 } = require('uuid');
 const tasksModel = require('../../models/tasks.model');
 const completeModel = require('../../models/complete.model');
 const deleteModel = require('../../models/delete.model');
 const usertaskModel = require('../../models/usertask.model');
 const github = require('../../models/github.model');
-const { execReadCommand } = require('../../helpers/execQuery');
+const { TYPES } = require('tedious');
+const runner = require('../../migrations/runner');
+const { execReadCommand, execWriteCommand } = require('../../helpers/execQuery');
 const { withTransaction } = require('../../helpers/transaction');
 const h = require('./helpers');
 
@@ -305,5 +308,169 @@ describe('usertask.populateAssignmentsForGroup', () => {
     it('throws NOT_FOUND for an unknown group', async () => {
         await expect(usertaskModel.populateAssignmentsForGroup('00000000-0000-0000-0000-000000000001'))
             .rejects.toEqual(expect.objectContaining({ code: 'NOT_FOUND', status: 404 }));
+    });
+});
+
+describe('tasks.created_at (migration 008)', () => {
+    let user; let gid;
+    beforeAll(async () => {
+        user = await h.createUser('crt');
+        gid = await h.createGroup(user.uid);
+    });
+
+    // table: Tasks, or Complete / DeleteTask for a task that was completed or trashed.
+    const createdAt = async (tid, table = 'Tasks') => (await execReadCommand(
+        `SELECT created_at FROM dbo.${table} WHERE tid = @tid`, [h.guid('tid', tid)]
+    ))[0].created_at;
+    const setCreatedAt = (tid, date) => execWriteCommand(
+        'UPDATE dbo.Tasks SET created_at = @at WHERE tid = @tid',
+        [h.guid('tid', tid), { name: 'at', type: TYPES.DateTimeOffset, value: new Date(date) }]
+    );
+    const serverNow = async () => (await execReadCommand('SELECT SYSDATETIMEOFFSET() AS now'))[0].now;
+
+    it('is a NOT NULL DATETIMEOFFSET(7) with a default in Tasks, Complete and DeleteTask; an INSERT that does not name it gets the time', async () => {
+        const cols = await execReadCommand(
+            `SELECT OBJECT_NAME(c.object_id) AS tbl, t.name AS type, c.scale, c.is_nullable, dc.name AS df
+             FROM sys.columns c
+             INNER JOIN sys.types t ON t.user_type_id = c.user_type_id
+             LEFT JOIN sys.default_constraints dc ON dc.parent_object_id = c.object_id AND dc.parent_column_id = c.column_id
+             WHERE c.object_id IN (OBJECT_ID('dbo.Tasks'), OBJECT_ID('dbo.Complete'), OBJECT_ID('dbo.DeleteTask'))
+               AND c.name = 'created_at'
+             ORDER BY tbl`
+        );
+        const column = (tbl) => ({ tbl, type: 'datetimeoffset', scale: 7, is_nullable: false, df: `DF_${tbl}_CreatedAt` });
+        expect(cols).toEqual([column('Complete'), column('DeleteTask'), column('Tasks')]);
+
+        const tid = uuidv4();
+        const before = await serverNow();
+        await tasksModel.addTask({ tid, gid, name: 'Fresh', description: '', list: 'To Do', datetime: '2030-01-01', percentage: 0 });
+        const after = await serverNow();
+        const at = await createdAt(tid);
+        expect(at).toBeInstanceOf(Date);
+        expect(at.getTime()).toBeGreaterThanOrEqual(before.getTime());
+        expect(at.getTime()).toBeLessThanOrEqual(after.getTime());
+    });
+
+    it('getTasksByGroupId lists oldest first and both reads return createdAt', async () => {
+        const group = await h.createGroup(user.uid, 'Order group');
+        const late = await h.createTask(group, { name: 'Late' });
+        const early = await h.createTask(group, { name: 'Early' });
+        const middle = await h.createTask(group, { name: 'Middle' });
+        await setCreatedAt(late, '2026-03-01T00:00:00Z');
+        await setCreatedAt(early, '2026-01-01T00:00:00Z');
+        await setCreatedAt(middle, '2026-02-01T12:30:00.250Z');
+
+        const rows = await tasksModel.getTasksByGroupId(group);
+        expect(rows.map(r => r.name)).toEqual(['Early', 'Middle', 'Late']);
+        expect(rows[1].createdAt.toISOString()).toBe('2026-02-01T12:30:00.250Z');
+        const [one] = await tasksModel.getTask(middle);
+        expect(one.createdAt.toISOString()).toBe('2026-02-01T12:30:00.250Z');
+    });
+
+    it('completing or trashing a task keeps its created_at, and those lists are oldest first too', async () => {
+        const group = await h.createGroup(user.uid, 'Archive order group');
+        const late = await h.createTask(group, { name: 'Late' });
+        const early = await h.createTask(group, { name: 'Early' });
+        const middle = await h.createTask(group, { name: 'Middle' });
+        await setCreatedAt(late, '2026-03-01T00:00:00Z');
+        await setCreatedAt(early, '2026-01-01T00:00:00Z');
+        await setCreatedAt(middle, '2026-02-01T12:30:00.250Z');
+        const lateTrash = await h.createTask(group, { name: 'Late trash' });
+        const earlyTrash = await h.createTask(group, { name: 'Early trash' });
+        await setCreatedAt(lateTrash, '2026-05-01T00:00:00Z');
+        await setCreatedAt(earlyTrash, '2026-04-01T00:00:00Z');
+
+        // Completed or trashed in the opposite order, so the lists cannot follow the archive order.
+        for (const tid of [late, middle, early]) {
+            expect((await tasksModel.completeTask(tid)).status).toBe('completed');
+        }
+        for (const tid of [lateTrash, earlyTrash]) {
+            expect((await tasksModel.trashTask(tid)).status).toBe('deleted');
+        }
+
+        expect((await createdAt(middle, 'Complete')).toISOString()).toBe('2026-02-01T12:30:00.250Z');
+        expect((await createdAt(earlyTrash, 'DeleteTask')).toISOString()).toBe('2026-04-01T00:00:00.000Z');
+        const completed = await completeModel.getCompletados(group);
+        expect(completed.map(r => r.name)).toEqual(['Early', 'Middle', 'Late']);
+        expect(completed[1].createdAt.toISOString()).toBe('2026-02-01T12:30:00.250Z');
+        const trashed = await deleteModel.getEliminados(group);
+        expect(trashed.map(r => r.name)).toEqual(['Early trash', 'Late trash']);
+        expect(trashed[0].createdAt.toISOString()).toBe('2026-04-01T00:00:00.000Z');
+    });
+
+    it('tasks created in the same instant keep their insertion order (created_seq), also once completed', async () => {
+        const group = await h.createGroup(user.uid, 'Tie group');
+        const tids = [];
+        for (const name of ['Uno', 'Dos', 'Tres', 'Cuatro']) tids.push(await h.createTask(group, { name }));
+        for (const tid of tids) await setCreatedAt(tid, '2026-06-01T00:00:00Z');
+
+        expect((await tasksModel.getTasksByGroupId(group)).map(r => r.name)).toEqual(['Uno', 'Dos', 'Tres', 'Cuatro']);
+        const seqOf = async (tid, table) => (await execReadCommand(
+            `SELECT created_seq FROM dbo.${table} WHERE tid = @tid`, [h.guid('tid', tid)]
+        ))[0].created_seq;
+        const seq = await seqOf(tids[1], 'Tasks');
+        for (const tid of [tids[3], tids[1], tids[0], tids[2]]) await tasksModel.completeTask(tid);
+        expect(await seqOf(tids[1], 'Complete')).toBe(seq);
+        expect((await completeModel.getCompletados(group)).map(r => r.name)).toEqual(['Uno', 'Dos', 'Tres', 'Cuatro']);
+    });
+
+    it('refreshing a Complete or DeleteTask row left by the old two-request flow takes the task\'s created_at', async () => {
+        const done = await h.createTask(gid, { name: 'Old done' });
+        const trashed = await h.createTask(gid, { name: 'Old trash' });
+        await setCreatedAt(done, '2026-01-02T00:00:00Z');
+        await setCreatedAt(trashed, '2026-01-03T00:00:00Z');
+        // Rows from before the move, stamped by their DEFAULT (now).
+        await execWriteCommand(
+            `INSERT INTO dbo.Complete (tid, gid, name, description, percentage, datetime)
+             VALUES (@tid, @gid, 'stale', 'd', 10, '2030-01-01')`,
+            [h.guid('tid', done), h.guid('gid', gid)]
+        );
+        await execWriteCommand(
+            `INSERT INTO dbo.DeleteTask (tid, gid, name, description, datetime, percentage)
+             VALUES (@tid, @gid, 'stale', 'd', '2030-01-01', 0)`,
+            [h.guid('tid', trashed), h.guid('gid', gid)]
+        );
+
+        expect((await tasksModel.completeTask(done)).status).toBe('completed');
+        expect((await tasksModel.trashTask(trashed)).status).toBe('deleted');
+
+        expect((await createdAt(done, 'Complete')).toISOString()).toBe('2026-01-02T00:00:00.000Z');
+        expect((await createdAt(trashed, 'DeleteTask')).toISOString()).toBe('2026-01-03T00:00:00.000Z');
+    });
+
+    it('the backfill moves a task back to its first assignment, never forward (reapplying 008)', async () => {
+        const assigned = await h.createTask(gid, { name: 'Assigned' });
+        await h.assignTask(user.uid, assigned, gid); // assigned_at = two hours ago
+        const unassigned = await h.createTask(gid, { name: 'Unassigned' });
+        const assignedLater = await h.createTask(gid, { name: 'Assigned later' });
+        await h.assignTask(user.uid, assignedLater, gid);
+        await setCreatedAt(assignedLater, '2020-01-01T00:00:00Z'); // created long before its assignment
+        // The facts outlive the task, so completed and trashed ones are backfilled the same way.
+        const done = await h.createTask(gid, { name: 'Assigned done' });
+        await h.assignTask(user.uid, done, gid);
+        await tasksModel.completeTask(done);
+        const trashed = await h.createTask(gid, { name: 'Assigned trash' });
+        await h.assignTask(user.uid, trashed, gid);
+        await tasksModel.trashTask(trashed);
+        const before = {
+            assigned: await createdAt(assigned),
+            unassigned: await createdAt(unassigned),
+            done: await createdAt(done, 'Complete'),
+            trashed: await createdAt(trashed, 'DeleteTask'),
+        };
+
+        await runner.reapply({ version: 8 });
+
+        // GETDATE() (assigned_at) and SYSDATETIMEOFFSET() agree once the server's offset is applied.
+        const expectMovedBackTwoHours = (was, now) => {
+            const movedBy = was.getTime() - now.getTime();
+            expect(movedBy).toBeGreaterThan(119 * 60 * 1000);
+            expect(movedBy).toBeLessThan(121 * 60 * 1000);
+        };
+        expectMovedBackTwoHours(before.assigned, await createdAt(assigned));
+        expectMovedBackTwoHours(before.done, await createdAt(done, 'Complete'));
+        expectMovedBackTwoHours(before.trashed, await createdAt(trashed, 'DeleteTask'));
+        expect((await createdAt(unassigned)).getTime()).toBe(before.unassigned.getTime());
+        expect((await createdAt(assignedLater)).toISOString()).toBe('2020-01-01T00:00:00.000Z');
     });
 });

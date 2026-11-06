@@ -32,4 +32,12 @@ describe('complete.model.getCompletados', () => {
         expect(tasksQuery).toContain(WALL_CLOCK);
         expect(completeQuery).toContain(WALL_CLOCK);
     });
+
+    test('returns the creation time as createdAt and lists oldest first, tid breaking ties (migration 008)', async () => {
+        await CompleteModel.getCompletados(GID);
+
+        const [query] = execReadCommand.mock.calls[0];
+        expect(query).toMatch(/\bcreated_at AS createdAt\b/);
+        expect(query).toMatch(/FROM dbo\.Complete WHERE gid=@gid ORDER BY created_at, created_seq, tid$/);
+    });
 });

@@ -173,6 +173,39 @@ describe('ProjectService.addPlanToGroup', () => {
     });
 });
 
+// Migration 008: «Creation Date» lists a plan's tasks in the order the plan gives them. They are
+// inserted in one transaction, one after another on its connection (FIFO), faster than the clock
+// ticks, so their created_at can tie; created_seq (IDENTITY) breaks the tie in insertion order
+// instead of the random tid.
+describe('the tasks of a saved plan in «Creation Date» order', () => {
+    const NAMES = ['Zeta', 'Alfa', 'Mu', 'Beta', 'Omega', 'Delta'];
+    const planTasks = NAMES.map(name => ({ name, description: 'd', due_date: '2030-05-01' }));
+
+    it.each([
+        ['createProjectFromPlan', async (user) => {
+            const result = await projectService.createProjectFromPlan(
+                { project_name: `O${Date.now() % 1e8}`, tasks: planTasks }, 'msg', user.uid
+            );
+            expect(result.success).toBe(true);
+            return result.groupId;
+        }],
+        ['addPlanToGroup', async (user) => {
+            const gid = await h.createGroup(user.uid);
+            await projectService.addPlanToGroup(gid, { summary: 's', milestones: [], tasks: planTasks }, user.uid);
+            return gid;
+        }],
+    ])('%s: getTasksByGroupId returns them in plan order, with increasing created_seq', async (_, savePlan) => {
+        const user = await h.createUser('ord');
+        const gid = await savePlan(user);
+
+        expect((await tasksModel.getTasksByGroupId(gid)).map(t => t.name)).toEqual(NAMES);
+        const seqs = (await execReadCommand(
+            'SELECT name, created_seq FROM dbo.Tasks WHERE gid = @gid ORDER BY created_seq', [h.guid('gid', gid)]
+        )).map(r => r.name);
+        expect(seqs).toEqual(NAMES);
+    });
+});
+
 describe('user.registerUserWithPersonalGroup', () => {
     it('creates user, personal group and membership atomically; duplicates are VALIDATION_ERROR', async () => {
         const username = `reg_${Date.now() % 1e8}`;

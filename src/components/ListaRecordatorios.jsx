@@ -57,30 +57,39 @@ const formatearFecha = (datetime) => {
   }
 };
 
+// Sort keys and the label each one shows; an unknown key sorts and reads as the default.
+const SORT_LABELS = { CreationDate: 'Creation Date', Deadline: 'Deadline', Priority: 'Priority' };
+const DEFAULT_SORT = 'CreationDate';
+const sortKey = (orden) => (Object.prototype.hasOwnProperty.call(SORT_LABELS, orden) ? orden : DEFAULT_SORT);
+
+// Milliseconds of a date, or Infinity when missing or invalid, so those tasks go last.
+const timeOf = (value) => {
+  const ms = value ? new Date(value).getTime() : NaN;
+  return Number.isNaN(ms) ? Infinity : ms;
+};
+// Unlike a - b, never NaN (Infinity - Infinity), which would leave the sort order undefined.
+const compareTimes = (a, b) => (a === b ? 0 : a < b ? -1 : 1);
+
+// Array.prototype.sort is stable, so ties keep the incoming order: the API's (created_at, tid).
 const ordenarRecordatorios = (recordatorios, orden) => {
-  switch (orden) {
-    case 'CreationDate':
-      // Default order — preserve API insertion order (no sort)
-      return recordatorios;
+  switch (sortKey(orden)) {
     case 'Deadline':
       // Sort by due date ascending (soonest first)
-      return [...recordatorios].sort((a, b) => new Date(a.datetime) - new Date(b.datetime));
-    case 'Priority': {
+      return [...recordatorios].sort((a, b) => compareTimes(timeOf(a.datetime), timeOf(b.datetime)));
+    case 'Priority':
       // Priority: tasks with lower completion % and closer deadlines rank higher
-      const now = Date.now();
       return [...recordatorios].sort((a, b) => {
         const pctA = Number(a.percentage) || 0;
         const pctB = Number(b.percentage) || 0;
         // Lower percentage = higher priority
         if (pctA !== pctB) return pctA - pctB;
         // Same percentage → closer deadline first
-        const dA = new Date(a.datetime).getTime() - now;
-        const dB = new Date(b.datetime).getTime() - now;
-        return dA - dB;
+        return compareTimes(timeOf(a.datetime), timeOf(b.datetime));
       });
-    }
     default:
-      return recordatorios;
+      // CreationDate: oldest first by the server's createdAt. A task created since the last load
+      // has none yet and goes last, after the others, in the order it was added.
+      return [...recordatorios].sort((a, b) => compareTimes(timeOf(a.createdAt), timeOf(b.createdAt)));
   }
 };
 
@@ -225,7 +234,7 @@ const ListaRecordatorios = memo(function ListaRecordatorios({ listas, handleElim
           fontWeight: 500,
           textShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
         }}>
-          {orden === 'CreationDate' ? 'Creation Date' : orden === 'Deadline' ? 'Deadline' : 'Priority'}
+          {SORT_LABELS[sortKey(orden)]}
         </Typography>
         <Tooltip title="Sort by" arrow>
           <IconButton
