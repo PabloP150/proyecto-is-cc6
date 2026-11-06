@@ -1,0 +1,39 @@
+architecture-beta
+    group nav(logos:react)[Navegador]
+    service toasts(mdi:bell)[Avisos Cicd Notifications] in nav
+    junction jt in nav
+    junction js in nav
+    service provider(logos:react)[Realtime Provider] in nav
+    service screens(mdi:monitor-dashboard)[Pantallas de CI/CD] in nav
+
+    junction jw in nav
+
+    group api(logos:nodejs-icon)[API Express puerto 9000]
+    service wss(logos:websocket)[WebSocket Server /events] in api
+    service hub(mdi:lan)[Hub realtime] in api
+    service deploy(mdi:rocket-launch)[deploy Service] in api
+    junction jh in api
+    service hook(mdi:api)[webhook Handler] in api
+    junction jx in api
+
+    group docker(logos:docker-icon)[Docker]
+    service db(mdi:database)[SQL Server 2019] in docker
+
+    group ext(cloud)[Internet]
+    service smee(mdi:web)[smee solo en desarrollo] in ext
+    service gh(logos:github-icon)[GitHub] in ext
+
+    provider:T -- B:jt
+    jt:L --> R:toasts
+    provider:L -- R:js
+    js:B --> T:screens
+    provider:R <-- L:jw
+    jw:R --> L:wss
+    wss:R --> L:hub
+    deploy:R -- L:jh
+    hook:L -- R:jh
+    jh:B --> T:hub
+    hub:R -- L:jx
+    jx:B --> T:db
+    smee:L --> R:hook
+    gh:L --> R:smee

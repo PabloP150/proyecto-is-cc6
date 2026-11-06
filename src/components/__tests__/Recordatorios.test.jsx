@@ -289,3 +289,115 @@ describe('Recordatorios — filters drawer and completed tasks', () => {
     expect(screen.getByText('Cobertura - 21/10/2026 00:00')).toBeInTheDocument();
   });
 });
+
+describe('Recordatorios — sort order', () => {
+  // Out of order on every key, as the API could send them. createdAt is the server's creation
+  // instant (ISO UTC); a task created since the last load has none yet.
+  const SORTABLE = [
+    { ...TASK, tid: 'n1', name: 'Nueva 1', datetime: '2026-09-22T09:00', percentage: 0 },
+    { ...TASK, tid: 'c', name: 'Tarea C', createdAt: '2026-09-03T10:00:00.000Z', datetime: '2026-09-21T09:00', percentage: 50 },
+    { ...TASK, tid: 'a', name: 'Tarea A', createdAt: '2026-09-01T10:00:00.000Z', datetime: '2026-09-30T09:00', percentage: 10 },
+    { ...TASK, tid: 'n2', name: 'Nueva 2', datetime: null, percentage: 50 },
+    { ...TASK, tid: 'b', name: 'Tarea B', createdAt: '2026-09-02T10:00:00.000Z', datetime: '2026-09-25T09:00', percentage: 50 },
+  ];
+  const cardOrder = () => screen.getAllByText(/^(Tarea|Nueva) /).map((el) => el.textContent);
+  // The label next to the sort button (the closed menu can stay mounted with the same texts).
+  const sortLabel = (label) => screen.getByText(label, { selector: 'p' });
+  const sortBy = async (label) => {
+    fireEvent.click(screen.getByRole('button', { name: 'Sort tasks' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: label }));
+    await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument());
+  };
+
+  beforeEach(() => {
+    localStorage.clear();
+    api.get.mockReset().mockImplementation((path) => {
+      if (path.startsWith('/api/tasks?gid=')) return Promise.resolve({ data: SORTABLE });
+      if (path.startsWith('/api/groups/')) return Promise.resolve({ members: [] });
+      return Promise.resolve({ data: [] });
+    });
+  });
+
+  const renderSortable = async () => {
+    render(
+      <GroupContext.Provider value={{ selectedGroupId: 'g1', selectedGroupName: 'Grupo' }}>
+        <Recordatorios />
+      </GroupContext.Provider>
+    );
+    await screen.findByText('Tarea A');
+  };
+
+  it('opens on «Creation Date»: oldest createdAt first, tasks without one last in their order', async () => {
+    await renderSortable();
+    expect(sortLabel('Creation Date')).toBeInTheDocument();
+    expect(screen.queryByText('Priority', { selector: 'p' })).not.toBeInTheDocument();
+    expect(cardOrder()).toEqual(['Tarea A', 'Tarea B', 'Tarea C', 'Nueva 1', 'Nueva 2']);
+  });
+
+  it('Priority: lower percentage first, then the closer deadline; no deadline goes last', async () => {
+    await renderSortable();
+    await sortBy('Priority');
+    expect(sortLabel('Priority')).toBeInTheDocument();
+    expect(cardOrder()).toEqual(['Nueva 1', 'Tarea A', 'Tarea C', 'Tarea B', 'Nueva 2']);
+  });
+
+  it('Deadline: soonest first, a task without a deadline last; and back to Creation Date', async () => {
+    await renderSortable();
+    await sortBy('Deadline');
+    expect(sortLabel('Deadline')).toBeInTheDocument();
+    expect(cardOrder()).toEqual(['Tarea C', 'Nueva 1', 'Tarea B', 'Tarea A', 'Nueva 2']);
+
+    await sortBy('Creation Date');
+    expect(sortLabel('Creation Date')).toBeInTheDocument();
+    expect(cardOrder()).toEqual(['Tarea A', 'Tarea B', 'Tarea C', 'Nueva 1', 'Nueva 2']);
+  });
+
+  it('a task added from the form goes last in Creation Date order', async () => {
+    api.post.mockReset().mockResolvedValue({ data: { rowCount: 1, tid: 'new' } });
+    await renderSortable();
+
+    fireEvent.click(screen.getByRole('button', { name: /add task/i }));
+    fireEvent.change(screen.getByLabelText(/Task Name/, { selector: 'input' }), { target: { value: 'Tarea recién creada' } });
+    fireEvent.change(screen.getByLabelText(/Deadline/, { selector: 'input' }), { target: { value: '2026-09-01' } });
+    fireEvent.mouseDown(screen.getByLabelText(/Select List/));
+    fireEvent.click(await screen.findByRole('option', { name: 'Trabajo' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add Task' }));
+
+    await screen.findByText('Tarea recién creada');
+    expect(cardOrder()).toEqual(['Tarea A', 'Tarea B', 'Tarea C', 'Nueva 1', 'Nueva 2', 'Tarea recién creada']);
+  });
+
+  // GET /api/completados and GET /api/delete send createdAt too (the task's, kept when it moved).
+  it.each([
+    ['Completed', '/api/completados/'],
+    ['Deleted', '/api/delete/'],
+  ])('the %s view also opens on «Creation Date» in createdAt order, and Deadline still sorts it', async (view, archivePath) => {
+    const ARCHIVED = [
+      { tid: 'x3', gid: 'g1', name: 'Tarea hecha 3', description: 'd', percentage: 100, datetime: '2026-09-10T09:00', createdAt: '2026-09-03T10:00:00.000Z' },
+      { tid: 'x1', gid: 'g1', name: 'Tarea hecha 1', description: 'd', percentage: 100, datetime: '2026-09-30T09:00', createdAt: '2026-09-01T10:00:00.000Z' },
+      { tid: 'x2', gid: 'g1', name: 'Tarea hecha 2', description: 'd', percentage: 100, datetime: '2026-09-20T09:00', createdAt: '2026-09-02T10:00:00.000Z' },
+    ];
+    api.get.mockImplementation((path) => {
+      if (path.startsWith('/api/tasks?gid=')) return Promise.resolve({ data: SORTABLE });
+      if (path.startsWith(archivePath)) return Promise.resolve({ data: ARCHIVED });
+      if (path.startsWith('/api/groups/')) return Promise.resolve({ members: [] });
+      return Promise.resolve({ data: [] });
+    });
+    await renderSortable();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Filters' }));
+    const option = await screen.findByRole('button', { name: view });
+    fireEvent.click(option);
+    await screen.findByText('Tarea hecha 1');
+    // The drawer stays open after a choice; close it so the sort button is reachable again.
+    fireEvent.keyDown(option, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('button', { name: view })).not.toBeInTheDocument());
+
+    expect(sortLabel('Creation Date')).toBeInTheDocument();
+    expect(cardOrder()).toEqual(['Tarea hecha 1', 'Tarea hecha 2', 'Tarea hecha 3']);
+
+    await sortBy('Deadline');
+    expect(sortLabel('Deadline')).toBeInTheDocument();
+    expect(cardOrder()).toEqual(['Tarea hecha 3', 'Tarea hecha 2', 'Tarea hecha 1']);
+  });
+});

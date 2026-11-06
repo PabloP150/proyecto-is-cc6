@@ -1,0 +1,46 @@
+architecture-beta
+    group nav(mdi:web)[Navegador]
+    service page(logos:react)[ChatPage y selector de proyecto] in nav
+
+    junction jnav
+
+    group api(logos:nodejs-icon)[API Express puerto 9000]
+    service wss(logos:websocket)[WebSocket /chat] in api
+    service sess(mdi:message-processing)[SessionManager y UserSession] in api
+    junction js in api
+    service llms(mdi:lan)[LLMService] in api
+    service proj(mdi:sitemap)[ProjectService] in api
+
+    group docker(logos:docker-icon)[Docker]
+    service db(mdi:database)[SQL Server 2019] in docker
+
+    junction jia
+
+    group ia(logos:fastapi-icon)[Servidor de IA FastAPI]
+    service ws(mdi:api)[Ruta /ws con X-MCP-Secret] in ia
+    junction jw in ia
+    service orch(mdi:robot)[Orquestador] in ia
+    junction jo in ia
+    junction jp in ia
+    service recs(mdi:checkbox-marked-outline)[Agente del plan] in ia
+    service llmpy(logos:python)[llm_service.py] in ia
+
+    service groq(logos:groq)[Groq gpt-oss-20b]
+
+    page:R -- L:jnav
+    jnav:R --> L:wss
+    wss:R --> L:sess
+    sess:R -- L:js
+    js:R --> L:llms
+    js:B --> T:proj
+    proj:L --> R:db
+    llms:R -- L:jia
+    jia:R --> L:ws
+    ws:R -- L:jw
+    jw:B --> T:orch
+    orch:R -- L:jo
+    jo:B --> T:recs
+    jo:R -- L:jp
+    jp:B --> T:llmpy
+    recs:R --> L:llmpy
+    llmpy:R --> L:groq

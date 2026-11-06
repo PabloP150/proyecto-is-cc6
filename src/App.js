@@ -11,8 +11,6 @@ const AnalyticsDashboard = lazy(() => import('./components/AnalyticsDashboard'))
 const BlockDiagram = lazy(() => import('./components/BlockDiagram'));
 const CalendarView = lazy(() => import('./components/CalendarView'));
 const ChatPage = lazy(() => import('./components/ChatPage'));
-const CreateGroup = lazy(() => import('./components/CreateGroup'));
-const Flow = lazy(() => import('./components/flow/Flow'));
 const GitHubPage = lazy(() => import('./components/github/GitHubPage'));
 const GroupsView = lazy(() => import('./components/GroupsView'));
 const HomePage = lazy(() => import('./components/HomePage'));
@@ -84,13 +82,14 @@ function AppRoutes({ user, setUser }) {
         {user && <CicdNotifications />}
         <Routes>
           <Route path="/" element={user ? <Navigate to="/home" /> : <Login onLogin={handleLogin} />} />
-          <Route path="/register" element={<Register />} />
+          <Route path="/register" element={user ? <Navigate to="/home" replace /> : <Register />} />
           <Route path="/home" element={user ? <HomePage /> : <Navigate to="/" />} />
           <Route path="/calendar" element={user ? <CalendarView /> : <Navigate to="/" />} />
           <Route path="/block-diagram" element={user ? <BlockDiagram className='block-diagram' /> : <Navigate to="/" />} />
-          <Route path="/flow" element={user ? <Flow /> : <Navigate to="/" />} />
+          {/* Old addresses with no link in the app: the milestones graph lives in /block-diagram, groups are created in /groups. */}
+          <Route path="/flow" element={<Navigate to={user ? '/block-diagram' : '/'} replace />} />
           <Route path="/tasks" element={user ? <Recordatorios /> : <Navigate to="/" />} />
-          <Route path="/create-group" element={user ? <CreateGroup /> : <Navigate to="/" />} />
+          <Route path="/create-group" element={<Navigate to={user ? '/groups' : '/'} replace />} />
           <Route path="/groups" element={user ? <GroupsView /> : <Navigate to="/" />} />
           <Route path="/chat" element={user ? <ChatPage /> : <Navigate to="/" />} />
           <Route path="/analytics" element={user ? <AnalyticsDashboard /> : <Navigate to="/" />} />

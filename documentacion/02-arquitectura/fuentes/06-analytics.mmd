@@ -1,0 +1,36 @@
+architecture-beta
+    group nav(mdi:web)[Navegador]
+    service dash(logos:react)[Panel de analytics] in nav
+
+    group api(logos:nodejs-icon)[API Express puerto 9000]
+    junction jin in api
+    junction jx in api
+    junction jw in api
+    service ins(logos:websocket)[WebSocket /insights] in api
+    service llms(mdi:lan)[LLMService] in api
+    service rest(mdi:api)[REST /api/analytics] in api
+    service svc(mdi:chart-bar)[Servicios de analytics] in api
+    service hooks(mdi:checkbox-marked-outline)[Hooks de tareas] in api
+    service batch(mdi:calendar)[Job de métricas opcional] in api
+
+    group ia(logos:fastapi-icon)[Servidor de IA FastAPI]
+    service agent(mdi:robot)[AnalyticsAgent] in ia
+
+    service groq(logos:groq)[Groq gpt-oss-20b]
+
+    group docker(logos:docker-icon)[Docker]
+    service db(mdi:database)[SQL Server 2019] in docker
+
+    dash:R -- L:jin
+    jin:R --> L:ins
+    jin:B --> T:rest
+    ins:R -- L:jx
+    jx:R --> L:llms
+    jx:B --> T:svc
+    llms:R --> L:agent
+    agent:R --> L:groq
+    rest:R -- L:jw
+    jw:R --> L:svc
+    hooks:T -- B:jw
+    batch:L --> R:hooks
+    svc:R --> L:db

@@ -1,0 +1,37 @@
+architecture-beta
+    service user(mdi:account)[Usuario]
+
+    group nav(logos:react)[Frontend React 18 y MUI puerto 3000]
+    service rolesui(logos:material-ui)[Paneles de roles] in nav
+    service ui(logos:react)[GroupsView] in nav
+    service ctx(mdi:account-group)[GroupContext] in nav
+    junction jroles in nav
+    junction jui in nav
+    junction jctx in nav
+
+    group api(logos:nodejs-icon)[API Node y Express puerto 9000]
+    service jwt(logos:jwt-icon)[requireAuth JWT] in api
+    service guard(mdi:shield-key)[Guardias de grupo] in api
+    service ctrl(logos:express)[Controllers] in api
+    service models(logos:javascript)[Modelos] in api
+    junction jusers in api
+    service ana(mdi:chart-bar)[Analytics] in api
+    service plan(mdi:robot)[Plan del chat] in api
+
+    group docker(logos:docker-icon)[Docker]
+    service db(mdi:database)[SQL Server 2019] in docker
+
+    user:R --> L:ui
+    rolesui:R -- L:jroles
+    ui:R -- L:jui
+    ctx:R -- L:jctx
+    jroles:B -- T:jui
+    jctx:T -- B:jui
+    jui:R --> L:jwt
+    jwt:R --> L:guard
+    guard:R --> L:ctrl
+    ctrl:R --> L:models
+    models:R --> L:db
+    ana:R -- L:jusers
+    plan:L -- R:jusers
+    jusers:B --> T:models

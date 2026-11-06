@@ -1,0 +1,29 @@
+architecture-beta
+    group nav(mdi:web)[Navegador]
+    service ui(logos:react)[Login y Register] in nav
+    service app(logos:react)[App y cliente HTTP] in nav
+    service wsc(logos:react)[useWebSocket] in nav
+    service store(disk)[localStorage y sessionStorage] in nav
+
+    group api(logos:nodejs-icon)[API Express puerto 9000]
+    service limit(mdi:shield-key)[authLimiter] in api
+    service users(logos:jwt-icon)[Rutas api users] in api
+    service guard(mdi:shield-key)[requireAuth] in api
+    service rest(logos:express)[Resto de la API] in api
+    service ws(logos:websocket)[Servidor WebSocket] in api
+    junction j1 in api
+    junction j2 in api
+
+    group docker(logos:docker-icon)[Docker]
+    service db(mdi:database)[SQL Server 2019] in docker
+
+    ui:R --> L:limit
+    limit:R --> L:users
+    users:R -- L:j1
+    j1:B -- T:j2
+    app:L --> R:store
+    app:R --> L:guard
+    guard:R --> L:rest
+    rest:R -- L:j2
+    j2:R --> L:db
+    wsc:R --> L:ws

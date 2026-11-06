@@ -77,7 +77,7 @@ export default function Recordatorios() {
   const [nombreLista, setNombreLista] = useState('');
   const [listaSeleccionada, setListaSeleccionada] = useState('');
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [orden, setOrden] = useState('fechaCreacion');
+  const [orden, setOrden] = useState('CreationDate'); // a sort key of ListaRecordatorios
   const [eliminados, setEliminados] = useState([]);
   const [completados, setCompletados] = useState([]);
   const [filtro, setFiltro] = useState('todos');

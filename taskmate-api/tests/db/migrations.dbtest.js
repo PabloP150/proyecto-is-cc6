@@ -31,6 +31,10 @@ describe('migrations', () => {
         expect(await objectExists('dbo.UpdateTargetNodePercentage')).toBe(false);
         expect(await objectExists('dbo.RepoPipelines')).toBe(false);
         expect(await objectExists('dbo.DeployRequests')).toBe(false);
+        for (const table of ['Tasks', 'Complete', 'DeleteTask']) {
+            expect(await objectExists(`dbo.DF_${table}_CreatedAt`)).toBe(false);
+            expect(await h.count(`sys.columns WHERE object_id = OBJECT_ID('dbo.${table}') AND name IN ('created_at', 'created_seq')`)).toBe(0);
+        }
         expect(await h.count('dbo.SchemaMigrations')).toBe(0);
 
         await expect(runner.up()).resolves.toEqual([...Array(LATEST)].map((_, i) => i + 1));
@@ -38,6 +42,9 @@ describe('migrations', () => {
         expect(await objectExists('dbo.UpdateTargetNodePercentage')).toBe(true);
         expect(await objectExists('dbo.RepoPipelines')).toBe(true);
         expect(await indexExists('dbo.DeployRequests', 'UX_DeployRequests_Pending')).toBe(true);
+        for (const table of ['Tasks', 'Complete', 'DeleteTask']) {
+            expect(await objectExists(`dbo.DF_${table}_CreatedAt`)).toBe(true);
+        }
         expect(await h.count('dbo.SchemaMigrations')).toBe(LATEST);
         expect(await h.count("sys.foreign_keys WHERE parent_object_id = OBJECT_ID('dbo.TaskAnalytics') AND referenced_object_id = OBJECT_ID('dbo.Tasks')")).toBe(0);
     });

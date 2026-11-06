@@ -33,4 +33,12 @@ describe('delete.model.getEliminados', () => {
         expect(tasksQuery).toContain(WALL_CLOCK);
         expect(deletedQuery).toContain(WALL_CLOCK);
     });
+
+    test('returns the creation time as createdAt and lists oldest first, tid breaking ties (migration 008)', async () => {
+        await DeleteModel.getEliminados(GID);
+
+        const [query] = execReadCommand.mock.calls[0];
+        expect(query).toMatch(/\bcreated_at AS createdAt\b/);
+        expect(query).toMatch(/FROM dbo\.DeleteTask WHERE gid=@gid ORDER BY created_at, created_seq, tid$/);
+    });
 });

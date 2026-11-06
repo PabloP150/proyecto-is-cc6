@@ -1,0 +1,53 @@
+architecture-beta
+    group nav(mdi:web)[Navegador]
+    service store(disk)[localStorage customLists] in nav
+    service page(logos:react)[Pantalla Tasks] in nav
+    service client(logos:javascript)[Cliente HTTP con JWT] in nav
+
+    group api(logos:nodejs-icon)[API Express puerto 9000]
+    service guard(mdi:shield-key)[requireAuth y guardias de grupo] in api
+    junction j1 in api
+    junction j2 in api
+    junction j3 in api
+    service tasks(mdi:checkbox-marked-outline)[Rutas de tareas] in api
+    service assign(mdi:account-group)[Rutas de asignación] in api
+    junction u in api
+    service branch(mdi:source-branch)[branchService] in api
+    junction k1 in api
+    junction k2 in api
+    junction k3 in api
+    service data(mdi:server)[Modelos y transacciones] in api
+    service stats(mdi:chart-bar)[Analytics Integration] in api
+    junction x1 in api
+    junction x2 in api
+
+    group docker(logos:docker-icon)[Docker]
+    service db(mdi:database)[SQL Server 2019] in docker
+
+    junction g1 in api
+    junction g2 in api
+    service gh(logos:github-icon)[GitHub]
+
+    page:L --> R:store
+    page:R --> L:client
+    client:R --> L:guard
+    guard:R -- L:j2
+    j2:T -- B:j1
+    j2:B -- T:j3
+    j1:R --> L:tasks
+    j3:R --> L:assign
+    tasks:T -- B:u
+    u:R --> L:branch
+    branch:R -- L:g1
+    g1:R -- L:g2
+    g2:R --> L:gh
+    tasks:R -- L:k1
+    assign:R -- L:k3
+    k1:B -- T:k2
+    k3:T -- B:k2
+    k1:R --> L:data
+    k2:R --> L:stats
+    data:R -- L:x1
+    stats:R -- L:x2
+    x1:B -- T:x2
+    x2:B --> T:db
