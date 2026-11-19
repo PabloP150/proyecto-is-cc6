@@ -42,4 +42,12 @@ describe('taskAi.auditTask', () => {
         expect(s.repoService.getComparePatches).not.toHaveBeenCalled();
         expect(s.aiServer.runCommand).not.toHaveBeenCalled();
     });
+
+    test('generateTestsForTask sends the branch patches', async () => {
+        const s = setup({ links: [{ tid: 't', branchName: 'tm/t' }] });
+        s.aiServer.runCommand.mockResolvedValueOnce({ run_id: 'g', result: { proposals: [], skipped: [] } });
+        const out = await s.taskAi.generateTestsForTask({ gid: 'g', tid: 't' });
+        expect(s.aiServer.runCommand).toHaveBeenCalledWith('generate-tests', { files, base: 'main', head: 'tm/t' });
+        expect(out).toEqual({ runId: 'g', proposals: [], skipped: [] });
+    });
 });
