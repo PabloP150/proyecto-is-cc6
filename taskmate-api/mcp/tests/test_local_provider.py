@@ -26,6 +26,7 @@ def ollama(monkeypatch):
         return real_client(*args, **kwargs)
 
     monkeypatch.setattr(llm_service.httpx, "AsyncClient", fake_client)
+    monkeypatch.setattr(llm_service, "_ollama_http", None)
 
     def respond(fn):
         handlers["handle"] = fn
@@ -113,3 +114,10 @@ async def test_an_error_mid_stream_raises(ollama):
 
     with pytest.raises(llm_service.LLMError):
         await llm_service.generate("hi", on_delta=on_delta)
+
+
+async def test_requests_keep_the_model_loaded(ollama):
+    ollama["respond"](lambda body: _reply("ok"))
+    await llm_service.generate("hi", max_tokens=5)
+    await llm_service.generate("again", max_tokens=5)
+    assert all(r["keep_alive"] == llm_service.OLLAMA_KEEP_ALIVE for r in ollama["requests"])
