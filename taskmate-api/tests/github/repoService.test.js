@@ -63,6 +63,15 @@ describe('validateRef', () => {
     });
 });
 
+describe('getPullRequestFiles', () => {
+    test('uses a pull_requests:read token (a contents-only one gets 404 from GitHub)', async () => {
+        const fetchImpl = useFakeGitHub({ ...TOKEN_ROUTE, 'GET /repos/octo/demo/pulls/3/files': { body: [{ filename: 'a.py', status: 'added', additions: 2, deletions: 0 }] } });
+        const files = await repoService.getPullRequestFiles(REPO, 3);
+        expect(files).toEqual([{ path: 'a.py', status: 'added', additions: 2, deletions: 0, previousPath: null }]);
+        expect(fetchImpl.calls[0].body).toEqual({ repository_ids: [500], permissions: { pull_requests: 'read' } });
+    });
+});
+
 describe('getFile', () => {
     test('returns text content with metadata, scoped token for the repo', async () => {
         const fetchImpl = useFakeGitHub({ ...TOKEN_ROUTE, 'GET /repos/octo/demo/contents/src/a.js': { body: fileBody('console.log(1);\n') } });

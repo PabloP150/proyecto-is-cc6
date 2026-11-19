@@ -190,8 +190,9 @@ const getPullRequestFiles = async (repo, prNumber) => {
     const number = Number(prNumber);
     if (!Number.isInteger(number) || number <= 0) throw invalid('prNumber must be a positive integer');
 
+    // The PR endpoints need pull_requests:read; a contents-only token gets a 404 from GitHub.
     const { data } = await githubApp.request(repoAuth(repo), 'GET', `${repoPath(repo)}/pulls/${number}/files`, {
-        ...scope(repo),
+        ...scope(repo, PERMISSIONS.pulls),
         query: { per_page: MAX_PR_FILES },
         notFoundCode: 'NOT_FOUND',
     });
