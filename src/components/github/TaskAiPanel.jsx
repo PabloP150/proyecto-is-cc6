@@ -29,7 +29,7 @@ function Finding({ f }) {
 }
 
 /** AI actions over the task branch, run by the local AI server. */
-export default function TaskAiPanel({ tid }) {
+export default function TaskAiPanel({ tid, aiEnabled }) {
   const [state, setState] = useState({ loading: false, error: null, audit: null });
   const controller = useRef(null);
 
@@ -49,6 +49,13 @@ export default function TaskAiPanel({ tid }) {
   };
 
   const { audit } = state;
+  if (!aiEnabled) {
+    return (
+      <Alert severity="info" sx={{ mt: 2 }}>
+        El análisis con IA está desactivado para este proyecto; un administrador puede activarlo en GitHub.
+      </Alert>
+    );
+  }
   const verdict = audit && (VERDICT[audit.verdict] || VERDICT.warn);
 
   return (

@@ -14,6 +14,8 @@ const createTaskAi = ({ githubModel = githubModelDefault, repoService = repoServ
         const link = links.find((item) => sameTid(item.tid, tid));
         if (!link || !link.branchName) throw new AppError('TASK_NO_BRANCH', 'This task has no branch yet.', 409);
         const repo = await repoService.getConnectedRepo(gid);
+        // Same consent gate as the repo analysis and the AI pipeline proposal: the admin decides.
+        if (repo.aiAnalysisEnabled !== true) throw new AppError('AI_ANALYSIS_DISABLED', 'AI analysis is disabled for this group', 409);
         const base = (link.pr && link.pr.baseBranch) || repo.defaultBranch;
         const head = link.branchName;
         const { files } = await repoService.getComparePatches(repo, base, head);

@@ -235,7 +235,7 @@ export default function TaskFilesDialog({ open, onClose, tid, taskName, link, re
           </>
         )}
 
-        {link && link.branchName && <TaskAiPanel tid={tid} />}
+        {link && link.branchName && <TaskAiPanel tid={tid} aiEnabled={Boolean(repo && repo.aiAnalysisEnabled)} />}
       </DialogContent>
     </Dialog>
   );

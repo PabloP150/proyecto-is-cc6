@@ -6,7 +6,7 @@ import TaskAiPanel from '../TaskAiPanel';
 
 jest.mock('../../../api/github', () => ({ auditTask: jest.fn() }));
 
-const renderPanel = () => render(<ThemeProvider theme={theme}><TaskAiPanel tid="T-1" /></ThemeProvider>);
+const renderPanel = (props) => render(<ThemeProvider theme={theme}><TaskAiPanel tid="T-1" aiEnabled {...props} /></ThemeProvider>);
 
 beforeEach(() => auditTask.mockReset());
 
@@ -36,4 +36,10 @@ test('shows the server error', async () => {
   fireEvent.click(screen.getByRole('button', { name: /auditar/i }));
   expect(await screen.findByRole('alert')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /auditar/i })).toBeEnabled();
+});
+
+test('without admin consent there is no audit button', () => {
+  renderPanel({ aiEnabled: false });
+  expect(screen.queryByRole('button', { name: /auditar/i })).not.toBeInTheDocument();
+  expect(screen.getByText(/desactivado/)).toBeInTheDocument();
 });
