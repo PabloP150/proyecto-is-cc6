@@ -7,6 +7,7 @@ const { verifyWebhookSignature } = require('./webhookSignature');
 const { isForkPullRequest, applyPullRequestInTx, notifyCompletion } = require('./pullRequestProcessor');
 const { runEvent, jobEvent, deploymentEvent } = require('./cicdEvents');
 const { realtime } = require('../realtime');
+const { prReview } = require('../aiServer/prReview');
 
 const RESPONSE_DEADLINE_MS = 8 * 1000;
 const MAX_ADDED_REPOS = 50;
@@ -112,6 +113,11 @@ const handlePullRequest = async (deliveryId, payload) => {
         outcome = await applyPullRequestInTx(pr, { repoId: repo.repoId, defaultBranch: repo.defaultBranch }, { tx });
     });
     if (status === 'processed' && outcome) notifyCompletion(outcome.completion, repo);
+    if (status === 'processed') {
+        // AI review of task PRs (Christian's line). Never affects the webhook answer.
+        prReview.onPullRequestEvent(payload.action, pr, repository)
+            .catch((err) => console.warn('AI review trigger failed:', err && (err.code || err.message)));
+    }
     return status;
 };
 
