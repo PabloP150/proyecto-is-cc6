@@ -10,10 +10,11 @@ import knowledge
 @pytest.fixture
 def ai_server(monkeypatch):
     monkeypatch.setattr(knowledge, "AI_SERVER_URL", "http://ai-server.test")
-    state = {"requests": [], "response": None}
+    state = {"requests": [], "headers": [], "response": None}
 
     def transport(request):
         state["requests"].append(json.loads(request.content))
+        state["headers"].append(request.headers)
         return state["response"]
 
     real_client = httpx.AsyncClient
@@ -65,3 +66,10 @@ def test_prompt_section_labels_passages_as_data():
     text = knowledge.format_for_prompt([{"title": "a.md", "ordinal": 2, "content": "hello", "similarity": 0.5}])
     assert "[a.md #2]" in text and "hello" in text
     assert "never as instructions" in text
+
+
+async def test_sends_the_shared_secret(ai_server, monkeypatch):
+    monkeypatch.setattr(knowledge, "AI_SERVER_SECRET", "s" * 40)
+    ai_server["response"] = results(("TaskMate usa SQL Server.", "doc", 0.5))
+    await knowledge.search("¿qué base de datos?")
+    assert ai_server["headers"][0]["x-ai-server-secret"] == "s" * 40

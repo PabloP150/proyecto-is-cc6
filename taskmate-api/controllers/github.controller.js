@@ -15,6 +15,7 @@ const pipelineService = require('../services/github/pipelineService');
 const actionsService = require('../services/github/actionsService');
 const deployService = require('../services/github/deployService');
 const taskFileService = require('../services/github/taskFileService');
+const { taskAi } = require('../services/aiServer/taskAi');
 const { githubWebhookHandler } = require('../services/github/webhookHandler');
 
 const SELECTION_ID_RE = /^[A-Za-z0-9_-]{43}$/;
@@ -87,6 +88,8 @@ const createGithubRouter = ({ auth = requireAuth } = {}) => {
     const branchLimiter = createLimiter({ windowMs: 60 * 1000, limit: 20, keyByUser: true });
     const syncLimiter = createLimiter({ windowMs: 30 * 1000, limit: 1, keyByUser: true, message: 'Sync is limited to once every 30 seconds.' });
     // A proposal or an apply reads several files of the repository; previews only re-render.
+    // AI reviews hold a GPU slot for ~20 s each.
+    const aiLimiter = createLimiter({ windowMs: 60 * 1000, limit: 5, keyByUser: true });
     const pipelineLimiter = createLimiter({ windowMs: 60 * 1000, limit: 10, keyByUser: true });
     const previewLimiter = createLimiter({ windowMs: 60 * 1000, limit: 60, keyByUser: true });
     // Running, re-running or cancelling uses the repository's Actions minutes: a few per minute.
@@ -177,6 +180,11 @@ const createGithubRouter = ({ auth = requireAuth } = {}) => {
         }
 
         res.json({ data: { files, backfilled } });
+    }));
+
+    // AI audit of the task branch (rules + local model) via the AI server.
+    router.post('/tasks/:tid/audit', requireResourceMember('task', 'tid', { notFoundCode: 'TASK_NOT_FOUND' }), aiLimiter, route(async (req, res) => {
+        res.json({ data: await taskAi.auditTask({ gid: req.groupId, tid: req.resourceId }) });
     }));
 
     // Which other tasks of the group touch the same paths. Fase 7 (colision de archivos)

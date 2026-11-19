@@ -206,6 +206,26 @@ const getPullRequestFiles = async (repo, prNumber) => {
     })).filter((file) => file.path);
 };
 
+/**
+ * Per-file unified patches between two refs (three-dot: against the merge base), for the AI server.
+ * GitHub inlines at most 300 files and omits `patch` for binary or very large files.
+ */
+const getComparePatches = async (repo, base, head) => {
+    const b = validateRef(base);
+    const h = validateRef(head);
+    if (!b || !h) throw invalid('base and head are required');
+    const { data } = await githubApp.request(
+        repoAuth(repo), 'GET', `${repoPath(repo)}/compare/${encodeURIComponent(b)}...${encodeURIComponent(h)}`,
+        { ...scope(repo), notFoundCode: 'NOT_FOUND' },
+    );
+    const files = (Array.isArray(data && data.files) ? data.files : []).map((file) => ({
+        path: String(file.filename || '').slice(0, 400),
+        status: file.status || 'modified',
+        patch: typeof file.patch === 'string' ? file.patch : null,
+    })).filter((file) => file.path);
+    return { files, aheadBy: Number(data && data.ahead_by) || 0 };
+};
+
 const getRepoMeta = async (repo) => {
     const { data } = await githubApp.request(repoAuth(repo), 'GET', repoPath(repo), scope(repo));
     return data || {};
@@ -224,6 +244,7 @@ module.exports = {
     getReadmeForRepo,
     getCommitsForRepo,
     getPullRequestFiles,
+    getComparePatches,
     getRepoMeta,
     // Input is validated before touching the DB or GitHub.
     getTree: async (gid, opts = {}) => {

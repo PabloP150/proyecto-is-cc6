@@ -21,6 +21,7 @@ import {
 import { useEffect, useState } from 'react';
 import { getTaskFiles, getTaskOverlaps } from '../../api/github';
 import { blobUrl, errorMessage, isAbortError, repoHtmlUrl } from './githubUtils';
+import TaskAiPanel from './TaskAiPanel';
 
 // Matches the CHECK constraint on dbo.TaskFiles, so an unknown status cannot render.
 const STATUS_META = {
@@ -233,6 +234,8 @@ export default function TaskFilesDialog({ open, onClose, tid, taskName, link, re
             </List>
           </>
         )}
+
+        {link && link.branchName && <TaskAiPanel tid={tid} />}
       </DialogContent>
     </Dialog>
   );

@@ -150,6 +150,13 @@ if [[ -x "$AI_SERVER_DIR/scripts/up.sh" ]]; then
     "$AI_SERVER_DIR/scripts/up.sh" >"$LOG_DIR/ai-server-up.log" 2>&1 \
         || { tail -n 20 "$LOG_DIR/ai-server-up.log" >&2; die "the AI server did not start (see $LOG_DIR/ai-server-up.log)"; }
     info "AI server up at http://127.0.0.1:8000 (RAG + commands)"
+    # Its up.sh owns the shared secret; copy it so Node and the MCP server can call it.
+    AI_SECRET="$(grep -E '^AI_SERVER_SECRET=' "$AI_SERVER_DIR/.env" | cut -d= -f2-)"
+    if [[ -n "$AI_SECRET" && "$(env_get AI_SERVER_SECRET)" != "$AI_SECRET" ]]; then
+        sed -i '/^AI_SERVER_SECRET=/d' "$ENV_FILE"
+        echo "AI_SERVER_SECRET=$AI_SECRET" >>"$ENV_FILE"
+        info "synced AI_SERVER_SECRET from the AI server"
+    fi
 else
     info "no AI server at $AI_SERVER_DIR: starting Ollama only (chat works, project knowledge is off)"
     systemctl --user start ollama

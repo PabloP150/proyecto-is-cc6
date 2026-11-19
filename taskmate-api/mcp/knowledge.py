@@ -22,6 +22,8 @@ import llm_service  # noqa: F401,E402
 logger = logging.getLogger(__name__)
 
 AI_SERVER_URL = (os.getenv('AI_SERVER_URL') or '').rstrip('/')
+# Sent as X-AI-Server-Secret; the AI server rejects requests without it.
+AI_SERVER_SECRET = os.getenv('AI_SERVER_SECRET', '')
 # The AI server scopes its corpus by project name ("TaskMate", "FitFlow", ...).
 AI_SERVER_PROJECT = os.getenv('AI_SERVER_PROJECT', 'TaskMate')
 TOP_K = int(os.getenv('AI_SERVER_TOP_K', 4))
@@ -42,7 +44,8 @@ async def search(query: str, project: Optional[str] = None) -> List[Dict[str, An
     if not enabled() or not isinstance(query, str) or not query.strip():
         return []
     try:
-        async with httpx.AsyncClient(timeout=TIMEOUT_SEC) as client:
+        headers = {"X-AI-Server-Secret": AI_SERVER_SECRET} if AI_SERVER_SECRET else {}
+        async with httpx.AsyncClient(timeout=TIMEOUT_SEC, headers=headers) as client:
             response = await client.post(f"{AI_SERVER_URL}/search", json={
                 "query": query[:2000],
                 "project": project or AI_SERVER_PROJECT,
