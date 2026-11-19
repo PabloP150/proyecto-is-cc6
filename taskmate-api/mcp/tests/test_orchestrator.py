@@ -2,8 +2,8 @@ import pytest
 
 import llm_service
 from agents import orchestrator as orchestrator_module
-from agents.orchestrator import (CHANGE, CONFIRM, DISCARD, PROJECT_INFO_MAX_CHARS, REJECT, OrchestratorAgent,
-                                 classify_confirmation)
+from agents.orchestrator import (_ROUTE_MARKER, CHANGE, CONFIRM, DISCARD, PROJECT_INFO_MAX_CHARS, REJECT,
+                                 OrchestratorAgent, classify_confirmation)
 
 PLAN = {"recommendations": {
     "project_name": "Dog Walker",
@@ -38,7 +38,7 @@ def llm(monkeypatch):
 
     async def fake_generate(prompt, generation_config_override=None, max_tokens=None, timeout=None, on_delta=None):
         calls["generate"].append(prompt)
-        text = "NO" if "Respond with ONLY: YES or NO" in prompt else "Tell me more about your project."
+        text = "CHAT" if isinstance(prompt, str) and _ROUTE_MARKER in prompt else "Tell me more about your project."
         if on_delta is not None:
             # Stream it the way llm_service does: pieces through the callback, whole text returned.
             for piece in (text[:8], text[8:]):
@@ -75,7 +75,7 @@ async def test_user_message_flow_regression(llm, fake_socket):
     assert reply["data"]["awaiting_confirmation"] is True
     state = agent.sessions["S"]
     assert state["waiting_for_confirmation"] and state["generated_plan"] == PLAN
-    # An explicit trigger skips both the "enough info?" check and the chat call.
+    # Ordinary messages: a 3-token route check plus the reply; an explicit trigger skips both.
     assert len(llm["generate"]) == 2 and len(llm["json"]) == 1
 
     await agent.handle_message("S", fake_socket, request("sí, dale", "r3"))
@@ -252,3 +252,91 @@ async def test_timeout_is_reported_with_code(llm, fake_socket, monkeypatch):
 
 def test_default_ttl_is_two_hours():
     assert orchestrator_module.SESSION_TTL_SEC == 7200
+
+
+PROJECT = {"groupId": "g1", "groupName": "FitFlow Demo", "members": ["ana_demo", "pablo_demo"],
+           "assignments": {"Terraform EC2": ["pablo_demo"]},
+           "snapshot": {"repo": {"fullName": "o/fitflow"}, "readme": "FitFlow books classes",
+                        "tree": ["booking-svc/app/main.py"]},
+           "existing": {"tasks": [{"name": "Terraform EC2", "list": "DevOps", "percentage": 10}]}}
+
+
+def project_request(text, request_id="r", project=PROJECT):
+    req = request(text, request_id)
+    req["params"]["project"] = project
+    return req
+
+
+async def test_ordinary_messages_never_create_a_plan(llm, fake_socket):
+    agent = OrchestratorAgent()
+    for text in ("hola, ¿qué tal?", "dale", "hazlo", "procede", "I want to build an app"):
+        await agent.handle_message("S", fake_socket, request(text))
+    assert not llm["json"] and not agent.sessions["S"]["waiting_for_confirmation"]
+
+
+async def test_mentioning_plans_asks_the_router_and_chats_on_chat(llm, fake_socket):
+    agent = OrchestratorAgent()
+    await agent.handle_message("S", fake_socket, request("¿qué es un plan de pruebas?", "q"))
+    assert any(isinstance(p, str) and _ROUTE_MARKER in p for p in llm["generate"])
+    assert fake_socket.sent[-1]["event"] == "response" and not llm["json"]
+
+
+async def test_off_topic_gets_a_fixed_reply_without_a_model_answer(llm, fake_socket, monkeypatch):
+    real = llm_service.generate
+
+    async def off(prompt, **kw):
+        return "OFF" if isinstance(prompt, str) and _ROUTE_MARKER in prompt else await real(prompt, **kw)
+
+    monkeypatch.setattr(llm_service, "generate", off)
+    agent = OrchestratorAgent()
+    await agent.handle_message("S", fake_socket, project_request("¿cuál es la capital de Francia?", "o"))
+    reply = fake_socket.sent[-1]
+    assert reply["event"] == "response" and "FitFlow Demo" in reply["data"]["content"]
+    assert reply["data"]["content"].startswith("Solo puedo ayudarte")
+    assert all(isinstance(p, str) for p in llm["generate"])  # only the route check ran
+
+
+async def test_classifier_yes_creates_the_plan(llm, fake_socket, monkeypatch):
+    real = llm_service.generate
+
+    async def yes_for_intent(prompt, **kw):
+        return "PLAN" if isinstance(prompt, str) and _ROUTE_MARKER in prompt else await real(prompt, **kw)
+
+    monkeypatch.setattr(llm_service, "generate", yes_for_intent)
+    agent = OrchestratorAgent()
+    await agent.handle_message("S", fake_socket, request("¿puedes planificar lo que sigue para la app?"))
+    assert llm["json"] and agent.sessions["S"]["waiting_for_confirmation"]
+
+
+async def test_plan_request_with_a_project_goes_back_to_node(llm, fake_socket):
+    agent = OrchestratorAgent()
+    await agent.handle_message("S", fake_socket, project_request("crea un plan para las notificaciones", "p1"))
+    assert fake_socket.sent[-1] == {"event": "plan_request", "requestId": "p1", "sessionId": "S",
+                                    "data": {"instructions": "crea un plan para las notificaciones"}}
+    assert not llm["json"]
+
+
+async def test_project_chat_uses_the_project_data_and_scope_rules(llm, fake_socket):
+    agent = OrchestratorAgent()
+    await agent.handle_message("S", fake_socket, project_request("¿qué hace booking-svc?"))
+    system, user = llm["generate"][-1]
+    assert "FitFlow Demo" in system["content"] and "Out of scope" in system["content"]
+    assert "Do NOT produce a plan" in system["content"]
+    assert "booking-svc/app/main.py" in user["content"] and "Terraform EC2" in user["content"]
+    assert "ana_demo" in user["content"] and "pablo_demo" in user["content"].split("tasks_by_person")[1]
+
+
+async def test_changing_project_resets_the_conversation(llm, fake_socket):
+    agent = OrchestratorAgent()
+    await agent.handle_message("S", fake_socket, project_request("secreto del proyecto uno"))
+    other = {**PROJECT, "groupId": "g2", "groupName": "Otro"}
+    await agent.handle_message("S", fake_socket, project_request("hola", project=other))
+    history = agent.sessions["S"]["conversation_history"]
+    assert not any("proyecto uno" in turn for turn in history)
+    assert agent.sessions["S"]["project_group"] == "g2"
+
+
+async def test_invalid_project_context_falls_back_to_plain_chat(llm, fake_socket):
+    agent = OrchestratorAgent()
+    await agent.handle_message("S", fake_socket, project_request("hola", project={"groupId": "g1", "snapshot": "x"}))
+    assert fake_socket.sent[-1]["event"] == "response"

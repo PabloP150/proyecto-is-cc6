@@ -309,6 +309,27 @@ def _fit_existing(existing) -> Dict[str, Any]:
     return result
 
 
+def _tasks_by_person(assignments: Dict[str, List[str]]) -> Dict[str, List[str]]:
+    people: Dict[str, List[str]] = {}
+    for task, users in list(assignments.items())[:100]:
+        for user in users:
+            people.setdefault(_untrusted(user, 60), []).append(_untrusted(task, 60))
+    return people
+
+
+def project_context_json(project) -> str:
+    """Compact, secret-redacted project data for the chat prompt (same fitting as the analysis)."""
+    data: Dict[str, Any] = {"project": _untrusted(project.groupName, 140),
+                            "team": [_untrusted(m, 60) for m in project.members][:30],
+                            "existing": _fit_existing(project.existing),
+                            "tasks_by_person": _tasks_by_person(project.assignments)}
+    if project.snapshot is not None:
+        data["repository"] = _fit_repository(project.snapshot)
+    elif project.repoNote:
+        data["repository_note"] = _untrusted(project.repoNote, 200)
+    return json.dumps(data, ensure_ascii=False, separators=(',', ':'))
+
+
 def build_messages(params: AnalyzeRepositoryParams, today: date, retry: bool = False) -> List[Dict[str, str]]:
     tag = 'DATA-' + secrets.token_hex(4)
     payload = {

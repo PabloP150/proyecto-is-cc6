@@ -11,11 +11,13 @@ import {
     Paper,
     Snackbar,
     TextField,
+    Tooltip,
     Typography
 } from '@mui/material';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import PersonIcon from '@mui/icons-material/Person';
+import PlaylistAddIcon from '@mui/icons-material/PlaylistAdd';
 import SendIcon from '@mui/icons-material/Send';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import { useContext, useEffect, useRef, useState, useCallback } from 'react';
@@ -70,7 +72,6 @@ const toChatMessage = (raw, id = nextMessageId()) => {
     return { ...raw, id, content, timestamp: raw.timestamp ? new Date(raw.timestamp) : new Date() };
 };
 
-const MAX_INSTRUCTIONS = LIMITS.analysisInstructions;
 const MAX_MESSAGE = LIMITS.chatMessage;
 // Client-side fallback: stop waiting if the server sends nothing at all for this long.
 export const REPLY_TIMEOUT_MS = 100000;
@@ -332,6 +333,13 @@ function ChatPage() {
                 }
 
                 if (data.type === 'repo_analysis_status') {
+                    // A plan asked for in the chat: the server turned that message into an analysis.
+                    if (data.requestId && !analysisRequestRef.current) {
+                        analysisRequestRef.current = { requestId: data.requestId, bubble: null };
+                        setIsTyping(false);
+                        setAnalysis({ requestId: data.requestId, stage: data.stage });
+                        return;
+                    }
                     setAnalysis(prev => (prev && (!data.requestId || prev.requestId === data.requestId)
                         ? { ...prev, stage: data.stage }
                         : prev));
@@ -361,7 +369,7 @@ function ChatPage() {
                     // The restore is sent as the socket opens, so when the /github shortcut has already
                     // sent its analysis the restore predates that request: keep its bubble.
                     const pending = analysisRequestRef.current;
-                    const keepPending = pending && !restoredMessages.some(m => m.requestId === pending.requestId);
+                    const keepPending = pending && pending.bubble && !restoredMessages.some(m => m.requestId === pending.requestId);
                     dropChunks();
                     setMessages(keepPending ? [...restoredMessages, pending.bubble] : restoredMessages);
                     setHasReceivedHistory(true);
@@ -371,7 +379,8 @@ function ChatPage() {
 
                 if (data.type === 'error') {
                     // Only the requestId tells an analysis error from a chat one with the same code.
-                    const forAnalysis = Boolean(data.requestId) && analysisRequestRef.current?.requestId === data.requestId;
+                    const forAnalysis = data.kind === 'analysis'
+                        || (Boolean(data.requestId) && analysisRequestRef.current?.requestId === data.requestId);
                     if (forAnalysis) analysisRequestRef.current = null;
                     if (data.planId) {
                         setBusyPlanId(prev => (prev === data.planId ? null : prev));
@@ -563,7 +572,8 @@ function ChatPage() {
     // The repo may be missing (null) or have the AI permission switched off by the group admin.
     const aiDisabled = Boolean(projectRepo && projectRepo.aiAnalysisEnabled === false);
     const analysisBlocked = projectRepo === null || aiDisabled;
-    const inputLimit = projectId ? MAX_INSTRUCTIONS : MAX_MESSAGE;
+    const inputLimit = MAX_MESSAGE;
+    const projectName = projectId ? (groups || []).find(g => sameId(g.gid, projectId))?.name : null;
     const waiting = isTyping || Boolean(analysis);
     // Once streamed text is on screen the reply is visibly arriving: hide "AI is typing" but keep
     // `waiting` (and so the locked input and the no-reply fallback) until the final message.
@@ -585,15 +595,9 @@ function ChatPage() {
     const handleSendMessage = async (e) => {
         e.preventDefault();
 
-        // With a project selected the input carries optional instructions for a repo analysis.
-        if (projectId) {
-            if (!isConnected || analysis || analysisBlocked) return;
-            setInputMessage('');
-            startAnalysis(projectId, inputMessage.trim().slice(0, MAX_INSTRUCTIONS));
-            return;
-        }
-
-        if (!inputMessage.trim() || !isConnected || inputMessage.trim().length > MAX_MESSAGE) return;
+        // With or without a project it is a chat message; the server adds the project's context and
+        // turns an explicit request for a plan into a repository analysis.
+        if (!inputMessage.trim() || !isConnected || isTyping || analysis || inputMessage.trim().length > MAX_MESSAGE) return;
 
         const userMessage = {
             id: nextMessageId('user'),
@@ -682,7 +686,7 @@ function ChatPage() {
                                     ? 'Este proyecto no tiene un repositorio conectado. Conéctalo desde la página GitHub o elige «Nuevo proyecto».'
                                     : aiDisabled
                                         ? CHAT_ERROR_MESSAGES.AI_ANALYSIS_DISABLED
-                                        : 'El mensaje se usará como instrucciones para analizar el repositorio. Se envía a Groq solo la estructura, el README, las dependencias, los commits y los issues; nunca el código fuente.'}
+                                        : 'Pregunta lo que quieras sobre el proyecto. Para proponer tareas, pide «crea un plan» o usa «Proponer tareas». La IA ve la estructura, el README, las dependencias, los commits, los issues y las tareas; nunca el código fuente.'}
                             </Typography>
                         )}
                         {!token && (
@@ -912,11 +916,11 @@ function ChatPage() {
                             onChange={(e) => setInputMessage(e.target.value)}
                             onKeyDown={handleKeyDown}
                             placeholder={projectId
-                                ? 'Instrucciones opcionales para el análisis (p. ej. «prioriza las pruebas»)…'
-                                : 'Type your message here...'}
+                                ? `Pregunta sobre «${projectName || 'el proyecto'}»…`
+                                : 'Escribe tu mensaje…'}
                             inputProps={{
                                 maxLength: inputLimit,
-                                'aria-label': projectId ? 'Instrucciones para el análisis' : 'Mensaje',
+                                'aria-label': 'Mensaje',
                                 'aria-describedby': 'chat-input-counter',
                             }}
                             helperText={
@@ -932,12 +936,24 @@ function ChatPage() {
                                 }
                             }}
                         />
+                        {projectId && !analysisBlocked && (
+                            <Tooltip title="Proponer las siguientes tareas del proyecto (analiza el repositorio; una vez por minuto)">
+                                <span>
+                                    <IconButton
+                                        aria-label="Proponer tareas"
+                                        onClick={() => startAnalysis(projectId, '')}
+                                        disabled={Boolean(analysis) || isTyping || !isConnected}
+                                    >
+                                        <PlaylistAddIcon />
+                                    </IconButton>
+                                </span>
+                            </Tooltip>
+                        )}
                         <IconButton
                             type="submit"
-                            aria-label={projectId ? 'Analizar repositorio' : 'Enviar mensaje'}
-                            disabled={projectId
-                                ? Boolean(analysis) || analysisBlocked || !isConnected
-                                : !inputMessage.trim() || isTyping || inputMessage.trim().length > MAX_MESSAGE}
+                            aria-label="Enviar mensaje"
+                            disabled={!inputMessage.trim() || isTyping || Boolean(analysis) || !isConnected
+                                || inputMessage.trim().length > MAX_MESSAGE}
                             sx={{
                                 bgcolor: 'primary.main',
                                 color: 'white',

@@ -116,7 +116,11 @@ describe('ChatPage — GitHub project analysis', () => {
     selectProject('Equipo Móvil');
     receive({ type: 'context', groupId: 'G2', groupName: 'Equipo Móvil', repo: null });
     expect(screen.getByText('Sin repositorio')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Analizar repositorio' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Proponer tareas' })).not.toBeInTheDocument();
+    // Chat about the project still works without a repository.
+    fireEvent.change(screen.getByRole('textbox', { name: 'Mensaje' }), { target: { value: '¿qué tareas hay?' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar mensaje' }));
+    expect(sentOfType('user')).toEqual([expect.objectContaining({ content: '¿qué tareas hay?' })]);
   });
 
   it('runs an analysis, shows progress and confirms the plan once', () => {
@@ -124,14 +128,13 @@ describe('ChatPage — GitHub project analysis', () => {
     selectProject('Equipo Web');
     receive({ type: 'context', groupId: 'G1', groupName: 'Equipo Web', repo: { fullName: 'acme/web', defaultBranch: 'main' } });
 
-    fireEvent.change(screen.getByRole('textbox', { name: 'Instrucciones para el análisis' }), { target: { value: 'prioriza las pruebas' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Analizar repositorio' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Proponer tareas' }));
 
     const [request] = sentOfType('repo_analysis');
-    expect(request).toEqual({ type: 'repo_analysis', requestId: expect.any(String), groupId: 'G1', instructions: 'prioriza las pruebas' });
+    expect(request).toEqual({ type: 'repo_analysis', requestId: expect.any(String), groupId: 'G1', instructions: '' });
     expect(sentOfType('user')).toHaveLength(0);
     expect(screen.getByText('Preparando el análisis del repositorio…')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Analizar repositorio' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Proponer tareas' })).toBeDisabled();
 
     receive({ type: 'repo_analysis_status', requestId: request.requestId, stage: 'analyzing' });
     expect(screen.getByText(/La IA está analizando el repositorio/)).toBeInTheDocument();
@@ -148,6 +151,31 @@ describe('ChatPage — GitHub project analysis', () => {
 
     receive({ type: 'repo_plan_saved', planId: 'plan-1', groupId: 'G1', created: { tasks: 1, milestones: 0 }, content: 'Plan guardado' });
     expect(screen.getByTestId('repo-plan-compact')).toHaveTextContent('Plan guardado en «Equipo Web»: 1 tarea creada y 0 hitos.');
+  });
+
+  it('with a project, typing sends a chat message; a plan asked in the chat shows the analysis progress', () => {
+    renderChat();
+    selectProject('Equipo Web');
+    receive({ type: 'context', groupId: 'G1', groupName: 'Equipo Web', repo: { fullName: 'acme/web', defaultBranch: 'main' } });
+    expect(screen.getByRole('textbox', { name: 'Mensaje' })).toHaveAttribute('placeholder', 'Pregunta sobre «Equipo Web»…');
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Mensaje' }), { target: { value: 'crea un plan de pruebas' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar mensaje' }));
+    expect(sentOfType('user')).toEqual([expect.objectContaining({ content: 'crea un plan de pruebas' })]);
+    expect(sentOfType('repo_analysis')).toHaveLength(0);
+
+    receive({ type: 'repo_analysis_status', requestId: 'srv-1', stage: 'fetching_repo' });
+    expect(screen.getByText('Leyendo el repositorio en GitHub…')).toBeInTheDocument();
+    expect(screen.queryByText('AI is typing...')).not.toBeInTheDocument();
+    receive({ ...PLAN_MESSAGE, requestId: 'srv-1' });
+    expect(screen.getByText('Agregar pruebas')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Proponer tareas' })).toBeEnabled();
+  });
+
+  it('a plan cooldown refused for a chat message reads as the analysis limit', () => {
+    renderChat();
+    receive({ type: 'error', code: 'RATE_LIMITED', kind: 'analysis', requestId: 'srv-2', retryAfterSec: 30, message: 'Solo se puede pedir un análisis por minuto.' });
+    expect(screen.getByRole('alert')).toHaveTextContent('Solo se puede pedir un análisis por minuto. Podrás reintentar en 30 s.');
   });
 
   it('discards a plan and marks it discarded', () => {
@@ -180,13 +208,13 @@ describe('ChatPage — GitHub project analysis', () => {
   it('stops the progress indicator when the analysis fails', () => {
     renderChat();
     selectProject('Equipo Web');
-    fireEvent.click(screen.getByRole('button', { name: 'Analizar repositorio' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Proponer tareas' }));
     const [request] = sentOfType('repo_analysis');
     expect(request.instructions).toBe('');
     receive({ type: 'error', code: 'LLM_TIMEOUT', requestId: request.requestId, message: 'El análisis tardó demasiado.' });
     expect(screen.queryByText('Preparando el análisis del repositorio…')).not.toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent('La IA tardó demasiado en responder.');
-    expect(screen.getByRole('button', { name: 'Analizar repositorio' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Proponer tareas' })).toBeEnabled();
   });
 
   it('starts the analysis requested from /github once and clears the navigation state', () => {
@@ -225,29 +253,27 @@ describe('ChatPage — GitHub project analysis', () => {
   it('drops the bubble of a finished analysis on the next restore (the server history decides)', () => {
     renderChat();
     selectProject('Equipo Web');
-    fireEvent.change(screen.getByRole('textbox', { name: 'Instrucciones para el análisis' }), { target: { value: 'prioriza las pruebas' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Analizar repositorio' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Proponer tareas' }));
     const [request] = sentOfType('repo_analysis');
     receive({ type: 'error', code: 'RATE_LIMITED', requestId: request.requestId, retryAfterSec: 41, message: 'Solo se puede pedir un análisis por minuto.' });
 
     receive({ type: 'history_restore', messages: [{ type: 'user', content: 'hola' }] });
-    expect(screen.queryByText('prioriza las pruebas')).not.toBeInTheDocument();
+    expect(screen.queryByText('Analiza el repositorio de «Equipo Web» y propón las siguientes tareas.')).not.toBeInTheDocument();
   });
 
   it('shows the analysis cooldown as an analysis message with the wait, next to its request', () => {
     renderChat();
     selectProject('Equipo Web');
     receive({ type: 'context', groupId: 'G1', groupName: 'Equipo Web', repo: { fullName: 'acme/web', defaultBranch: 'main' } });
-    fireEvent.change(screen.getByRole('textbox', { name: 'Instrucciones para el análisis' }), { target: { value: 'prioriza las pruebas' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Analizar repositorio' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Proponer tareas' }));
     const [request] = sentOfType('repo_analysis');
 
     receive({ type: 'error', code: 'RATE_LIMITED', requestId: request.requestId, retryAfterSec: 41, message: 'Solo se puede pedir un análisis por minuto.' });
-    expect(screen.getByText('prioriza las pruebas')).toBeInTheDocument();
+    expect(screen.getByText('Analiza el repositorio de «Equipo Web» y propón las siguientes tareas.')).toBeInTheDocument();
     const alert = screen.getByRole('alert');
     expect(alert).toHaveTextContent('Solo se puede pedir un análisis por minuto. Podrás reintentar en 41 s.');
     expect(alert).not.toHaveTextContent('Vas muy rápido');
-    expect(screen.getByRole('button', { name: 'Analizar repositorio' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Proponer tareas' })).toBeEnabled();
   });
 
   it('restores errors with the live wording but without a stale countdown', () => {
@@ -322,11 +348,10 @@ describe('ChatPage — GitHub project analysis', () => {
       expect(screen.getByText('4/4000')).toBeInTheDocument();
     });
 
-    it('caps analysis instructions at 500 characters', () => {
+    it('keeps the chat limit with a project selected', () => {
       renderChat();
       selectProject('Equipo Web');
-      expect(screen.getByRole('textbox', { name: 'Instrucciones para el análisis' })).toHaveAttribute('maxLength', '500');
-      expect(screen.getByText('0/500')).toBeInTheDocument();
+      expect(screen.getByRole('textbox', { name: 'Mensaje' })).toHaveAttribute('maxLength', '4000');
     });
 
     it.each([
@@ -360,7 +385,7 @@ describe('ChatPage — GitHub project analysis', () => {
       jest.useFakeTimers();
       renderChat();
       selectProject('Equipo Web');
-      fireEvent.click(screen.getByRole('button', { name: 'Analizar repositorio' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Proponer tareas' }));
       const [request] = sentOfType('repo_analysis');
 
       act(() => { jest.advanceTimersByTime(90000); });
@@ -373,7 +398,7 @@ describe('ChatPage — GitHub project analysis', () => {
       renderChat();
       selectProject('Equipo Web');
       receive({ type: 'context', groupId: 'G1', groupName: 'Equipo Web', repo: { fullName: 'acme/web', defaultBranch: 'main', aiAnalysisEnabled: false } });
-      expect(screen.getByRole('button', { name: 'Analizar repositorio' })).toBeDisabled();
+      expect(screen.queryByRole('button', { name: 'Proponer tareas' })).not.toBeInTheDocument();
       expect(screen.getByText(/El análisis con IA está desactivado para este proyecto/)).toBeInTheDocument();
     });
 
@@ -381,12 +406,12 @@ describe('ChatPage — GitHub project analysis', () => {
       renderChat();
       selectProject('Equipo Web');
       receive({ type: 'context', groupId: 'G1', groupName: 'Equipo Web', repo: { fullName: 'acme/web', defaultBranch: 'main' } });
-      fireEvent.click(screen.getByRole('button', { name: 'Analizar repositorio' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Proponer tareas' }));
       const [request] = sentOfType('repo_analysis');
 
       receive({ type: 'error', code: 'AI_ANALYSIS_DISABLED', requestId: request.requestId, message: 'disabled' });
       expect(screen.getByRole('alert')).toHaveTextContent('El análisis con IA está desactivado para este proyecto');
-      expect(screen.getByRole('button', { name: 'Analizar repositorio' })).toBeDisabled();
+      expect(screen.queryByRole('button', { name: 'Proponer tareas' })).not.toBeInTheDocument();
     });
 
     it('explains a connection closed for an oversized message (1009)', () => {
