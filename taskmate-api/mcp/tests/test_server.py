@@ -14,7 +14,7 @@ import server
 from agents.orchestrator import OrchestratorAgent
 
 
-def recv(ws, timeout=5.0):
+def recv_raw(ws, timeout=5.0):
     """receive_json with a timeout so a regression fails instead of hanging the suite."""
     async def _receive():
         with anyio.fail_after(timeout):
@@ -25,18 +25,33 @@ def recv(ws, timeout=5.0):
     return json.loads(message["text"])
 
 
+def recv(ws, timeout=5.0):
+    """The next reply, skipping streamed response_chunk events.
+
+    These tests are about final replies -- ordering, isolation, concurrency. Chunks are progress for
+    the same request and are checked separately in test_chat_reply_streams_before_the_final_response.
+    """
+    while True:
+        message = recv_raw(ws, timeout)
+        if message.get("event") != "response_chunk":
+            return message
+
+
 def user_msg(session_id, request_id, text):
     return {"requestId": request_id, "sessionId": session_id, "method": "handle_user_message",
             "params": {"message": text, "context": {"userId": "u1"}}}
 
 
-async def fake_generate(prompt, generation_config_override=None, max_tokens=None, timeout=None):
+async def fake_generate(prompt, generation_config_override=None, max_tokens=None, timeout=None, on_delta=None):
     if "Respond with ONLY: YES or NO" in prompt:
         return "NO"
     message = re.search(r'USER\'S CURRENT MESSAGE: "(.*)"', prompt).group(1)
     if "SLOW" in message:
         await asyncio.sleep(0.4)
-    return f"echo:{message}"
+    text = f"echo:{message}"
+    if on_delta is not None:
+        await on_delta(text)
+    return text
 
 
 @pytest.fixture
@@ -316,3 +331,29 @@ def test_oversized_frames_are_rejected_without_closing_the_shared_connection(age
 
 def test_uvicorn_frame_limit_is_above_the_application_limit():
     assert server.WS_MAX_SIZE == 4 * 1024 * 1024 > server.MAX_MESSAGE_CHARS
+
+
+def test_chat_reply_streams_before_the_final_response(ws):
+    ws.send_json(user_msg("S", "r1", "hello"))
+    events = []
+    while True:
+        message = recv_raw(ws)
+        events.append(message)
+        if message["event"] == "response":
+            break
+
+    chunks = [m for m in events if m["event"] == "response_chunk"]
+    final = events[-1]
+    assert chunks, "expected at least one response_chunk before the final response"
+    # Chunks carry the same routing as the reply, so Node can attach them to the right request.
+    assert all((c["sessionId"], c["requestId"]) == ("S", "r1") for c in chunks)
+    # The final response still carries the whole text: a client that ignores chunks loses nothing.
+    assert "".join(c["data"]["content"] for c in chunks) == final["data"]["content"] == "echo:hello"
+
+
+def test_streaming_can_be_turned_off(ws, monkeypatch):
+    from agents import orchestrator as orchestrator_module
+    monkeypatch.setattr(orchestrator_module, "STREAM_CHAT", False)
+    ws.send_json(user_msg("S", "r1", "hello"))
+    first = recv_raw(ws)
+    assert first["event"] == "response" and first["data"]["content"] == "echo:hello"

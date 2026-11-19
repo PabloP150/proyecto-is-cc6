@@ -86,7 +86,7 @@ export default function Recordatorios() {
   const { selectedGroupId, selectedGroupName } = useContext(GroupContext); // Usa el contexto para obtener el gid y el nombre
   const [feedback, setFeedback] = useState({ open: false, message: '', severity: 'error', url: null, duration: null });
   // One request per group for every task's branch/PR (not one per task).
-  const { getLink: getTaskLink, repoConnected, refresh: refreshTaskLinks } = useTaskLinks(selectedGroupId);
+  const { getLink: getTaskLink, repo, repoConnected, refresh: refreshTaskLinks } = useTaskLinks(selectedGroupId);
 
   // `url`/`duration` only for a toast that tells what happened to a GitHub branch.
   const notify = useCallback(
@@ -714,6 +714,7 @@ export default function Recordatorios() {
               handleVaciarCompletados={handleVaciarCompletados}
               handleVaciarEliminados={handleVaciarEliminados}
               getTaskLink={getTaskLink}
+              repo={repo}
               repoConnected={repoConnected}
               onTaskLinkChange={refreshTaskLinks}
               members={members}

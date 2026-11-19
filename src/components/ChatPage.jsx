@@ -116,6 +116,45 @@ const newRequestId = () => (
         : `req-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
 );
 
+// ---- streamed replies ----------------------------------------------------------
+// The server sends a reply as assistant_chunk events (same requestId) and then once more, whole, as
+// 'assistant'. Chunks grow one bubble per requestId; the final message replaces that bubble, so a
+// client that missed chunks still ends with exactly the server's text.
+
+// Appends buffered chunk text ({requestId -> text}) to the matching streaming bubbles.
+export const appendStreamText = (list, pending) => {
+    let next = list;
+    pending.forEach((text, requestId) => {
+        const index = next.findIndex(m => m.streaming && m.requestId === requestId);
+        if (index === -1) {
+            next = [...next, {
+                id: nextMessageId('assistant'), type: 'assistant', content: text,
+                requestId, streaming: true, timestamp: new Date(),
+            }];
+        } else {
+            next = next.map((m, i) => (i === index ? { ...m, content: m.content + text } : m));
+        }
+    });
+    return next;
+};
+
+// Puts the final message where its streaming bubble is (or at the end when nothing streamed).
+export const settleStream = (list, message) => {
+    const index = message.requestId
+        ? list.findIndex(m => m.streaming && m.requestId === message.requestId)
+        : -1;
+    if (index === -1) return [...list, message];
+    return list.map((m, i) => (i === index ? { ...message, id: m.id, streaming: false } : m));
+};
+
+// Stops a bubble from looking live without changing its text (errors, lost connection).
+export const endStreams = (list, requestId = null) => (
+    list.some(m => m.streaming && (requestId === null || m.requestId === requestId))
+        ? list.map(m => (m.streaming && (requestId === null || m.requestId === requestId)
+            ? { ...m, streaming: false } : m))
+        : list
+);
+
 const updatePlan = (list, planId, patch) => list.map(m => (
     m.type === 'repo_plan' && m.planId === planId ? { ...m, ...patch } : m
 ));
@@ -197,6 +236,38 @@ function ChatPage() {
     const pendingAnalyzeRef = useRef(analyzeGroupId);
     // { requestId, bubble } of the analysis in flight, set as it is sent (before `analysis` renders).
     const analysisRequestRef = useRef(null);
+    // Chunk text waiting for the next frame: one state update per frame instead of per token.
+    const chunkBufferRef = useRef(new Map());
+    const flushHandleRef = useRef(null);
+
+    const flushChunks = useCallback(() => {
+        flushHandleRef.current = null;
+        const pending = chunkBufferRef.current;
+        if (pending.size === 0) return;
+        chunkBufferRef.current = new Map();
+        setMessages(prev => appendStreamText(prev, pending));
+    }, []);
+
+    const queueChunk = useCallback((requestId, text) => {
+        const buffer = chunkBufferRef.current;
+        buffer.set(requestId, (buffer.get(requestId) || '') + text);
+        if (flushHandleRef.current !== null) return;
+        flushHandleRef.current = typeof window.requestAnimationFrame === 'function'
+            ? window.requestAnimationFrame(flushChunks)
+            : setTimeout(flushChunks, 16);
+    }, [flushChunks]);
+
+    // Drops buffered text for one request (its final message supersedes it) or for all.
+    const dropChunks = useCallback((requestId = null) => {
+        if (requestId === null) chunkBufferRef.current = new Map();
+        else chunkBufferRef.current.delete(requestId);
+    }, []);
+
+    useEffect(() => () => {
+        if (flushHandleRef.current === null) return;
+        if (typeof window.cancelAnimationFrame === 'function') window.cancelAnimationFrame(flushHandleRef.current);
+        clearTimeout(flushHandleRef.current);
+    }, []);
     useEffect(() => { projectIdRef.current = projectId; }, [projectId]);
 
     // Get user token from localStorage (reactive to changes)
@@ -241,6 +312,13 @@ function ChatPage() {
         {
             autoConnect: !!token, // Only auto-connect if we have a token
             onMessage: (data) => {
+                if (data.type === 'assistant_chunk') {
+                    if (typeof data.content === 'string' && data.content && data.requestId) {
+                        queueChunk(data.requestId, data.content);
+                    }
+                    return;
+                }
+
                 if (data.type === 'analytics_response' || data.type === 'analytics_error') {
                     return;
                 }
@@ -284,6 +362,7 @@ function ChatPage() {
                     // sent its analysis the restore predates that request: keep its bubble.
                     const pending = analysisRequestRef.current;
                     const keepPending = pending && !restoredMessages.some(m => m.requestId === pending.requestId);
+                    dropChunks();
                     setMessages(keepPending ? [...restoredMessages, pending.bubble] : restoredMessages);
                     setHasReceivedHistory(true);
                     setIsTyping(false);
@@ -306,6 +385,10 @@ function ChatPage() {
                     if (data.code === 'AI_ANALYSIS_DISABLED') {
                         setProjectRepo(prev => (prev ? { ...prev, aiAnalysisEnabled: false } : prev));
                     }
+                    if (data.requestId) {
+                        dropChunks(data.requestId);
+                        setMessages(prev => endStreams(prev, data.requestId));
+                    }
                     const errorMsg = toChatMessage(data);
                     const friendly = friendlyError(data, { forAnalysis });
                     if (friendly) errorMsg.content = friendly;
@@ -321,8 +404,12 @@ function ChatPage() {
                         refreshGroups().catch(err => setNotice(errorMessage(err, 'Could not refresh your groups')));
                     }
                     const msg = toChatMessage(data);
-                    if (!msg.content.trim()) return;
-                    setMessages(prev => [...prev, msg]);
+                    if (msg.requestId) dropChunks(msg.requestId);
+                    if (!msg.content.trim()) {
+                        setMessages(prev => endStreams(prev, msg.requestId || null));
+                        return;
+                    }
+                    setMessages(prev => settleStream(prev, msg));
                     setIsTyping(false);
                     return;
                 }
@@ -337,6 +424,8 @@ function ChatPage() {
             onClose: (event) => {
                 // A reply that arrives while disconnected comes back through history_restore.
                 setIsTyping(false);
+                dropChunks();
+                setMessages(prev => endStreams(prev));
                 analysisRequestRef.current = null;
                 setAnalysis(null);
                 setBusyPlanId(null);
@@ -476,6 +565,9 @@ function ChatPage() {
     const analysisBlocked = projectRepo === null || aiDisabled;
     const inputLimit = projectId ? MAX_INSTRUCTIONS : MAX_MESSAGE;
     const waiting = isTyping || Boolean(analysis);
+    // Once streamed text is on screen the reply is visibly arriving: hide "AI is typing" but keep
+    // `waiting` (and so the locked input and the no-reply fallback) until the final message.
+    const streaming = messages.some(m => m.streaming);
 
     // Fallback when the server never answers (lost reply, stuck service): any status update or
     // reply restarts the wait because it changes `analysis`/`isTyping`.
@@ -724,7 +816,7 @@ function ChatPage() {
                                                         </Typography>
                                                     ) : (
                                                         <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS}>
-                                                            {message.content}
+                                                            {message.streaming ? `${message.content} ▍` : message.content}
                                                         </ReactMarkdown>
                                                     )}
                                                 </Box>
@@ -746,7 +838,7 @@ function ChatPage() {
                             ))}
 
                             {/* Typing Indicator */}
-                            {waiting && (
+                            {waiting && !streaming && (
                                 <ListItem
                                     sx={{
                                         display: 'flex',

@@ -10,6 +10,7 @@ import { GroupContext } from '../GroupContext';
 import Button from '../ui/Button';
 import Card from '../ui/Card';
 import CicdPanel from './cicd/CicdPanel';
+import DeploymentPanel from '../deploy/DeploymentPanel';
 import CommitList from './CommitList';
 import RepoExplorer from './RepoExplorer';
 import RepoSelection from './RepoSelection';
@@ -316,6 +317,7 @@ export default function GitHubPage() {
           <Tab value="files" label="Archivos" id="gh-tab-files" aria-controls="gh-panel" disabled={!usable} />
           <Tab value="commits" label="Commits" id="gh-tab-commits" aria-controls="gh-panel" disabled={!usable} />
           <Tab value="cicd" label="CI/CD" id="gh-tab-cicd" aria-controls="gh-panel" disabled={!usable} />
+          <Tab value="deploys" label="Vercel (monitoreo)" id="gh-tab-deploys" aria-controls="gh-panel" />
         </Tabs>
         <Box role="tabpanel" id="gh-panel" aria-labelledby={`gh-tab-${tab}`}>
           {tab === 'repo' &&
@@ -345,6 +347,7 @@ export default function GitHubPage() {
               />
             ))}
           {tab === 'files' && usable && <RepoExplorer gid={gid} repo={repo} />}
+          {tab === 'deploys' && <DeploymentPanel gid={gid} isAdmin={isAdmin} />}
           {tab === 'commits' && usable && (
             <Card variant="default" component="section" sx={staticCardSx}>
               <CommitList gid={gid} gitRef={repo.defaultBranch || undefined} />

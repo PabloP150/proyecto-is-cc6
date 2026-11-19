@@ -98,7 +98,7 @@ const NO_LISTS = [];
 
 // deletingLists: names of the lists whose deletion is still in flight (the parent ignores their
 // actions; here they look busy and take no clicks).
-const ListaRecordatorios = memo(function ListaRecordatorios({ listas, handleEliminar, handleCompletar, handleEditar, filtro, handleEliminarLista, deletingLists = NO_LISTS, orden, setOrden, handleVaciarCompletados, handleVaciarEliminados, getTaskLink, repoConnected = false, onTaskLinkChange, members }) {
+const ListaRecordatorios = memo(function ListaRecordatorios({ listas, handleEliminar, handleCompletar, handleEditar, filtro, handleEliminarLista, deletingLists = NO_LISTS, orden, setOrden, handleVaciarCompletados, handleVaciarEliminados, getTaskLink, repo = null, repoConnected = false, onTaskLinkChange, members }) {
   const fadeTimerRef = useRef(null);
   // One toast for every task card (complete, delete and the GitHub actions), so a new message
   // replaces the previous one instead of stacking on it; the new key restarts its autoHide timer.
@@ -590,7 +590,9 @@ const ListaRecordatorios = memo(function ListaRecordatorios({ listas, handleElim
                            {recordatorio.tid && (
                              <TaskGitHubActions
                                tid={recordatorio.tid}
+                               taskName={recordatorio.name}
                                link={getTaskLink ? getTaskLink(recordatorio.tid) : null}
+                               repo={repo}
                                repoConnected={repoConnected}
                                onChange={onTaskLinkChange}
                                onNotify={showSnackbar}
