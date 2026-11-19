@@ -138,3 +138,17 @@ archivos en la tarea aparece la lista con enlaces a GitHub.
 - **Un PR fusionado contra una base distinta a la rama por defecto** no completa la tarea (regla
   existente de la Fase 3) y por tanto no dispara el registro automático de archivos. La
   recuperación bajo demanda cubre ese caso.
+
+## Conexión con el servidor de IA (19 nov 2026)
+
+TaskMate llama al servidor de IA (repo `taskmate-ai-server`) por HTTP con un secreto compartido
+(`X-AI-Server-Secret`, variable `AI_SERVER_SECRET` en los dos `.env`; `scripts/local-up.sh` lo copia).
+
+| Pieza | Archivo |
+|---|---|
+| Cliente HTTP (errores → `AI_SERVER_*`) | `taskmate-api/services/aiServer/client.js` |
+| Diff de la rama de la tarea (API compare de GitHub) | `repoService.getComparePatches`, `services/aiServer/taskAi.js` |
+| Ruta | `POST /api/github/tasks/:tid/audit` (miembro del grupo, 5/min) |
+| Interfaz | `src/components/github/TaskAiPanel.jsx`, dentro del diálogo de archivos de la tarea |
+
+El servidor de IA no necesita una copia del repositorio: recibe los parches por archivo.

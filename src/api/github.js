@@ -131,3 +131,9 @@ export const getTaskFiles = (tid, { signal } = {}) =>
 
 export const getTaskOverlaps = (tid, { signal } = {}) =>
   request(`/tasks/${seg(tid)}/overlaps`, { signal });
+
+// ---------------------------------------------------------------- AI server (task branch)
+
+/** Rules + local-model audit of the task branch. Slow (~20 s): pass a signal. */
+export const auditTask = (tid, { signal } = {}) =>
+  request(`/tasks/${seg(tid)}/audit`, { method: 'POST', signal });
