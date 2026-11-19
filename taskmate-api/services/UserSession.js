@@ -348,7 +348,7 @@ class UserSession {
     async ensureProjectContext() {
         const ctx = this.chatContext;
         if (!ctx.groupId) return null;
-        if (ctx.cache) return ctx.cache;
+        if (ctx.cache) return this.revalidatedContext(ctx);
         if (!ctx.building) {
             ctx.building = this.buildProjectContext(ctx.groupId).finally(() => { ctx.building = null; });
         }
@@ -356,6 +356,24 @@ class UserSession {
         // Only cached for the project still selected, and only when the repository could be read.
         if (this.chatContext === ctx && built.cacheable) ctx.cache = built.context;
         return built.context;
+    }
+
+    // The cache is reused only while the user is still a member and the repository data is still
+    // allowed (consent on, installation not suspended): both re-checked on every message.
+    async revalidatedContext(ctx) {
+        const { cache } = ctx;
+        const [member, repo] = await Promise.all([
+            accessModel.isGroupMember(this.userId, ctx.groupId),
+            cache.snapshot ? githubModel.getGroupRepository(ctx.groupId) : null,
+        ]);
+        if (!member) {
+            this.chatContext = { groupId: null, cache: null, building: null };
+            return null;
+        }
+        if (cache.snapshot && (!repo || repo.suspendedAt || repo.aiAnalysisEnabled !== true)) {
+            ctx.cache = { ...cache, snapshot: null, repoNote: 'Repository data is no longer available to the AI for this project.' };
+        }
+        return ctx.cache;
     }
 
     async buildProjectContext(groupId) {

@@ -766,6 +766,23 @@ describe('UserSession', () => {
             expect(lastOfType(ws, 'repo_analysis_status')).toMatchObject({ requestId: 'c-plan' });
         });
 
+        test('a cached context is dropped when the user leaves the group', async () => {
+            await session.handleMessage({ type: 'set_context', groupId: GID });
+            expect((await chat('uno')).params.project).not.toBeNull();
+            accessModel.isGroupMember.mockResolvedValue(false);
+            expect((await chat('dos')).params.project).toBeNull();
+        });
+
+        test('revoking AI consent strips the cached repository snapshot on the next message', async () => {
+            await session.handleMessage({ type: 'set_context', groupId: GID });
+            expect((await chat('uno')).params.project.snapshot).toEqual(SNAPSHOT);
+            githubModel.getGroupRepository.mockResolvedValue({ gid: GID, repoId: 500, fullName: 'octo/demo', aiAnalysisEnabled: false });
+            const second = (await chat('dos')).params.project;
+            expect(second.snapshot).toBeNull();
+            expect(second.existing.tasks).toHaveLength(1);
+            expect(buildRepoSnapshot).toHaveBeenCalledTimes(1);
+        });
+
         test('the plan cooldown never blocks normal chat', async () => {
             UserSession.lastAnalysisByUser.set(UID, Date.now());
             await session.handleMessage({ type: 'set_context', groupId: GID });
