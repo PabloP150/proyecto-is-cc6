@@ -169,8 +169,8 @@ El cierre del 3 nov aplica solo a la línea de Pablo. Esta línea sigue, con fec
 | 3 | Integración con Vercel / AWS | Baja | 11 – 18 sep | ✅ Solo monitoreo. Desplegar desde la app queda para después (GitHub Pages de la Fase 4 ya publica los proyectos) | `feature/linea-christian` |
 | 4 | Interfaz de tareas más detallada | Baja | 18 – 25 sep | ✅ Completo | `feature/linea-christian` |
 | 5 | Comando `audit` con verificación automática | Media | 25 sep – 9 oct | ✅ Completo | repo `ai-server` (rama `audit`) |
-| 6 | IA para generar pruebas | Alta | 9 – 23 oct | ⏳ Pendiente | — |
-| 7 | IA revisando pull requests | Alta | 23 oct – 6 nov | ⏳ Pendiente | — |
+| 6 | IA para generar pruebas | Alta | 9 – 23 oct | ✅ Completo (propone, no ejecuta) | `ai-server` `generate-tests` + «Generar pruebas» |
+| 7 | IA revisando pull requests | Alta | 23 oct – 6 nov | ✅ Completo | `ai-server` `review-pr` + webhook de PR |
 | 8 | Algoritmo de colisión de archivos | Alta | 6 – 20 nov | ⏸️ Pospuesto | — |
 | 9 | Pruebas finales | — | 20 – 27 nov | ⏳ Pendiente | — |
 
