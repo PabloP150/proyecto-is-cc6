@@ -255,10 +255,10 @@ const getPipeline = async (gid) => {
 
 // Why the AI proposal was not used, for the note above the detected one.
 const AI_FAILURE_REASONS = {
-    LLM_TIMEOUT: 'tardó demasiado en responder',
-    LLM_RATE_LIMIT: 'alcanzó su límite de uso; inténtalo en unos minutos',
-    LLM_INVALID_OUTPUT: 'propuso algo que no coincide con el repositorio',
-    LLM_ERROR: 'no está disponible en este momento',
+    LLM_TIMEOUT: 'took too long to answer',
+    LLM_RATE_LIMIT: 'reached its usage limit; try again in a few minutes',
+    LLM_INVALID_OUTPUT: 'proposed something that does not match the repository',
+    LLM_ERROR: 'is not available right now',
 };
 
 /**
@@ -305,7 +305,7 @@ const proposePipeline = async ({ gid, uid, dir, stack, ai }) => {
                 spec = pipelineSpec.validateSpec(row.spec, facts);
                 source = 'saved';
             } catch {
-                notes.push('El pipeline guardado ya no coincide con el repositorio; esta es una propuesta nueva.');
+                notes.push('The saved pipeline no longer matches the repository; this is a new proposal.');
             }
         }
     }
@@ -323,12 +323,12 @@ const proposePipeline = async ({ gid, uid, dir, stack, ai }) => {
             spec = detected;
             if (fromAi) {
                 aiError = fromAi.error;
-                notes.unshift(`No se pudo usar la IA (${AI_FAILURE_REASONS[aiError]}); esta es la propuesta de la detección automática.`);
+                notes.unshift(`The AI could not be used (it ${AI_FAILURE_REASONS[aiError]}); this is the automatic detection proposal.`);
             }
             notes = [...notes, ...proposal.notes];
         }
     }
-    if (facts.truncated) notes.push('El repositorio es muy grande: solo se revisó parte de sus archivos.');
+    if (facts.truncated) notes.push('The repository is very large: only part of its files was reviewed.');
     return {
         source,
         notes,

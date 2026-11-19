@@ -15,8 +15,8 @@ import { formatDay, staticCardSx } from './githubUtils';
 const CATEGORY_STYLES = {
   frontend: { label: 'Frontend', color: '#93c5fd', background: 'rgba(59, 130, 246, 0.18)' },
   backend: { label: 'Backend', color: '#fbbf24', background: 'rgba(245, 158, 11, 0.18)' },
-  database: { label: 'Base de datos', color: '#6ee7b7', background: 'rgba(16, 185, 129, 0.18)' },
-  testing: { label: 'Pruebas', color: '#d8b4fe', background: 'rgba(168, 85, 247, 0.18)' },
+  database: { label: 'Database', color: '#6ee7b7', background: 'rgba(16, 185, 129, 0.18)' },
+  testing: { label: 'Testing', color: '#d8b4fe', background: 'rgba(168, 85, 247, 0.18)' },
   general: { label: 'General', color: '#e2e8f0', background: 'rgba(148, 163, 184, 0.18)' },
 };
 
@@ -121,7 +121,7 @@ function TaskGroup({ title, subtitle, description, tasks }) {
         </Box>
       ) : (
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', pl: 2.5 }}>
-          Sin tareas asignadas a este hito.
+          No tasks in this milestone.
         </Typography>
       )}
     </Box>
@@ -141,7 +141,7 @@ function PlanBody({ plan, content }) {
       {plan.summary && (
         <>
           <Typography variant="overline" component="p" sx={{ color: 'text.secondary', lineHeight: 1.6 }}>
-            Sobre el repositorio
+            About the repository
           </Typography>
           <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', mb: 1 }}>
             {plan.summary}
@@ -153,15 +153,15 @@ function PlanBody({ plan, content }) {
         return (
           <TaskGroup
             key={`${text(milestone.key)}-${index}`}
-            title={text(milestone.name) || 'Hito sin nombre'}
-            subtitle={target ? `Meta: ${target}` : ''}
+            title={text(milestone.name) || 'Unnamed milestone'}
+            subtitle={target ? `Target: ${target}` : ''}
             description={text(milestone.description)}
             tasks={plan.byKey.get(text(milestone.key)) || []}
           />
         );
       })}
       {plan.loose.length > 0 && (
-        <TaskGroup title={plan.milestones.length ? 'Sin hito' : 'Tareas'} tasks={plan.loose} />
+        <TaskGroup title={plan.milestones.length ? 'No milestone' : 'Tasks'} tasks={plan.loose} />
       )}
     </Box>
   );
@@ -221,7 +221,7 @@ export default function RepoPlanCard({ message, onConfirm, onDiscard, busy = fal
     else if (result && typeof result.then === 'function') result.then(release, release);
   };
 
-  const groupName = text(msg.groupName) || 'el proyecto';
+  const groupName = text(msg.groupName) || 'the project';
   const taskCount = plan.tasks.length;
   const milestoneCount = plan.milestones.length;
   const readOnly = compact || finalStatus === 'saved' || finalStatus === 'discarded' || finalStatus === 'expired';
@@ -231,16 +231,16 @@ export default function RepoPlanCard({ message, onConfirm, onDiscard, busy = fal
     const savedTasks = countOr(created.tasks, taskCount);
     const savedMilestones = countOr(created.milestones, milestoneCount);
     let icon = <AutoAwesomeIcon sx={{ color: 'primary.light' }} aria-hidden />;
-    let summary = `Plan propuesto para «${groupName}»: ${plural(taskCount, 'tarea', 'tareas')} y ${plural(milestoneCount, 'hito', 'hitos')}.`;
+    let summary = `Proposed plan for “${groupName}”: ${plural(taskCount, 'task', 'tasks')} and ${plural(milestoneCount, 'milestone', 'milestones')}.`;
     if (finalStatus === 'saved') {
       icon = <CheckCircleIcon sx={{ color: 'success.main' }} aria-hidden />;
-      summary = `Plan guardado en «${groupName}»: ${plural(savedTasks, 'tarea creada', 'tareas creadas')} y ${plural(savedMilestones, 'hito', 'hitos')}.`;
+      summary = `Plan saved to “${groupName}”: ${plural(savedTasks, 'task created', 'tasks created')} and ${plural(savedMilestones, 'milestone', 'milestones')}.`;
     } else if (finalStatus === 'discarded') {
       icon = <BlockIcon sx={{ color: 'text.secondary' }} aria-hidden />;
-      summary = `Plan descartado (${plural(taskCount, 'tarea propuesta', 'tareas propuestas')}).`;
+      summary = `Plan discarded (${plural(taskCount, 'proposed task', 'proposed tasks')}).`;
     } else if (finalStatus === 'expired' || expired) {
       icon = <HourglassDisabledIcon sx={{ color: 'warning.main' }} aria-hidden />;
-      summary = 'Plan expirado: vuelve a pedir el análisis para generar uno nuevo.';
+      summary = 'Plan expired: ask for the analysis again to get a new one.';
     }
     return (
       <Box
@@ -260,7 +260,7 @@ export default function RepoPlanCard({ message, onConfirm, onDiscard, busy = fal
               aria-expanded={showDetail}
               sx={{ py: 0.25, px: 1.25, fontSize: '0.75rem' }}
             >
-              {showDetail ? 'Ocultar detalle' : 'Ver detalle'}
+              {showDetail ? 'Hide details' : 'Show details'}
             </Button>
           )}
         </Box>
@@ -275,23 +275,23 @@ export default function RepoPlanCard({ message, onConfirm, onDiscard, busy = fal
 
   const disabled = busy || Boolean(pending) || expired;
   const expiryLabel = deadline
-    ? `Válido hasta las ${deadline.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })}`
+    ? `Valid until ${deadline.toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit' })}`
     : '';
 
   return (
     <Card
       variant="default"
       component="section"
-      aria-label={`Plan propuesto para ${groupName}`}
+      aria-label={`Proposed plan for ${groupName}`}
       sx={{ ...staticCardSx, p: { xs: 1.5, sm: 2 }, width: '100%' }}
     >
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
         <AutoAwesomeIcon sx={{ color: 'secondary.light' }} aria-hidden />
         <Typography variant="subtitle1" component="h3" sx={{ fontWeight: 700, flex: 1, minWidth: 0 }}>
-          Plan propuesto para «{groupName}»
+          Proposed plan for “{groupName}”
         </Typography>
         {expired ? (
-          <Chip size="small" color="warning" label="Plan expirado" />
+          <Chip size="small" color="warning" label="Plan expired" />
         ) : (
           expiryLabel && (
             <Typography variant="caption" color="text.secondary">
@@ -301,7 +301,7 @@ export default function RepoPlanCard({ message, onConfirm, onDiscard, busy = fal
         )}
       </Box>
       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-        {plural(taskCount, 'tarea', 'tareas')} · {plural(milestoneCount, 'hito', 'hitos')}
+        {plural(taskCount, 'task', 'tasks')} · {plural(milestoneCount, 'milestone', 'milestones')}
       </Typography>
       <Divider sx={{ mb: 1, borderColor: 'rgba(255, 255, 255, 0.1)' }} />
 
@@ -310,21 +310,21 @@ export default function RepoPlanCard({ message, onConfirm, onDiscard, busy = fal
       <Divider sx={{ my: 1.5, borderColor: 'rgba(255, 255, 255, 0.1)' }} />
       {expired ? (
         <Typography variant="body2" color="warning.light" sx={{ mb: 1 }}>
-          Plan expirado: vuelve a pedir el análisis para generar uno nuevo.
+          Plan expired: ask for the analysis again to get a new one.
         </Typography>
       ) : (
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-          Al confirmar se crearán {plural(taskCount, 'tarea', 'tareas')} y {plural(milestoneCount, 'hito', 'hitos')} en «{groupName}».
+          Confirming creates {plural(taskCount, 'task', 'tasks')} and {plural(milestoneCount, 'milestone', 'milestones')} in “{groupName}”.
         </Typography>
       )}
       <Stack direction="row" spacing={1} justifyContent="flex-end">
         <Button variant="ghost" size="small" disabled={disabled} onClick={() => run('discard', onDiscard)}>
           {pending === 'discard' ? <CircularProgress size={16} sx={{ mr: 1, color: 'inherit' }} /> : null}
-          Descartar
+          Discard
         </Button>
         <Button variant="primary" size="small" disabled={disabled} onClick={() => run('confirm', onConfirm)}>
           {pending === 'confirm' ? <CircularProgress size={16} sx={{ mr: 1, color: 'inherit' }} /> : null}
-          Confirmar
+          Confirm
         </Button>
       </Stack>
     </Card>

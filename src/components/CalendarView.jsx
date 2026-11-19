@@ -158,7 +158,7 @@ function CalendarView() {
             >
               {!selectedGroupId && (
                 <div style={{ color: 'white', textAlign: 'center', marginTop: '2rem' }}>
-                  Selecciona un grupo para ver el calendario.
+                  Select a group to view the calendar.
                 </div>
               )}
               {selectedGroupId && loadError && (

@@ -32,7 +32,7 @@ import { WS_CLOSE_MESSAGE_TOO_BIG } from '../constants/ws';
 import ThemeProvider from '../theme/ThemeProvider';
 import { WS_BASE } from '../config';
 import { GroupContext } from './GroupContext';
-import ChatProjectSelector from './github/ChatProjectSelector';
+import ChatProjectInfo from './github/ChatProjectInfo';
 import RepoPlanCard from './github/RepoPlanCard';
 import { isAbortError, sameId } from './github/githubUtils';
 import { LIMITS } from '../constants/limits';
@@ -76,21 +76,21 @@ const MAX_MESSAGE = LIMITS.chatMessage;
 // Client-side fallback: stop waiting if the server sends nothing at all for this long.
 export const REPLY_TIMEOUT_MS = 100000;
 const CHAT_ERROR_MESSAGES = {
-    MESSAGE_TOO_LONG: `El mensaje es demasiado largo: el máximo es ${LIMITS.chatMessage} caracteres.`,
-    RATE_LIMITED: 'Vas muy rápido: espera un momento antes de volver a intentarlo.',
-    LLM_TIMEOUT: 'La IA tardó demasiado en responder. Inténtalo de nuevo.',
-    AI_ANALYSIS_DISABLED: 'El análisis con IA está desactivado para este proyecto. Un administrador del grupo puede activarlo en la página GitHub («Permitir análisis con IA»).',
+    MESSAGE_TOO_LONG: `The message is too long: the limit is ${LIMITS.chatMessage} characters.`,
+    RATE_LIMITED: 'You are going too fast: wait a moment before trying again.',
+    LLM_TIMEOUT: 'The AI took too long to answer. Please try again.',
+    AI_ANALYSIS_DISABLED: 'AI analysis is turned off for this project. A group admin can turn it on from the GitHub page (“Allow AI analysis”).',
 };
 // The analysis cooldown shares RATE_LIMITED with the chat limit but is not about typing too fast.
 const ANALYSIS_ERROR_MESSAGES = {
-    RATE_LIMITED: 'Solo se puede pedir un análisis por minuto.',
+    RATE_LIMITED: 'You can only ask for one analysis per minute.',
 };
 const friendlyError = (data, { forAnalysis = false, restored = false } = {}) => {
     const base = (forAnalysis && ANALYSIS_ERROR_MESSAGES[data.code]) || CHAT_ERROR_MESSAGES[data.code];
     if (!base) return null;
     const wait = Number(data.retryAfterSec);
     // A countdown replayed from history would already be wrong.
-    return !restored && Number.isFinite(wait) && wait > 0 ? `${base} Podrás reintentar en ${Math.ceil(wait)} s.` : base;
+    return !restored && Number.isFinite(wait) && wait > 0 ? `${base} You can retry in ${Math.ceil(wait)} s.` : base;
 };
 // Restored errors read as they did live. A restored RATE_LIMITED keeps the server's text: the code
 // alone cannot tell the analysis cooldown from the chat limit, and the stored text already does.
@@ -101,11 +101,11 @@ const toRestoredMessage = (raw, index) => {
 };
 // Same text the server keeps in history for an analysis without instructions.
 const analysisRequestText = (instructions, groupName) => (
-    instructions || `Analiza el repositorio de «${groupName || 'este proyecto'}» y propón las siguientes tareas.`
+    instructions || `Analyze the repository of “${groupName || 'this project'}” and propose the next tasks.`
 );
 const ANALYSIS_STAGE_TEXT = {
-    fetching_repo: 'Leyendo el repositorio en GitHub…',
-    analyzing: 'La IA está analizando el repositorio (puede tardar hasta un minuto y medio)…',
+    fetching_repo: 'Reading the repository on GitHub…',
+    analyzing: 'The AI is analyzing the repository (this can take up to a minute and a half)…',
 };
 const PLAN_EVENT_STATUS = { repo_plan_saved: 'saved', repo_plan_discarded: 'discarded' };
 // Errors that mean a plan can no longer be confirmed.
@@ -224,12 +224,12 @@ function ChatPage() {
     const [notice, setNotice] = useState('');
     const messagesEndRef = useRef(null);
     const inputRef = useRef(null);
-    const { refreshGroups, groups } = useContext(GroupContext) || {};
+    const { refreshGroups, groups, selectedGroupId } = useContext(GroupContext) || {};
     const location = useLocation();
     const navigate = useNavigate();
     const analyzeGroupId = location.state?.analyzeGroupId || null;
-    // Chat project context: null = "Nuevo proyecto (sin contexto)". repo undefined = not known yet.
-    const [projectId, setProjectId] = useState(analyzeGroupId);
+    // Chat project context = the group chosen in the navbar (null = no context). repo undefined = not known yet.
+    const [projectId, setProjectId] = useState(analyzeGroupId || selectedGroupId || null);
     const [projectRepo, setProjectRepo] = useState(undefined);
     const [analysis, setAnalysis] = useState(null);
     const [busyPlanId, setBusyPlanId] = useState(null);
@@ -442,7 +442,7 @@ function ChatPage() {
                     setMessages(prev => [...prev, {
                         id: nextMessageId('error'),
                         type: 'error',
-                        content: 'El mensaje es demasiado grande para enviarlo. Acórtalo e inténtalo de nuevo.',
+                        content: 'The message is too large to send. Shorten it and try again.',
                         timestamp: new Date(),
                     }]);
                 }
@@ -455,7 +455,7 @@ function ChatPage() {
         if (!refreshGroups || (Array.isArray(groups) && groups.length > 0)) return undefined;
         const controller = new AbortController();
         refreshGroups({ signal: controller.signal }).catch(err => {
-            if (!isAbortError(err)) setNotice(errorMessage(err, 'No se pudieron cargar tus proyectos'));
+            if (!isAbortError(err)) setNotice(errorMessage(err, 'Could not load your projects'));
         });
         return () => controller.abort();
         // Only on mount: an empty list after that is a real "no groups" answer.
@@ -480,7 +480,7 @@ function ChatPage() {
         setMessages(prev => [...prev, bubble]);
         const sent = sendWebSocketMessage({ type: 'repo_analysis', requestId, groupId, instructions });
         if (!sent) {
-            pushError('No se pudo enviar la solicitud de análisis. Revisa tu conexión.');
+            pushError('Could not send the analysis request. Check your connection.');
             return false;
         }
         analysisRequestRef.current = { requestId, bubble };
@@ -513,10 +513,22 @@ function ChatPage() {
         sendWebSocketMessage({ type: 'set_context', groupId: groupId || null });
     }, [sendWebSocketMessage]);
 
+    // The navbar group switcher changes the chat's project too (only on a change, so the
+    // group of an analysis requested from /github is kept on arrival).
+    const navbarGroupRef = useRef(selectedGroupId || null);
+    useEffect(() => {
+        const next = selectedGroupId || null;
+        if (next === navbarGroupRef.current) return;
+        navbarGroupRef.current = next;
+        if (sameId(next, projectIdRef.current) || (!next && !projectIdRef.current)) return;
+        projectIdRef.current = next;
+        handleProjectChange(next);
+    }, [selectedGroupId, handleProjectChange]);
+
     const sendPlanAction = useCallback((type, planId) => {
         if (!planId) return false;
         if (!sendWebSocketMessage({ type, planId })) {
-            setNotice('No se pudo enviar la acción del plan. Revisa tu conexión.');
+            setNotice('Could not send the plan action. Check your connection.');
             return false;
         }
         setBusyPlanId(planId);
@@ -587,7 +599,7 @@ function ChatPage() {
             setIsTyping(false);
             analysisRequestRef.current = null;
             setAnalysis(null);
-            pushError('No llegó respuesta a tiempo. Si llega más tarde aparecerá aquí; también puedes intentarlo de nuevo.');
+            pushError('No answer arrived in time. If it arrives later it will show up here; you can also try again.');
         }, REPLY_TIMEOUT_MS);
         return () => clearTimeout(timer);
     }, [waiting, analysis, pushError]);
@@ -642,7 +654,7 @@ function ChatPage() {
             <CssBaseline />
             <Container
                 component="main"
-                maxWidth="md"
+                maxWidth={false}
                 className="chat-container"
                 sx={{
                     height: '100vh',
@@ -673,20 +685,18 @@ function ChatPage() {
                             AI Assistant
                         </Typography>
 
-                        <ChatProjectSelector
+                        <ChatProjectInfo
                             groups={groups || []}
                             value={projectId}
-                            onChange={handleProjectChange}
                             repo={projectId ? projectRepo : null}
-                            disabled={Boolean(analysis)}
                         />
                         {projectId && (
                             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
                                 {projectRepo === null
-                                    ? 'Este proyecto no tiene un repositorio conectado. Conéctalo desde la página GitHub o elige «Nuevo proyecto».'
+                                    ? 'This project has no repository connected: the AI only sees its tasks, milestones and team. Connect one from the GitHub page.'
                                     : aiDisabled
                                         ? CHAT_ERROR_MESSAGES.AI_ANALYSIS_DISABLED
-                                        : 'Pregunta lo que quieras sobre el proyecto. Para proponer tareas, pide «crea un plan» o usa «Proponer tareas». La IA ve la estructura, el README, las dependencias, los commits, los issues y las tareas; nunca el código fuente.'}
+                                        : 'Ask anything about the project. To get proposed tasks, ask for a plan or use “Propose tasks”. The AI sees the structure, README, dependencies, commits, issues and tasks; never the source code.'}
                             </Typography>
                         )}
                         {!token && (
@@ -882,8 +892,8 @@ function ChatPage() {
                                             <CircularProgress size={16} />
                                             <Typography variant="body2" sx={{ fontStyle: 'italic' }} aria-live="polite">
                                                 {analysis
-                                                    ? (ANALYSIS_STAGE_TEXT[analysis.stage] || 'Preparando el análisis del repositorio…')
-                                                    : 'AI is typing...'}
+                                                    ? (ANALYSIS_STAGE_TEXT[analysis.stage] || 'Preparing the repository analysis…')
+                                                    : 'Thinking...'}
                                             </Typography>
                                         </Box>
                                     </Box>
@@ -916,11 +926,11 @@ function ChatPage() {
                             onChange={(e) => setInputMessage(e.target.value)}
                             onKeyDown={handleKeyDown}
                             placeholder={projectId
-                                ? `Pregunta sobre «${projectName || 'el proyecto'}»…`
-                                : 'Escribe tu mensaje…'}
+                                ? `Ask about “${projectName || 'the project'}”…`
+                                : 'Type your message…'}
                             inputProps={{
                                 maxLength: inputLimit,
-                                'aria-label': 'Mensaje',
+                                'aria-label': 'Message',
                                 'aria-describedby': 'chat-input-counter',
                             }}
                             helperText={
@@ -937,10 +947,10 @@ function ChatPage() {
                             }}
                         />
                         {projectId && !analysisBlocked && (
-                            <Tooltip title="Proponer las siguientes tareas del proyecto (analiza el repositorio; una vez por minuto)">
+                            <Tooltip title="Propose the next tasks for the project (analyzes the repository; once per minute)">
                                 <span>
                                     <IconButton
-                                        aria-label="Proponer tareas"
+                                        aria-label="Propose tasks"
                                         onClick={() => startAnalysis(projectId, '')}
                                         disabled={Boolean(analysis) || isTyping || !isConnected}
                                     >
@@ -951,7 +961,7 @@ function ChatPage() {
                         )}
                         <IconButton
                             type="submit"
-                            aria-label="Enviar mensaje"
+                            aria-label="Send message"
                             disabled={!inputMessage.trim() || isTyping || Boolean(analysis) || !isConnected
                                 || inputMessage.trim().length > MAX_MESSAGE}
                             sx={{

@@ -1,77 +1,77 @@
 // Shared helpers for the GitHub UI: safe URLs, readable errors, dates and ids.
 
 const ERROR_MESSAGES = {
-  VALIDATION_ERROR: 'La solicitud no es válida.',
-  UNAUTHENTICATED: 'Tu sesión expiró. Inicia sesión de nuevo.',
-  NETWORK_ERROR: 'No se pudo conectar con el servidor. Revisa tu conexión.',
-  NOT_GROUP_MEMBER: 'No perteneces a este grupo.',
-  NOT_GROUP_ADMIN: 'Solo el administrador del grupo puede hacer esto.',
-  INVALID_STATE: 'La solicitud de conexión no es válida o expiró. Vuelve a intentarlo.',
-  REPO_NOT_ACCESSIBLE: 'La GitHub App no tiene acceso a ese repositorio.',
-  NOT_FOUND: 'No se encontró lo que buscabas.',
-  TASK_NOT_FOUND: 'La tarea ya no existe.',
-  FILE_NOT_FOUND: 'El archivo no existe en esta rama.',
+  VALIDATION_ERROR: 'The request is not valid.',
+  UNAUTHENTICATED: 'Your session expired. Please log in again.',
+  NETWORK_ERROR: 'Could not reach the server. Check your connection.',
+  NOT_GROUP_MEMBER: 'You are not a member of this group.',
+  NOT_GROUP_ADMIN: 'Only the group admin can do this.',
+  INVALID_STATE: 'The connection request is not valid or has expired. Please try again.',
+  REPO_NOT_ACCESSIBLE: 'The GitHub App has no access to that repository.',
+  NOT_FOUND: 'We could not find what you were looking for.',
+  TASK_NOT_FOUND: 'The task no longer exists.',
+  FILE_NOT_FOUND: 'The file does not exist on this branch.',
   SELECTION_NOT_FOUND:
-    'La selección de repositorios expiró o ya se usó. Vuelve a conectar el repositorio.',
-  REPO_NOT_CONNECTED: 'Este grupo no tiene un repositorio de GitHub conectado.',
-  REPO_EMPTY: 'El repositorio está vacío: haz un primer commit para poder crear ramas.',
-  INSTALLATION_SUSPENDED: 'La instalación de la GitHub App está suspendida.',
-  BRANCH_CONFLICT: 'Ya existe una rama con ese nombre vinculada a otra tarea.',
-  FILE_TOO_LARGE: 'El archivo supera 1 MB y no se puede mostrar aquí.',
-  RATE_LIMITED: 'Demasiadas solicitudes. Espera un momento e inténtalo de nuevo.',
-  GITHUB_ERROR: 'GitHub respondió con un error. Inténtalo más tarde.',
-  GITHUB_RATE_LIMITED: 'Se alcanzó el límite de uso de la API de GitHub. Inténtalo más tarde.',
-  DB_BUSY: 'El servidor está ocupado. Inténtalo de nuevo en unos segundos.',
-  INTERNAL_ERROR: 'Ocurrió un error inesperado en el servidor.',
-  GITHUB_NOT_CONFIGURED: 'La integración con GitHub no está configurada en el servidor.',
-  AI_ANALYSIS_DISABLED: 'El análisis con IA está desactivado para este repositorio. Un administrador puede activarlo en la página GitHub.',
+    'The repository selection expired or was already used. Connect the repository again.',
+  REPO_NOT_CONNECTED: 'This group has no GitHub repository connected.',
+  REPO_EMPTY: 'The repository is empty: make a first commit before creating branches.',
+  INSTALLATION_SUSPENDED: 'The GitHub App installation is suspended.',
+  BRANCH_CONFLICT: 'A branch with that name is already linked to another task.',
+  FILE_TOO_LARGE: 'The file is larger than 1 MB and cannot be shown here.',
+  RATE_LIMITED: 'Too many requests. Wait a moment and try again.',
+  GITHUB_ERROR: 'GitHub returned an error. Try again later.',
+  GITHUB_RATE_LIMITED: 'The GitHub API usage limit was reached. Try again later.',
+  DB_BUSY: 'The server is busy. Try again in a few seconds.',
+  INTERNAL_ERROR: 'An unexpected server error occurred.',
+  GITHUB_NOT_CONFIGURED: 'The GitHub integration is not configured on the server.',
+  AI_ANALYSIS_DISABLED: 'AI analysis is turned off for this repository. An admin can turn it on from the GitHub page.',
   // Phase 4 (CI/CD)
   APP_PERMISSIONS_MISSING:
-    'La GitHub App todavía no tiene los permisos de CI/CD en este repositorio. Quien la instaló debe aceptarlos en GitHub.',
+    'The GitHub App does not have the CI/CD permissions on this repository yet. Whoever installed it must accept them on GitHub.',
   PAGES_UNAVAILABLE:
-    'GitHub Pages no está disponible para este repositorio con su plan actual (en repositorios privados requiere GitHub Pro).',
+    'GitHub Pages is not available for this repository on its current plan (private repositories need GitHub Pro).',
   WORKFLOW_CONFLICT:
-    'Ya existe un workflow .github/workflows/taskmate-ci.yml que no creó TaskMate. Renómbralo o bórralo para continuar.',
-  WORKFLOW_CHANGED: 'El workflow cambió en GitHub mientras lo configurabas. Vuelve a intentarlo.',
+    'A .github/workflows/taskmate-ci.yml workflow already exists that TaskMate did not create. Rename or delete it to continue.',
+  WORKFLOW_CHANGED: 'The workflow changed on GitHub while you were setting it up. Please try again.',
   BRANCH_PROTECTED:
-    'La rama principal está protegida y solo acepta cambios por pull request, así que TaskMate no puede subir el pipeline.',
-  INVALID_PIPELINE: 'La configuración del pipeline no es válida para este repositorio.',
-  PIPELINE_UNSUPPORTED: 'No se encontró un proyecto de Node.js, Python ni un sitio estático en el repositorio.',
-  RUN_NOT_FOUND: 'Esa ejecución ya no existe en GitHub.',
-  LOG_NOT_AVAILABLE: 'El log todavía no está disponible (el job sigue corriendo) o ya expiró.',
-  PIPELINE_NOT_CONFIGURED: 'Este repositorio todavía no tiene un pipeline de TaskMate.',
-  PIPELINE_OUTDATED: 'El workflow de esa rama es anterior y no se puede ejecutar desde TaskMate; vuelve a subir el pipeline.',
-  BRANCH_NOT_FOUND: 'Esa rama no existe en el repositorio.',
-  RUN_NOT_RERUNNABLE: 'Solo se pueden re-ejecutar ejecuciones terminadas con jobs fallidos (y de menos de un mes).',
-  RUN_NOT_CANCELLABLE: 'La ejecución ya terminó.',
-  DEPLOY_NOT_CONFIGURED: 'El pipeline de este repositorio no tiene deploy.',
-  VERSION_NOT_VERIFIED: 'Ese commit no pasó el CI de TaskMate, así que no se puede desplegar.',
-  DEPLOY_REQUEST_PENDING: 'Ya hay una solicitud pendiente para ese entorno.',
-  DEPLOY_REQUEST_NOT_FOUND: 'La solicitud ya no existe.',
-  DEPLOY_REQUEST_DECIDED: 'Otro administrador ya respondió esa solicitud.',
-  NOT_REQUESTER: 'Solo quien pidió el deploy puede cancelar la solicitud.',
+    'The main branch is protected and only accepts changes through pull requests, so TaskMate cannot push the pipeline.',
+  INVALID_PIPELINE: 'The pipeline configuration is not valid for this repository.',
+  PIPELINE_UNSUPPORTED: 'No Node.js project, Python project or static site was found in the repository.',
+  RUN_NOT_FOUND: 'That run no longer exists on GitHub.',
+  LOG_NOT_AVAILABLE: 'The log is not available yet (the job is still running) or has expired.',
+  PIPELINE_NOT_CONFIGURED: 'This repository does not have a TaskMate pipeline yet.',
+  PIPELINE_OUTDATED: 'The workflow on that branch is outdated and cannot be run from TaskMate; push the pipeline again.',
+  BRANCH_NOT_FOUND: 'That branch does not exist in the repository.',
+  RUN_NOT_RERUNNABLE: 'Only finished runs with failed jobs (and less than a month old) can be re-run.',
+  RUN_NOT_CANCELLABLE: 'The run has already finished.',
+  DEPLOY_NOT_CONFIGURED: 'This repository pipeline has no deploy step.',
+  VERSION_NOT_VERIFIED: 'That commit did not pass TaskMate CI, so it cannot be deployed.',
+  DEPLOY_REQUEST_PENDING: 'There is already a pending request for that environment.',
+  DEPLOY_REQUEST_NOT_FOUND: 'The request no longer exists.',
+  DEPLOY_REQUEST_DECIDED: 'Another admin already answered that request.',
+  NOT_REQUESTER: 'Only the person who asked for the deploy can cancel the request.',
   BRANCH_WORKFLOW_OUTDATED:
-    'Esa rama no tiene el workflow actual de TaskMate: actualízala con la rama principal (merge o rebase) y vuelve a intentarlo.',
-  VERSION_NOT_STAGING: 'Solo se puede pedir publicar en producción la versión que está en staging.',
+    'That branch does not have the current TaskMate workflow: update it from the main branch (merge or rebase) and try again.',
+  VERSION_NOT_STAGING: 'Only the version currently on staging can be requested for production.',
   DEPLOY_REQUEST_STALE:
-    'La solicitud quedó desactualizada (cambió la versión de staging o el repositorio) y se canceló; pide de nuevo.',
+    'The request became outdated (the staging version or the repository changed) and was cancelled; ask again.',
   WORKFLOW_DISABLED:
-    'El workflow de TaskMate está desactivado en GitHub. Actívalo en la pestaña Actions del repositorio y vuelve a intentarlo.',
+    'The TaskMate workflow is disabled on GitHub. Enable it in the repository Actions tab and try again.',
 };
 
 // Codes the OAuth/installation callback may put in ?status=error&code=<CODE>.
 const CALLBACK_ERROR_MESSAGES = {
   ...ERROR_MESSAGES,
-  INVALID_STATE: 'El enlace de conexión expiró o ya se usó. Vuelve a pulsar «Conectar repositorio».',
-  NOT_GROUP_ADMIN: 'Ya no eres administrador de este grupo, así que no se pudo conectar el repositorio.',
-  ACCESS_DENIED: 'Se canceló la autorización en GitHub.',
-  INSTALLATION_NOT_FOUND: 'Tu cuenta de GitHub no tiene acceso a esa instalación de la App.',
-  NO_REPOSITORIES: 'La instalación no tiene acceso a ningún repositorio.',
+  INVALID_STATE: 'The connection link expired or was already used. Click “Connect repository” again.',
+  NOT_GROUP_ADMIN: 'You are no longer an admin of this group, so the repository could not be connected.',
+  ACCESS_DENIED: 'The authorization was cancelled on GitHub.',
+  INSTALLATION_NOT_FOUND: 'Your GitHub account has no access to that App installation.',
+  NO_REPOSITORIES: 'The installation has no access to any repository.',
   NO_WRITABLE_REPOSITORIES:
-    'Tu cuenta de GitHub no tiene permiso de escritura en ningún repositorio de la instalación. Solo quien puede escribir en un repositorio puede conectarlo.',
+    'Your GitHub account has no write access to any repository in the installation. Only someone who can write to a repository can connect it.',
 };
 
-export function errorMessage(err, fallback = 'Ocurrió un error inesperado.') {
+export function errorMessage(err, fallback = 'An unexpected error occurred.') {
   const code = err && err.code;
   return (code && ERROR_MESSAGES[code]) || fallback;
 }
@@ -80,8 +80,8 @@ export function callbackErrorMessage(code) {
   if (code && CALLBACK_ERROR_MESSAGES[code]) return CALLBACK_ERROR_MESSAGES[code];
   const safeCode = typeof code === 'string' && /^[A-Z0-9_]{1,40}$/.test(code) ? code : null;
   return safeCode
-    ? `No se pudo conectar el repositorio (código ${safeCode}).`
-    : 'No se pudo conectar el repositorio.';
+    ? `The repository could not be connected (code ${safeCode}).`
+    : 'The repository could not be connected.';
 }
 
 export const isAbortError = (err) => Boolean(err) && err.name === 'AbortError';
@@ -163,17 +163,17 @@ export function formatRelativeDate(value, now = Date.now()) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
   const seconds = Math.round((date.getTime() - now) / 1000);
-  const rtf = new Intl.RelativeTimeFormat('es', { numeric: 'auto' });
+  const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
   for (const [unit, size] of RELATIVE_UNITS) {
     if (Math.abs(seconds) >= size) return rtf.format(Math.round(seconds / size), unit);
   }
-  return 'hace un momento';
+  return 'just now';
 }
 
 export function formatDateTime(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleString('es', { dateStyle: 'medium', timeStyle: 'short' });
+  return date.toLocaleString('en', { dateStyle: 'medium', timeStyle: 'short' });
 }
 
 // Plan dates are calendar days (YYYY-MM-DD); build them in local time to avoid a UTC day shift.
@@ -183,7 +183,7 @@ export function formatDay(value) {
   if (!match) return value;
   const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString('es', { day: 'numeric', month: 'short', year: 'numeric' });
+  return date.toLocaleDateString('en', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 export function formatBytes(bytes) {

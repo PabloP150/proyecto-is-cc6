@@ -1,7 +1,7 @@
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import PersonIcon from '@mui/icons-material/Person';
-import { Alert, Box, Container, CssBaseline, Dialog, DialogActions, DialogContent, DialogTitle, List, ListItem, Snackbar, styled, TextField, Typography } from '@mui/material';
+import { Alert, Box, Container, CssBaseline, Dialog, DialogActions, DialogContent, DialogTitle, List, ListItem, Snackbar, TextField, Typography } from '@mui/material';
 import { ThemeProvider } from '@mui/material/styles';
 import { useCallback, useContext, useEffect, useState } from 'react';
 import { api, errorMessage } from '../api/client';
@@ -14,31 +14,6 @@ import Button from './ui/Button';
 import Card from './ui/Card';
 import UserRolesChips from './UserRolesChips';
 import { sameId } from '../utils/ids';
-
-const UseButton = styled(Button)(({ theme, selected }) => ({
-  marginLeft: theme.spacing(1),
-  minWidth: '60px',
-  padding: theme.spacing(0.75, 1.5),
-  fontSize: '0.875rem',
-  background: selected 
-    ? 'linear-gradient(135deg, #10b981 0%, #065f46 100%)'
-    : 'linear-gradient(135deg, #3b82f6 0%, #1e3a8a 100%)',
-  color: '#ffffff',
-  border: 'none',
-  transition: 'all 0.3s cubic-bezier(.4,2,.3,1)',
-  '&:hover': {
-    background: selected
-      ? 'linear-gradient(135deg, #6ee7b7 0%, #10b981 100%)'
-      : 'linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%)',
-    transform: 'translateY(-1px)',
-    boxShadow: selected
-      ? '0 6px 20px 0 rgba(16, 185, 129, 0.6)'
-      : '0 6px 20px 0 rgba(59, 130, 246, 0.6)',
-  },
-  '&:active': {
-    transform: 'translateY(0)',
-  },
-}));
 
 function GroupsView() {
   const [selectedAssignUser, setSelectedAssignUser] = useState(null);
@@ -153,16 +128,17 @@ function GroupsView() {
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, [cargarGrupos]);
 
-  // Solo resalta el grupo al hacer clic en el nombre, pero no lo selecciona como "en uso"
-  const handleGroupClick = useCallback((group) => {
-    setSelectedGroup(group);      // Mostrar nombre
-    // Si este grupo ya está en uso y showDetails persistido, mantener detalles.
-    const persistShow = localStorage.getItem('showGroupDetails') === '1' && sameId(localStorage.getItem('selectedGroupId'), group.gid);
-    setShowDetails(persistShow);
-    if (!persistShow) setMembers([]);
-  }, []);
-
-  // Solo el botón USE activa el grupo y carga miembros
+  // A group chosen elsewhere (navbar switcher) opens its details here too.
+  useEffect(() => {
+    if (!selectedGroupId) return;
+    const group = groups.find(g => sameId(g.gid, selectedGroupId));
+    if (!group || (selectedGroup && sameId(selectedGroup.gid, group.gid) && showDetails)) return;
+    setSelectedGroup(group);
+    setShowDetails(true);
+    localStorage.setItem('showGroupDetails', '1');
+    loadMembers(group.gid);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedGroupId, groups]);
 
   const handleCreateGroup = async () => {
     const userId = localStorage.getItem('userId');
@@ -404,9 +380,14 @@ function GroupsView() {
                   groups.map(group => (
                     <ListItem 
                       key={group.gid} 
-                      // onClick solo resalta, no activa el grupo
-                      onClick={() => handleGroupClick(group)} 
+                      // Clicking a group makes it the current group and shows its details.
+                      onClick={() => handleUseGroup(group)}
+                      role="button"
+                      tabIndex={0}
+                      aria-current={sameId(selectedGroupId, group.gid) ? 'true' : undefined}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleUseGroup(group); } }}
                       sx={{ 
+                        cursor: 'pointer',
                         display: 'flex', 
                         alignItems: 'center', 
                         gap: 1,
@@ -438,7 +419,6 @@ function GroupsView() {
                           {group.name}
                         </Typography>
                       </Box>
-                      <UseButton selected={sameId(selectedGroupId, group.gid)} onClick={(e) => { e.stopPropagation(); handleUseGroup(group); }}>Use</UseButton>
                     </ListItem>
                   ))
                 )}
@@ -615,7 +595,7 @@ function GroupsView() {
                               setTimeout(() => setOpenAssignDialog(true), 0);
                             }}
                           >
-                            Assign/Edit Rol
+                            Assign/Edit Roles
                           </Button>
                         )}
                       </ListItem>
@@ -661,7 +641,7 @@ function GroupsView() {
                   </Box>
                 </>
               ) : selectedGroup ? (
-                // Caso: se dio clic a un grupo pero aún no se ha presionado USE
+                // Brief state while the clicked group's details load
                 <Box>
                   <Typography
                     variant="h4"
@@ -678,9 +658,6 @@ function GroupsView() {
                     }}
                   >
                     {selectedGroup.name}
-                  </Typography>
-                  <Typography color="text.secondary" sx={{ mb: 1 }}>
-                    Press the group's USE button to view members and roles.
                   </Typography>
                 </Box>
               ) : (
@@ -724,8 +701,8 @@ function GroupsView() {
             py: 1.25,
             borderRadius: '999px',
             background: deleteSuccess
-              ? 'linear-gradient(135deg, rgba(16,185,129,0.15) 0%, rgba(5,150,105,0.4) 100%)'
-              : 'linear-gradient(135deg, rgba(239,68,68,0.15) 0%, rgba(220,38,38,0.4) 100%)',
+              ? 'linear-gradient(135deg, rgba(16,185,129,0.15) 0%, rgba(5,150,105,0.4) 100%), #0f172a'
+              : 'linear-gradient(135deg, rgba(239,68,68,0.15) 0%, rgba(220,38,38,0.4) 100%), #0f172a',
             border: `1px solid ${deleteSuccess ? 'rgba(16,185,129,0.5)' : 'rgba(239,68,68,0.5)'}`,
             boxShadow: deleteSuccess
               ? '0 4px 18px -2px rgba(16,185,129,0.4)'
@@ -749,7 +726,6 @@ function GroupsView() {
         PaperProps={{
           sx: {
             borderRadius: 3,
-            background: 'linear-gradient(135deg, rgba(30, 58, 138, 0.2) 0%, rgba(55, 65, 81, 0.95) 100%)',
             border: '1px solid rgba(59, 130, 246, 0.2)',
             backdropFilter: 'blur(20px)',
           }
@@ -780,7 +756,6 @@ function GroupsView() {
         PaperProps={{
           sx: {
             borderRadius: 3,
-            background: 'linear-gradient(135deg, rgba(30, 58, 138, 0.2) 0%, rgba(55, 65, 81, 0.95) 100%)',
             border: '1px solid rgba(239, 68, 68, 0.2)',
             backdropFilter: 'blur(20px)',
           }
@@ -817,7 +792,6 @@ function GroupsView() {
         PaperProps={{
           sx: {
             borderRadius: 3,
-            background: 'linear-gradient(135deg, rgba(30, 58, 138, 0.2) 0%, rgba(55, 65, 81, 0.95) 100%)',
             border: '1px solid rgba(245, 158, 11, 0.2)',
             backdropFilter: 'blur(20px)',
           }

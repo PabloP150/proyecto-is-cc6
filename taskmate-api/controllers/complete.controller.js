@@ -17,7 +17,7 @@ completeRoute.get('/:gid', requireGroupMember('gid'), async (req, res) => {
 completeRoute.delete('/:gid', requireGroupMember('gid'), async (req, res) => {
     try {
         await CompleteModel.deleteAll(req.groupId);
-        res.status(200).json({ message: 'Todos los completados han sido vaciados' });
+        res.status(200).json({ message: 'All completed items were cleared' });
     } catch (error) {
         sendError(res, error);
     }

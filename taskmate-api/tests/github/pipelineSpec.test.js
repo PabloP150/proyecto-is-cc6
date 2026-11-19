@@ -101,7 +101,7 @@ describe('isLongRunningScript', () => {
         const { spec: proposal, notes } = spec.proposeSpec(facts(project));
         expect(proposal.test).toBeNull();
         expect(proposal.build).toEqual({ kind: 'script', name: 'build' });
-        expect(notes.join(' ')).toMatch(/«test».*nunca terminaría/);
+        expect(notes.join(' ')).toMatch(/“test”.*would never finish/);
         expect(() => spec.validateSpec({ ...proposal, build: { kind: 'script', name: 'dev' } }, facts(project)))
             .toThrow(/"dev" starts a server or a watcher/);
     });
@@ -187,7 +187,7 @@ describe('proposeSpec', () => {
         expect(proposal.test).toBeNull();
         expect(proposal.deploy).toBeNull();
         expect(notes.join(' ')).toMatch(/npm audit/);
-        expect(notes.join(' ')).toMatch(/no tendrá deploy/);
+        expect(notes.join(' ')).toMatch(/will have no deploy/);
     });
 
     test('python projects get Ruff and pytest, no deploy', () => {
@@ -310,7 +310,7 @@ describe('renderWorkflow', () => {
         return { text, workflow: YAML.parse(text) };
     };
     const stepNamed = (job, name) => job.steps.find((s) => s.name === name);
-    const assembleOf = (workflow) => workflow.jobs.build.steps.find((s) => s.name.startsWith('Armar el sitio'));
+    const assembleOf = (workflow) => workflow.jobs.build.steps.find((s) => s.name.startsWith('Assemble the site'));
 
     test('vite: valid YAML with CI, a build job, a deploy job and the TaskMate marker', () => {
         const { text, workflow } = render('.', 'node');
@@ -319,17 +319,17 @@ describe('renderWorkflow', () => {
         expect(workflow.on.workflow_dispatch.inputs.environment.options).toEqual(['none', 'staging', 'production']);
         expect(workflow.permissions).toEqual({ contents: 'read' });
         expect(Object.keys(workflow.jobs)).toEqual(['ci', 'build', 'deploy', 'close']);
-        expect(workflow.jobs.ci.steps.map((s) => s.name)).toEqual(['Checkout', 'Node.js 24', 'Instalar dependencias', 'Análisis estático', 'Pruebas', 'Build']);
+        expect(workflow.jobs.ci.steps.map((s) => s.name)).toEqual(['Checkout', 'Node.js 24', 'Install dependencies', 'Static analysis', 'Pruebas', 'Build']);
         expect(workflow.jobs.ci.steps.map((s) => s.run).filter(Boolean)).toEqual(['npm ci', 'npm run lint', 'npm test', 'npm run build']);
         expect(workflow.jobs.build.needs).toBe('ci');
         expect(workflow.jobs.deploy.needs).toBe('build');
         expect(workflow.jobs.build.steps.map((s) => s.name)).toEqual([
-            'Versiones a publicar', 'Configurar GitHub Pages', 'Node.js 24', 'Descargar el sitio publicado',
-            'Checkout de la versión a desplegar', 'Build de la versión a desplegar',
-            'Checkout del otro entorno (respaldo)', 'Build del otro entorno (respaldo)',
-            'Armar el sitio (producción en /, staging en /staging/)', 'Subir el sitio', 'Registrar el deploy fallido',
+            'Versions to publish', 'Set up GitHub Pages', 'Node.js 24', 'Download the published site',
+            'Checkout of the version to deploy', 'Build of the version to deploy',
+            'Checkout of the other environment (backup)', 'Build of the other environment (backup)',
+            'Assemble the site (production at /, staging at /staging/)', 'Upload the site', 'Record the failed deploy',
         ]);
-        const build = stepNamed(workflow.jobs.build, 'Build de la versión a desplegar');
+        const build = stepNamed(workflow.jobs.build, 'Build of the version to deploy');
         expect(build.env.BASE_PATH).toBe('${{ steps.pages.outputs.base_path }}${{ steps.versions.outputs.target_path }}');
         expect(build.run).toBe('npm ci\nnpm run build -- --base="$BASE_PATH"\n');
         expect(build['working-directory']).toBe('_taskmate/target');
@@ -379,29 +379,29 @@ describe('renderWorkflow', () => {
             deployment_id: '${{ steps.versions.outputs.deployment_id }}',
             attempt: '${{ github.run_attempt }}',
         });
-        expect(stepNamed(deploy, 'Registrar el deploy').env).toEqual({
+        expect(stepNamed(deploy, 'Record the deploy').env).toEqual({
             DEPLOYMENT_ID: '${{ needs.build.outputs.deployment_id }}',
             TARGET_ENV: '${{ needs.build.outputs.target }}',
             PAGE_URL: '${{ steps.publish.outputs.page_url }}',
         });
-        expect(stepNamed(build, 'Registrar el deploy fallido').if).toBe("(failure() || cancelled()) && steps.versions.outputs.deployment_id != ''");
+        expect(stepNamed(build, 'Record the failed deploy').if).toBe("(failure() || cancelled()) && steps.versions.outputs.deployment_id != ''");
     });
 
     test('re-running only the deploy job never publishes an earlier attempt\'s build', () => {
         const { workflow } = render('.', 'node');
         const { deploy } = workflow.jobs;
         // First the attempt check, then the publish; nothing else runs before it.
-        expect(deploy.steps.map((s) => s.id || s.name)).toEqual(['current', 'publish', 'Registrar el deploy', 'Registrar el deploy fallido']);
+        expect(deploy.steps.map((s) => s.id || s.name)).toEqual(['current', 'publish', 'Record the deploy', 'Record the failed deploy']);
         expect(deploy.steps[0]).toMatchObject({
-            name: 'Comprobar que el build es de este intento',
+            name: 'Check that the build is from this attempt',
             uses: spec.ACTIONS.githubScript,
             env: { BUILD_ATTEMPT: '${{ needs.build.outputs.attempt }}', RUN_ATTEMPT: '${{ github.run_attempt }}' },
         });
         expect(deploy.steps[0].if).toBeUndefined();
         expect(deploy.steps[1].if).toBeUndefined();
         // A refused re-run writes no status on the old deployment (it may be the live one).
-        expect(stepNamed(deploy, 'Registrar el deploy').if).toBe("steps.current.outcome == 'success'");
-        expect(stepNamed(deploy, 'Registrar el deploy fallido').if)
+        expect(stepNamed(deploy, 'Record the deploy').if).toBe("steps.current.outcome == 'success'");
+        expect(stepNamed(deploy, 'Record the failed deploy').if)
             .toBe("(failure() || cancelled()) && needs.build.outputs.deployment_id != '' && steps.current.outcome == 'success'");
     });
 
@@ -418,7 +418,7 @@ describe('renderWorkflow', () => {
         expect(close.steps[0]).toMatchObject({ uses: spec.ACTIONS.githubScript, env: { DEPLOYMENT_ID: '${{ needs.build.outputs.deployment_id }}' } });
         expect(close.steps[0].run).toBeUndefined();
         // The same recorder as the other jobs, which never overwrites a final status.
-        expect(close.steps[0].with.script).toBe(stepNamed(workflow.jobs.build, 'Registrar el deploy fallido').with.script);
+        expect(close.steps[0].with.script).toBe(stepNamed(workflow.jobs.build, 'Record the failed deploy').with.script);
         expect(close.steps[0].with.script).toContain("if (['success', 'failure', 'error', 'inactive'].includes(last))");
         expect(render('api', 'python').workflow.jobs.close).toBeUndefined();
     });
@@ -426,7 +426,7 @@ describe('renderWorkflow', () => {
     test('only the target version is built; the other environment comes from the published site', () => {
         const { workflow } = render('.', 'node');
         const { build } = workflow.jobs;
-        const download = stepNamed(build, 'Descargar el sitio publicado');
+        const download = stepNamed(build, 'Download the published site');
         expect(download).toMatchObject({
             id: 'previous',
             uses: spec.ACTIONS.downloadArtifact,
@@ -434,17 +434,17 @@ describe('renderWorkflow', () => {
             if: "steps.versions.outputs.skip != 'true' && steps.versions.outputs.base_run != ''",
             with: { name: 'github-pages', 'run-id': '${{ steps.versions.outputs.base_run }}', 'github-token': '${{ github.token }}', path: '_taskmate/previous' },
         });
-        expect(stepNamed(build, 'Subir el sitio').with).toEqual({ path: '_site', 'retention-days': 90 });
+        expect(stepNamed(build, 'Upload the site').with).toEqual({ path: '_site', 'retention-days': 90 });
         // The fallback rebuild only runs when that site cannot be downloaded, and never fails the deploy.
-        const otherCheckout = stepNamed(build, 'Checkout del otro entorno (respaldo)');
-        const otherBuild = stepNamed(build, 'Build del otro entorno (respaldo)');
+        const otherCheckout = stepNamed(build, 'Checkout of the other environment (backup)');
+        const otherBuild = stepNamed(build, 'Build of the other environment (backup)');
         expect(otherCheckout.if).toBe("steps.versions.outputs.skip != 'true' && steps.versions.outputs.other_version != '' "
             + "&& (steps.previous.outcome != 'success' || hashFiles('_taskmate/previous/artifact.tar') == '')");
         expect(otherCheckout.with.ref).toBe('${{ steps.versions.outputs.other_version }}');
         expect(otherCheckout['continue-on-error']).toBe(true);
         expect(otherBuild).toMatchObject({ if: "steps.other_checkout.outcome == 'success'", 'continue-on-error': true, 'working-directory': '_taskmate/other' });
         expect(otherBuild.env.BASE_PATH).toBe('${{ steps.pages.outputs.base_path }}${{ steps.versions.outputs.other_path }}');
-        expect(stepNamed(build, 'Checkout de la versión a desplegar')['continue-on-error']).toBeUndefined();
+        expect(stepNamed(build, 'Checkout of the version to deploy')['continue-on-error']).toBeUndefined();
         const assemble = assembleOf(workflow);
         expect(assemble.env).toEqual({
             TARGET_ENV: '${{ steps.versions.outputs.target }}',
@@ -502,13 +502,13 @@ describe('renderWorkflow', () => {
         const { workflow } = render('web', 'node');
         expect(workflow.jobs.ci.defaults.run['working-directory']).toBe('web');
         expect(workflow.jobs.ci.steps[1].with).toEqual({ 'node-version': '24', 'package-manager-cache': false });
-        const build = stepNamed(workflow.jobs.build, 'Build de la versión a desplegar');
+        const build = stepNamed(workflow.jobs.build, 'Build of the version to deploy');
         expect(build['working-directory']).toBe('_taskmate/target/web');
         // "/" (user sites, custom domains) must reach CRA as "/", not as "" (which CRA ignores).
         expect(build.run).toBe('npm install\nPUBLIC_URL="$BASE_PATH" npm run build\n');
-        expect(stepNamed(workflow.jobs.build, 'Build del otro entorno (respaldo)')['working-directory']).toBe('_taskmate/other/web');
+        expect(stepNamed(workflow.jobs.build, 'Build of the other environment (backup)')['working-directory']).toBe('_taskmate/other/web');
         expect(assembleOf(workflow).run).toContain("copy_env '_taskmate/target/web/build' \"$TARGET_ENV\"");
-        expect(workflow.jobs.ci.steps.some((s) => s.name === 'Auditoría de dependencias')).toBe(true);
+        expect(workflow.jobs.ci.steps.some((s) => s.name === 'Dependency audit')).toBe(true);
     });
 
     test('python: setup-python, requirement files, Ruff and pytest with GitHub annotations; no deploy jobs', () => {
@@ -524,7 +524,7 @@ describe('renderWorkflow', () => {
 
     test('static site: no runtime, checks index.html and publishes the folder without .git', () => {
         const { workflow } = render('site', 'static');
-        expect(workflow.jobs.ci.steps.map((s) => s.name)).toEqual(['Checkout', 'Verificar el sitio']);
+        expect(workflow.jobs.ci.steps.map((s) => s.name)).toEqual(['Checkout', 'Check the site']);
         expect(workflow.jobs.build.steps.some((s) => (s.uses || '').startsWith('actions/setup-node'))).toBe(false);
         expect(workflow.jobs.build.steps.some((s) => s.run && s.name.startsWith('Build'))).toBe(false);
         const assemble = assembleOf(workflow);
@@ -543,10 +543,10 @@ describe('renderWorkflow', () => {
         const text = spec.renderWorkflow(spec.validateSpec(s, lintFacts));
         expect(text).toContain("run: 'npm run lint:'");
         expect(text).not.toMatch(/^\s*run: (?!['|])/m);
-        expect(YAML.parse(text).jobs.ci.steps.find((step) => step.name === 'Análisis estático').run).toBe('npm run lint:');
+        expect(YAML.parse(text).jobs.ci.steps.find((step) => step.name === 'Static analysis').run).toBe('npm run lint:');
         // Quoting does not change what runs.
         const check = render('site', 'static').workflow.jobs.ci.steps[1].run;
-        expect(check).toBe('test -f \'index.html\' || { echo "::error::Falta index.html"; exit 1; }');
+        expect(check).toBe('test -f \'index.html\' || { echo "::error::Missing index.html"; exit 1; }');
     });
 
     test('rendering is deterministic', () => {
@@ -589,7 +589,7 @@ describe('Vite base path', () => {
         const { spec: proposal, notes } = spec.proposeSpec(facts(project('vite build && cp dist/index.html dist/404.html')));
         expect(proposal.build).toEqual({ kind: 'script', name: 'build' });
         expect(proposal.deploy).toBeNull();
-        expect(notes.join(' ')).toMatch(/no termina en «vite build»/);
+        expect(notes.join(' ')).toMatch(/does not end in “vite build”/);
         expect(spec.proposeSpec(facts(project('tsc -b && vite build'))).spec.deploy).toEqual({ target: 'github-pages', framework: 'vite', outputDir: 'dist' });
     });
 
@@ -612,7 +612,7 @@ describe('static sites never publish other projects', () => {
         const f = facts(spec.staticFacts('.', ['.']), api);
         const { spec: proposal, notes } = spec.proposeSpec(f);
         expect(proposal.project).toEqual({ dir: 'api', stack: 'python' });
-        expect(notes.join(' ')).toMatch(/No se propone publicar el sitio estático de la raíz del repositorio/);
+        expect(notes.join(' ')).toMatch(/Publishing the static site of the repository root is not proposed/);
         expect(() => spec.proposeSpec(f, { dir: '.', stack: 'static' })).toThrow(expect.objectContaining({ code: 'INVALID_PIPELINE' }));
         const s = { version: 1, project: { dir: '.', stack: 'static' }, runtime: null, install: null, lint: null, audit: false, test: null, build: null, deploy: { target: 'github-pages', framework: 'static', outputDir: '.' } };
         expect(() => spec.validateSpec(s, f)).toThrow(expect.objectContaining({ code: 'INVALID_PIPELINE', message: expect.stringMatching(/other projects/) }));
@@ -623,7 +623,7 @@ describe('static sites never publish other projects', () => {
         const { spec: proposal, notes } = spec.proposeSpec(f);
         expect(proposal.project).toEqual({ dir: '.', stack: 'static' });
         expect(proposal.deploy.outputDir).toBe('docs');
-        expect(notes.join(' ')).toMatch(/Se publica la carpeta «docs»/);
+        expect(notes.join(' ')).toMatch(/The “docs” folder is published/);
         expect(spec.validateSpec(proposal, f)).toEqual(proposal);
     });
 
@@ -651,7 +651,7 @@ describe('static sites never publish other projects', () => {
         const f = factsOf([...multiPage, 'api/requirements.txt', 'api/main.py']);
         const { spec: proposal, notes } = spec.proposeSpec(f);
         expect(proposal.project).toEqual({ dir: 'api', stack: 'python' });
-        expect(notes.join(' ')).toMatch(/No se propone publicar el sitio estático de la raíz del repositorio: publicaría también el código/);
+        expect(notes.join(' ')).toMatch(/Publishing the static site of the repository root is not proposed: it would also publish the code/);
         expect(() => spec.proposeSpec(f, { dir: '.', stack: 'static' })).toThrow(expect.objectContaining({ code: 'INVALID_PIPELINE' }));
         const s = { version: 1, project: { dir: '.', stack: 'static' }, runtime: null, install: null, lint: null, audit: false, test: null, build: null, deploy: { target: 'github-pages', framework: 'static', outputDir: '.' } };
         expect(() => spec.validateSpec(s, f)).toThrow(expect.objectContaining({ code: 'INVALID_PIPELINE', message: expect.stringMatching(/other projects/) }));
@@ -680,8 +680,8 @@ describe('describeStages', () => {
         const f = facts(viteProject());
         const stages = spec.describeStages(spec.proposeSpec(f).spec);
         expect(stages.map((s) => s.key)).toEqual(['install', 'lint', 'test', 'build', 'deploy']);
-        expect(stages[1]).toEqual({ key: 'lint', label: 'Análisis estático', commands: ['npm run lint'] });
-        expect(stages[4].commands.join(' ')).toMatch(/solo se construye la versión que se despliega/);
+        expect(stages[1]).toEqual({ key: 'lint', label: 'Static analysis', commands: ['npm run lint'] });
+        expect(stages[4].commands.join(' ')).toMatch(/only the deployed version is built/);
     });
 
     test('python stages show the annotated Ruff command', () => {

@@ -70,20 +70,20 @@ describe('PipelineSetup', () => {
     renderSetup();
     expect(await screen.findByText('Nota de prueba.')).toBeInTheDocument();
     expect(proposePipeline).toHaveBeenCalledWith('G1', {}, expect.anything());
-    expect(screen.getByLabelText('Proyecto')).toHaveTextContent('Raíz del repositorio · Node.js');
-    const stages = screen.getByRole('list', { name: 'Etapas del pipeline' });
+    expect(screen.getByLabelText('Project')).toHaveTextContent('Repository root · Node.js');
+    const stages = screen.getByRole('list', { name: 'Pipeline stages' });
     expect(within(stages).getByText('npm run lint')).toBeInTheDocument();
-    expect(screen.getByText(/hará un commit en/)).toHaveTextContent('main');
-    expect(screen.getByText(/activará GitHub Pages/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Ver el archivo YAML' }));
-    expect(screen.getByLabelText('Vista previa de .github/workflows/taskmate-ci.yml')).toHaveTextContent('taskmate-pipeline: 1');
+    expect(screen.getByText(/will commit to/)).toHaveTextContent('main');
+    expect(screen.getByText(/will enable GitHub Pages/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Show the YAML file' }));
+    expect(screen.getByLabelText('Preview of .github/workflows/taskmate-ci.yml')).toHaveTextContent('taskmate-pipeline: 1');
   });
 
   test('editing re-renders through the backend with the edited spec', async () => {
     renderSetup();
     await screen.findByText('Nota de prueba.');
-    await pick('Análisis estático (lint)', 'Sin lint');
-    fireEvent.click(screen.getByLabelText('Auditoría de dependencias (npm audit)'));
+    await pick('Static analysis (lint)', 'No lint');
+    fireEvent.click(screen.getByLabelText('Dependency audit (npm audit)'));
     await waitFor(() => expect(previewPipeline).toHaveBeenCalled());
     const [, spec] = previewPipeline.mock.calls[previewPipeline.mock.calls.length - 1];
     expect(spec.lint).toBeNull();
@@ -97,17 +97,17 @@ describe('PipelineSetup', () => {
     fireEvent.mouseDown(screen.getByLabelText('Build'));
     const dev = await screen.findByRole('option', { name: /npm run dev/ });
     expect(dev).toHaveAttribute('aria-disabled', 'true');
-    expect(dev).toHaveTextContent('nunca termina');
+    expect(dev).toHaveTextContent('never finishes');
     expect(screen.getByRole('option', { name: /npm run build/ })).not.toHaveAttribute('aria-disabled');
   });
 
   test('turning the deploy off drops it from the spec', async () => {
     renderSetup();
     await screen.findByText('Nota de prueba.');
-    fireEvent.click(screen.getByLabelText('Desplegar a GitHub Pages'));
+    fireEvent.click(screen.getByLabelText('Deploy to GitHub Pages'));
     await waitFor(() => expect(previewPipeline).toHaveBeenCalled());
     expect(previewPipeline.mock.calls[0][1].deploy).toBeNull();
-    expect(screen.getByText(/hará un commit en/)).not.toHaveTextContent('GitHub Pages');
+    expect(screen.getByText(/will commit to/)).not.toHaveTextContent('GitHub Pages');
   });
 
   test('switching project asks for a new proposal for it', async () => {
@@ -118,10 +118,10 @@ describe('PipelineSetup', () => {
       notes: [],
       spec: { ...SPEC, project: { dir: 'api', stack: 'python' }, runtime: '3.13', install: { kind: 'pip', files: ['requirements.txt'] }, lint: { kind: 'ruff' }, test: { kind: 'pytest' }, build: null, deploy: null },
     });
-    await pick('Proyecto', 'api · Python');
+    await pick('Project', 'api · Python');
     expect(proposePipeline).toHaveBeenLastCalledWith('G1', { dir: 'api', stack: 'python' }, expect.anything());
-    expect(await screen.findByLabelText('Análisis estático con Ruff')).toBeChecked();
-    expect(screen.getByText(/no se despliegan a GitHub Pages/)).toBeInTheDocument();
+    expect(await screen.findByLabelText('Static analysis with Ruff')).toBeChecked();
+    expect(screen.getByText(/are not deployed to GitHub Pages/)).toBeInTheDocument();
   });
 
   test('uploads the spec and shows the commit and the site', async () => {
@@ -132,21 +132,21 @@ describe('PipelineSetup', () => {
     });
     renderSetup({ onApplied });
     await screen.findByText('Nota de prueba.');
-    fireEvent.click(screen.getByRole('button', { name: 'Subir al repositorio' }));
-    expect(await screen.findByText(/Pipeline subido al repositorio/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Push to repository' }));
+    expect(await screen.findByText(/Pipeline pushed to the repository/)).toBeInTheDocument();
     expect(applyPipeline).toHaveBeenCalledWith('G1', SPEC);
-    expect(screen.getByRole('link', { name: 'Ver commit' })).toHaveAttribute('href', 'https://github.com/acme/app/commit/ccc');
+    expect(screen.getByRole('link', { name: 'View commit' })).toHaveAttribute('href', 'https://github.com/acme/app/commit/ccc');
     expect(screen.getByRole('link', { name: 'https://acme.github.io/app/' })).toBeInTheDocument();
     expect(onApplied).toHaveBeenCalled();
-    expect(screen.queryByRole('button', { name: 'Subir al repositorio' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Push to repository' })).not.toBeInTheDocument();
   });
 
   test('a commit URL outside github.com is not linked', async () => {
     applyPipeline.mockResolvedValue({ commit: { sha: 'c', url: ['javascript', 'alert(1)'].join(':'), changed: true }, pages: { url: 'http://insecure' } });
     renderSetup();
     await screen.findByText('Nota de prueba.');
-    fireEvent.click(screen.getByRole('button', { name: 'Subir al repositorio' }));
-    await screen.findByText(/Pipeline subido/);
+    fireEvent.click(screen.getByRole('button', { name: 'Push to repository' }));
+    await screen.findByText(/Pipeline pushed/);
     expect(screen.queryByRole('link')).not.toBeInTheDocument();
   });
 
@@ -154,16 +154,16 @@ describe('PipelineSetup', () => {
     applyPipeline.mockRejectedValue(Object.assign(new Error('x'), { code: 'BRANCH_PROTECTED' }));
     renderSetup();
     await screen.findByText('Nota de prueba.');
-    fireEvent.click(screen.getByRole('button', { name: 'Subir al repositorio' }));
-    expect(await screen.findByText(/rama principal está protegida/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Subir al repositorio' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Push to repository' }));
+    expect(await screen.findByText(/main branch is protected/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Push to repository' })).toBeEnabled();
   });
 
   test('a failed analysis can be retried', async () => {
     proposePipeline.mockRejectedValueOnce(Object.assign(new Error('x'), { code: 'APP_PERMISSIONS_MISSING' }));
     renderSetup();
-    expect(await screen.findByText(/todavía no tiene los permisos de CI\/CD/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
+    expect(await screen.findByText(/does not have the CI\/CD permissions/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(await screen.findByText('Nota de prueba.')).toBeInTheDocument();
   });
 
@@ -176,17 +176,17 @@ describe('PipelineSetup', () => {
     });
     renderSetup();
     expect(await screen.findByText('Activé npm audit porque no hay lint.')).toBeInTheDocument();
-    expect(screen.getByText('La IA revisó el repositorio y propone este pipeline. Ajústalo antes de subirlo.')).toBeInTheDocument();
-    expect(screen.getByText('Propuesto por IA')).toBeInTheDocument();
-    expect(screen.queryByText('Detectado')).not.toBeInTheDocument();
+    expect(screen.getByText('The AI reviewed the repository and proposes this pipeline. Adjust it before pushing.')).toBeInTheDocument();
+    expect(screen.getByText('Proposed by AI')).toBeInTheDocument();
+    expect(screen.queryByText('Detected')).not.toBeInTheDocument();
   });
 
-  test('"Proponer con IA" asks the AI for the current project', async () => {
+  test('"Propose with AI" asks the AI for the current project', async () => {
     proposePipeline.mockResolvedValue({ ...PROPOSAL, ai: { available: true, used: false, error: null } });
     renderSetup();
     await screen.findByText('Nota de prueba.');
-    expect(screen.getByText('Detectado')).toBeInTheDocument();
-    expect(screen.getByText(/Se envía a Groq la lista de proyectos y scripts del repositorio, nunca el código fuente/)).toBeInTheDocument();
+    expect(screen.getByText('Detected')).toBeInTheDocument();
+    expect(screen.getByText(/Only the list of projects and scripts in the repository is sent to Groq, never the source code/)).toBeInTheDocument();
 
     let answer;
     proposePipeline.mockReturnValue(
@@ -194,26 +194,26 @@ describe('PipelineSetup', () => {
         answer = resolve;
       })
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Proponer con IA' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Propose with AI' }));
     expect(proposePipeline).toHaveBeenLastCalledWith('G1', { dir: '.', stack: 'node', ai: true }, expect.anything());
-    expect(await screen.findByText('La IA está revisando el repositorio…')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Proponer con IA' })).toBeDisabled();
+    expect(await screen.findByText('The AI is reviewing the repository…')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Propose with AI' })).toBeDisabled();
 
     answer({ ...PROPOSAL, source: 'ai', notes: ['Explicación de la IA.'], ai: { available: true, used: true, error: null } });
-    expect(await screen.findByText('Propuesto por IA')).toBeInTheDocument();
+    expect(await screen.findByText('Proposed by AI')).toBeInTheDocument();
     expect(screen.getByText('Explicación de la IA.')).toBeInTheDocument();
-    expect(screen.queryByText('La IA está revisando el repositorio…')).not.toBeInTheDocument();
+    expect(screen.queryByText('The AI is reviewing the repository…')).not.toBeInTheDocument();
   });
 
   test('without the AI permission there is no AI button, only how to enable it', async () => {
     proposePipeline.mockResolvedValue({ ...PROPOSAL, ai: { available: false, used: false, error: null } });
     renderSetup();
     await screen.findByText('Nota de prueba.');
-    expect(screen.queryByRole('button', { name: 'Proponer con IA' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Propose with AI' })).not.toBeInTheDocument();
     expect(
-      screen.getByText('Activa «Permitir análisis con IA» en la pestaña Repositorio para que la IA proponga el pipeline.')
+      screen.getByText('Turn on “Allow AI analysis” in the Repository tab so the AI can propose the pipeline.')
     ).toBeInTheDocument();
-    expect(screen.queryByText(/Se envía a Groq/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/is sent to Groq/)).not.toBeInTheDocument();
   });
 
   test('a refused AI request is explained and the proposal stays', async () => {
@@ -221,8 +221,8 @@ describe('PipelineSetup', () => {
     renderSetup();
     await screen.findByText('Nota de prueba.');
     proposePipeline.mockRejectedValue(Object.assign(new Error('x'), { code: 'AI_ANALYSIS_DISABLED' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Proponer con IA' }));
-    expect(await screen.findByText(/El análisis con IA está desactivado/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Propose with AI' }));
+    expect(await screen.findByText(/AI analysis is turned off/)).toBeInTheDocument();
     expect(screen.getByText('Nota de prueba.')).toBeInTheDocument();
   });
 
@@ -230,8 +230,8 @@ describe('PipelineSetup', () => {
     previewPipeline.mockRejectedValue(Object.assign(new Error('x'), { code: 'INVALID_PIPELINE' }));
     renderSetup();
     await screen.findByText('Nota de prueba.');
-    fireEvent.change(screen.getByLabelText('Carpeta que se publica'), { target: { value: '../x' } });
-    expect(await screen.findByText(/no es válida para este repositorio/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Subir al repositorio' })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Published folder'), { target: { value: '../x' } });
+    expect(await screen.findByText(/is not valid for this repository/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Push to repository' })).toBeDisabled();
   });
 });

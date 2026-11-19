@@ -83,15 +83,15 @@ describe('RunList', () => {
     expect(within(list).getByText('Commit 1')).toBeInTheDocument();
     expect(within(list).getByText('Rompe pruebas')).toBeInTheDocument();
     expect(within(list).getAllByText('2 min 5 s')).toHaveLength(2);
-    expect(within(list).getAllByTitle('Falló')).toHaveLength(1);
+    expect(within(list).getAllByTitle('Failed')).toHaveLength(1);
     expect(listRuns).toHaveBeenCalledWith('G1', expect.objectContaining({ workflow: undefined, status: undefined, page: 1 }));
   });
 
   test('filters by workflow and status', async () => {
     renderList();
     await screen.findByText('Commit 1');
-    fireEvent.mouseDown(screen.getByLabelText('Estado'));
-    fireEvent.click(await screen.findByRole('option', { name: 'Fallidos' }));
+    fireEvent.mouseDown(screen.getByLabelText('Status'));
+    fireEvent.click(await screen.findByRole('option', { name: 'Failed' }));
     await waitFor(() => expect(listRuns).toHaveBeenLastCalledWith('G1', expect.objectContaining({ status: 'failure', page: 1 })));
     fireEvent.mouseDown(screen.getByLabelText('Workflow'));
     fireEvent.click(await screen.findByRole('option', { name: 'TaskMate CI/CD' }));
@@ -101,37 +101,37 @@ describe('RunList', () => {
   test('expanding a run shows its jobs and steps and a safe GitHub link', async () => {
     renderList();
     fireEvent.click(await screen.findByRole('button', { name: /Commit 1/ }));
-    const steps = await screen.findByRole('list', { name: 'Pasos de CI (Node.js)' });
+    const steps = await screen.findByRole('list', { name: 'Steps of CI (Node.js)' });
     expect(getRun).toHaveBeenCalledWith('G1', 1, expect.anything());
     expect(within(steps).getByText('Pruebas')).toBeInTheDocument();
-    expect(within(steps).getAllByText('Omitido').length).toBeGreaterThan(0);
-    expect(screen.getByRole('link', { name: 'Ver la ejecución en GitHub' })).toHaveAttribute('href', 'https://github.com/acme/app/actions/runs/1');
+    expect(within(steps).getAllByText('Skipped').length).toBeGreaterThan(0);
+    expect(screen.getByRole('link', { name: 'View the run on GitHub' })).toHaveAttribute('href', 'https://github.com/acme/app/actions/runs/1');
     fireEvent.click(screen.getByRole('button', { name: /Commit 1/ }));
-    await waitFor(() => expect(screen.queryByRole('list', { name: 'Pasos de CI (Node.js)' })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole('list', { name: 'Steps of CI (Node.js)' })).not.toBeInTheDocument());
   });
 
-  test('"Ver más" appends the next page without duplicates', async () => {
+  test('"Show more" appends the next page without duplicates', async () => {
     listRuns
       .mockResolvedValueOnce({ runs: [run(1), run(2)], totalCount: 3, page: 1 })
       .mockResolvedValueOnce({ runs: [run(2), run(3)], totalCount: 3, page: 2 });
     renderList();
-    fireEvent.click(await screen.findByRole('button', { name: 'Ver más' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Show more' }));
     expect(await screen.findByText('Commit 3')).toBeInTheDocument();
     expect(screen.getAllByText('Commit 2')).toHaveLength(1);
     expect(listRuns).toHaveBeenLastCalledWith('G1', expect.objectContaining({ page: 2 }));
-    expect(screen.queryByRole('button', { name: 'Ver más' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Show more' })).not.toBeInTheDocument();
   });
 
   test('missing App permissions are explained', async () => {
     listRuns.mockRejectedValue(Object.assign(new Error('x'), { code: 'APP_PERMISSIONS_MISSING' }));
     renderList();
-    expect(await screen.findByText(/todavía no tiene los permisos de CI\/CD/)).toBeInTheDocument();
+    expect(await screen.findByText(/does not have the CI\/CD permissions/)).toBeInTheDocument();
   });
 
   test('empty repository', async () => {
     listRuns.mockResolvedValue({ runs: [], totalCount: 0, page: 1 });
     renderList();
-    expect(await screen.findByText(/todavía no tiene ejecuciones/)).toBeInTheDocument();
+    expect(await screen.findByText(/has no GitHub Actions runs yet/)).toBeInTheDocument();
   });
 
   test('refreshes by itself only while a run is active', async () => {

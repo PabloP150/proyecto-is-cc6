@@ -8,10 +8,10 @@ import { errorMessage, safeGitHubUrl } from './githubUtils';
 import TaskFilesDialog from './TaskFilesDialog';
 
 const PR_STYLES = {
-  open: { label: 'abierto', color: '#10b981', background: 'rgba(16, 185, 129, 0.15)' },
-  draft: { label: 'borrador', color: '#cbd5e1', background: 'rgba(148, 163, 184, 0.18)' },
-  closed: { label: 'cerrado', color: '#f87171', background: 'rgba(239, 68, 68, 0.15)' },
-  merged: { label: 'fusionado', color: '#c084fc', background: 'rgba(168, 85, 247, 0.18)' },
+  open: { label: 'open', color: '#10b981', background: 'rgba(16, 185, 129, 0.15)' },
+  draft: { label: 'draft', color: '#cbd5e1', background: 'rgba(148, 163, 184, 0.18)' },
+  closed: { label: 'closed', color: '#f87171', background: 'rgba(239, 68, 68, 0.15)' },
+  merged: { label: 'merged', color: '#c084fc', background: 'rgba(168, 85, 247, 0.18)' },
 };
 
 export function prStatus(pr) {
@@ -89,11 +89,11 @@ export default function TaskGitHubActions({ tid, link, repoConnected, onChange, 
         const result = await createTaskBranch(tid);
         if (!mounted.current) return;
         setCreated(result);
-        notify('success', result && result.branchName ? `Rama ${result.branchName} lista en GitHub.` : 'Rama lista en GitHub.');
+        notify('success', result && result.branchName ? `Branch ${result.branchName} is ready on GitHub.` : 'Branch is ready on GitHub.');
         if (onChange) onChange(result);
       } catch (err) {
         if (!mounted.current) return;
-        notify('error', errorMessage(err, 'No se pudo crear la rama.'));
+        notify('error', errorMessage(err, 'Could not create the branch.'));
       } finally {
         if (mounted.current) setCreating(false);
       }
@@ -108,9 +108,9 @@ export default function TaskGitHubActions({ tid, link, repoConnected, onChange, 
       try {
         if (!navigator.clipboard || !navigator.clipboard.writeText) throw new Error('clipboard');
         await navigator.clipboard.writeText(command);
-        notify('success', `Comando copiado: ${command}`);
+        notify('success', `Command copied: ${command}`);
       } catch {
-        notify('warning', `No se pudo copiar. Ejecuta: ${command}`);
+        notify('warning', `Could not copy. Run: ${command}`);
       }
     },
     [branchName, notify]
@@ -128,8 +128,8 @@ export default function TaskGitHubActions({ tid, link, repoConnected, onChange, 
   const prHref = pr ? safeGitHubUrl(pr.htmlUrl) : null;
   const defaultBranch = link ? link.defaultBranch : null;
   const mergedBase = mergedElsewhere(pr, defaultBranch);
-  const prLabel = prStyle ? `PR #${pr.number} ${prStyle.label}${mergedBase ? ` en ${mergedBase}` : ''}` : null;
-  const prNote = mergedBase ? `${mergedBase} no es la rama principal (${defaultBranch}); la tarea no se completa sola.` : null;
+  const prLabel = prStyle ? `PR #${pr.number} ${prStyle.label}${mergedBase ? ` into ${mergedBase}` : ''}` : null;
+  const prNote = mergedBase ? `${mergedBase} is not the main branch (${defaultBranch}); the task does not complete itself.` : null;
   const withNote = (text) => (prNote ? `${text} — ${prNote}` : text);
 
   return (
@@ -147,13 +147,13 @@ export default function TaskGitHubActions({ tid, link, repoConnected, onChange, 
       />
       {branchName ? (
         <>
-          <Tooltip title={`Copiar «git checkout ${branchName}»`} arrow>
+          <Tooltip title={`Copy “git checkout ${branchName}”`} arrow>
             <Chip
               icon={<CallSplitIcon />}
               label={branchName}
               size="small"
               onClick={handleCopy}
-              aria-label={`Rama ${branchName}. Copiar comando git checkout`}
+              aria-label={`Branch ${branchName}. Copy git checkout command`}
               sx={{
                 // MUI's own cap is 100% of the card; replacing it would let a long name overflow narrow cards.
                 maxWidth: 'min(100%, 240px)',
@@ -165,10 +165,10 @@ export default function TaskGitHubActions({ tid, link, repoConnected, onChange, 
               }}
             />
           </Tooltip>
-          <Tooltip title="Ver archivos de la tarea" arrow>
+          <Tooltip title="View task files" arrow>
             <IconButton
               size="small"
-              aria-label="Ver archivos de la tarea"
+              aria-label="View task files"
               onClick={(event) => {
                 stop(event);
                 setFilesOpen(true);
@@ -179,14 +179,14 @@ export default function TaskGitHubActions({ tid, link, repoConnected, onChange, 
             </IconButton>
           </Tooltip>
           {branchHref && (
-            <Tooltip title="Ver rama en GitHub" arrow>
+            <Tooltip title="View branch on GitHub" arrow>
               <IconButton
                 component="a"
                 href={branchHref}
                 target="_blank"
                 rel="noopener noreferrer"
                 size="small"
-                aria-label="Ver rama en GitHub"
+                aria-label="View branch on GitHub"
                 onClick={stop}
                 sx={iconButtonSx}
               >
@@ -196,17 +196,17 @@ export default function TaskGitHubActions({ tid, link, repoConnected, onChange, 
           )}
         </>
       ) : (
-        <Tooltip title="Crear rama en GitHub" arrow>
+        <Tooltip title="Create branch on GitHub" arrow>
           <span>
             <IconButton
               size="small"
-              aria-label="Crear rama en GitHub"
+              aria-label="Create branch on GitHub"
               aria-busy={creating}
               disabled={creating}
               onClick={handleCreate}
               sx={iconButtonSx}
             >
-              {creating ? <CircularProgress size={18} aria-label="Creando rama" /> : <CallSplitIcon fontSize="small" />}
+              {creating ? <CircularProgress size={18} aria-label="Creating branch" /> : <CallSplitIcon fontSize="small" />}
             </IconButton>
           </span>
         </Tooltip>

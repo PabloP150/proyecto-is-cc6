@@ -59,7 +59,7 @@ function MarkdownImage({ src, alt, title }) {
   const label = alt ? `[Imagen: ${alt}]` : '[Imagen externa]';
   if (insideLink || typeof src !== 'string' || !/^https?:\/\//i.test(src)) return <span title={title}>{label}</span>;
   return (
-    <a href={src} target="_blank" rel="noopener noreferrer" title="Imagen alojada fuera de GitHub: se abre en otra pestaña">
+    <a href={src} target="_blank" rel="noopener noreferrer" title="Image hosted outside GitHub: opens in another tab">
       {label}
     </a>
   );
@@ -126,7 +126,7 @@ function CodeView({ content }) {
         label={
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
             <WrapTextIcon fontSize="small" aria-hidden />
-            <Typography variant="body2">Ajustar líneas</Typography>
+            <Typography variant="body2">Wrap lines</Typography>
           </Box>
         }
       />
@@ -165,7 +165,7 @@ function CodeView({ content }) {
           component="pre"
           data-testid="code-view"
           tabIndex={0}
-          aria-label="Contenido del archivo"
+          aria-label="File contents"
           sx={{ ...preSx, px: 2, flex: 1, whiteSpace: wrap ? 'pre-wrap' : 'pre', wordBreak: wrap ? 'break-word' : 'normal' }}
         >
           {text}
@@ -175,7 +175,7 @@ function CodeView({ content }) {
   );
 }
 
-function GitHubLinkButton({ href, children = 'Ver en GitHub' }) {
+function GitHubLinkButton({ href, children = 'View on GitHub' }) {
   const safe = safeGitHubUrl(href);
   if (!safe) return null;
   return (
@@ -206,7 +206,7 @@ export default function FileViewer({ path, loading, error, file, fallbackUrl, li
     body = (
       <Box role="status" sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 4, justifyContent: 'center' }}>
         <CircularProgress size={22} />
-        <Typography color="text.secondary">Cargando archivo…</Typography>
+        <Typography color="text.secondary">Loading file…</Typography>
       </Box>
     );
   } else if (error) {
@@ -220,25 +220,25 @@ export default function FileViewer({ path, loading, error, file, fallbackUrl, li
           ) : (
             onRetry && (
               <Button variant="ghost" size="small" onClick={onRetry}>
-                Reintentar
+                Retry
               </Button>
             )
           )
         }
       >
-        {tooLarge ? 'El archivo supera 1 MB y no se puede mostrar aquí. Ábrelo en GitHub.' : error.message}
+        {tooLarge ? 'The file is larger than 1 MB and cannot be shown here. Open it on GitHub.' : error.message}
       </Alert>
     );
   } else if (!file) {
     body = (
       <Typography color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>
-        {emptyMessage || 'Selecciona un archivo del árbol para verlo.'}
+        {emptyMessage || 'Select a file in the tree to view it.'}
       </Typography>
     );
   } else if (file.binary) {
     body = (
       <Alert severity="info" action={<GitHubLinkButton href={githubUrl} />}>
-        Este archivo es binario y no se puede previsualizar.
+        This file is binary and cannot be previewed.
       </Alert>
     );
   } else if (isMarkdownPath(file.path || path)) {

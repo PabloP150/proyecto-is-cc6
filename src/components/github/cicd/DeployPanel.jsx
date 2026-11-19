@@ -47,7 +47,7 @@ const newestDeployKey = (history, environment) => {
   const newest = (Array.isArray(history) ? history : []).find((deploy) => deploy.environment === environment);
   return newest ? [newest.id, newest.sha, newest.createdAt].join('|') : '';
 };
-const ENV_LABELS = { staging: 'Staging', production: 'Producción' };
+const ENV_LABELS = { staging: 'Staging', production: 'Production' };
 const envName = (environment) => (ENV_LABELS[environment] || String(environment || '')).toLowerCase();
 // The request or the version changed under the user (someone else acted, staging moved): reload so
 // the panel shows what is true now; the error stays in the dialog.
@@ -59,17 +59,17 @@ const OUTDATED_CODES = new Set([
   'VERSION_NOT_STAGING',
 ]);
 const STATE_LABELS = {
-  success: 'Publicado',
-  inactive: 'Reemplazado',
-  failure: 'Falló',
-  error: 'Falló',
-  in_progress: 'Desplegando',
-  queued: 'En cola',
-  pending: 'Pendiente',
-  waiting: 'Esperando',
+  success: 'Published',
+  inactive: 'Replaced',
+  failure: 'Failed',
+  error: 'Failed',
+  in_progress: 'Deploying',
+  queued: 'Queued',
+  pending: 'Pending',
+  waiting: 'Waiting',
 };
 const STATE_COLORS = { success: 'success', failure: 'error', error: 'error', in_progress: 'warning', queued: 'info', pending: 'info', waiting: 'info' };
-const REQUEST_LABELS = { pending: 'Pendiente', approved: 'Aprobada', rejected: 'Rechazada', cancelled: 'Cancelada' };
+const REQUEST_LABELS = { pending: 'Pending', approved: 'Approved', rejected: 'Rejected', cancelled: 'Cancelled' };
 const REQUEST_COLORS = { pending: 'warning', approved: 'success', rejected: 'error', cancelled: 'default' };
 
 const commitLink = (repo, sha) => {
@@ -96,15 +96,15 @@ function EnvironmentCard({ environment, info, repo, children }) {
   const inProgress = info && info.inProgress;
   const failed = info && info.lastFailed;
   const url = live ? safeHttpsUrl(live.url) : null;
-  let chip = <Chip size="small" variant="outlined" label="Sin versión" />;
+  let chip = <Chip size="small" variant="outlined" label="No version" />;
   if (inProgress) chip = <Chip size="small" color="warning" label="Desplegando…" />;
-  else if (failed) chip = <Chip size="small" color="error" label="Falló el último deploy" />;
-  else if (live) chip = <Chip size="small" color="success" icon={<CloudDoneIcon />} label="En línea" />;
+  else if (failed) chip = <Chip size="small" color="error" label="Last deploy failed" />;
+  else if (live) chip = <Chip size="small" color="success" icon={<CloudDoneIcon />} label="Live" />;
 
   return (
     <Box
       component="section"
-      aria-label={`Entorno ${ENV_LABELS[environment]}`}
+      aria-label={`Environment ${ENV_LABELS[environment]}`}
       sx={{ flex: '1 1 260px', minWidth: 0, p: 2, borderRadius: 2, border: '1px solid rgba(255, 255, 255, 0.1)', background: 'rgba(15, 23, 42, 0.35)' }}
     >
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1, flexWrap: 'wrap' }}>
@@ -116,14 +116,14 @@ function EnvironmentCard({ environment, info, repo, children }) {
       {live ? (
         <Typography variant="body2" component="div" sx={{ display: 'grid', gap: 0.25 }}>
           <span>
-            Versión <Sha repo={repo} sha={live.sha} short={live.shortSha} />
+            Version <Sha repo={repo} sha={live.sha} short={live.shortSha} />
             {' · '}
             <time dateTime={String(live.finishedAt || live.createdAt)} title={formatDateTime(live.finishedAt || live.createdAt)}>
               {formatRelativeDate(live.finishedAt || live.createdAt)}
             </time>
           </span>
           <Typography variant="caption" color="text.secondary">
-            {live.automatic ? 'Automático al pasar el CI en la rama principal' : `Pedido por ${live.requestedBy}`}
+            {live.automatic ? 'Automatic after CI passed on the main branch' : `Requested by ${live.requestedBy}`}
           </Typography>
           {url && (
             <Link href={url} target="_blank" rel="noopener noreferrer" variant="body2" sx={{ ...monoSx, wordBreak: 'break-all' }}>
@@ -134,8 +134,8 @@ function EnvironmentCard({ environment, info, repo, children }) {
       ) : (
         <Typography variant="body2" color="text.secondary">
           {environment === 'staging'
-            ? 'Todavía no hay versión: se publica sola cuando un cambio en la rama principal pasa el CI.'
-            : 'Todavía no hay versión en producción.'}
+            ? 'No version yet: it publishes itself when a change on the main branch passes CI.'
+            : 'No version in production yet.'}
         </Typography>
       )}
       {inProgress && (
@@ -145,12 +145,12 @@ function EnvironmentCard({ environment, info, repo, children }) {
       )}
       {failed && !inProgress && (
         <Typography variant="caption" sx={{ display: 'block', mt: 0.5, color: 'error.light' }}>
-          Falló el deploy de <Sha repo={repo} sha={failed.sha} short={failed.shortSha} />
+          Deploy failed for <Sha repo={repo} sha={failed.sha} short={failed.shortSha} />
           {failed.logUrl && (
             <>
               {' · '}
               <Link href={failed.logUrl} target="_blank" rel="noopener noreferrer" color="inherit">
-                ver ejecución
+                view run
               </Link>
             </>
           )}
@@ -175,7 +175,7 @@ function ConfirmDialog({ open, title, children, confirmLabel, busy, error, onCon
       </DialogContent>
       <DialogActions>
         <Button variant="ghost" size="small" onClick={onClose} disabled={busy}>
-          Cancelar
+          Cancel
         </Button>
         <Button variant="primary" size="small" onClick={onConfirm} disabled={busy || confirmDisabled} startIcon={busy ? <CircularProgress size={14} color="inherit" /> : null}>
           {confirmLabel}
@@ -192,28 +192,28 @@ function RequestRow({ request, repo, uid, isAdmin, onAct, busy }) {
     <Box component="li" sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', py: 1, borderBottom: '1px solid rgba(255, 255, 255, 0.06)' }}>
       <Chip size="small" color={REQUEST_COLORS[request.status] || 'default'} label={REQUEST_LABELS[request.status] || request.status} />
       <Typography variant="body2" sx={{ flex: '1 1 240px', minWidth: 0 }}>
-        {request.requestedByUsername || 'Un miembro'} pidió publicar <Sha repo={repo} sha={request.versionSha} /> en{' '}
+        {request.requestedByUsername || 'A member'} asked to publish <Sha repo={repo} sha={request.versionSha} /> to{' '}
         {envName(request.environment)}
         <Typography component="span" variant="caption" color="text.secondary">
           {' · '}
           {formatRelativeDate(request.requestedAt)}
-          {!pending && request.decidedByUsername ? ` · respondió ${request.decidedByUsername}` : ''}
-          {request.note ? ` · «${request.note}»` : ''}
+          {!pending && request.decidedByUsername ? ` · answered by ${request.decidedByUsername}` : ''}
+          {request.note ? ` · “${request.note}”` : ''}
         </Typography>
       </Typography>
       {pending && isAdmin && (
         <>
           <Button variant="primary" size="small" onClick={() => onAct('approve', request)} disabled={busy}>
-            Aprobar
+            Approve
           </Button>
           <Button variant="ghost" size="small" onClick={() => onAct('reject', request)} disabled={busy}>
-            Rechazar
+            Reject
           </Button>
         </>
       )}
       {pending && mine && !isAdmin && (
         <Button variant="ghost" size="small" onClick={() => onAct('cancel', request)} disabled={busy}>
-          Cancelar solicitud
+          Cancel request
         </Button>
       )}
     </Box>
@@ -245,7 +245,7 @@ export default function DeployPanel({ gid, repo, isAdmin, uid, refreshKey = 0 })
       .then((data) => setState({ loading: false, error: null, data }))
       .catch((err) => {
         if (isAbortError(err)) return;
-        setState((prev) => ({ ...prev, loading: false, error: errorMessage(err, 'No se pudieron cargar los entornos.') }));
+        setState((prev) => ({ ...prev, loading: false, error: errorMessage(err, 'Could not load the environments.') }));
       });
     return () => controller.abort();
   }, [gid, refreshKey, version]);
@@ -273,7 +273,7 @@ export default function DeployPanel({ gid, repo, isAdmin, uid, refreshKey = 0 })
       <Card variant="default" component="section" sx={staticCardSx}>
         <Box role="status" sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
           <CircularProgress size={20} />
-          <Typography color="text.secondary">Cargando entornos…</Typography>
+          <Typography color="text.secondary">Loading environments…</Typography>
         </Box>
       </Card>
     );
@@ -281,7 +281,7 @@ export default function DeployPanel({ gid, repo, isAdmin, uid, refreshKey = 0 })
   if (state.error && !data) {
     return (
       <Card variant="default" component="section" sx={staticCardSx}>
-        <Alert severity="error" action={<Button variant="ghost" size="small" onClick={reload}>Reintentar</Button>}>
+        <Alert severity="error" action={<Button variant="ghost" size="small" onClick={reload}>Retry</Button>}>
           {state.error}
         </Alert>
       </Card>
@@ -312,7 +312,7 @@ export default function DeployPanel({ gid, repo, isAdmin, uid, refreshKey = 0 })
       if (deployTo) setAwaiting({ environment: deployTo, since: newestDeployKey(data.history, deployTo) });
       reload();
     } catch (err) {
-      setDialogError(errorMessage(err, 'No se pudo completar la acción.'));
+      setDialogError(errorMessage(err, 'Could not complete the action.'));
       if (err && OUTDATED_CODES.has(err.code)) reload();
     } finally {
       setBusy(false);
@@ -324,28 +324,28 @@ export default function DeployPanel({ gid, repo, isAdmin, uid, refreshKey = 0 })
     // The version shown when the dialog opened: a live reload meanwhile must not change what is promoted.
     if (dialog.kind === 'promote' && isAdmin) {
       const { sha: version, shortSha } = dialog.version;
-      return run(() => deployNow(gid, { environment: 'production', version }), `Se está publicando ${shortSha} en producción.`, 'production');
+      return run(() => deployNow(gid, { environment: 'production', version }), `Publishing ${shortSha} to production.`, 'production');
     }
     if (dialog.kind === 'promote') {
-      return run(() => requestDeploy(gid, { environment: 'production', version: dialog.version.sha }), 'Solicitud enviada a los administradores del grupo.');
+      return run(() => requestDeploy(gid, { environment: 'production', version: dialog.version.sha }), 'Request sent to the group admins.');
     }
     if (dialog.kind === 'rollback') {
       const target = data.rollbackCandidates.find((d) => d.sha === rollbackSha);
       return run(
         () => deployNow(gid, { environment: 'production', version: rollbackSha }),
-        `Producción vuelve a ${target ? target.shortSha : rollbackSha.slice(0, 7)}.`,
+        `Production goes back to ${target ? target.shortSha : rollbackSha.slice(0, 7)}.`,
         'production'
       );
     }
     if (dialog.kind === 'approve') {
       return run(
         () => approveDeployRequest(gid, dialog.request.requestId),
-        `Solicitud aprobada: se está publicando en ${envName(dialog.request.environment)}.`,
+        `Request approved: publishing to ${envName(dialog.request.environment)}.`,
         dialog.request.environment || 'production'
       );
     }
     if (dialog.kind === 'reject') {
-      return run(() => rejectDeployRequest(gid, dialog.request.requestId, note.trim()), 'Solicitud rechazada.');
+      return run(() => rejectDeployRequest(gid, dialog.request.requestId, note.trim()), 'Request rejected.');
     }
     return undefined;
   };
@@ -355,11 +355,11 @@ export default function DeployPanel({ gid, repo, isAdmin, uid, refreshKey = 0 })
       setBusy(true);
       cancelDeployRequest(gid, request.requestId)
         .then(() => {
-          setNotice('Solicitud cancelada.');
+          setNotice('Request cancelled.');
           reload();
         })
         .catch((err) => {
-          setNotice(errorMessage(err, 'No se pudo cancelar la solicitud.'));
+          setNotice(errorMessage(err, 'Could not cancel the request.'));
           if (err && OUTDATED_CODES.has(err.code)) reload();
         })
         .finally(() => setBusy(false));
@@ -373,13 +373,13 @@ export default function DeployPanel({ gid, repo, isAdmin, uid, refreshKey = 0 })
     if (alreadyLive) {
       stagingActions = (
         <Typography variant="caption" color="text.secondary">
-          Producción ya tiene esta versión.
+          Production already has this version.
         </Typography>
       );
     } else if (pendingProduction && !isAdmin) {
       stagingActions = (
         <Typography variant="caption" color="text.secondary">
-          Hay una solicitud de producción pendiente.
+          There is a pending production request.
         </Typography>
       );
     } else {
@@ -390,7 +390,7 @@ export default function DeployPanel({ gid, repo, isAdmin, uid, refreshKey = 0 })
           startIcon={<RocketLaunchIcon />}
           onClick={() => openDialog({ kind: 'promote', version: { sha: staging.sha, shortSha: staging.shortSha } })}
         >
-          {isAdmin ? 'Publicar en producción' : 'Solicitar producción'}
+          {isAdmin ? 'Publish to production' : 'Request production'}
         </Button>
       );
     }
@@ -406,20 +406,20 @@ export default function DeployPanel({ gid, repo, isAdmin, uid, refreshKey = 0 })
           <DialogContentText component="div">
             {isAdmin ? (
               <>
-                Se publicará la versión de staging <Sha repo={repo} sha={version.sha} short={version.shortSha} /> en producción (la raíz del
-                sitio). GitHub Pages se actualiza en aproximadamente un minuto.
+                The staging version <Sha repo={repo} sha={version.sha} short={version.shortSha} /> will be published to production (the site
+                root). GitHub Pages updates in about a minute.
               </>
             ) : (
               <>
-                Se enviará una solicitud a los administradores del grupo para publicar <Sha repo={repo} sha={version.sha} short={version.shortSha} /> en
-                producción. Te avisaremos cuando la respondan.
+                A request will be sent to the group admins to publish <Sha repo={repo} sha={version.sha} short={version.shortSha} /> to
+                production. We will let you know when they answer.
               </>
             )}
           </DialogContentText>
           {moved && (
             <Typography variant="caption" component="p" role="status" sx={{ mt: 1.5, color: 'warning.light' }}>
-              Staging cambió a <Sha repo={repo} sha={staging.sha} short={staging.shortSha} /> mientras este diálogo estaba abierto. Esta acción
-              usa {version.shortSha || String(version.sha).slice(0, 7)}; para usar la nueva versión, cancela y vuelve a abrir.
+              Staging changed to <Sha repo={repo} sha={staging.sha} short={staging.shortSha} /> while this dialog was open. This action
+              uses {version.shortSha || String(version.sha).slice(0, 7)}; to use the new version, cancel and open it again.
             </Typography>
           )}
         </>
@@ -428,8 +428,8 @@ export default function DeployPanel({ gid, repo, isAdmin, uid, refreshKey = 0 })
     if (dialog.kind === 'rollback') {
       return (
         <>
-          <DialogContentText sx={{ mb: 1 }}>Elige la versión anterior a la que vuelve producción:</DialogContentText>
-          <RadioGroup value={rollbackSha} onChange={(event) => setRollbackSha(event.target.value)} aria-label="Versión anterior">
+          <DialogContentText sx={{ mb: 1 }}>Choose the earlier version production goes back to:</DialogContentText>
+          <RadioGroup value={rollbackSha} onChange={(event) => setRollbackSha(event.target.value)} aria-label="Earlier version">
             {data.rollbackCandidates.map((deploy) => (
               <FormControlLabel
                 key={deploy.sha}
@@ -456,37 +456,37 @@ export default function DeployPanel({ gid, repo, isAdmin, uid, refreshKey = 0 })
     if (dialog.kind === 'approve') {
       return (
         <DialogContentText component="div">
-          {dialog.request.requestedByUsername || 'Un miembro'} pidió publicar <Sha repo={repo} sha={dialog.request.versionSha} /> en{' '}
-          {envName(dialog.request.environment)}. Al aprobar, TaskMate lo despliega de inmediato.
+          {dialog.request.requestedByUsername || 'A member'} asked to publish <Sha repo={repo} sha={dialog.request.versionSha} /> to{' '}
+          {envName(dialog.request.environment)}. Once approved, TaskMate deploys it right away.
         </DialogContentText>
       );
     }
     return (
       <>
         <DialogContentText sx={{ mb: 2 }}>
-          Se rechazará la solicitud de {dialog.request.requestedByUsername || 'este miembro'}. Puedes dejarle un motivo.
+          The request from {dialog.request.requestedByUsername || 'this member'} will be rejected. You can leave them a reason.
         </DialogContentText>
-        <TextField fullWidth size="small" label="Motivo (opcional)" value={note} onChange={(event) => setNote(event.target.value)} inputProps={{ maxLength: 500 }} />
+        <TextField fullWidth size="small" label="Reason (optional)" value={note} onChange={(event) => setNote(event.target.value)} inputProps={{ maxLength: 500 }} />
       </>
     );
   };
 
   const DIALOG_TITLES = {
-    promote: isAdmin ? 'Publicar en producción' : 'Solicitar producción',
-    rollback: 'Rollback de producción',
-    approve: 'Aprobar y publicar',
-    reject: 'Rechazar solicitud',
+    promote: isAdmin ? 'Publish to production' : 'Request production',
+    rollback: 'Production rollback',
+    approve: 'Approve and publish',
+    reject: 'Reject request',
   };
-  const CONFIRM_LABELS = { promote: isAdmin ? 'Publicar' : 'Enviar solicitud', rollback: 'Volver a esta versión', approve: 'Aprobar', reject: 'Rechazar' };
+  const CONFIRM_LABELS = { promote: isAdmin ? 'Publish' : 'Send request', rollback: 'Go back to this version', approve: 'Approve', reject: 'Reject' };
 
   return (
-    <Card variant="default" component="section" aria-label="Entornos y deploys" sx={staticCardSx}>
+    <Card variant="default" component="section" aria-label="Environments and deploys" sx={staticCardSx}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.5, flexWrap: 'wrap' }}>
         <RocketLaunchIcon aria-hidden />
         <Typography variant="h6" component="h2" sx={{ flex: 1 }}>
-          Entornos
+          Environments
         </Typography>
-        {state.loading && <CircularProgress size={16} aria-label="Actualizando entornos" />}
+        {state.loading && <CircularProgress size={16} aria-label="Updating environments" />}
       </Box>
 
       {notice && (
@@ -519,7 +519,7 @@ export default function DeployPanel({ gid, repo, isAdmin, uid, refreshKey = 0 })
       {requests.length > 0 && (
         <Box sx={{ mt: 2 }}>
           <Typography variant="subtitle2" component="h3">
-            Solicitudes de producción
+            Production requests
           </Typography>
           <Box component="ul" sx={{ m: 0, p: 0, listStyle: 'none' }}>
             {requests.slice(0, 6).map((request) => (
@@ -532,21 +532,21 @@ export default function DeployPanel({ gid, repo, isAdmin, uid, refreshKey = 0 })
       {data.history.length > 0 && (
         <Box sx={{ mt: 2 }}>
           <Button variant="ghost" size="small" startIcon={<HistoryIcon />} onClick={() => setShowHistory((v) => !v)} aria-expanded={showHistory}>
-            {showHistory ? 'Ocultar historial' : 'Historial de deploys'}
+            {showHistory ? 'Hide history' : 'Deploy history'}
           </Button>
           {showHistory && (
-            <Box component="ul" aria-label="Historial de deploys" sx={{ m: 0, mt: 1, p: 0, listStyle: 'none' }}>
+            <Box component="ul" aria-label="Deploy history" sx={{ m: 0, mt: 1, p: 0, listStyle: 'none' }}>
               {data.history.map((deploy) => (
                 <Box component="li" key={deploy.id || `${deploy.environment}-${deploy.sha}-${deploy.createdAt}`} sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap', py: 0.5 }}>
                   <Chip size="small" variant="outlined" label={ENV_LABELS[deploy.environment] || deploy.environment} />
                   <Sha repo={repo} sha={deploy.sha} short={deploy.shortSha} />
                   <Chip size="small" color={STATE_COLORS[deploy.state] || 'default'} label={STATE_LABELS[deploy.state] || deploy.state} />
                   <Typography variant="caption" color="text.secondary">
-                    {deploy.requestedBy || 'automático'} · {formatRelativeDate(deploy.createdAt)}
+                    {deploy.requestedBy || 'automatic'} · {formatRelativeDate(deploy.createdAt)}
                   </Typography>
                   {deploy.logUrl && (
                     <Link href={deploy.logUrl} target="_blank" rel="noopener noreferrer" variant="caption">
-                      ejecución
+                      run
                     </Link>
                   )}
                 </Box>

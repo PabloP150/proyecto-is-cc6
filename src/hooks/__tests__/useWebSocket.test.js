@@ -357,7 +357,7 @@ describe('useWebSocket', () => {
 
       expect(onUnauthorized).toHaveBeenCalledTimes(1);
       expect(instances).toHaveLength(1);
-      expect(result.current.error).toBe('La sesión expiró. Inicia sesión de nuevo.');
+      expect(result.current.error).toBe('Your session expired. Please log in again.');
       window.removeEventListener('taskmate:unauthorized', onUnauthorized);
     });
 
@@ -369,7 +369,7 @@ describe('useWebSocket', () => {
 
       act(() => { lastSocket().close(1009, 'Message too big'); });
       expect(onClose).toHaveBeenCalledWith(expect.objectContaining({ code: 1009 }));
-      expect(result.current.error).toMatch(/demasiado grande/);
+      expect(result.current.error).toMatch(/too large/);
 
       act(() => { jest.advanceTimersByTime(5000); });
       expect(instances).toHaveLength(2);

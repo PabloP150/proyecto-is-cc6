@@ -40,32 +40,32 @@ const TEAM_ANALYTICS_ACTIONS = new Set([
 const USER_ANALYTICS_ACTIONS = new Set(['get_user_analytics']);
 
 const ERROR_MESSAGES = {
-    VALIDATION_ERROR: 'Solicitud inválida.',
-    NOT_GROUP_MEMBER: 'No eres miembro de ese proyecto.',
-    NOT_GROUP_ADMIN: 'Solo los líderes del equipo pueden ver esos datos.',
-    REPO_NOT_CONNECTED: 'El proyecto no tiene un repositorio de GitHub conectado.',
-    AI_ANALYSIS_DISABLED: 'El análisis con IA está desactivado para este proyecto; un administrador puede activarlo.',
-    INSTALLATION_SUSPENDED: 'La instalación de la GitHub App está suspendida.',
-    REPO_NOT_ACCESSIBLE: 'La GitHub App ya no tiene acceso al repositorio.',
-    APP_PERMISSIONS_MISSING: 'La instalación de la GitHub App no tiene todos los permisos; pide al dueño del repositorio que los acepte en GitHub.',
-    REPO_EMPTY: 'El repositorio está vacío.',
-    GITHUB_RATE_LIMITED: 'GitHub limitó las solicitudes; intenta más tarde.',
-    GITHUB_ERROR: 'No se pudo leer el repositorio en GitHub.',
-    GITHUB_NOT_CONFIGURED: 'La integración con GitHub no está configurada.',
-    ANALYSIS_IN_PROGRESS: 'Ya hay un análisis en curso.',
-    RATE_LIMITED: 'Solo se puede pedir un análisis por minuto.',
-    MESSAGE_TOO_LONG: `El mensaje es demasiado largo (máximo ${MAX_CHAT_MESSAGE} caracteres).`,
-    LLM_TIMEOUT: 'La IA tardó demasiado en responder. Intenta de nuevo.',
-    LLM_RATE_LIMIT: 'El servicio de IA está ocupado. Intenta de nuevo en unos segundos.',
-    LLM_INVALID_OUTPUT: 'La IA devolvió un plan inválido. Intenta de nuevo.',
-    LLM_ERROR: 'El servicio de IA no está disponible en este momento.',
-    ANALYSIS_FAILED: 'No se pudo completar el análisis.',
-    REPO_PLAN_NOT_FOUND: 'El plan ya no está disponible.',
-    REPO_PLAN_EXPIRED: 'El plan expiró; vuelve a analizar el repositorio.',
-    SAVE_FAILED: 'No se pudo guardar el plan.',
-    INTERNAL_ERROR: 'Ocurrió un error inesperado.',
+    VALIDATION_ERROR: 'Invalid request.',
+    NOT_GROUP_MEMBER: 'You are not a member of that project.',
+    NOT_GROUP_ADMIN: 'Only team leaders can see that data.',
+    REPO_NOT_CONNECTED: 'The project has no GitHub repository connected.',
+    AI_ANALYSIS_DISABLED: 'AI analysis is turned off for this project; an admin can turn it on.',
+    INSTALLATION_SUSPENDED: 'The GitHub App installation is suspended.',
+    REPO_NOT_ACCESSIBLE: 'The GitHub App no longer has access to the repository.',
+    APP_PERMISSIONS_MISSING: 'The GitHub App installation is missing permissions; ask the repository owner to accept them on GitHub.',
+    REPO_EMPTY: 'The repository is empty.',
+    GITHUB_RATE_LIMITED: 'GitHub rate-limited the requests; try again later.',
+    GITHUB_ERROR: 'Could not read the repository on GitHub.',
+    GITHUB_NOT_CONFIGURED: 'The GitHub integration is not configured.',
+    ANALYSIS_IN_PROGRESS: 'An analysis is already running.',
+    RATE_LIMITED: 'You can only ask for one analysis per minute.',
+    MESSAGE_TOO_LONG: `The message is too long (limit ${MAX_CHAT_MESSAGE} characters).`,
+    LLM_TIMEOUT: 'The AI took too long to answer. Please try again.',
+    LLM_RATE_LIMIT: 'The AI service is busy. Try again in a few seconds.',
+    LLM_INVALID_OUTPUT: 'The AI returned an invalid plan. Please try again.',
+    LLM_ERROR: 'The AI service is not available right now.',
+    ANALYSIS_FAILED: 'Could not complete the analysis.',
+    REPO_PLAN_NOT_FOUND: 'The plan is no longer available.',
+    REPO_PLAN_EXPIRED: 'The plan expired; analyze the repository again.',
+    SAVE_FAILED: 'Could not save the plan.',
+    INTERNAL_ERROR: 'An unexpected error occurred.',
 };
-const CHAT_RATE_LIMITED_MESSAGE = 'Estás enviando mensajes muy rápido; espera un momento.';
+const CHAT_RATE_LIMITED_MESSAGE = 'You are sending messages too fast; wait a moment.';
 const PASSTHROUGH_ANALYSIS_CODES = new Set(['LLM_TIMEOUT', 'LLM_RATE_LIMIT', 'LLM_INVALID_OUTPUT', 'LLM_ERROR', 'MESSAGE_TOO_LONG']);
 
 // Per user (not per session): a reconnect or a second tab does not reset these limits.
@@ -445,7 +445,7 @@ class UserSession {
             if (!fromChat) {
                 this.addToHistory({
                     type: 'user',
-                    content: cleanInstructions || `Analiza el repositorio de «${group.groupName}» y propón las siguientes tareas.`,
+                    content: cleanInstructions || `Analyze the repository of “${group.groupName}” and propose the next tasks.`,
                     requestId: clientRequestId,
                     timestamp: new Date(),
                 });
@@ -699,7 +699,7 @@ class UserSession {
             });
             await this.notifySaveResult(requestId, { success: true, groupId: result.groupId, groupName });
         } else {
-            this.sendError('SAVE_FAILED', { content: 'No se pudo crear el proyecto.' });
+            this.sendError('SAVE_FAILED', { content: 'Could not create the project.' });
             await this.notifySaveResult(requestId, { success: false, errorCode: 'SAVE_FAILED' });
         }
     }

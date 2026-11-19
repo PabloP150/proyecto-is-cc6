@@ -35,7 +35,7 @@ export default function useGroupRoles(groupId) {
         setUserRolesMap(prev => ({ ...prev, ...builtMap }));
       }
     } catch (err) {
-      setError(err.message || 'Error al obtener roles');
+      setError(err.message || 'Could not load roles');
     } finally {
       setLoading(false);
     }
@@ -50,7 +50,7 @@ export default function useGroupRoles(groupId) {
       setUserRolesMap(prev => ({ ...prev, [userId]: roleIds }));
       return roleIds;
     } catch (err) {
-      setError(err.message || 'Error al obtener roles de usuario');
+      setError(err.message || 'Could not load user roles');
       return [];
     }
   }, [groupId]);

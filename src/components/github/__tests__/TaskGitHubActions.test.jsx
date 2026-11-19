@@ -38,13 +38,13 @@ describe('TaskGitHubActions', () => {
     const onChange = jest.fn();
     renderActions({ link: null, onChange });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Crear rama en GitHub' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create branch on GitHub' }));
     expect(createTaskBranch).toHaveBeenCalledWith('T-1');
 
     expect(await screen.findByText('tm/new-task-1234abcd')).toBeInTheDocument();
     expect(onChange).toHaveBeenCalledWith(result);
-    expect(screen.queryByRole('button', { name: 'Crear rama en GitHub' })).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Ver rama en GitHub' })).toHaveAttribute('href', result.branchUrl);
+    expect(screen.queryByRole('button', { name: 'Create branch on GitHub' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'View branch on GitHub' })).toHaveAttribute('href', result.branchUrl);
   });
 
   it('shows a readable error when the branch cannot be created', async () => {
@@ -52,11 +52,11 @@ describe('TaskGitHubActions', () => {
     const onChange = jest.fn();
     renderActions({ link: null, onChange });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Crear rama en GitHub' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create branch on GitHub' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('El repositorio está vacío');
+    expect(await screen.findByRole('alert')).toHaveTextContent('The repository is empty');
     expect(onChange).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: 'Crear rama en GitHub' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Create branch on GitHub' })).toBeEnabled();
   });
 
   it('copies the checkout command when the branch chip is clicked', async () => {
@@ -64,26 +64,26 @@ describe('TaskGitHubActions', () => {
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
     renderActions({ link: BRANCH_LINK });
 
-    fireEvent.click(screen.getByRole('button', { name: /Copiar comando git checkout/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Copy git checkout command/ }));
 
-    expect(await screen.findByText('Comando copiado: git checkout tm/login-page-1234abcd')).toBeInTheDocument();
+    expect(await screen.findByText('Command copied: git checkout tm/login-page-1234abcd')).toBeInTheDocument();
     expect(writeText).toHaveBeenCalledWith('git checkout tm/login-page-1234abcd');
     delete navigator.clipboard;
   });
 
   it('falls back to showing the command when the clipboard is unavailable', async () => {
     renderActions({ link: BRANCH_LINK });
-    fireEvent.click(screen.getByRole('button', { name: /Copiar comando git checkout/ }));
-    expect(await screen.findByText(/No se pudo copiar\. Ejecuta: git checkout tm\/login-page-1234abcd/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Copy git checkout command/ }));
+    expect(await screen.findByText(/Could not copy\. Run: git checkout tm\/login-page-1234abcd/)).toBeInTheDocument();
   });
 
   it.each([
-    [{ number: 7, state: 'open', isDraft: false }, 'PR #7 abierto', 'open'],
-    [{ number: 8, state: 'open', isDraft: true }, 'PR #8 borrador', 'draft'],
-    [{ number: 9, state: 'closed', isDraft: false }, 'PR #9 cerrado', 'closed'],
-    [{ number: 10, state: 'merged', isDraft: false, mergedAt: '2026-09-01T00:00:00Z' }, 'PR #10 fusionado', 'merged'],
-    [{ number: 11, state: 'merged', isDraft: false, baseBranch: 'main', mergedAt: '2026-09-01T00:00:00Z' }, 'PR #11 fusionado', 'merged'],
-    [{ number: 12, state: 'closed', isDraft: false, baseBranch: 'develop' }, 'PR #12 cerrado', 'closed'],
+    [{ number: 7, state: 'open', isDraft: false }, 'PR #7 open', 'open'],
+    [{ number: 8, state: 'open', isDraft: true }, 'PR #8 draft', 'draft'],
+    [{ number: 9, state: 'closed', isDraft: false }, 'PR #9 closed', 'closed'],
+    [{ number: 10, state: 'merged', isDraft: false, mergedAt: '2026-09-01T00:00:00Z' }, 'PR #10 merged', 'merged'],
+    [{ number: 11, state: 'merged', isDraft: false, baseBranch: 'main', mergedAt: '2026-09-01T00:00:00Z' }, 'PR #11 merged', 'merged'],
+    [{ number: 12, state: 'closed', isDraft: false, baseBranch: 'develop' }, 'PR #12 closed', 'closed'],
   ])('shows the PR chip %#', (pr, label, status) => {
     renderActions({
       link: { ...BRANCH_LINK, defaultBranch: 'main', pr: { ...pr, htmlUrl: `https://github.com/acme/app/pull/${pr.number}` } },
@@ -105,10 +105,10 @@ describe('TaskGitHubActions', () => {
       htmlUrl: 'https://github.com/acme/app/pull/4',
     };
     renderActions({ link: { ...BRANCH_LINK, defaultBranch: 'main', pr } });
-    const note = 'develop no es la rama principal (main); la tarea no se completa sola.';
+    const note = 'develop is not the main branch (main); the task does not complete itself.';
 
-    const chip = screen.getByRole('link', { name: `PR #4 fusionado en develop: Página de login — ${note}` });
-    expect(chip).toHaveTextContent(/^PR #4 fusionado en develop$/);
+    const chip = screen.getByRole('link', { name: `PR #4 merged into develop: Página de login — ${note}` });
+    expect(chip).toHaveTextContent(/^PR #4 merged into develop$/);
     expect(chip).toHaveAttribute('data-status', 'merged');
 
     fireEvent.mouseOver(chip);
@@ -118,16 +118,16 @@ describe('TaskGitHubActions', () => {
   it('keeps the plain merged label when the default branch is unknown', () => {
     const pr = { number: 5, state: 'merged', baseBranch: 'develop', mergedAt: '2026-10-01T00:00:00Z' };
     renderActions({ link: { ...BRANCH_LINK, pr } });
-    expect(screen.getByText('PR #5 fusionado')).toBeInTheDocument();
+    expect(screen.getByText('PR #5 merged')).toBeInTheDocument();
   });
 
   it('never links to non-GitHub URLs', () => {
     renderActions({
       link: { ...BRANCH_LINK, branchUrl: SCRIPT_URL, pr: { number: 3, state: 'open', htmlUrl: 'https://evil.example/pr' } },
     });
-    expect(screen.queryByRole('link', { name: 'Ver rama en GitHub' })).not.toBeInTheDocument();
-    expect(screen.getByText('PR #3 abierto')).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'PR #3 abierto' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'View branch on GitHub' })).not.toBeInTheDocument();
+    expect(screen.getByText('PR #3 open')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'PR #3 open' })).not.toBeInTheDocument();
   });
 
   it('renders its toast outside the task card so the card cannot clip it', async () => {
@@ -139,10 +139,10 @@ describe('TaskGitHubActions', () => {
         </div>
       </ThemeProvider>
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Crear rama en GitHub' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create branch on GitHub' }));
 
     const toast = await screen.findByRole('alert');
-    expect(toast).toHaveTextContent('Rama tm/x-1 lista en GitHub.');
+    expect(toast).toHaveTextContent('Branch tm/x-1 is ready on GitHub.');
     expect(screen.getByTestId('card')).not.toContainElement(toast);
     expect(within(screen.getByTestId('card')).getByText('tm/x-1')).toBeInTheDocument();
   });
@@ -154,20 +154,20 @@ describe('TaskGitHubActions', () => {
     try {
       createTaskBranch.mockResolvedValue({ tid: 'T-1', branchName: 'tm/x-1', branchUrl: null });
       renderActions({ link: null });
-      fireEvent.click(screen.getByRole('button', { name: 'Crear rama en GitHub' }));
-      expect(await screen.findByText('Rama tm/x-1 lista en GitHub.')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Create branch on GitHub' }));
+      expect(await screen.findByText('Branch tm/x-1 is ready on GitHub.')).toBeInTheDocument();
 
       act(() => jest.advanceTimersByTime(3000));
-      fireEvent.click(screen.getByRole('button', { name: /Copiar comando git checkout/ }));
-      expect(await screen.findByText('Comando copiado: git checkout tm/x-1')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: /Copy git checkout command/ }));
+      expect(await screen.findByText('Command copied: git checkout tm/x-1')).toBeInTheDocument();
 
       // Past the first message's 3.5 s (plus its exit transition), well within the second one's.
       act(() => jest.advanceTimersByTime(1500));
       act(() => jest.advanceTimersByTime(300));
-      expect(screen.getByText('Comando copiado: git checkout tm/x-1')).toBeVisible();
+      expect(screen.getByText('Command copied: git checkout tm/x-1')).toBeVisible();
 
       act(() => jest.advanceTimersByTime(2500));
-      await waitFor(() => expect(screen.queryByText('Comando copiado: git checkout tm/x-1')).not.toBeInTheDocument());
+      await waitFor(() => expect(screen.queryByText('Command copied: git checkout tm/x-1')).not.toBeInTheDocument());
     } finally {
       jest.useRealTimers();
       delete navigator.clipboard;
@@ -178,18 +178,18 @@ describe('TaskGitHubActions', () => {
     createTaskBranch.mockResolvedValue({ tid: 'T-1', branchName: 'tm/x-1', branchUrl: null });
     const onNotify = jest.fn();
     renderActions({ link: null, onNotify });
-    fireEvent.click(screen.getByRole('button', { name: 'Crear rama en GitHub' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create branch on GitHub' }));
 
     expect(await screen.findByText('tm/x-1')).toBeInTheDocument();
-    expect(onNotify).toHaveBeenCalledWith('success', 'Rama tm/x-1 lista en GitHub.', 3500);
+    expect(onNotify).toHaveBeenCalledWith('success', 'Branch tm/x-1 is ready on GitHub.', 3500);
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('keeps the chips within the card as well as within their own maximum', () => {
     const pr = { number: 4, state: 'merged', baseBranch: 'release/2026-10-hotfix-login', mergedAt: '2026-10-01T00:00:00Z', htmlUrl: 'https://github.com/acme/app/pull/4' };
     renderActions({ link: { ...BRANCH_LINK, defaultBranch: 'main', pr } });
-    expect(getComputedStyle(screen.getByRole('link', { name: /^PR #4 fusionado en release/ })).maxWidth).toBe('min(100%, 280px)');
-    expect(getComputedStyle(screen.getByRole('button', { name: /Copiar comando git checkout/ })).maxWidth).toBe('min(100%, 240px)');
+    expect(getComputedStyle(screen.getByRole('link', { name: /^PR #4 merged into release/ })).maxWidth).toBe('min(100%, 280px)');
+    expect(getComputedStyle(screen.getByRole('button', { name: /Copy git checkout command/ })).maxWidth).toBe('min(100%, 240px)');
   });
 
   it('does not bubble clicks to the task row', async () => {
@@ -202,7 +202,7 @@ describe('TaskGitHubActions', () => {
         </div>
       </ThemeProvider>
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Crear rama en GitHub' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create branch on GitHub' }));
     expect(await screen.findByText('tm/x-1')).toBeInTheDocument();
     // The portaled toast still bubbles through the React tree.
     fireEvent.click(within(await screen.findByRole('alert')).getByRole('button'));
