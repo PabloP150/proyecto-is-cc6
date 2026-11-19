@@ -39,7 +39,7 @@ const SAFETY_POLL_MS = 60 * 1000;
 const RERUNNABLE = new Set(['failure', 'cancelled', 'timed_out', 'startup_failure']);
 
 // Same rule as the API: deploys TaskMate dispatched are re-run or cancelled only by the admin.
-const isDeployRun = (run) => run.isTaskmate && run.event === 'workflow_dispatch' && /^Deploy a /.test(run.title || '');
+const isDeployRun = (run) => run.isTaskmate && run.event === 'workflow_dispatch' && /^Deploy (a|to) /.test(run.title || '');
 
 function RunActions({ gid, run, isAdmin, onChanged }) {
   const [busy, setBusy] = useState(null);
@@ -51,7 +51,7 @@ function RunActions({ gid, run, isAdmin, onChanged }) {
   if (!canRerun && !canCancel) {
     return isDeployRun(run) && !isAdmin ? (
       <Typography variant="caption" color="text.secondary" component="p" sx={{ mb: 1 }}>
-        Solo el administrador del grupo puede re-ejecutar o cancelar un deploy.
+        Only the group admin can re-run or cancel a deploy.
       </Typography>
     ) : null;
   }
@@ -62,10 +62,10 @@ function RunActions({ gid, run, isAdmin, onChanged }) {
     try {
       if (kind === 'rerun') await rerunFailed(gid, run.id);
       else await cancelRun(gid, run.id);
-      setFeedback({ severity: 'success', message: kind === 'rerun' ? 'Se re-ejecutan los jobs fallidos.' : 'Se pidió cancelar la ejecución.' });
+      setFeedback({ severity: 'success', message: kind === 'rerun' ? 'Re-running the failed jobs.' : 'Cancellation requested.' });
       if (onChanged) onChanged();
     } catch (err) {
-      setFeedback({ severity: 'error', message: errorMessage(err, 'GitHub no aceptó la acción.') });
+      setFeedback({ severity: 'error', message: errorMessage(err, 'GitHub did not accept the action.') });
     } finally {
       setBusy(null);
     }
@@ -75,12 +75,12 @@ function RunActions({ gid, run, isAdmin, onChanged }) {
     <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap', mb: 1 }}>
       {canRerun && (
         <Button variant="ghost" size="small" startIcon={busy === 'rerun' ? <CircularProgress size={14} color="inherit" /> : <ReplayIcon />} onClick={() => act('rerun')} disabled={Boolean(busy)}>
-          Re-ejecutar fallidos
+          Re-run failed
         </Button>
       )}
       {canCancel && (
         <Button variant="ghost" size="small" startIcon={busy === 'cancel' ? <CircularProgress size={14} color="inherit" /> : <StopIcon />} onClick={() => act('cancel')} disabled={Boolean(busy)}>
-          Cancelar
+          Cancel
         </Button>
       )}
       {feedback && (
@@ -112,7 +112,7 @@ function RunPipelineDialog({ open, gid, defaultBranch, onClose, onDone }) {
       await dispatchPipeline(gid, branch.trim());
       onDone(branch.trim());
     } catch (err) {
-      setError(errorMessage(err, 'No se pudo ejecutar el pipeline.'));
+      setError(errorMessage(err, 'Could not run the pipeline.'));
     } finally {
       setBusy(false);
     }
@@ -121,16 +121,16 @@ function RunPipelineDialog({ open, gid, defaultBranch, onClose, onDone }) {
   return (
     <Dialog open={open} onClose={() => !busy && onClose()} aria-labelledby="ci-run-title" fullWidth maxWidth="xs">
       <Box component="form" onSubmit={submit}>
-        <DialogTitle id="ci-run-title">Ejecutar pipeline</DialogTitle>
+        <DialogTitle id="ci-run-title">Run pipeline</DialogTitle>
         <DialogContent>
           <DialogContentText sx={{ mb: 2 }}>
-            Corre el CI de TaskMate (instalar, análisis estático, pruebas y build) en una rama. No despliega nada.
+            Runs TaskMate CI (install, static analysis, tests and build) on a branch. It deploys nothing.
           </DialogContentText>
           <TextField
             autoFocus
             fullWidth
             size="small"
-            label="Rama"
+            label="Branch"
             value={branch}
             onChange={(event) => setBranch(event.target.value)}
             inputProps={{ maxLength: 255, spellCheck: false, style: monoSx }}
@@ -143,10 +143,10 @@ function RunPipelineDialog({ open, gid, defaultBranch, onClose, onDone }) {
         </DialogContent>
         <DialogActions>
           <Button variant="ghost" size="small" onClick={onClose} disabled={busy}>
-            Cancelar
+            Cancel
           </Button>
           <Button type="submit" variant="primary" size="small" disabled={busy || !branch.trim()} startIcon={busy ? <CircularProgress size={14} color="inherit" /> : <PlayArrowIcon />}>
-            Ejecutar
+            Run
           </Button>
         </DialogActions>
       </Box>
@@ -205,7 +205,7 @@ function RunRow({ gid, run, expanded, onToggle, isAdmin, onChanged }) {
         <Box id={detailId} sx={{ pb: 1.5, pl: { xs: 0, sm: 4 }, minWidth: 0 }}>
           {href && (
             <Link href={href} target="_blank" rel="noopener noreferrer" variant="caption" sx={{ display: 'inline-block', mb: 1 }}>
-              Ver la ejecución en GitHub
+              View the run on GitHub
             </Link>
           )}
           <RunActions gid={gid} run={run} isAdmin={isAdmin} onChanged={onChanged} />
@@ -239,7 +239,7 @@ export default function RunList({ gid, refreshKey = 0, isAdmin = false, canRun =
     return () => controller.abort();
   }, [gid, refreshKey]);
 
-  // Page 1 again on every filter change or refresh; "Ver más" appends the following pages.
+  // Page 1 again on every filter change or refresh; "Show more" appends the following pages.
   const fetchPage = useCallback(
     (page, signal) =>
       listRuns(gid, { workflow: filters.workflow || undefined, status: filters.status || undefined, page, signal }),
@@ -279,7 +279,7 @@ export default function RunList({ gid, refreshKey = 0, isAdmin = false, canRun =
   // GitHub creates the run a few seconds after the dispatch; the ci_run event (or this) shows it.
   const handleDispatched = (branch) => {
     setRunOpen(false);
-    setNotice(`Listo: el pipeline se ejecutará en «${branch}» en unos segundos.`);
+    setNotice(`Done: the pipeline will run on “${branch}” in a few seconds.`);
     setTimeout(reload, 4000);
   };
 
@@ -287,10 +287,10 @@ export default function RunList({ gid, refreshKey = 0, isAdmin = false, canRun =
   const permissionsMissing = error && error.code === 'APP_PERMISSIONS_MISSING';
 
   return (
-    <Box component="section" aria-label="Ejecuciones del pipeline">
+    <Box component="section" aria-label="Pipeline runs">
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', mb: 1.5 }}>
         <Typography variant="h6" component="h2" sx={{ flex: '1 1 auto' }}>
-          Ejecuciones
+          Runs
         </Typography>
         <TextField
           select
@@ -300,7 +300,7 @@ export default function RunList({ gid, refreshKey = 0, isAdmin = false, canRun =
           onChange={(event) => setFilters((prev) => ({ ...prev, workflow: event.target.value }))}
           sx={{ minWidth: 180 }}
         >
-          <MenuItem value="">Todos los workflows</MenuItem>
+          <MenuItem value="">All workflows</MenuItem>
           {workflows.map((w) => (
             <MenuItem key={w.id} value={String(w.id)}>
               {w.name}
@@ -310,7 +310,7 @@ export default function RunList({ gid, refreshKey = 0, isAdmin = false, canRun =
         <TextField
           select
           size="small"
-          label="Estado"
+          label="Status"
           value={filters.status}
           onChange={(event) => setFilters((prev) => ({ ...prev, status: event.target.value }))}
           sx={{ minWidth: 160 }}
@@ -321,16 +321,16 @@ export default function RunList({ gid, refreshKey = 0, isAdmin = false, canRun =
             </MenuItem>
           ))}
         </TextField>
-        <Tooltip title="Actualizar" arrow>
+        <Tooltip title="Refresh" arrow>
           <span>
-            <IconButton onClick={reload} disabled={loading} aria-label="Actualizar ejecuciones" size="small">
+            <IconButton onClick={reload} disabled={loading} aria-label="Refresh runs" size="small">
               <RefreshIcon fontSize="small" />
             </IconButton>
           </span>
         </Tooltip>
         {canRun && (
           <Button variant="primary" size="small" startIcon={<PlayArrowIcon />} onClick={() => setRunOpen(true)}>
-            Ejecutar pipeline
+            Run pipeline
           </Button>
         )}
       </Box>
@@ -344,7 +344,7 @@ export default function RunList({ gid, refreshKey = 0, isAdmin = false, canRun =
       {loading && runs.length === 0 && !error && (
         <Box role="status" sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 4, justifyContent: 'center' }}>
           <CircularProgress size={22} />
-          <Typography color="text.secondary">Cargando ejecuciones…</Typography>
+          <Typography color="text.secondary">Loading runs…</Typography>
         </Box>
       )}
 
@@ -353,18 +353,18 @@ export default function RunList({ gid, refreshKey = 0, isAdmin = false, canRun =
           severity={permissionsMissing ? 'warning' : 'error'}
           action={
             <Button variant="ghost" size="small" onClick={reload}>
-              Reintentar
+              Retry
             </Button>
           }
           sx={{ mb: 1 }}
         >
-          {errorMessage(error, 'No se pudieron cargar las ejecuciones.')}
+          {errorMessage(error, 'Could not load the runs.')}
         </Alert>
       )}
 
       {!loading && !error && runs.length === 0 && (
         <Typography color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>
-          {filters.workflow || filters.status ? 'No hay ejecuciones con estos filtros.' : 'Este repositorio todavía no tiene ejecuciones de GitHub Actions.'}
+          {filters.workflow || filters.status ? 'No runs match these filters.' : 'This repository has no GitHub Actions runs yet.'}
         </Typography>
       )}
 
@@ -391,7 +391,7 @@ export default function RunList({ gid, refreshKey = 0, isAdmin = false, canRun =
       {runs.length > 0 && runs.length < totalCount && (
         <Box sx={{ textAlign: 'center', mt: 1.5 }}>
           <Button variant="ghost" size="small" onClick={loadMore} disabled={loading}>
-            Ver más
+            Show more
           </Button>
         </Box>
       )}

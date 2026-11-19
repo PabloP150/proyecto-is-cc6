@@ -310,7 +310,7 @@ const safeSiteDir = (projects, project) => project.siteDirs.find((site) => !publ
 const pageOfAnotherSite = (projects, project) => project.stack === 'static' && projects.some((other) => other.stack === 'static'
     && other.dir !== project.dir && other.siteDirs.some((site) => isInside(project.dir, joinPath(other.dir, site))));
 
-const dirLabel = (dir) => (dir === '.' ? 'la raíz del repositorio' : `«${dir}»`);
+const dirLabel = (dir) => (dir === '.' ? 'the repository root' : `“${dir}”`);
 
 const defaultTest = (project) => (usable(project, 'test') && !NPM_DEFAULT_TEST.test(project.scripts.test) ? 'test' : null);
 
@@ -339,7 +339,7 @@ const proposeSpec = (facts, { dir, stack } = {}) => {
         if (!project) throw new AppError('PIPELINE_UNSUPPORTED', 'No project of the repository can be built or published safely', 422);
         const skipped = projects.filter(unsafeSite);
         if (skipped.length && !(project.stack === 'node' && deployable(project))) {
-            notes.push(`No se propone publicar el sitio estático de ${skipped.map((p) => dirLabel(p.dir)).join(', ')}: publicaría también el código de los otros proyectos del repositorio.`);
+            notes.push(`Publishing the static site of ${skipped.map((p) => dirLabel(p.dir)).join(', ')} is not proposed: it would also publish the code of the other projects in the repository.`);
         }
     }
 
@@ -357,30 +357,30 @@ const proposeSpec = (facts, { dir, stack } = {}) => {
 
     if (project.stack === 'node') {
         const { scripts } = project;
-        if (!project.validManifest) notes.push('No se pudo leer package.json; el pipeline solo instalará las dependencias.');
+        if (!project.validManifest) notes.push('Could not read package.json; the pipeline will only install the dependencies.');
         spec.runtime = project.runtime || DEFAULT_NODE;
         spec.install = { kind: project.lockfile === 'npm' ? 'npm-ci' : 'npm-install' };
         if (project.lockfile && project.lockfile !== 'npm') {
-            notes.push(`El proyecto usa ${project.lockfile}; TaskMate instalará con npm (npm install).`);
+            notes.push(`The project uses ${project.lockfile}; TaskMate will install with npm (npm install).`);
         }
         const lint = ['lint', 'eslint'].find((name) => usable(project, name));
         spec.lint = lint ? { kind: 'script', name: lint } : null;
         spec.audit = !lint;
-        if (!lint) notes.push('No hay script de lint: el análisis estático será la auditoría de dependencias (npm audit).');
+        if (!lint) notes.push('There is no lint script: the static analysis will be the dependency audit (npm audit).');
         const test = defaultTest(project);
         spec.test = test ? { kind: 'script', name: test } : null;
-        if (!test) notes.push('No hay script de pruebas («test»).');
+        if (!test) notes.push('There is no test script (“test”).');
         spec.build = usable(project, 'build') ? { kind: 'script', name: 'build' } : null;
         const skipped = ['lint', 'test', 'build'].filter((name) => scripts[name] && project.longRunning.includes(name));
         if (skipped.length) {
-            notes.push(`No se usa ${skipped.map((name) => `«${name}»`).join(', ')}: inicia un servidor o se queda vigilando cambios y nunca terminaría.`);
+            notes.push(`${skipped.map((name) => `“${name}”`).join(', ')} is not used: it starts a server or watches for changes and would never finish.`);
         }
         if (deployable(project)) {
             spec.deploy = { target: 'github-pages', framework: project.framework, outputDir: OUTPUT_DIRS[project.framework] };
         } else if (viteBaseBlocked(project)) {
-            notes.push('El script «build» no termina en «vite build» (o ya fija --base): TaskMate le agrega --base para publicar staging y producción en su ruta, así que el pipeline no tendrá deploy.');
+            notes.push('The “build” script does not end in “vite build” (or already sets --base): TaskMate adds --base to publish staging and production on their paths, so the pipeline will have no deploy.');
         } else {
-            notes.push('El proyecto no genera un sitio estático conocido (Vite o Create React App): el pipeline no tendrá deploy.');
+            notes.push('The project does not produce a known static site (Vite or Create React App): the pipeline will have no deploy.');
         }
     } else if (project.stack === 'python') {
         spec.runtime = project.runtime || DEFAULT_PYTHON;
@@ -388,12 +388,12 @@ const proposeSpec = (facts, { dir, stack } = {}) => {
         else if (project.pyproject) spec.install = { kind: 'pip-project' };
         spec.lint = { kind: 'ruff' };
         spec.test = project.usesPytest ? { kind: 'pytest' } : null;
-        if (!project.usesPytest) notes.push('No se encontraron pruebas de pytest.');
-        notes.push('Los proyectos de Python tienen CI (instalar, Ruff y pytest) pero no deploy a GitHub Pages.');
+        if (!project.usesPytest) notes.push('No pytest tests were found.');
+        notes.push('Python projects get CI (install, Ruff and pytest) but no deploy to GitHub Pages.');
     } else {
         const site = safeSiteDir(projects, project);
         if (site !== project.siteDirs[0]) {
-            notes.push(`Se publica la carpeta «${site}»: publicar ${dirLabel(joinPath(project.dir, project.siteDirs[0]))} incluiría el código de los otros proyectos del repositorio.`);
+            notes.push(`The “${site}” folder is published: publishing ${dirLabel(joinPath(project.dir, project.siteDirs[0]))} would include the code of the other projects in the repository.`);
         }
         spec.deploy = { target: 'github-pages', framework: 'static', outputDir: site };
     }
@@ -547,17 +547,17 @@ const PYTEST_COMMAND = 'python -m pytest';
 const describeStages = (spec) => {
     const stages = [];
     const add = (key, label, commands) => stages.push({ key, label, commands });
-    if (spec.install) add('install', 'Instalar dependencias', installCommands(spec));
-    if (spec.lint) add('lint', 'Análisis estático', spec.lint.kind === 'ruff' ? [RUFF_COMMAND] : [scriptCommand(spec.lint)]);
-    if (spec.audit) add('audit', 'Auditoría de dependencias', [AUDIT_COMMAND]);
+    if (spec.install) add('install', 'Install dependencies', installCommands(spec));
+    if (spec.lint) add('lint', 'Static analysis', spec.lint.kind === 'ruff' ? [RUFF_COMMAND] : [scriptCommand(spec.lint)]);
+    if (spec.audit) add('audit', 'Dependency audit', [AUDIT_COMMAND]);
     if (spec.test) add('test', 'Pruebas', spec.test.kind === 'pytest' ? [PYTEST_COMMAND] : [scriptCommand(spec.test)]);
     if (spec.build) add('build', 'Build', [scriptCommand(spec.build)]);
-    if (spec.project.stack === 'static' && spec.deploy) add('check', 'Verificar el sitio', [`test -f ${joinPath(spec.deploy.outputDir, 'index.html')}`]);
+    if (spec.project.stack === 'static' && spec.deploy) add('check', 'Check the site', [`test -f ${joinPath(spec.deploy.outputDir, 'index.html')}`]);
     if (spec.deploy) {
-        add('deploy', 'Deploy a GitHub Pages', [
-            'staging: /staging/ (automático en la rama principal)',
-            'producción: / (con aprobación en TaskMate)',
-            'solo se construye la versión que se despliega; el otro entorno se conserva del sitio publicado',
+        add('deploy', 'Deploy to GitHub Pages', [
+            'staging: /staging/ (automatic on the main branch)',
+            'production: / (with approval in TaskMate)',
+            'only the deployed version is built; the other environment is kept from the published site',
         ]);
     }
     return stages;
@@ -658,13 +658,13 @@ const ciSteps = (out, spec) => {
     step(out, 'Checkout', { uses: ACTIONS.checkout, withs: { 'persist-credentials': 'false' } });
     setupRuntime(out, spec, { cache: true });
     const install = installCommands(spec);
-    if (install.length) step(out, 'Instalar dependencias', { run: install });
+    if (install.length) step(out, 'Install dependencies', { run: install });
     if (spec.lint) {
-        step(out, 'Análisis estático', {
+        step(out, 'Static analysis', {
             run: spec.lint.kind === 'ruff' ? ['python -m pip install ruff', RUFF_COMMAND] : [scriptCommand(spec.lint)],
         });
     }
-    if (spec.audit) step(out, 'Auditoría de dependencias', { run: [AUDIT_COMMAND] });
+    if (spec.audit) step(out, 'Dependency audit', { run: [AUDIT_COMMAND] });
     if (spec.test) {
         step(out, 'Pruebas', {
             run: spec.test.kind === 'pytest' ? [PYTEST_INSTALL, PYTEST_COMMAND] : [scriptCommand(spec.test)],
@@ -673,7 +673,7 @@ const ciSteps = (out, spec) => {
     if (spec.build) step(out, 'Build', { run: [scriptCommand(spec.build)] });
     if (spec.project.stack === 'static' && spec.deploy) {
         const index = joinPath(spec.deploy.outputDir, 'index.html');
-        step(out, 'Verificar el sitio', { run: [`test -f ${q(index)} || { echo "::error::Falta ${index}"; exit 1; }`] });
+        step(out, 'Check the site', { run: [`test -f ${q(index)} || { echo "::error::Missing ${index}"; exit 1; }`] });
     }
 };
 
@@ -688,15 +688,15 @@ const VERSIONS_SCRIPT = [
     'const target = process.env.TARGET_ENV;',
     'const version = process.env.TARGET_VERSION;',
     "const requestedBy = String(process.env.REQUESTED_BY || '').replace(/[^A-Za-z0-9_.@ -]/g, '').slice(0, 60);",
-    "if (!['staging', 'production'].includes(target)) throw new Error('Entorno inválido: ' + target);",
-    "if (!SHA.test(version)) throw new Error('Versión inválida (se espera el SHA completo del commit): ' + version);",
+    "if (!['staging', 'production'].includes(target)) throw new Error('Invalid environment: ' + target);",
+    "if (!SHA.test(version)) throw new Error('Invalid version (the full commit SHA is expected): ' + version);",
     'const { owner, repo } = context.repo;',
     "core.setOutput('skip', 'false');",
     "if (context.eventName === 'push') {",
     '  const branch = context.payload.repository.default_branch;',
     "  const { data: head } = await github.rest.git.getRef({ owner, repo, ref: 'heads/' + branch });",
     '  if (head.object.sha !== version) {',
-    "    core.notice('No se despliega ' + version.slice(0, 7) + ': ya no es la última versión de ' + branch + '.');",
+    "    core.notice('Not deploying ' + version.slice(0, 7) + ': it is no longer the latest version of ' + branch + '.');",
     "    core.setOutput('skip', 'true');",
     '    return;',
     '  }',
@@ -731,11 +731,11 @@ const VERSIONS_SCRIPT = [
     '  try {',
     `    const { data } = await github.rest.actions.listWorkflowRunArtifacts({ owner, repo, run_id: Number(baseRun), name: '${PAGES_ARTIFACT}', per_page: 10 });`,
     '    if (!data.artifacts.some((artifact) => !artifact.expired)) {',
-    "      core.info('El sitio publicado por la ejecución ' + baseRun + ' ya no está guardado en GitHub: se reconstruye el otro entorno.');",
+    "      core.info('The site published by run ' + baseRun + ' is no longer stored on GitHub: rebuilding the other environment.');",
     "      baseRun = '';",
     '    }',
     '  } catch (err) {',
-    "    core.info('No se pudo comprobar el sitio publicado (' + err.message + '): se intenta descargar igual.');",
+    "    core.info('Could not check the published site (' + err.message + '): trying to download it anyway.');",
     '  }',
     '}',
     "const other = target === 'staging' ? 'production' : 'staging';",
@@ -758,10 +758,10 @@ const VERSIONS_SCRIPT = [
     'const { data: deployment } = await github.rest.repos.createDeployment({',
     '  owner, repo, ref: version, task: TASK, environment: target,',
     "  auto_merge: false, required_contexts: [], production_environment: target === 'production', transient_environment: false,",
-    "  description: requestedBy ? 'Desde TaskMate, pedido por ' + requestedBy : 'Desde TaskMate',",
+    "  description: requestedBy ? 'From TaskMate, requested by ' + requestedBy : 'From TaskMate',",
     '  payload: { taskmate: true, requestedBy, runId: context.runId },',
     '});',
-    "if (!deployment.id) throw new Error('GitHub no creó el deployment: ' + (deployment.message || ''));",
+    "if (!deployment.id) throw new Error('GitHub did not create the deployment: ' + (deployment.message || ''));",
     '// Right away, so the failure step can close this deployment whatever fails next.',
     "core.setOutput('deployment_id', String(deployment.id));",
     "await github.rest.repos.createDeploymentStatus({ owner, repo, deployment_id: deployment.id, state: 'in_progress', log_url: logUrl });",
@@ -786,7 +786,7 @@ const FAILURE_SCRIPT = [
     'const { data: statuses } = await github.rest.repos.listDeploymentStatuses({ owner, repo, deployment_id: deploymentId, per_page: 1 });',
     "const last = statuses.length > 0 ? statuses[0].state : '';",
     "if (['success', 'failure', 'error', 'inactive'].includes(last)) {",
-    "  core.info('El deploy ya quedó registrado como ' + last + '.');",
+    "  core.info('The deploy was already recorded as ' + last + '.');",
     '  return;',
     '}',
     "const logUrl = context.serverUrl + '/' + owner + '/' + repo + '/actions/runs/' + context.runId;",
@@ -803,29 +803,29 @@ const ATTEMPT_SCRIPT = [
     "const built = String(process.env.BUILD_ATTEMPT || '');",
     "const attempt = String(process.env.RUN_ATTEMPT || '');",
     'if (built !== attempt) {',
-    "  core.setFailed('No se vuelve a ejecutar solo el deploy: publicaría el sitio que armó el intento ' + (built || '?')",
-    "    + ' de esta ejecución, que puede estar desactualizado. Vuelve a desplegar desde TaskMate (o vuelve a ejecutar todos los jobs).');",
+    "  core.setFailed('The deploy alone is not re-run: it would publish the site built by attempt ' + (built || '?')",
+    "    + ' of this run, which may be outdated. Deploy again from TaskMate (or re-run all jobs).');",
     '}',
 ];
 
 const PLACEHOLDER_HTML = [
     '<!doctype html>',
-    '<html lang="es"><head><meta charset="utf-8"><title>Sin versión en producción</title></head>',
-    '<body><p>Producción todavía no tiene una versión publicada desde TaskMate.</p>',
-    '<p><a href="staging/">Ver staging</a></p></body></html>',
+    '<html lang="en"><head><meta charset="utf-8"><title>No version in production</title></head>',
+    '<body><p>Production does not have a version published from TaskMate yet.</p>',
+    '<p><a href="staging/">View staging</a></p></body></html>',
 ];
 
 const PRODUCTION_UNAVAILABLE_HTML = [
     '<!doctype html>',
-    '<html lang="es"><head><meta charset="utf-8"><title>Producción no disponible</title></head>',
-    '<body><p>TaskMate no pudo reconstruir la versión publicada de producción. Vuelve a desplegarla desde TaskMate.</p>',
-    '<p><a href="staging/">Ver staging</a></p></body></html>',
+    '<html lang="en"><head><meta charset="utf-8"><title>Production unavailable</title></head>',
+    '<body><p>TaskMate could not rebuild the published production version. Deploy it again from TaskMate.</p>',
+    '<p><a href="staging/">View staging</a></p></body></html>',
 ];
 
 const STAGING_UNAVAILABLE_HTML = [
     '<!doctype html>',
-    '<html lang="es"><head><meta charset="utf-8"><title>Staging no disponible</title></head>',
-    '<body><p>TaskMate no pudo reconstruir la versión publicada de staging; vuelve con el próximo deploy a staging.</p></body></html>',
+    '<html lang="en"><head><meta charset="utf-8"><title>Staging unavailable</title></head>',
+    '<body><p>TaskMate could not rebuild the published staging version; it comes back with the next staging deploy.</p></body></html>',
 ];
 
 const SKIP = "steps.versions.outputs.skip != 'true'";
@@ -869,7 +869,7 @@ const assembleScript = (spec) => {
         'copy_site() {',
         '  local from="$1" to="$2"',
         '  shift 2',
-        '  if [ ! -d "$from" ]; then echo "::error::No se encontró la carpeta del sitio: $from"; return 1; fi',
+        '  if [ ! -d "$from" ]; then echo "::error::Site folder not found: $from"; return 1; fi',
         '  mkdir -p "$to"',
         '  tar --exclude=./.git --exclude=./.github "$@" -C "$from" -cf - . | tar -C "$to" -xf -',
         '}',
@@ -886,9 +886,9 @@ const assembleScript = (spec) => {
         `  tar -C _site -xf ${q(PREVIOUS_TAR)}`,
         'elif [ -n "$OTHER_VERSION" ]; then',
         `  if [ "$OTHER_BUILT" = success ] && copy_env ${site('other')} "$OTHER_ENV"; then`,
-        '    echo "No se pudo descargar el sitio publicado: se reconstruyó $OTHER_ENV desde ${OTHER_VERSION:0:7}."',
+        '    echo "Could not download the published site: rebuilt $OTHER_ENV from ${OTHER_VERSION:0:7}."',
         '  else',
-        '    echo "::warning::No se pudo reconstruir $OTHER_ENV (${OTHER_VERSION:0:7}): queda una página provisional hasta su próximo deploy."',
+        '    echo "::warning::Could not rebuild $OTHER_ENV (${OTHER_VERSION:0:7}): a placeholder page stays until its next deploy."',
         '    clear_env "$OTHER_ENV"',
         '    if [ "$OTHER_ENV" = production ]; then',
         `      printf '%s\\n' ${html(PRODUCTION_UNAVAILABLE_HTML)} > _site/index.html`,
@@ -909,7 +909,7 @@ const assembleScript = (spec) => {
 // deploy job, which runs no code of the repository).
 const buildJob = (out, spec) => {
     out.add(2, 'build:');
-    out.add(4, "name: 'Build del deploy'");
+    out.add(4, "name: 'Deploy build'");
     out.add(4, 'needs: ci');
     // Pushes to the default branch that passed CI go to staging; TaskMate dispatches production,
     // promotions and rollbacks (CI is skipped then: TaskMate only deploys versions that passed it).
@@ -930,7 +930,7 @@ const buildJob = (out, spec) => {
     // The deploy and close jobs only act on a build of their own attempt (see ATTEMPT_SCRIPT).
     out.add(6, 'attempt: ${{ github.run_attempt }}');
     out.add(4, 'steps:');
-    step(out, 'Versiones a publicar', {
+    step(out, 'Versions to publish', {
         id: 'versions',
         uses: ACTIONS.githubScript,
         env: {
@@ -940,9 +940,9 @@ const buildJob = (out, spec) => {
         },
         withs: { script: VERSIONS_SCRIPT },
     });
-    step(out, 'Configurar GitHub Pages', { id: 'pages', ifExpr: SKIP, uses: ACTIONS.configurePages });
+    step(out, 'Set up GitHub Pages', { id: 'pages', ifExpr: SKIP, uses: ACTIONS.configurePages });
     if (spec.project.stack === 'node') setupRuntime(out, spec, { cache: false, ifExpr: SKIP });
-    step(out, 'Descargar el sitio publicado', {
+    step(out, 'Download the published site', {
         id: 'previous',
         ifExpr: `${SKIP} && steps.versions.outputs.base_run != ''`,
         continueOnError: true,
@@ -955,16 +955,16 @@ const buildJob = (out, spec) => {
         },
     });
     versionSteps(out, spec, 'target', {
-        names: { checkout: 'Checkout de la versión a desplegar', build: 'Build de la versión a desplegar' },
+        names: { checkout: 'Checkout of the version to deploy', build: 'Build of the version to deploy' },
         ifExpr: SKIP,
         fallback: false,
     });
     versionSteps(out, spec, 'other', {
-        names: { checkout: 'Checkout del otro entorno (respaldo)', build: 'Build del otro entorno (respaldo)' },
+        names: { checkout: 'Checkout of the other environment (backup)', build: 'Build of the other environment (backup)' },
         ifExpr: `${SKIP} && steps.versions.outputs.other_version != '' && (steps.previous.outcome != 'success' || hashFiles('${PREVIOUS_TAR}') == '')`,
         fallback: true,
     });
-    step(out, 'Armar el sitio (producción en /, staging en /staging/)', {
+    step(out, 'Assemble the site (production at /, staging at /staging/)', {
         ifExpr: SKIP,
         env: {
             TARGET_ENV: '${{ steps.versions.outputs.target }}',
@@ -974,12 +974,12 @@ const buildJob = (out, spec) => {
         },
         run: assembleScript(spec),
     });
-    step(out, 'Subir el sitio', {
+    step(out, 'Upload the site', {
         ifExpr: SKIP,
         uses: ACTIONS.uploadPages,
         withs: { path: '_site', 'retention-days': String(PAGES_RETENTION_DAYS) },
     });
-    step(out, 'Registrar el deploy fallido', {
+    step(out, 'Record the failed deploy', {
         ifExpr: "(failure() || cancelled()) && steps.versions.outputs.deployment_id != ''",
         uses: ACTIONS.githubScript,
         env: { DEPLOYMENT_ID: '${{ steps.versions.outputs.deployment_id }}' },
@@ -989,7 +989,7 @@ const buildJob = (out, spec) => {
 
 const deployJob = (out) => {
     out.add(2, 'deploy:');
-    out.add(4, "name: 'Deploy a GitHub Pages'");
+    out.add(4, "name: 'Deploy to GitHub Pages'");
     out.add(4, 'needs: build');
     out.add(4, 'if: >-');
     out.add(6, "!cancelled() && needs.build.result == 'success' && needs.build.outputs.skip != 'true'");
@@ -1000,16 +1000,16 @@ const deployJob = (out) => {
     out.add(6, 'name: github-pages');
     out.add(6, 'url: ${{ steps.publish.outputs.page_url }}');
     out.add(4, 'steps:');
-    step(out, 'Comprobar que el build es de este intento', {
+    step(out, 'Check that the build is from this attempt', {
         id: 'current',
         uses: ACTIONS.githubScript,
         env: { BUILD_ATTEMPT: '${{ needs.build.outputs.attempt }}', RUN_ATTEMPT: '${{ github.run_attempt }}' },
         withs: { script: ATTEMPT_SCRIPT },
     });
-    step(out, 'Publicar en GitHub Pages', { id: 'publish', uses: ACTIONS.deployPages });
+    step(out, 'Publish to GitHub Pages', { id: 'publish', uses: ACTIONS.deployPages });
     // Both recorders only after the attempt check passed: a refused re-run never writes a status on
     // the old deployment (it may be the live one).
-    step(out, 'Registrar el deploy', {
+    step(out, 'Record the deploy', {
         ifExpr: "steps.current.outcome == 'success'",
         uses: ACTIONS.githubScript,
         env: {
@@ -1019,7 +1019,7 @@ const deployJob = (out) => {
         },
         withs: { script: SUCCESS_SCRIPT },
     });
-    step(out, 'Registrar el deploy fallido', {
+    step(out, 'Record the failed deploy', {
         ifExpr: "(failure() || cancelled()) && needs.build.outputs.deployment_id != '' && steps.current.outcome == 'success'",
         uses: ACTIONS.githubScript,
         env: { DEPLOYMENT_ID: '${{ needs.build.outputs.deployment_id }}' },
@@ -1034,7 +1034,7 @@ const deployJob = (out) => {
 // partial re-run away from the deployment of an earlier attempt.
 const closeJob = (out) => {
     out.add(2, 'close:');
-    out.add(4, "name: 'Cerrar el deploy'");
+    out.add(4, "name: 'Close the deploy'");
     out.add(4, 'needs: [build, deploy]');
     out.add(4, 'if: >-');
     out.add(6, "always() && needs.build.outputs.deployment_id != '' && needs.build.outputs.attempt == github.run_attempt");
@@ -1043,23 +1043,23 @@ const closeJob = (out) => {
     out.add(4, 'timeout-minutes: 5');
     permissions(out, { deployments: 'write' });
     out.add(4, 'steps:');
-    step(out, 'Registrar el deploy fallido', {
+    step(out, 'Record the failed deploy', {
         uses: ACTIONS.githubScript,
         env: { DEPLOYMENT_ID: '${{ needs.build.outputs.deployment_id }}' },
         withs: { script: FAILURE_SCRIPT },
     });
 };
 
-const CI_JOB_NAMES = Object.freeze({ node: 'CI (Node.js)', python: 'CI (Python)', static: 'CI (sitio estático)' });
+const CI_JOB_NAMES = Object.freeze({ node: 'CI (Node.js)', python: 'CI (Python)', static: 'CI (static site)' });
 
 /** The workflow file for a validated spec. Deterministic: the same spec always gives the same text. */
 const renderWorkflow = (spec) => {
     const out = new Lines();
-    out.add(0, '# Generado por TaskMate (GitHub → CI/CD). Cámbialo desde TaskMate: si lo editas a mano,');
-    out.add(0, '# TaskMate lo reemplaza la próxima vez que alguien configure el pipeline.');
+    out.add(0, '# Generated by TaskMate (GitHub → CI/CD). Change it from TaskMate: if you edit it by hand,');
+    out.add(0, '# TaskMate replaces it the next time someone sets up the pipeline.');
     out.add(0, WORKFLOW_MARKER);
     out.add(0, "name: 'TaskMate CI/CD'");
-    out.add(0, "run-name: ${{ inputs.environment == 'production' && 'Deploy a producción desde TaskMate' || inputs.environment == 'staging' && 'Deploy a staging desde TaskMate' || '' }}");
+    out.add(0, "run-name: ${{ inputs.environment == 'production' && 'Deploy to production from TaskMate' || inputs.environment == 'staging' && 'Deploy to staging from TaskMate' || '' }}");
     out.add(0);
     out.add(0, 'on:');
     out.add(2, 'push:');
@@ -1068,16 +1068,16 @@ const renderWorkflow = (spec) => {
     out.add(2, 'workflow_dispatch:');
     out.add(4, 'inputs:');
     out.add(6, 'environment:');
-    out.add(8, "description: 'Entorno a desplegar (none = solo CI)'");
+    out.add(8, "description: 'Environment to deploy (none = CI only)'");
     out.add(8, 'type: choice');
     out.add(8, "options: ['none', 'staging', 'production']");
     out.add(8, "default: 'none'");
     out.add(6, 'version:');
-    out.add(8, "description: 'Commit a desplegar (SHA completo)'");
+    out.add(8, "description: 'Commit to deploy (full SHA)'");
     out.add(8, 'type: string');
     out.add(8, "default: ''");
     out.add(6, 'requested_by:');
-    out.add(8, "description: 'Usuario de TaskMate que pidió el deploy'");
+    out.add(8, "description: 'TaskMate user who asked for the deploy'");
     out.add(8, 'type: string');
     out.add(8, "default: ''");
     out.add(0);

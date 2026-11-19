@@ -52,43 +52,43 @@ beforeEach(() => {
 describe('CicdPanel', () => {
   test('admin without a pipeline can open the setup', async () => {
     renderPanel(true);
-    fireEvent.click(await screen.findByRole('button', { name: 'Configurar pipeline' }));
-    expect(await screen.findByRole('dialog', { name: 'Configurar pipeline de CI/CD' })).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'Set up pipeline' }));
+    expect(await screen.findByRole('dialog', { name: 'Set up CI/CD pipeline' })).toBeInTheDocument();
     await waitFor(() => expect(proposePipeline).toHaveBeenCalledWith('G1', {}, expect.anything()));
   });
 
   test('members see the state but cannot configure', async () => {
     renderPanel(false);
-    expect(await screen.findByText(/Pide al administrador del grupo que lo configure/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Configurar pipeline' })).not.toBeInTheDocument();
+    expect(await screen.findByText(/Ask the group admin to set it up/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Set up pipeline' })).not.toBeInTheDocument();
   });
 
   test('a configured pipeline shows its stages, who configured it, the workflow and the site', async () => {
     getPipeline.mockResolvedValue(CONFIGURED);
     renderPanel(true);
     expect(await screen.findByText('Deploy a GitHub Pages')).toBeInTheDocument();
-    expect(screen.getByText(/Configurado por ana/)).toBeInTheDocument();
+    expect(screen.getByText(/Configured by ana/)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '.github/workflows/taskmate-ci.yml' })).toHaveAttribute(
       'href',
       'https://github.com/acme/app/blob/main/.github/workflows/taskmate-ci.yml'
     );
     expect(screen.getByRole('link', { name: 'https://acme.github.io/app/' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Editar pipeline' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Edit pipeline' })).toBeInTheDocument();
   });
 
   test('an outdated or missing workflow is flagged with what to do', async () => {
     getPipeline.mockResolvedValue({ ...CONFIGURED, workflow: { present: true, templateVersion: 1, currentVersion: 2, outdated: true } });
     const { unmount } = renderPanel(true);
-    expect(await screen.findByText(/versión anterior de TaskMate/)).toHaveTextContent('vuelve a subirlo para actualizarlo');
+    expect(await screen.findByText(/older TaskMate version/)).toHaveTextContent('push it again to update it');
     unmount();
     getPipeline.mockResolvedValue({ ...CONFIGURED, workflow: { present: false, templateVersion: null, currentVersion: 2, outdated: false } });
     renderPanel(false);
-    expect(await screen.findByText(/ya no está en el repositorio/)).toHaveTextContent('Pide al administrador');
+    expect(await screen.findByText(/is no longer in the repository/)).toHaveTextContent('Ask the group admin');
   });
 
   test('Pages problems are reported', async () => {
     getPipeline.mockResolvedValue({ ...CONFIGURED, pages: { enabled: null, error: 'APP_PERMISSIONS_MISSING' } });
     renderPanel(true);
-    expect(await screen.findByText(/no puede leer GitHub Pages/)).toBeInTheDocument();
+    expect(await screen.findByText(/cannot read GitHub Pages/)).toBeInTheDocument();
   });
 });

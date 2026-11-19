@@ -25,25 +25,25 @@ import { safeHttpsUrl } from './cicd/cicdUtils';
 import { errorMessage, isAbortError } from './githubUtils';
 
 const VERDICT = {
-  pass: { severity: 'success', label: 'Sin problemas' },
-  warn: { severity: 'warning', label: 'Revisar' },
-  fail: { severity: 'error', label: 'Problemas graves' },
+  pass: { severity: 'success', label: 'No issues' },
+  warn: { severity: 'warning', label: 'Needs review' },
+  fail: { severity: 'error', label: 'Serious issues' },
 };
 const SEVERITY_COLOR = { high: '#f87171', medium: '#fbbf24', low: '#94a3b8' };
 const SYNTAX = {
-  true: { label: 'sintaxis ok', color: 'success' },
-  false: { label: 'inválido', color: 'error' },
-  null: { label: 'sin verificar', color: 'default' },
+  true: { label: 'syntax ok', color: 'success' },
+  false: { label: 'invalid', color: 'error' },
+  null: { label: 'not checked', color: 'default' },
 };
 const ACTIONS = {
-  audit: { run: auditTask, wait: 'Auditando con el modelo local (puede tardar ~20 s)…', fail: 'No se pudo auditar la rama.' },
-  tests: { run: generateTaskTests, wait: 'Generando pruebas con el modelo local (puede tardar ~30 s)…', fail: 'No se pudieron generar las pruebas.' },
-  review: { run: reviewTaskPr, wait: 'Revisando el pull request (puede tardar ~30 s)…', fail: 'No se pudo revisar el pull request.' },
+  audit: { run: auditTask, wait: 'Auditing with the local model (can take ~20 s)…', fail: 'Could not audit the branch.' },
+  tests: { run: generateTaskTests, wait: 'Generating tests with the local model (can take ~30 s)…', fail: 'Could not generate the tests.' },
+  review: { run: reviewTaskPr, wait: 'Reviewing the pull request (can take ~30 s)…', fail: 'Could not review the pull request.' },
 };
 const POSTED = {
-  posted: 'Publicada en GitHub',
-  no_permission: 'No publicada en GitHub: la GitHub App necesita el permiso «Pull requests: write».',
-  failed: 'No se pudo publicar en GitHub.',
+  posted: 'Posted on GitHub',
+  no_permission: 'Not posted on GitHub: the GitHub App needs the “Pull requests: write” permission.',
+  failed: 'Could not post on GitHub.',
 };
 
 function Finding({ f }) {
@@ -55,7 +55,7 @@ function Finding({ f }) {
         <Typography variant="caption" sx={{ fontFamily: 'monospace' }} color="text.secondary">
           {f.path}{f.line ? `:${f.line}` : ''}
         </Typography>
-        {f.source !== 'rule' && <Chip size="small" label="IA, orientativo" variant="outlined" />}
+        {f.source !== 'rule' && <Chip size="small" label="AI, advisory" variant="outlined" />}
       </Stack>
       {f.detail && <Typography variant="caption" component="div" sx={{ mt: 0.25 }}>{f.detail}</Typography>}
       {f.suggestion && <Typography variant="caption" component="div" color="text.secondary">→ {f.suggestion}</Typography>}
@@ -68,8 +68,8 @@ function AuditResult({ audit }) {
   return (
     <Box sx={{ mt: 1 }}>
       <Alert severity={verdict.severity}>
-        {verdict.label} · {audit.files ? audit.files.length : 0} archivos ·{' '}
-        {audit.counts ? `${audit.counts.high} altos, ${audit.counts.medium} medios, ${audit.counts.low} bajos` : ''}
+        {verdict.label} · {audit.files ? audit.files.length : 0} files ·{' '}
+        {audit.counts ? `${audit.counts.high} high, ${audit.counts.medium} medium, ${audit.counts.low} low` : ''}
       </Alert>
       {audit.findings && audit.findings.length > 0 && (
         <List dense disablePadding>
@@ -107,8 +107,8 @@ function Proposal({ p }) {
         )}
         {p.code && (
           <Box sx={{ position: 'relative' }}>
-            <Tooltip title="Copiar">
-              <IconButton size="small" onClick={copy} aria-label={`Copiar ${p.test_path}`} sx={{ position: 'absolute', top: 4, right: 4 }}>
+            <Tooltip title="Copy">
+              <IconButton size="small" onClick={copy} aria-label={`Copy ${p.test_path}`} sx={{ position: 'absolute', top: 4, right: 4 }}>
                 <ContentCopyIcon fontSize="small" />
               </IconButton>
             </Tooltip>
@@ -123,9 +123,9 @@ function Proposal({ p }) {
 }
 
 function ReviewResult({ review }) {
-  if (review.status === 'pending') return <Alert severity="info" sx={{ mt: 1 }}>Revisión en curso para el último commit…</Alert>;
+  if (review.status === 'pending') return <Alert severity="info" sx={{ mt: 1 }}>Review in progress for the latest commit…</Alert>;
   if (review.status === 'failed') {
-    return <Alert severity="error" sx={{ mt: 1 }}>La última revisión falló ({review.errorCode || 'error'}).</Alert>;
+    return <Alert severity="error" sx={{ mt: 1 }}>The last review failed ({review.errorCode || 'error'}).</Alert>;
   }
   const r = review.result || {};
   const verdict = VERDICT[review.verdict] || VERDICT.warn;
@@ -134,7 +134,7 @@ function ReviewResult({ review }) {
     <Box sx={{ mt: 1 }}>
       <Alert severity={verdict.severity}>
         PR #{review.prNumber} · commit {String(review.headSha || '').slice(0, 7)} · {verdict.label}
-        {r.comments ? ` · ${r.comments.length} comentarios en línea` : ''}
+        {r.comments ? ` · ${r.comments.length} inline comments` : ''}
       </Alert>
       {r.summary && <Typography variant="body2" sx={{ mt: 1 }}>{r.summary}</Typography>}
       {r.risks && r.risks.length > 0 && (
@@ -158,13 +158,13 @@ function TestsResult({ tests }) {
   return (
     <Box sx={{ mt: 1 }}>
       <Alert severity="info" sx={{ mb: 1 }}>
-        {proposals.length} {proposals.length === 1 ? 'archivo de pruebas propuesto' : 'archivos de pruebas propuestos'}.
-        No se ejecutaron ni se subieron: revísalos antes de agregarlos a la rama.
+        {proposals.length} {proposals.length === 1 ? 'proposed test file' : 'proposed test files'}.
+        They were not run or pushed: review them before adding them to the branch.
       </Alert>
       {proposals.map((p) => <Proposal key={p.test_path} p={p} />)}
       {(tests.skipped || []).map((s) => (
         <Typography key={s.path} variant="caption" component="div" color="text.secondary">
-          Omitido {s.path}: {s.reason}
+          Skipped {s.path}: {s.reason}
         </Typography>
       ))}
     </Box>
@@ -204,24 +204,24 @@ export default function TaskAiPanel({ tid, aiEnabled, prOpen }) {
   if (!aiEnabled) {
     return (
       <Alert severity="info" sx={{ mt: 2 }}>
-        El análisis con IA está desactivado para este proyecto; un administrador puede activarlo en GitHub.
+        AI analysis is turned off for this project; an admin can turn it on from the GitHub page.
       </Alert>
     );
   }
 
   return (
-    <Box component="section" aria-label="IA sobre la rama" sx={{ mt: 2 }}>
+    <Box component="section" aria-label="AI on the branch" sx={{ mt: 2 }}>
       <Stack direction="row" spacing={1} alignItems="center">
-        <Typography variant="subtitle2" sx={{ flexGrow: 1 }}>IA sobre la rama</Typography>
+        <Typography variant="subtitle2" sx={{ flexGrow: 1 }}>AI on the branch</Typography>
         <Button size="small" variant="outlined" startIcon={<FactCheckIcon />} onClick={() => run('audit')} disabled={Boolean(state.loading)}>
-          Auditar
+          Audit
         </Button>
         <Button size="small" variant="outlined" startIcon={<ScienceIcon />} onClick={() => run('tests')} disabled={Boolean(state.loading)}>
-          Generar pruebas
+          Generate tests
         </Button>
         {prOpen && (
           <Button size="small" variant="outlined" startIcon={<RateReviewIcon />} onClick={() => run('review')} disabled={Boolean(state.loading)}>
-            Revisar PR
+            Review PR
           </Button>
         )}
       </Stack>

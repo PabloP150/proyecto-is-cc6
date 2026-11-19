@@ -26,27 +26,27 @@ test('runs the audit and lists findings with their source', async () => {
     ],
   });
   renderPanel();
-  fireEvent.click(screen.getByRole('button', { name: /auditar/i }));
+  fireEvent.click(screen.getByRole('button', { name: /audit/i }));
   expect(screen.getByRole('status')).toBeInTheDocument();
-  expect(await screen.findByText(/Problemas graves/)).toBeInTheDocument();
+  expect(await screen.findByText(/Serious issues/)).toBeInTheDocument();
   expect(screen.getByText('Hardcoded credential')).toBeInTheDocument();
   expect(screen.getByText('a.py:3')).toBeInTheDocument();
-  expect(screen.getAllByText('IA, orientativo')).toHaveLength(1);
+  expect(screen.getAllByText('AI, advisory')).toHaveLength(1);
   expect(auditTask).toHaveBeenCalledWith('T-1', expect.objectContaining({ signal: expect.anything() }));
 });
 
 test('shows the server error', async () => {
   auditTask.mockRejectedValue(Object.assign(new Error('The AI server is not configured (AI_SERVER_URL).'), { code: 'AI_SERVER_DISABLED' }));
   renderPanel();
-  fireEvent.click(screen.getByRole('button', { name: /auditar/i }));
+  fireEvent.click(screen.getByRole('button', { name: /audit/i }));
   expect(await screen.findByRole('alert')).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: /auditar/i })).toBeEnabled();
+  expect(screen.getByRole('button', { name: /audit/i })).toBeEnabled();
 });
 
 test('without admin consent there is no audit button', () => {
   renderPanel({ aiEnabled: false });
-  expect(screen.queryByRole('button', { name: /auditar/i })).not.toBeInTheDocument();
-  expect(screen.getByText(/desactivado/)).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /audit/i })).not.toBeInTheDocument();
+  expect(screen.getByText(/turned off/)).toBeInTheDocument();
 });
 
 test('generates tests and shows proposals, flags and skips', async () => {
@@ -60,12 +60,12 @@ test('generates tests and shows proposals, flags and skips', async () => {
     skipped: [{ path: 'README.md', reason: 'no supported test framework' }],
   });
   renderPanel();
-  fireEvent.click(screen.getByRole('button', { name: /generar pruebas/i }));
-  expect(await screen.findByText(/2 archivos de pruebas propuestos/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: /generate tests/i }));
+  expect(await screen.findByText(/2 proposed test files/)).toBeInTheDocument();
   expect(screen.getByText('tests/test_calc.py')).toBeInTheDocument();
-  expect(screen.getByText('sintaxis ok')).toBeInTheDocument();
-  expect(screen.getByText('inválido')).toBeInTheDocument();
-  expect(screen.getByText(/Omitido README.md/)).toBeInTheDocument();
+  expect(screen.getByText('syntax ok')).toBeInTheDocument();
+  expect(screen.getByText('invalid')).toBeInTheDocument();
+  expect(screen.getByText(/Skipped README.md/)).toBeInTheDocument();
 });
 
 const REVIEW = {
@@ -78,16 +78,16 @@ test('shows the stored PR review and why it was not posted', async () => {
   renderPanel({ prOpen: true });
   expect(await screen.findByText('Agrega el pago.')).toBeInTheDocument();
   expect(screen.getByText(/PR #4 · commit abcdef1/)).toBeInTheDocument();
-  expect(screen.getByText(/2 comentarios en línea/)).toBeInTheDocument();
+  expect(screen.getByText(/2 inline comments/)).toBeInTheDocument();
   expect(screen.getByText(/Pull requests: write/)).toBeInTheDocument();
 });
 
 test('«Revisar PR» only with an open PR; runs the review', async () => {
   const { unmount } = renderPanel({ prOpen: false });
-  expect(screen.queryByRole('button', { name: /revisar pr/i })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /review pr/i })).not.toBeInTheDocument();
   unmount();
   reviewTaskPr.mockResolvedValue({ ...REVIEW, posted: 'posted', reviewUrl: 'https://github.com/o/r/pull/4#r1' });
   renderPanel({ prOpen: true });
-  fireEvent.click(screen.getByRole('button', { name: /revisar pr/i }));
-  expect(await screen.findByRole('link', { name: 'Publicada en GitHub' })).toHaveAttribute('href', 'https://github.com/o/r/pull/4#r1');
+  fireEvent.click(screen.getByRole('button', { name: /review pr/i }));
+  expect(await screen.findByRole('link', { name: 'Posted on GitHub' })).toHaveAttribute('href', 'https://github.com/o/r/pull/4#r1');
 });

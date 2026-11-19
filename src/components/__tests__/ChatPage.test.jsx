@@ -106,6 +106,6 @@ describe('ChatPage', () => {
     });
 
     expect(screen.getByText('hola')).toBeInTheDocument();
-    expect(screen.getByRole('alert')).toHaveTextContent('La IA tardó demasiado');
+    expect(screen.getByRole('alert')).toHaveTextContent('The AI took too long to answer');
   });
 });

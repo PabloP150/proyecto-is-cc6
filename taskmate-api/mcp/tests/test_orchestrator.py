@@ -3,7 +3,7 @@ import pytest
 import llm_service
 from agents import orchestrator as orchestrator_module
 from agents.orchestrator import (_ROUTE_MARKER, CHANGE, CONFIRM, DISCARD, PROJECT_INFO_MAX_CHARS, REJECT,
-                                 OrchestratorAgent, classify_confirmation)
+                                 OrchestratorAgent, classify_confirmation, reply_language)
 
 PLAN = {"recommendations": {
     "project_name": "Dog Walker",
@@ -294,6 +294,8 @@ async def test_off_topic_gets_a_fixed_reply_without_a_model_answer(llm, fake_soc
     assert reply["event"] == "response" and "FitFlow Demo" in reply["data"]["content"]
     assert reply["data"]["content"].startswith("Solo puedo ayudarte")
     assert all(isinstance(p, str) for p in llm["generate"])  # only the route check ran
+    await agent.handle_message("S", fake_socket, project_request("what is the capital of France?", "p"))
+    assert fake_socket.sent[-1]["data"]["content"].startswith("I can only help with the project")
 
 
 async def test_classifier_yes_creates_the_plan(llm, fake_socket, monkeypatch):
@@ -340,3 +342,24 @@ async def test_invalid_project_context_falls_back_to_plain_chat(llm, fake_socket
     agent = OrchestratorAgent()
     await agent.handle_message("S", fake_socket, project_request("hola", project={"groupId": "g1", "snapshot": "x"}))
     assert fake_socket.sent[-1]["event"] == "response"
+
+
+async def test_an_empty_project_is_reported_as_such(llm, fake_socket):
+    agent = OrchestratorAgent()
+    empty = {"groupId": "g9", "groupName": "Mi grupo", "members": ["ana"],
+             "repoNote": "No GitHub repository is connected to this project."}
+    await agent.handle_message("S", fake_socket, project_request("¿de qué trata este proyecto?", project=empty))
+    system, user = llm["generate"][-1]
+    assert "how to\n  ask for one" in system["content"] and "crear un plan" not in system["content"]
+    assert "data_note" in user["content"] and "no tasks or milestones" in user["content"]
+    assert "connecting a GitHub repository" in system["content"]
+    assert user["content"].rstrip().endswith("Reply in Spanish, without a greeting unless it greets you.")
+
+
+@pytest.mark.parametrize("message,language", [
+    ("i want to know what this project is about", "English"), ("what is this project about?", "English"),
+    ("¿de qué trata este proyecto?", "Spanish"), ("quiero saber de que trata el proyecto", "Spanish"),
+    ("hola", "Spanish"), ("hello", "English"),
+])
+def test_reply_language(message, language):
+    assert reply_language(message) == language

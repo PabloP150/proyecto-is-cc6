@@ -27,17 +27,17 @@ const OUTPUT_DIRS = { vite: 'dist', cra: 'build' };
 const FRAMEWORKS = [
   { value: 'vite', label: 'Vite' },
   { value: 'cra', label: 'Create React App' },
-  { value: 'static', label: 'Estático (rutas relativas)' },
+  { value: 'static', label: 'Static (relative paths)' },
 ];
 
 const projectKey = (p) => `${p.stack}:${p.dir}`;
 
 const INTROS = {
-  saved: 'Esta es la configuración actual del pipeline. Cámbiala y vuelve a subirla.',
-  ai: 'La IA revisó el repositorio y propone este pipeline. Ajústalo antes de subirlo.',
-  detected: 'TaskMate revisó el repositorio y propone este pipeline. Ajústalo antes de subirlo.',
+  saved: 'This is the current pipeline configuration. Change it and push it again.',
+  ai: 'The AI reviewed the repository and proposes this pipeline. Adjust it before pushing.',
+  detected: 'TaskMate reviewed the repository and proposes this pipeline. Adjust it before pushing.',
 };
-const SOURCE_LABELS = { saved: 'Guardado', ai: 'Propuesto por IA', detected: 'Detectado' };
+const SOURCE_LABELS = { saved: 'Saved', ai: 'Proposed by AI', detected: 'Detected' };
 
 // Servers and watchers never finish, so they are listed (the admin sees why) but cannot be chosen.
 function ScriptSelect({ id, label, value, scripts, longRunning = [], noneLabel, onChange, helperText }) {
@@ -65,7 +65,7 @@ function ScriptSelect({ id, label, value, scripts, longRunning = [], noneLabel, 
             </Typography>
             {neverEnds && (
               <Typography component="span" variant="caption" color="warning.main" sx={{ ml: 1 }}>
-                (inicia un servidor o vigila cambios: nunca termina)
+                (starts a server or watches for changes: never finishes)
               </Typography>
             )}
           </MenuItem>
@@ -86,7 +86,7 @@ function NodeFields({ spec, project, options, onChange }) {
         select
         size="small"
         fullWidth
-        label="Versión de Node.js"
+        label="Node.js version"
         value={spec.runtime || ''}
         onChange={(event) => onChange({ ...spec, runtime: event.target.value })}
       >
@@ -101,7 +101,7 @@ function NodeFields({ spec, project, options, onChange }) {
         select
         size="small"
         fullWidth
-        label="Instalar dependencias"
+        label="Install dependencies"
         value={(spec.install && spec.install.kind) || 'npm-install'}
         onChange={(event) => onChange({ ...spec, install: { kind: event.target.value } })}
       >
@@ -110,19 +110,19 @@ function NodeFields({ spec, project, options, onChange }) {
       </TextField>
       <ScriptSelect
         id="ci-lint"
-        label="Análisis estático (lint)"
+        label="Static analysis (lint)"
         value={spec.lint && spec.lint.name}
         scripts={scripts}
         longRunning={longRunning}
-        noneLabel="Sin lint"
+        noneLabel="No lint"
         onChange={setScript('lint')}
       />
       <FormControlLabel
         control={<Switch checked={spec.audit === true} onChange={(event) => onChange({ ...spec, audit: event.target.checked })} />}
-        label="Auditoría de dependencias (npm audit)"
+        label="Dependency audit (npm audit)"
       />
-      <ScriptSelect id="ci-test" label="Pruebas" value={spec.test && spec.test.name} scripts={scripts} longRunning={longRunning} noneLabel="Sin pruebas" onChange={setScript('test')} />
-      <ScriptSelect id="ci-build" label="Build" value={spec.build && spec.build.name} scripts={scripts} longRunning={longRunning} noneLabel="Sin build" onChange={setScript('build')} />
+      <ScriptSelect id="ci-test" label="Tests" value={spec.test && spec.test.name} scripts={scripts} longRunning={longRunning} noneLabel="No tests" onChange={setScript('test')} />
+      <ScriptSelect id="ci-build" label="Build" value={spec.build && spec.build.name} scripts={scripts} longRunning={longRunning} noneLabel="No build" onChange={setScript('build')} />
     </>
   );
 }
@@ -141,7 +141,7 @@ function PythonFields({ spec, project, options, onChange }) {
         select
         size="small"
         fullWidth
-        label="Versión de Python"
+        label="Python version"
         value={spec.runtime || ''}
         onChange={(event) => onChange({ ...spec, runtime: event.target.value })}
       >
@@ -156,11 +156,11 @@ function PythonFields({ spec, project, options, onChange }) {
         select
         size="small"
         fullWidth
-        label="Instalar dependencias"
+        label="Install dependencies"
         value={installValue}
         onChange={(event) => changeInstall(event.target.value)}
       >
-        <MenuItem value="">Sin instalación</MenuItem>
+        <MenuItem value="">No install step</MenuItem>
         {project.requirementFiles.length > 0 && (
           <MenuItem value="pip">pip install -r {project.requirementFiles.join(', ')}</MenuItem>
         )}
@@ -168,11 +168,11 @@ function PythonFields({ spec, project, options, onChange }) {
       </TextField>
       <FormControlLabel
         control={<Switch checked={Boolean(spec.lint)} onChange={(event) => onChange({ ...spec, lint: event.target.checked ? { kind: 'ruff' } : null })} />}
-        label="Análisis estático con Ruff"
+        label="Static analysis with Ruff"
       />
       <FormControlLabel
         control={<Switch checked={Boolean(spec.test)} onChange={(event) => onChange({ ...spec, test: event.target.checked ? { kind: 'pytest' } : null })} />}
-        label="Pruebas con pytest"
+        label="Tests with pytest"
       />
     </>
   );
@@ -183,7 +183,7 @@ function DeployFields({ spec, project, onChange }) {
   if (project.stack === 'python') {
     return (
       <Typography variant="body2" color="text.secondary">
-        Los proyectos de Python no se despliegan a GitHub Pages (solo sitios estáticos).
+        Python projects are not deployed to GitHub Pages (static sites only).
       </Typography>
     );
   }
@@ -194,13 +194,13 @@ function DeployFields({ spec, project, onChange }) {
         select
         size="small"
         fullWidth
-        label="Carpeta del sitio"
+        label="Site folder"
         value={deploy ? deploy.outputDir : ''}
         onChange={(event) => onChange({ ...spec, deploy: { target: 'github-pages', framework: 'static', outputDir: event.target.value } })}
       >
         {project.siteDirs.map((dir) => (
           <MenuItem key={dir} value={dir}>
-            {dir === '.' ? 'La carpeta del proyecto' : dir}
+            {dir === '.' ? 'The project folder' : dir}
           </MenuItem>
         ))}
       </TextField>
@@ -216,7 +216,7 @@ function DeployFields({ spec, project, onChange }) {
     <>
       <FormControlLabel
         control={<Switch checked={Boolean(deploy)} onChange={(event) => enable(event.target.checked)} />}
-        label="Desplegar a GitHub Pages"
+        label="Deploy to GitHub Pages"
       />
       {deploy && (
         <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' } }}>
@@ -224,7 +224,7 @@ function DeployFields({ spec, project, onChange }) {
             id="ci-framework"
             select
             size="small"
-            label="Tipo de sitio"
+            label="Site type"
             value={deploy.framework}
             onChange={(event) => {
               const framework = event.target.value;
@@ -240,7 +240,7 @@ function DeployFields({ spec, project, onChange }) {
           <TextField
             id="ci-output-dir"
             size="small"
-            label="Carpeta que se publica"
+            label="Published folder"
             value={deploy.outputDir}
             onChange={(event) => onChange({ ...spec, deploy: { ...deploy, outputDir: event.target.value.trim() } })}
             inputProps={{ maxLength: 200, spellCheck: false, style: monoSx }}
@@ -254,7 +254,7 @@ function DeployFields({ spec, project, onChange }) {
 function Stages({ stages }) {
   if (!stages || stages.length === 0) return null;
   return (
-    <Box component="ol" aria-label="Etapas del pipeline" sx={{ m: 0, pl: 3, display: 'grid', gap: 0.75 }}>
+    <Box component="ol" aria-label="Pipeline stages" sx={{ m: 0, pl: 3, display: 'grid', gap: 0.75 }}>
       {stages.map((stage) => (
         <li key={stage.key}>
           <Typography variant="body2" sx={{ fontWeight: 600 }}>
@@ -307,7 +307,7 @@ export default function PipelineSetup({ open, gid, defaultBranch, onClose, onApp
         })
         .catch((err) => {
           if (isAbortError(err)) return;
-          setProposal((prev) => ({ ...prev, loading: false, ai: false, error: errorMessage(err, 'No se pudo analizar el repositorio.') }));
+          setProposal((prev) => ({ ...prev, loading: false, ai: false, error: errorMessage(err, 'Could not analyze the repository.') }));
         });
     },
     [gid]
@@ -336,7 +336,7 @@ export default function PipelineSetup({ open, gid, defaultBranch, onClose, onApp
         })
         .catch((err) => {
           if (isAbortError(err)) return;
-          setPreview({ loading: false, error: errorMessage(err, 'No se pudo actualizar la vista previa.') });
+          setPreview({ loading: false, error: errorMessage(err, 'Could not update the preview.') });
         });
     }, PREVIEW_DELAY_MS);
     return () => {
@@ -358,7 +358,7 @@ export default function PipelineSetup({ open, gid, defaultBranch, onClose, onApp
       setResult(data);
       if (onApplied) onApplied(data);
     } catch (err) {
-      setApplyError(errorMessage(err, 'No se pudo subir el pipeline al repositorio.'));
+      setApplyError(errorMessage(err, 'Could not push the pipeline to the repository.'));
     } finally {
       setApplying(false);
     }
@@ -368,7 +368,7 @@ export default function PipelineSetup({ open, gid, defaultBranch, onClose, onApp
   const aiInfo = (data && data.ai) || null;
   const projects = (data && data.facts && data.facts.projects) || [];
   const project = spec ? projects.find((p) => p.dir === spec.project.dir && p.stack === spec.project.stack) : null;
-  const branch = defaultBranch || 'la rama principal';
+  const branch = defaultBranch || 'the main branch';
   const busy = proposal.loading || applying;
   const canApply = Boolean(spec && project) && !busy && !preview.loading && !preview.error && !result;
   const commitUrl = result && result.commit ? safeGitHubUrl(result.commit.url) : null;
@@ -376,12 +376,12 @@ export default function PipelineSetup({ open, gid, defaultBranch, onClose, onApp
 
   return (
     <Dialog open={open} onClose={() => !applying && onClose()} fullWidth maxWidth="md" aria-labelledby="ci-setup-title">
-      <DialogTitle id="ci-setup-title">Configurar pipeline de CI/CD</DialogTitle>
+      <DialogTitle id="ci-setup-title">Set up CI/CD pipeline</DialogTitle>
       <DialogContent dividers>
         {proposal.loading && !data && (
           <Box role="status" sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 4, justifyContent: 'center' }}>
             <CircularProgress size={22} />
-            <Typography color="text.secondary">Analizando el repositorio…</Typography>
+            <Typography color="text.secondary">Analyzing the repository…</Typography>
           </Box>
         )}
         {proposal.error && (
@@ -389,7 +389,7 @@ export default function PipelineSetup({ open, gid, defaultBranch, onClose, onApp
             severity="error"
             action={
               <Button variant="ghost" size="small" onClick={() => load()}>
-                Reintentar
+                Retry
               </Button>
             }
           >
@@ -400,19 +400,19 @@ export default function PipelineSetup({ open, gid, defaultBranch, onClose, onApp
         {result && (
           <Alert severity="success" sx={{ mb: 2 }}>
             {result.commit && result.commit.changed === false
-              ? 'El pipeline ya estaba en el repositorio con esta misma configuración.'
-              : 'Pipeline subido al repositorio. GitHub lo ejecutará en unos segundos.'}
+              ? 'The pipeline was already in the repository with this same configuration.'
+              : 'Pipeline pushed to the repository. GitHub will run it in a few seconds.'}
             {commitUrl && (
               <>
                 {' '}
                 <Link href={commitUrl} target="_blank" rel="noopener noreferrer">
-                  Ver commit
+                  View commit
                 </Link>
               </>
             )}
             {siteUrl && (
               <Box component="span" sx={{ display: 'block', mt: 0.5 }}>
-                Sitio de GitHub Pages:{' '}
+                GitHub Pages site:{' '}
                 <Link href={siteUrl} target="_blank" rel="noopener noreferrer" sx={monoSx}>
                   {siteUrl}
                 </Link>
@@ -438,20 +438,20 @@ export default function PipelineSetup({ open, gid, defaultBranch, onClose, onApp
                     startIcon={proposal.loading && proposal.ai ? <CircularProgress size={16} color="inherit" /> : <AutoAwesomeIcon />}
                     aria-describedby="ci-ai-consent"
                   >
-                    Proponer con IA
+                    Propose with AI
                   </Button>
                 )}
               </Box>
               {aiInfo && (
                 <Typography id="ci-ai-consent" variant="caption" color="text.secondary" component="p" sx={{ mt: 0.5, mb: 0 }}>
                   {aiInfo.available
-                    ? 'Se envía a Groq la lista de proyectos y scripts del repositorio, nunca el código fuente.'
-                    : 'Activa «Permitir análisis con IA» en la pestaña Repositorio para que la IA proponga el pipeline.'}
+                    ? 'Only the list of projects and scripts in the repository is sent to Groq, never the source code.'
+                    : 'Turn on “Allow AI analysis” in the Repository tab so the AI can propose the pipeline.'}
                 </Typography>
               )}
               {proposal.loading && proposal.ai && (
                 <Typography role="status" variant="caption" color="text.secondary" component="p" sx={{ mt: 0.5, mb: 0 }}>
-                  La IA está revisando el repositorio…
+                  The AI is reviewing the repository…
                 </Typography>
               )}
             </Box>
@@ -470,7 +470,7 @@ export default function PipelineSetup({ open, gid, defaultBranch, onClose, onApp
               select
               size="small"
               fullWidth
-              label="Proyecto"
+              label="Project"
               value={projectKey(project)}
               disabled={busy || projects.length < 2}
               onChange={(event) => {
@@ -487,13 +487,13 @@ export default function PipelineSetup({ open, gid, defaultBranch, onClose, onApp
 
             <Box component="fieldset" sx={{ border: 0, p: 0, m: 0, display: 'grid', gap: 1.5 }} disabled={busy}>
               <Typography component="legend" variant="subtitle2" sx={{ mb: 1 }}>
-                Build, pruebas y análisis estático
+                Build, tests and static analysis
               </Typography>
               {project.stack === 'node' && <NodeFields spec={spec} project={project} options={data.options} onChange={change} />}
               {project.stack === 'python' && <PythonFields spec={spec} project={project} options={data.options} onChange={change} />}
               {project.stack === 'static' && (
                 <Typography variant="body2" color="text.secondary">
-                  Un sitio estático no se compila: el CI solo verifica que exista su index.html.
+                  A static site is not built: CI only checks that its index.html exists.
                 </Typography>
               )}
             </Box>
@@ -505,23 +505,23 @@ export default function PipelineSetup({ open, gid, defaultBranch, onClose, onApp
               <DeployFields spec={spec} project={project} onChange={change} />
               {spec.deploy && (
                 <Typography variant="caption" color="text.secondary">
-                  Staging se publica en /staging/ y se actualiza solo con cada cambio en {branch} que pasa el CI. Producción
-                  se publica en la raíz del sitio cuando un administrador lo aprueba en TaskMate.
+                  Staging is published at /staging/ and updates itself with every change on {branch} that passes CI. Production
+                  is published at the site root when an admin approves it in TaskMate.
                 </Typography>
               )}
             </Box>
 
             <Box>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                <Typography variant="subtitle2">Etapas</Typography>
-                {preview.loading && <CircularProgress size={14} aria-label="Actualizando vista previa" />}
+                <Typography variant="subtitle2">Stages</Typography>
+                {preview.loading && <CircularProgress size={14} aria-label="Updating preview" />}
               </Box>
               {preview.error ? <Alert severity="warning">{preview.error}</Alert> : <Stages stages={rendered.stages} />}
             </Box>
 
             <Box>
               <Button variant="ghost" size="small" onClick={() => setShowYaml((v) => !v)} aria-expanded={showYaml} aria-controls="ci-yaml">
-                {showYaml ? 'Ocultar el archivo YAML' : 'Ver el archivo YAML'}
+                {showYaml ? 'Hide the YAML file' : 'Show the YAML file'}
               </Button>
               {/* Rendered only while open: long YAML lines must never widen the dialog. */}
               {showYaml && (
@@ -529,7 +529,7 @@ export default function PipelineSetup({ open, gid, defaultBranch, onClose, onApp
                   id="ci-yaml"
                   component="pre"
                   tabIndex={0}
-                  aria-label="Vista previa de .github/workflows/taskmate-ci.yml"
+                  aria-label="Preview of .github/workflows/taskmate-ci.yml"
                   sx={{
                     ...monoSx,
                     mt: 1,
@@ -550,12 +550,12 @@ export default function PipelineSetup({ open, gid, defaultBranch, onClose, onApp
             </Box>
 
             <Alert severity="warning" icon={<CloudUploadIcon />}>
-              Al subirlo, TaskMate hará un commit en <strong>{branch}</strong> con{' '}
+              On push, TaskMate will commit to <strong>{branch}</strong> with{' '}
               <Box component="span" sx={monoSx}>
                 .github/workflows/taskmate-ci.yml
               </Box>
-              {spec.deploy ? ' y activará GitHub Pages para que publique desde GitHub Actions.' : '.'}
-              {data.workflowExists && data.source !== 'saved' && ' El archivo ya existe: si lo creó TaskMate se reemplaza.'}
+              {spec.deploy ? ' and will enable GitHub Pages to publish from GitHub Actions.' : '.'}
+              {data.workflowExists && data.source !== 'saved' && ' The file already exists: if TaskMate created it, it is replaced.'}
             </Alert>
           </Box>
         )}
@@ -571,11 +571,11 @@ export default function PipelineSetup({ open, gid, defaultBranch, onClose, onApp
           <Chip size="small" variant="outlined" label={SOURCE_LABELS[data.source] || SOURCE_LABELS.detected} sx={{ mr: 'auto', ml: 1 }} />
         )}
         <Button variant="ghost" size="small" onClick={onClose} disabled={applying}>
-          {result ? 'Cerrar' : 'Cancelar'}
+          {result ? 'Close' : 'Cancel'}
         </Button>
         {!result && (
           <Button variant="primary" size="small" onClick={handleApply} disabled={!canApply} startIcon={applying ? <CircularProgress size={16} color="inherit" /> : <CloudUploadIcon />}>
-            Subir al repositorio
+            Push to repository
           </Button>
         )}
       </DialogActions>

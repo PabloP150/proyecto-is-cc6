@@ -24,7 +24,7 @@ describe('AnalyticsDashboard — leader-only access', () => {
   it('shows a friendly "solo líderes" state instead of an error for non-leaders', async () => {
     api.get.mockRejectedValue(Object.assign(new Error('Only group leaders can view analytics'), { status: 403, code: 'NOT_GROUP_ADMIN' }));
     renderDashboard();
-    expect(await screen.findByText('Solo líderes del equipo')).toBeInTheDocument();
+    expect(await screen.findByText('Team leaders only')).toBeInTheDocument();
     expect(screen.queryByText('Only group leaders can view analytics')).not.toBeInTheDocument();
     expect(api.get).toHaveBeenCalledWith('/api/analytics/dashboard/g1', expect.any(Object));
   });
@@ -33,7 +33,7 @@ describe('AnalyticsDashboard — leader-only access', () => {
     api.get.mockRejectedValue(Object.assign(new Error('Servidor ocupado'), { status: 503, code: 'DB_BUSY' }));
     renderDashboard();
     expect(await screen.findByText(/Servidor ocupado/)).toBeInTheDocument();
-    expect(screen.queryByText('Solo líderes del equipo')).not.toBeInTheDocument();
+    expect(screen.queryByText('Team leaders only')).not.toBeInTheDocument();
   });
 });
 

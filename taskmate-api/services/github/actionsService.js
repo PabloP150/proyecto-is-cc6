@@ -409,7 +409,7 @@ const getJobAnnotationsForRepo = async (repo, jobId) => {
 
 // Deploy runs dispatched by TaskMate (production promotions, rollbacks) are admin-only to
 // re-run or cancel: re-running an old production deploy would be a rollback by a member.
-const isDeployRun = (run) => run.isTaskmate && run.event === 'workflow_dispatch' && /^Deploy a /.test(run.title || '');
+const isDeployRun = (run) => run.isTaskmate && run.event === 'workflow_dispatch' && /^Deploy (a|to) /.test(run.title || '');
 
 const assertCanControl = (run, isAdmin) => {
     if (isDeployRun(run) && !isAdmin) {

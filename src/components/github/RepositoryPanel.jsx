@@ -37,8 +37,7 @@ function InfoRow({ label, children }) {
 }
 
 export const AI_CONSENT_TEXT =
-  'Al analizar con IA se envía a Groq (el proveedor de IA) la estructura de archivos, el README, los archivos ' +
-  'de dependencias, los commits y los issues recientes del repositorio. Nunca se envía el código fuente.';
+  'AI analysis reads the file structure, READMEs, dependency files, the recent commits and issues of the repository. The source code is NEVER read.';
 
 function AiAnalysisSetting({ gid, enabled, isAdmin, onChange }) {
   const [saving, setSaving] = useState(false);
@@ -52,7 +51,7 @@ function AiAnalysisSetting({ gid, enabled, isAdmin, onChange }) {
       const data = await setAiAnalysis(gid, next);
       if (onChange) onChange(data && typeof data.aiAnalysisEnabled === 'boolean' ? data.aiAnalysisEnabled : next);
     } catch (err) {
-      setError(errorMessage(err, 'No se pudo cambiar el permiso de análisis con IA.'));
+      setError(errorMessage(err, 'Could not change the AI analysis permission.'));
     } finally {
       setSaving(false);
     }
@@ -63,16 +62,16 @@ function AiAnalysisSetting({ gid, enabled, isAdmin, onChange }) {
       {isAdmin ? (
         <FormControlLabel
           control={<Switch checked={enabled} onChange={handleToggle} disabled={saving} />}
-          label="Permitir análisis con IA"
+          label="Allow AI analysis"
         />
       ) : (
         <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
-          Análisis con IA: {enabled ? 'permitido' : 'desactivado'}
+          AI analysis: {enabled ? 'allowed' : 'off'}
         </Typography>
       )}
       <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
         {AI_CONSENT_TEXT}
-        {!isAdmin && ' Solo el administrador del grupo puede cambiar este permiso.'}
+        {!isAdmin && ' Only the group admin can change this permission.'}
       </Typography>
       {error && (
         <Alert severity="error" sx={{ mt: 1 }}>
@@ -103,13 +102,13 @@ export default function RepositoryPanel({ gid, repo, isAdmin, onUnlinked, onRepo
       const data = await install(gid);
       const url = data && (kind === 'authorize' ? data.authorizeUrl : data.installUrl);
       if (!isGitHubUrl(url)) {
-        setActionError('El servidor devolvió una dirección de GitHub no válida; no se abrió.');
+        setActionError('The server returned an invalid GitHub address; it was not opened.');
         setConnecting(null);
         return;
       }
       assignLocation(url);
     } catch (err) {
-      setActionError(errorMessage(err, 'No se pudo iniciar la conexión con GitHub.'));
+      setActionError(errorMessage(err, 'Could not start the connection with GitHub.'));
       setConnecting(null);
     }
   };
@@ -122,7 +121,7 @@ export default function RepositoryPanel({ gid, repo, isAdmin, onUnlinked, onRepo
       setConfirmOpen(false);
       if (onUnlinked) onUnlinked();
     } catch (err) {
-      setUnlinkError(errorMessage(err, 'No se pudo desconectar el repositorio.'));
+      setUnlinkError(errorMessage(err, 'Could not disconnect the repository.'));
     } finally {
       setUnlinking(false);
     }
@@ -130,36 +129,36 @@ export default function RepositoryPanel({ gid, repo, isAdmin, onUnlinked, onRepo
 
   if (!repo) {
     return (
-      <Card variant="default" component="section" aria-label="Estado del repositorio" sx={staticCardSx}>
+      <Card variant="default" component="section" aria-label="Repository status" sx={staticCardSx}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
           <GitHubIcon aria-hidden />
           <Typography variant="h6" component="h2">
-            Sin repositorio conectado
+            No repository connected
           </Typography>
         </Box>
         <Typography color="text.secondary" sx={{ mb: 2 }}>
-          Conecta un repositorio de GitHub para explorar sus archivos, crear ramas por tarea y actualizar el progreso con
-          los pull requests.
+          Connect a GitHub repository to explore its files, create branches per task and update progress from
+          pull requests.
         </Typography>
         {isAdmin ? (
           <>
             <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
               <Button variant="primary" onClick={() => startConnect('install')} disabled={Boolean(connecting)} startIcon={<GitHubIcon />}>
                 {connecting === 'install' ? <CircularProgress size={18} sx={{ mr: 1, color: 'inherit' }} /> : null}
-                Conectar repositorio
+                Connect repository
               </Button>
               <Button variant="ghost" onClick={() => startConnect('authorize')} disabled={Boolean(connecting)}>
                 {connecting === 'authorize' ? <CircularProgress size={18} sx={{ mr: 1, color: 'inherit' }} /> : null}
-                Ya instalé la App
+                I already installed the App
               </Button>
             </Box>
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
-              Se abrirá GitHub para instalar la TaskMate App o darle acceso a otro repositorio; al guardar vuelves aquí para
-              elegirlo. Si la App ya tiene acceso al repositorio, usa «Ya instalé la App».
+              GitHub will open to install the TaskMate App or give it access to another repository; after saving you come back here to
+              choose it. If the App already has access to the repository, use “I already installed the App”.
             </Typography>
           </>
         ) : (
-          <Alert severity="info">Solo el administrador del grupo puede conectar un repositorio.</Alert>
+          <Alert severity="info">Only the group admin can connect a repository.</Alert>
         )}
         {actionError && (
           <Alert severity="error" sx={{ mt: 2 }}>
@@ -175,7 +174,7 @@ export default function RepositoryPanel({ gid, repo, isAdmin, onUnlinked, onRepo
   const suspended = Boolean(installation.suspended || repo.suspendedAt);
 
   return (
-    <Card variant="default" component="section" aria-label="Estado del repositorio" sx={staticCardSx}>
+    <Card variant="default" component="section" aria-label="Repository status" sx={staticCardSx}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap', mb: 1.5 }}>
         <GitHubIcon aria-hidden />
         <Typography variant="h6" component="h2" sx={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>
@@ -191,14 +190,14 @@ export default function RepositoryPanel({ gid, repo, isAdmin, onUnlinked, onRepo
           size="small"
           variant="outlined"
           icon={repo.isPrivate ? <LockIcon /> : <PublicIcon />}
-          label={repo.isPrivate ? 'Privado' : 'Público'}
+          label={repo.isPrivate ? 'Private' : 'Public'}
         />
       </Box>
 
       {suspended && (
         <Alert severity="warning" sx={{ mb: 2 }}>
-          La instalación de la GitHub App está suspendida. Mientras siga así no se podrá leer el repositorio ni crear
-          ramas; pide a quien la instaló que la reactive en GitHub.
+          The GitHub App installation is suspended. Until it is reactivated the repository cannot be read and branches
+          cannot be created; ask whoever installed it to reactivate it on GitHub.
         </Alert>
       )}
 
@@ -210,30 +209,30 @@ export default function RepositoryPanel({ gid, repo, isAdmin, onUnlinked, onRepo
       />
 
       <Box component="dl" sx={{ m: 0, mb: 2 }}>
-        <InfoRow label="Rama por defecto">
+        <InfoRow label="Default branch">
           <Box component="span" sx={{ fontFamily: 'monospace' }}>
             {String(repo.defaultBranch || '—')}
           </Box>
         </InfoRow>
-        <InfoRow label="Instalación de la App">{String(installation.accountLogin || repo.owner || '—')}</InfoRow>
-        <InfoRow label="Conectado por">
-          {String(repo.connectedByUsername || 'Usuario desconocido')}
+        <InfoRow label="App installation">{String(installation.accountLogin || repo.owner || '—')}</InfoRow>
+        <InfoRow label="Connected by">
+          {String(repo.connectedByUsername || 'Unknown user')}
           {repo.connectedAt ? ` · ${formatDateTime(repo.connectedAt)}` : ''}
         </InfoRow>
       </Box>
 
       {isAdmin && (
         <Button variant="ghost" size="small" startIcon={<LinkOffIcon />} onClick={() => setConfirmOpen(true)}>
-          Desconectar
+          Disconnect
         </Button>
       )}
 
       <Dialog open={confirmOpen} onClose={() => !unlinking && setConfirmOpen(false)} aria-labelledby="gh-unlink-title">
-        <DialogTitle id="gh-unlink-title">¿Desconectar el repositorio?</DialogTitle>
+        <DialogTitle id="gh-unlink-title">Disconnect the repository?</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            El grupo dejará de estar vinculado a {String(repo.fullName)} en TaskMate. Esto no desinstala la GitHub App: sigue
-            instalada en tu cuenta u organización y puedes quitarla desde la configuración de GitHub.
+            The group will no longer be linked to {String(repo.fullName)} in TaskMate. This does not uninstall the GitHub App: it stays
+            installed on your account or organization and you can remove it from the GitHub settings.
           </DialogContentText>
           {unlinkError && (
             <Alert severity="error" sx={{ mt: 2 }}>
@@ -243,11 +242,11 @@ export default function RepositoryPanel({ gid, repo, isAdmin, onUnlinked, onRepo
         </DialogContent>
         <DialogActions>
           <Button variant="ghost" size="small" onClick={() => setConfirmOpen(false)} disabled={unlinking}>
-            Cancelar
+            Cancel
           </Button>
           <Button variant="secondary" size="small" onClick={handleUnlink} disabled={unlinking}>
             {unlinking ? <CircularProgress size={16} sx={{ mr: 1, color: 'inherit' }} /> : null}
-            Desconectar
+            Disconnect
           </Button>
         </DialogActions>
       </Dialog>

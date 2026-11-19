@@ -25,11 +25,11 @@ import Card from '../ui/Card';
 // One entry per state in the Deployments CHECK constraint, so an unknown state is
 // impossible rather than silently rendered as "unknown".
 const STATE_META = {
-  queued: { label: 'En cola', color: 'default', Icon: HourglassEmptyIcon },
-  building: { label: 'Compilando', color: 'info', Icon: CloudQueueIcon },
-  ready: { label: 'Desplegado', color: 'success', Icon: CheckCircleIcon },
-  error: { label: 'Falló', color: 'error', Icon: ErrorIcon },
-  canceled: { label: 'Cancelado', color: 'warning', Icon: CancelIcon },
+  queued: { label: 'Queued', color: 'default', Icon: HourglassEmptyIcon },
+  building: { label: 'Building', color: 'info', Icon: CloudQueueIcon },
+  ready: { label: 'Deployed', color: 'success', Icon: CheckCircleIcon },
+  error: { label: 'Failed', color: 'error', Icon: ErrorIcon },
+  canceled: { label: 'Cancelled', color: 'warning', Icon: CancelIcon },
 };
 
 const stateMeta = (state) => STATE_META[state] || { label: state || '—', color: 'default', Icon: CloudQueueIcon };
@@ -41,7 +41,7 @@ function DeploymentRow({ deployment }) {
       <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
         <Chip icon={<Icon />} label={label} color={color} size="small" />
         {deployment.environment === 'production' ? (
-          <Chip label="producción" size="small" variant="outlined" />
+          <Chip label="production" size="small" variant="outlined" />
         ) : (
           <Chip label="preview" size="small" variant="outlined" />
         )}
@@ -89,7 +89,7 @@ function TargetSetup({ gid, isAdmin, onLinked }) {
       await linkDeployTarget(gid, { provider: 'vercel', projectRef: projectRef.trim() });
       onLinked();
     } catch (err) {
-      setError(errorMessage(err, 'No se pudo vincular el proyecto de Vercel.'));
+      setError(errorMessage(err, 'Could not link the Vercel project.'));
     } finally {
       setSaving(false);
     }
@@ -98,8 +98,8 @@ function TargetSetup({ gid, isAdmin, onLinked }) {
   if (!isAdmin) {
     return (
       <Alert severity="info">
-        Este grupo todavía no tiene un proyecto de despliegue vinculado. Un administrador del grupo
-        puede vincularlo.
+        This group does not have a deployment project linked yet. A group admin
+        can link it.
       </Alert>
     );
   }
@@ -107,22 +107,22 @@ function TargetSetup({ gid, isAdmin, onLinked }) {
   return (
     <Stack spacing={2}>
       <Alert severity="info">
-        Pega el <strong>Project ID</strong> de Vercel (Settings → General) y añade el webhook
+        Paste the Vercel <strong>Project ID</strong> (Settings → General) and add the webhook
         <Typography component="span" sx={{ fontFamily: 'monospace', mx: 0.5 }}>
           /api/deploy/webhook/vercel
         </Typography>
-        en Vercel para los eventos de <em>deployment</em>.
+        in Vercel for <em>deployment</em> events.
       </Alert>
       {error && <Alert severity="error">{error}</Alert>}
       <Stack direction="row" spacing={1}>
         <TextField
-          label="Project ID de Vercel"
+          label="Vercel Project ID"
           size="small"
           fullWidth
           value={projectRef}
           onChange={(event) => setProjectRef(event.target.value)}
           placeholder="prj_XXXXXXXXXXXXXXXXXXXX"
-          inputProps={{ 'aria-label': 'Project ID de Vercel' }}
+          inputProps={{ 'aria-label': 'Vercel Project ID' }}
         />
         <Button onClick={handleLink} disabled={saving || !projectRef.trim()}>
           {saving ? 'Vinculando…' : 'Vincular'}
@@ -162,7 +162,7 @@ export default function DeploymentPanel({ gid, isAdmin = false }) {
         setDeployments(linked ? await getDeployments(gid, { limit: 20, signal: controller.signal }) || [] : []);
       } catch (err) {
         if (!active || isAbortError(err)) return;
-        setError(errorMessage(err, 'No se pudieron cargar los despliegues.'));
+        setError(errorMessage(err, 'Could not load the deployments.'));
       } finally {
         if (active) setLoading(false);
       }
@@ -179,7 +179,7 @@ export default function DeploymentPanel({ gid, isAdmin = false }) {
       await unlinkDeployTarget(gid, { provider: 'vercel' });
       refresh();
     } catch (err) {
-      setError(errorMessage(err, 'No se pudo desvincular el proyecto.'));
+      setError(errorMessage(err, 'Could not unlink the project.'));
     }
   };
 
@@ -196,16 +196,16 @@ export default function DeploymentPanel({ gid, isAdmin = false }) {
       <Stack spacing={2} sx={{ p: 2 }}>
         <Stack direction="row" alignItems="center" spacing={1}>
           <Typography variant="h6" sx={{ flexGrow: 1 }}>
-            Despliegues
+            Deployments
           </Typography>
           {target && (
             <>
               <Button variant="text" onClick={refresh}>
-                Actualizar
+                Refresh
               </Button>
               {isAdmin && (
                 <Button variant="text" color="error" startIcon={<LinkOffIcon />} onClick={handleUnlink}>
-                  Desvincular
+                  Unlink
                 </Button>
               )}
             </>
@@ -219,7 +219,7 @@ export default function DeploymentPanel({ gid, isAdmin = false }) {
         {target && (
           <>
             <Typography variant="body2" color="text.secondary">
-              Proyecto de Vercel:{' '}
+              Vercel project:{' '}
               <Typography component="span" sx={{ fontFamily: 'monospace' }}>
                 {target.projectRef}
               </Typography>
@@ -227,8 +227,8 @@ export default function DeploymentPanel({ gid, isAdmin = false }) {
 
             {deployments.length === 0 ? (
               <Alert severity="info">
-                Todavía no se han recibido despliegues. Aparecerán aquí en cuanto Vercel envíe el
-                primer webhook.
+                No deployments received yet. They will show up here as soon as Vercel sends the
+                first webhook.
               </Alert>
             ) : (
               <List disablePadding>

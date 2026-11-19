@@ -66,7 +66,7 @@ export default function useTaskLinks(gid) {
           setState((prev) => ({
             ...(prev.gid === gid ? prev : { repo: null, links: EMPTY_LINKS }),
             gid,
-            error: errorMessage(err, 'No se pudieron cargar los enlaces de GitHub.'),
+            error: errorMessage(err, 'Could not load the GitHub links.'),
           }));
         }
       } finally {

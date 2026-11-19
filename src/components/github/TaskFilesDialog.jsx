@@ -25,12 +25,12 @@ import TaskAiPanel from './TaskAiPanel';
 
 // Matches the CHECK constraint on dbo.TaskFiles, so an unknown status cannot render.
 const STATUS_META = {
-  added: { label: 'nuevo', color: '#10b981' },
-  modified: { label: 'modificado', color: '#60a5fa' },
-  removed: { label: 'eliminado', color: '#f87171' },
-  renamed: { label: 'renombrado', color: '#c084fc' },
-  copied: { label: 'copiado', color: '#94a3b8' },
-  changed: { label: 'cambiado', color: '#60a5fa' },
+  added: { label: 'added', color: '#10b981' },
+  modified: { label: 'modified', color: '#60a5fa' },
+  removed: { label: 'removed', color: '#f87171' },
+  renamed: { label: 'renamed', color: '#c084fc' },
+  copied: { label: 'copied', color: '#94a3b8' },
+  changed: { label: 'changed', color: '#60a5fa' },
 };
 
 const statusMeta = (status) => STATUS_META[status] || { label: status || '—', color: '#94a3b8' };
@@ -60,14 +60,14 @@ function FileRow({ file, repoUrl, ref_, overlappingTasks }) {
         )}
 
         {href && (
-          <Tooltip title="Abrir en GitHub">
+          <Tooltip title="Open on GitHub">
             <IconButton
               component={Link}
               href={href}
               target="_blank"
               rel="noopener noreferrer"
               size="small"
-              aria-label={`Abrir ${file.path} en GitHub`}
+              aria-label={`Open ${file.path} on GitHub`}
             >
               <OpenInNewIcon fontSize="small" />
             </IconButton>
@@ -80,7 +80,7 @@ function FileRow({ file, repoUrl, ref_, overlappingTasks }) {
         <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.5, pl: 1 }}>
           <WarningAmberIcon fontSize="inherit" sx={{ color: '#fbbf24' }} />
           <Typography variant="caption" sx={{ color: '#fbbf24' }}>
-            También lo tocan: {overlappingTasks.map((t) => t.taskName || t.tid.slice(0, 8)).join(', ')}
+            Also changed by: {overlappingTasks.map((t) => t.taskName || t.tid.slice(0, 8)).join(', ')}
           </Typography>
         </Stack>
       )}
@@ -137,7 +137,7 @@ export default function TaskFilesDialog({ open, onClose, tid, taskName, link, re
           overlaps: [],
           loading: false,
           backfilled: false,
-          error: errorMessage(err, 'No se pudieron cargar los archivos de la tarea.'),
+          error: errorMessage(err, 'Could not load the task files.'),
         });
       }
     })();
@@ -169,7 +169,7 @@ export default function TaskFilesDialog({ open, onClose, tid, taskName, link, re
           <DescriptionIcon />
           <Box sx={{ flexGrow: 1, minWidth: 0 }}>
             <Typography variant="h6" noWrap>
-              Archivos de la tarea
+              Task files
             </Typography>
             {taskName && (
               <Typography variant="body2" color="text.secondary" noWrap>
@@ -201,8 +201,8 @@ export default function TaskFilesDialog({ open, onClose, tid, taskName, link, re
 
         {!state.loading && !state.error && state.files.length === 0 && (
           <Alert severity="info">
-            Esta tarea todavía no tiene archivos registrados. Se registran automáticamente cuando
-            se fusiona el pull request de su rama.
+            This task has no recorded files yet. They are recorded automatically when
+            the pull request of its branch is merged.
           </Alert>
         )}
 
@@ -210,14 +210,14 @@ export default function TaskFilesDialog({ open, onClose, tid, taskName, link, re
           <>
             <Stack direction="row" spacing={2} sx={{ mb: 1 }} alignItems="center" flexWrap="wrap" useFlexGap>
               <Typography variant="body2" color="text.secondary">
-                {state.files.length} {state.files.length === 1 ? 'archivo' : 'archivos'}
+                {state.files.length} {state.files.length === 1 ? 'file' : 'files'}
               </Typography>
               <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
                 <Box component="span" sx={{ color: '#10b981' }}>+{totals.additions}</Box>{' '}
                 <Box component="span" sx={{ color: '#f87171' }}>−{totals.deletions}</Box>
               </Typography>
               {state.backfilled && (
-                <Chip size="small" label="recuperado de GitHub" variant="outlined" />
+                <Chip size="small" label="recovered from GitHub" variant="outlined" />
               )}
             </Stack>
             <Divider />

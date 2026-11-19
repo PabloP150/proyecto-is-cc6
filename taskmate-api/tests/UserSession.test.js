@@ -282,7 +282,7 @@ describe('UserSession', () => {
             await replyPlan(request);
             await session.handleMessage({ type: 'repo_analysis', requestId: 'client-2', groupId: GID });
             const error = lastOfType(ws, 'error');
-            expect(error).toMatchObject({ code: 'RATE_LIMITED', requestId: 'client-2', message: 'Solo se puede pedir un análisis por minuto.' });
+            expect(error).toMatchObject({ code: 'RATE_LIMITED', requestId: 'client-2', message: 'You can only ask for one analysis per minute.' });
             expect(error.retryAfterSec).toBeGreaterThan(0);
 
             const otherSession = new UserSession(UID, mockWebSocket());
@@ -374,7 +374,7 @@ describe('UserSession', () => {
 
         test('an analysis without instructions is kept with the text the chat shows', async () => {
             await startAnalysis({ instructions: '' });
-            expect(turns()).toEqual([['user', 'Analiza el repositorio de «Mi proyecto» y propón las siguientes tareas.']]);
+            expect(turns()).toEqual([['user', 'Analyze the repository of “Mi proyecto” and propose the next tasks.']]);
         });
 
         test('kept instructions are the cleaned ones sent to the AI', async () => {
@@ -545,7 +545,7 @@ describe('UserSession', () => {
             const other = new UserSession(UID, mockWebSocket());
             await other.handleMessage({ type: 'user', content: 'one more', requestId: 'm21' });
             expect(sent(other.websocket).pop()).toMatchObject({
-                code: 'RATE_LIMITED', requestId: 'm21', retryAfterSec: expect.any(Number), message: 'Estás enviando mensajes muy rápido; espera un momento.',
+                code: 'RATE_LIMITED', requestId: 'm21', retryAfterSec: expect.any(Number), message: 'You are sending messages too fast; wait a moment.',
             });
             expect(pythonRequests()).toHaveLength(20);
             expect(other.chatHistory).toHaveLength(0);

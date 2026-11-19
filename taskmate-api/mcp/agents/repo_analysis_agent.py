@@ -71,7 +71,7 @@ PLANNING RULES:
 - A task's "milestone_key" must be the "key" of one of your milestones, or null.
 - Dates use the format YYYY-MM-DD and must be on or after {today}.
 - "category" must be exactly one of: frontend, backend, database, testing, general.
-- Write ALL human-readable text (summary, names, descriptions) in Spanish.
+- Write ALL human-readable text (summary, names, descriptions) in English.
 - Names: at most 25 characters. Descriptions: one or two short sentences.
 - Summary: two or three sentences for someone who has never seen the repository, in this order: what the project is and what it does; its main technologies (from the manifests and the README); its current state and what is still missing. At most 550 characters.
 
@@ -327,6 +327,10 @@ def project_context_json(project) -> str:
         data["repository"] = _fit_repository(project.snapshot)
     elif project.repoNote:
         data["repository_note"] = _untrusted(project.repoNote, 200)
+    if project.snapshot is None and not project.existing.tasks and not project.existing.milestones:
+        # Said explicitly, so the model reports the gap instead of padding an answer.
+        data["data_note"] = ("This project has no repository data and no tasks or milestones yet: only its name "
+                             "and team are known.")
     return json.dumps(data, ensure_ascii=False, separators=(',', ':'))
 
 
@@ -437,7 +441,7 @@ class RepoAnalysisAgent:
 
         semaphore = _analysis_semaphore()
         if not await _acquire_within(semaphore, min(QUEUE_TIMEOUT_SEC, deadline - loop.time())):
-            raise RepoAnalysisError('LLM_RATE_LIMIT', "Hay otro análisis en curso. Intenta de nuevo en unos segundos.",
+            raise RepoAnalysisError('LLM_RATE_LIMIT', "Another analysis is running. Try again in a few seconds.",
                                     retry_after_sec=BUSY_RETRY_AFTER_SEC)
         try:
             return await self._run(params, today, existing_names, deadline)
@@ -451,7 +455,7 @@ class RepoAnalysisAgent:
             remaining = deadline - loop.time()
             if remaining < MIN_CALL_SEC:
                 if attempt == 0:
-                    raise RepoAnalysisError('LLM_TIMEOUT', "El análisis tardó demasiado. Intenta de nuevo.")
+                    raise RepoAnalysisError('LLM_TIMEOUT', "The analysis took too long. Please try again.")
                 break
             try:
                 data = await llm_service.generate_json(
@@ -461,15 +465,15 @@ class RepoAnalysisAgent:
             except llm_service.LLMRateLimitError as exc:
                 retry_after = exc.retry_after if exc.retry_after is not None else DEFAULT_RATE_LIMIT_RETRY_SEC
                 raise RepoAnalysisError('LLM_RATE_LIMIT',
-                                        "El servicio de IA alcanzó su límite de uso. Intenta de nuevo más tarde.",
+                                        "The AI service reached its usage limit. Try again later.",
                                         retry_after_sec=max(1, int(math.ceil(retry_after))))
             except llm_service.LLMTimeoutError:
-                raise RepoAnalysisError('LLM_TIMEOUT', "El servicio de IA tardó demasiado en responder. Intenta de nuevo.")
+                raise RepoAnalysisError('LLM_TIMEOUT', "The AI service took too long to answer. Please try again.")
             except llm_service.LLMInvalidOutputError:
                 logger.info("Repo analysis attempt %d returned invalid JSON", attempt + 1)
                 continue
             except llm_service.LLMError:
-                raise RepoAnalysisError('LLM_ERROR', "El servicio de IA no está disponible en este momento.")
+                raise RepoAnalysisError('LLM_ERROR', "The AI service is not available right now.")
             try:
                 plan = build_plan(data, today, params.limits, existing_names)
             except InvalidPlanError as exc:
@@ -478,4 +482,4 @@ class RepoAnalysisAgent:
             logger.info("Repo analysis produced %d tasks and %d milestones",
                         len(plan["tasks"]), len(plan["milestones"]))
             return plan
-        raise RepoAnalysisError('LLM_INVALID_OUTPUT', "La IA no devolvió un plan válido. Intenta de nuevo.")
+        raise RepoAnalysisError('LLM_INVALID_OUTPUT', "The AI did not return a valid plan. Please try again.")

@@ -13,21 +13,21 @@ function PagesStatus({ pages }) {
   if (pages.error === 'APP_PERMISSIONS_MISSING') {
     return (
       <Alert severity="warning" sx={{ mt: 1.5 }}>
-        TaskMate no puede leer GitHub Pages porque la App todavía no tiene los permisos de CI/CD aceptados.
+        TaskMate cannot read GitHub Pages because the CI/CD permissions of the App have not been accepted yet.
       </Alert>
     );
   }
   if (pages.enabled === false) {
     return (
       <Alert severity="warning" sx={{ mt: 1.5 }}>
-        GitHub Pages está desactivado en el repositorio. Un administrador puede volver a subir el pipeline para activarlo.
+        GitHub Pages is disabled in the repository. An admin can push the pipeline again to enable it.
       </Alert>
     );
   }
   const url = safeHttpsUrl(pages.url);
   return url ? (
     <Typography variant="body2" sx={{ mt: 1 }}>
-      Sitio:{' '}
+      Site:{' '}
       <Link href={url} target="_blank" rel="noopener noreferrer" sx={monoSx}>
         {url}
       </Link>
@@ -41,17 +41,17 @@ function WorkflowStatus({ workflow, isAdmin }) {
   if (workflow.present === false) {
     return (
       <Alert severity="warning" sx={{ mt: 1.5 }}>
-        El workflow de TaskMate ya no está en el repositorio, así que el pipeline no corre.{' '}
-        {isAdmin ? 'Pulsa «Editar pipeline» y vuelve a subirlo.' : 'Pide al administrador del grupo que vuelva a subirlo.'}
+        The TaskMate workflow is no longer in the repository, so the pipeline does not run.{' '}
+        {isAdmin ? 'Click “Edit pipeline” and push it again.' : 'Ask the group admin to push it again.'}
       </Alert>
     );
   }
   if (!workflow.outdated) return null;
   return (
     <Alert severity="info" sx={{ mt: 1.5 }}>
-      El workflow del repositorio es de una versión anterior de TaskMate y no tiene las últimas mejoras (deploys en cola, sin
-      reconstruir el otro entorno).{' '}
-      {isAdmin ? 'Pulsa «Editar pipeline» y vuelve a subirlo para actualizarlo.' : 'Pide al administrador del grupo que lo vuelva a subir.'}
+      The repository workflow comes from an older TaskMate version and lacks the latest improvements (queued deploys, no
+      rebuilding the other environment).{' '}
+      {isAdmin ? 'Click “Edit pipeline” and push it again to update it.' : 'Ask the group admin to push it again.'}
     </Alert>
   );
 }
@@ -75,7 +75,7 @@ export default function PipelineCard({ gid, repo, isAdmin, refreshKey = 0, onCon
       })
       .catch((err) => {
         if (isAbortError(err)) return;
-        setState({ loading: false, error: errorMessage(err, 'No se pudo cargar el pipeline.'), data: null });
+        setState({ loading: false, error: errorMessage(err, 'Could not load the pipeline.'), data: null });
       });
     return () => controller.abort();
     // onLoaded is a notification for the parent; a new function identity must not refetch.
@@ -88,15 +88,15 @@ export default function PipelineCard({ gid, repo, isAdmin, refreshKey = 0, onCon
   const workflowUrl = repoUrl && data ? `${repoUrl}/blob/${encodeURIComponent(repo.defaultBranch || 'main')}/${data.workflowPath}` : null;
 
   return (
-    <Card variant="default" component="section" aria-label="Pipeline de CI/CD" sx={staticCardSx}>
+    <Card variant="default" component="section" aria-label="CI/CD pipeline" sx={staticCardSx}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap', mb: 1 }}>
         <BuildCircleIcon aria-hidden />
         <Typography variant="h6" component="h2" sx={{ flex: '1 1 auto' }}>
-          Pipeline de CI/CD
+          CI/CD pipeline
         </Typography>
         {isAdmin && !loading && !error && (
           <Button variant={pipeline ? 'ghost' : 'primary'} size="small" startIcon={<TuneIcon />} onClick={onConfigure}>
-            {pipeline ? 'Editar pipeline' : 'Configurar pipeline'}
+            {pipeline ? 'Edit pipeline' : 'Set up pipeline'}
           </Button>
         )}
       </Box>
@@ -104,7 +104,7 @@ export default function PipelineCard({ gid, repo, isAdmin, refreshKey = 0, onCon
       {loading && !data && (
         <Box role="status" sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 2 }}>
           <CircularProgress size={20} />
-          <Typography color="text.secondary">Cargando pipeline…</Typography>
+          <Typography color="text.secondary">Loading pipeline…</Typography>
         </Box>
       )}
       {error && (
@@ -112,7 +112,7 @@ export default function PipelineCard({ gid, repo, isAdmin, refreshKey = 0, onCon
           severity="error"
           action={
             <Button variant="ghost" size="small" onClick={reload}>
-              Reintentar
+              Retry
             </Button>
           }
         >
@@ -123,14 +123,14 @@ export default function PipelineCard({ gid, repo, isAdmin, refreshKey = 0, onCon
       {data && !pipeline && (
         <Typography color="text.secondary">
           {isAdmin
-            ? 'Este repositorio todavía no tiene un pipeline de TaskMate. Configúralo para compilar, probar, analizar y desplegar con cada cambio.'
-            : 'Este repositorio todavía no tiene un pipeline de TaskMate. Pide al administrador del grupo que lo configure.'}
+            ? 'This repository does not have a TaskMate pipeline yet. Set it up to build, test, analyze and deploy on every change.'
+            : 'This repository does not have a TaskMate pipeline yet. Ask the group admin to set it up.'}
         </Typography>
       )}
 
       {pipeline && (
         <>
-          <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', mb: 1 }} aria-label="Etapas">
+          <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', mb: 1 }} aria-label="Stages">
             {pipeline.spec && pipeline.spec.project && (
               <Chip size="small" color="primary" variant="outlined" label={STACK_LABELS[pipeline.spec.project.stack] || pipeline.spec.project.stack} />
             )}
@@ -139,7 +139,7 @@ export default function PipelineCard({ gid, repo, isAdmin, refreshKey = 0, onCon
             ))}
           </Box>
           <Typography variant="caption" color="text.secondary" component="div">
-            Configurado por {pipeline.configuredBy || 'un administrador'}
+            Configured by {pipeline.configuredBy || 'an admin'}
             {pipeline.configuredAt ? ` · ${formatDateTime(pipeline.configuredAt)}` : ''}
             {workflowUrl && (
               <>

@@ -46,7 +46,7 @@ const SeleccionarPersona = ({ tid, members = [] }) => {
       }
     } catch (err) {
       setSelectedMembers(prev => isSelected ? [...prev, member.uid] : prev.filter(m => !sameId(m, member.uid)));
-      setErrorMsg(errorMessage(err, isSelected ? 'Error al quitar la asignación' : 'Error al asignar el usuario'));
+      setErrorMsg(errorMessage(err, isSelected ? 'Could not remove the assignment' : 'Could not assign the user'));
     }
   };
 
@@ -107,7 +107,7 @@ const SeleccionarPersona = ({ tid, members = [] }) => {
               },
             }}
           >
-            No hay miembros disponibles
+            No members available
           </MenuItem>
         )}
       </Menu>

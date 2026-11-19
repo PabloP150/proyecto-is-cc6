@@ -32,15 +32,15 @@ function JobCard({ gid, job }) {
           {isActive(state) ? stateLabel(state) : formatDuration(job.durationMs)}
         </Typography>
         {href && (
-          <Tooltip title="Ver el job en GitHub" arrow>
-            <IconButton size="small" component="a" href={href} target="_blank" rel="noopener noreferrer" aria-label={`Ver el job ${job.name} en GitHub`}>
+          <Tooltip title="View the job on GitHub" arrow>
+            <IconButton size="small" component="a" href={href} target="_blank" rel="noopener noreferrer" aria-label={`View job ${job.name} on GitHub`}>
               <OpenInNewIcon fontSize="inherit" />
             </IconButton>
           </Tooltip>
         )}
       </Box>
       {job.steps.length > 0 && (
-        <List dense disablePadding aria-label={`Pasos de ${job.name}`} sx={{ mt: 0.5 }}>
+        <List dense disablePadding aria-label={`Steps of ${job.name}`} sx={{ mt: 0.5 }}>
           {job.steps.map((step) => {
             const stepState = stateOf(step.status, step.conclusion);
             return (
@@ -61,7 +61,7 @@ function JobCard({ gid, job }) {
       {finished && (
         <Box sx={{ mt: 0.5 }}>
           <Button variant="ghost" size="small" onClick={() => setShowLog((v) => !v)} aria-expanded={showLog}>
-            {showLog ? 'Ocultar log' : 'Ver log'}
+            {showLog ? 'Hide log' : 'View log'}
           </Button>
           {showLog && <JobLog gid={gid} jobId={job.id} />}
         </Box>
@@ -83,7 +83,7 @@ export default function RunDetail({ gid, runId }) {
       .then((data) => setState({ loading: false, error: null, data }))
       .catch((err) => {
         if (isAbortError(err)) return;
-        setState((prev) => ({ ...prev, loading: false, error: errorMessage(err, 'No se pudo cargar la ejecución.') }));
+        setState((prev) => ({ ...prev, loading: false, error: errorMessage(err, 'Could not load the run.') }));
       });
     return () => controller.abort();
   }, [gid, runId, version]);
@@ -104,7 +104,7 @@ export default function RunDetail({ gid, runId }) {
       <Box role="status" sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 2 }}>
         <CircularProgress size={18} />
         <Typography variant="body2" color="text.secondary">
-          Cargando jobs…
+          Loading jobs…
         </Typography>
       </Box>
     );
@@ -115,7 +115,7 @@ export default function RunDetail({ gid, runId }) {
         severity="error"
         action={
           <Button variant="ghost" size="small" onClick={reload}>
-            Reintentar
+            Retry
           </Button>
         }
       >
@@ -128,7 +128,7 @@ export default function RunDetail({ gid, runId }) {
     <Box sx={{ display: 'grid', gap: 1 }} aria-busy={loading}>
       {jobs.length === 0 ? (
         <Typography variant="body2" color="text.secondary">
-          Esta ejecución todavía no tiene jobs.
+          This run has no jobs yet.
         </Typography>
       ) : (
         jobs.map((job) => <JobCard key={job.id} gid={gid} job={job} />)

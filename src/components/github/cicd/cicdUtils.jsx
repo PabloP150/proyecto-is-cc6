@@ -7,12 +7,12 @@ import ScheduleIcon from '@mui/icons-material/Schedule';
 import { CircularProgress } from '@mui/material';
 
 const STATES = {
-  success: { label: 'Exitoso', color: '#4ade80' },
-  failure: { label: 'Falló', color: '#f87171' },
-  cancelled: { label: 'Cancelado', color: '#9ca3af' },
-  skipped: { label: 'Omitido', color: '#9ca3af' },
-  running: { label: 'En curso', color: '#fbbf24' },
-  queued: { label: 'En cola', color: '#93c5fd' },
+  success: { label: 'Succeeded', color: '#4ade80' },
+  failure: { label: 'Failed', color: '#f87171' },
+  cancelled: { label: 'Cancelled', color: '#9ca3af' },
+  skipped: { label: 'Skipped', color: '#9ca3af' },
+  running: { label: 'Running', color: '#fbbf24' },
+  queued: { label: 'Queued', color: '#93c5fd' },
   neutral: { label: 'Neutral', color: '#9ca3af' },
 };
 
@@ -62,25 +62,25 @@ const EVENTS = {
   push: 'Push',
   pull_request: 'Pull request',
   workflow_dispatch: 'Manual',
-  schedule: 'Programado',
+  schedule: 'Scheduled',
   release: 'Release',
 };
 
 export const eventLabel = (event) => EVENTS[event] || (event ? String(event) : '');
 
 export const STATUS_FILTERS = [
-  { value: '', label: 'Todos los estados' },
-  { value: 'in_progress', label: 'En curso' },
-  { value: 'queued', label: 'En cola' },
-  { value: 'success', label: 'Exitosos' },
-  { value: 'failure', label: 'Fallidos' },
-  { value: 'cancelled', label: 'Cancelados' },
+  { value: '', label: 'All statuses' },
+  { value: 'in_progress', label: 'Running' },
+  { value: 'queued', label: 'Queued' },
+  { value: 'success', label: 'Succeeded' },
+  { value: 'failure', label: 'Failed' },
+  { value: 'cancelled', label: 'Cancelled' },
 ];
 
-export const STACK_LABELS = { node: 'Node.js', python: 'Python', static: 'Sitio estático' };
+export const STACK_LABELS = { node: 'Node.js', python: 'Python', static: 'Static site' };
 
 export const projectLabel = (project) =>
-  `${project.dir === '.' ? 'Raíz del repositorio' : project.dir} · ${STACK_LABELS[project.stack] || project.stack}`;
+  `${project.dir === '.' ? 'Repository root' : project.dir} · ${STACK_LABELS[project.stack] || project.stack}`;
 
 export const monoSx = { fontFamily: '"JetBrains Mono", "Fira Code", Menlo, Consolas, monospace' };
 
