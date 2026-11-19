@@ -34,6 +34,8 @@ OLLAMA_NUM_CTX = int(os.getenv('OLLAMA_NUM_CTX', 8192))
 # "Un"; with it off the full answer took 0.4 s. The TaskMate AI server never hit this because it
 # uses /api/generate. Off unless explicitly asked for.
 OLLAMA_THINK = os.getenv('OLLAMA_THINK', '0') == '1'
+# Keep the model loaded between chats (Ollama default 5m -> several seconds to reload).
+OLLAMA_KEEP_ALIVE = os.getenv('OLLAMA_KEEP_ALIVE', '30m')
 
 API_KEY = os.getenv('GROQ_API_KEY') or os.getenv('LLM_API_KEY')
 # Groq retired the Llama 3.x models (they now answer 404 model_not_found).
@@ -198,6 +200,7 @@ def _ollama_payload(messages: List[Dict[str, str]], *, temperature: Optional[flo
         "messages": messages,
         "stream": stream,
         "think": OLLAMA_THINK,
+        "keep_alive": OLLAMA_KEEP_ALIVE,
         "options": {
             "temperature": TEMPERATURE if temperature is None else temperature,
             "num_predict": max_tokens or MAX_TOKENS_CHAT,
@@ -207,6 +210,17 @@ def _ollama_payload(messages: List[Dict[str, str]], *, temperature: Optional[flo
     if json_mode:
         payload["format"] = "json"
     return payload
+
+
+_ollama_http: Optional[httpx.AsyncClient] = None
+
+
+def _ollama_client() -> httpx.AsyncClient:
+    """One client for all calls: keep-alive connections to Ollama instead of one per request."""
+    global _ollama_http
+    if _ollama_http is None:
+        _ollama_http = httpx.AsyncClient(timeout=TIMEOUT_SEC)
+    return _ollama_http
 
 
 def _map_ollama_error(exc: Exception) -> LLMError:
@@ -229,15 +243,14 @@ async def _ollama_complete(messages: List[Dict[str, str]], *, temperature: Optio
                            json_mode: bool = False) -> str:
     limit = timeout or TIMEOUT_SEC
     try:
-        async with httpx.AsyncClient(timeout=limit) as client:
-            response = await asyncio.wait_for(
-                client.post(f"{OLLAMA_HOST}/api/chat",
-                            json=_ollama_payload(messages, temperature=temperature, max_tokens=max_tokens,
-                                                 stream=False, json_mode=json_mode)),
-                timeout=limit + 1,
-            )
-            response.raise_for_status()
-            body = response.json()
+        response = await asyncio.wait_for(
+            _ollama_client().post(f"{OLLAMA_HOST}/api/chat", timeout=limit,
+                                  json=_ollama_payload(messages, temperature=temperature, max_tokens=max_tokens,
+                                                       stream=False, json_mode=json_mode)),
+            timeout=limit + 1,
+        )
+        response.raise_for_status()
+        body = response.json()
     except Exception as exc:
         err = _map_ollama_error(exc)
         _log_error(err, exc)
@@ -250,25 +263,24 @@ async def _ollama_stream(messages: List[Dict[str, str]], *, temperature: Optiona
     """Yields content deltas from Ollama's streaming /api/chat (one JSON object per line)."""
     limit = timeout or TIMEOUT_SEC
     try:
-        async with httpx.AsyncClient(timeout=limit) as client:
-            async with client.stream("POST", f"{OLLAMA_HOST}/api/chat",
-                                     json=_ollama_payload(messages, temperature=temperature,
-                                                          max_tokens=max_tokens, stream=True)) as response:
-                response.raise_for_status()
-                async for line in response.aiter_lines():
-                    if not line.strip():
-                        continue
-                    try:
-                        event = json.loads(line)
-                    except ValueError:
-                        continue
-                    if event.get("error"):
-                        raise LLMError("The local model reported an error.")
-                    delta = (event.get("message") or {}).get("content")
-                    if delta:
-                        yield delta
-                    if event.get("done"):
-                        return
+        async with _ollama_client().stream("POST", f"{OLLAMA_HOST}/api/chat", timeout=limit,
+                                           json=_ollama_payload(messages, temperature=temperature,
+                                                                max_tokens=max_tokens, stream=True)) as response:
+            response.raise_for_status()
+            async for line in response.aiter_lines():
+                if not line.strip():
+                    continue
+                try:
+                    event = json.loads(line)
+                except ValueError:
+                    continue
+                if event.get("error"):
+                    raise LLMError("The local model reported an error.")
+                delta = (event.get("message") or {}).get("content")
+                if delta:
+                    yield delta
+                if event.get("done"):
+                    return
     except Exception as exc:
         err = _map_ollama_error(exc)
         _log_error(err, exc)

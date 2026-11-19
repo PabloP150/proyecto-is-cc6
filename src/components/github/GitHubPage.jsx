@@ -3,14 +3,12 @@ import GitHubIcon from '@mui/icons-material/GitHub';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import SyncIcon from '@mui/icons-material/Sync';
 import { Alert, Box, Chip, CircularProgress, Container, Snackbar, Tab, Tabs, Typography } from '@mui/material';
-import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-dom';
 import { getRepository, install, syncGroup } from '../../api/github';
 import { GroupContext } from '../GroupContext';
 import Button from '../ui/Button';
 import Card from '../ui/Card';
-import CicdPanel from './cicd/CicdPanel';
-import DeploymentPanel from '../deploy/DeploymentPanel';
 import CommitList from './CommitList';
 import RepoExplorer from './RepoExplorer';
 import RepoSelection from './RepoSelection';
@@ -25,6 +23,10 @@ import {
   sameId,
   staticCardSx,
 } from './githubUtils';
+
+// Heavy tabs load on first open.
+const CicdPanel = lazy(() => import('./cicd/CicdPanel'));
+const DeploymentPanel = lazy(() => import('../deploy/DeploymentPanel'));
 
 const PENDING_MESSAGE =
   'La instalación quedó pendiente: un propietario de la organización debe aprobarla en GitHub. ' +
@@ -347,13 +349,21 @@ export default function GitHubPage() {
               />
             ))}
           {tab === 'files' && usable && <RepoExplorer gid={gid} repo={repo} />}
-          {tab === 'deploys' && <DeploymentPanel gid={gid} isAdmin={isAdmin} />}
+          {tab === 'deploys' && (
+            <Suspense fallback={<CircularProgress size={24} />}>
+              <DeploymentPanel gid={gid} isAdmin={isAdmin} />
+            </Suspense>
+          )}
           {tab === 'commits' && usable && (
             <Card variant="default" component="section" sx={staticCardSx}>
               <CommitList gid={gid} gitRef={repo.defaultBranch || undefined} />
             </Card>
           )}
-          {tab === 'cicd' && usable && <CicdPanel gid={gid} repo={repo} isAdmin={isAdmin} />}
+          {tab === 'cicd' && usable && (
+            <Suspense fallback={<CircularProgress size={24} />}>
+              <CicdPanel gid={gid} repo={repo} isAdmin={isAdmin} />
+            </Suspense>
+          )}
         </Box>
       </>
     );

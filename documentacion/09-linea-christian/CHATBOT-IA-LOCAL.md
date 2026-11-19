@@ -109,3 +109,15 @@ Las pruebas de Python usan un transporte HTTP simulado: no necesitan Ollama.
 
 El proyecto de conocimiento es fijo (`AI_SERVER_PROJECT`, por defecto `TaskMate`). El chatbot no
 traduce aún «el grupo seleccionado» a un proyecto del servidor de IA.
+
+## Rendimiento (19 nov 2026)
+
+| Medida | Antes | Después |
+|---|---|---|
+| `main.js` (gzip), lo que baja la pantalla de login | 119.4 kB | **96.5 kB** (−19 %) |
+| Chatbot local, primer token (modelo cargado) | — | **~30 ms** |
+| Recarga del modelo tras 5 min sin uso | sí (varios s) | no (`OLLAMA_KEEP_ALIVE=30m`) |
+
+- `CicdNotifications` y las pestañas CI/CD y Vercel se cargan bajo demanda (`React.lazy`).
+- Un solo cliente HTTP hacia Ollama (conexiones reutilizadas) y `keep_alive` en cada pedido.
+- Mismo `num_ctx` (8192) que el servidor de IA: los dos usan el mismo modelo cargado, sin recargas.
