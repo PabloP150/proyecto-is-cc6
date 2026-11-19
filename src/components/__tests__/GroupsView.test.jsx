@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { api } from '../../api/client';
 import { GroupContext } from '../GroupContext';
@@ -57,5 +57,31 @@ describe('GroupsView — ids compared case-insensitively', () => {
     mountGroups();
     expect(await screen.findByText('ana')).toBeInTheDocument();
     expect(await screen.findByRole('button', { name: 'New Role' })).toBeInTheDocument();
+  });
+});
+
+describe('GroupsView — clicking a group', () => {
+  const OTHER = { gid: 'EFGH-5678', name: 'Equipo Móvil', adminId: 'USER-2' };
+
+  beforeEach(() => {
+    localStorage.clear();
+    localStorage.setItem('userId', 'user-1');
+    api.get.mockImplementation((path) => {
+      if (path.endsWith('/members')) return Promise.resolve({ members: [{ uid: 'USER-2', username: 'beto' }] });
+      return Promise.resolve({ roles: [], data: [] });
+    });
+  });
+
+  it('has no USE button: a click makes it the current group and shows its members', async () => {
+    const ctx = mountGroups({
+      selectedGroupId: null,
+      groups: [GROUP, OTHER],
+      refreshGroups: jest.fn().mockResolvedValue([GROUP, OTHER]),
+    });
+    expect(screen.queryByRole('button', { name: 'Use' })).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'Equipo Móvil' }));
+    expect(ctx.setSelectedGroupId).toHaveBeenCalledWith('EFGH-5678');
+    expect(ctx.setSelectedGroupName).toHaveBeenCalledWith('Equipo Móvil');
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/api/groups/EFGH-5678/members'));
   });
 });

@@ -27,7 +27,7 @@ flowchart TD
 - **Encabezado «AI Assistant»** con el selector **Proyecto**: «Nuevo proyecto (sin contexto)» o uno de tus grupos. Si eliges un grupo, aparece un chip con su repositorio o «Sin repositorio».
 - **Conversación:** tus mensajes a la derecha y los de la IA a la izquierda, con hora. Las respuestas de la IA se muestran en Markdown (títulos, tablas, listas), sin HTML peligroso.
 - **Avisos centrados:** «Proyecto "X" creado» (informativo) y los errores, con su código debajo (por ejemplo `Code: LLM_TIMEOUT`).
-- **Mientras espera:** «AI is typing...», o la etapa del análisis del repositorio.
+- **Mientras espera:** «Thinking...», o la etapa del análisis del repositorio.
 - **Cuadro de texto** con contador `n/4000`; con un proyecto elegido el límite es `n/500` y el texto son instrucciones para el análisis. Enter envía y Shift+Enter hace un salto de línea.
 - **Sin conexión:** «Connection problem: …» y un botón «🔌 Connect» para reintentar.
 

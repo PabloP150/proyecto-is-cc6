@@ -10,6 +10,7 @@ import {
 } from '@mui/material';
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import NavGroupSelector from './NavGroupSelector';
 
 const NAV_ITEMS = [
   { path: '/home', label: 'Home' },
@@ -82,6 +83,7 @@ const Navbar = ({ user, onLogout }) => {
         >
           TaskMate
         </Typography>
+        {user && <NavGroupSelector />}
         <Box sx={{ 
           display: 'flex', 
           justifyContent: 'right', 

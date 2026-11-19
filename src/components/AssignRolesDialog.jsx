@@ -77,7 +77,7 @@ const AssignRolesDialog = ({
         setUserRoles(prev => [...prev, roleId]);
       }
     } catch (err) {
-      alert('Error al asignar/quitar rol: ' + (err?.message || err));
+      alert('Could not assign/remove the role: ' + (err?.message || err));
       console.error('Error al asignar/quitar rol:', err);
     } finally {
       setAssigning(false);

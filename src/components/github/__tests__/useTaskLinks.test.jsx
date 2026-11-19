@@ -60,7 +60,7 @@ describe('useTaskLinks', () => {
   it('exposes a readable error', async () => {
     getRepository.mockRejectedValue(Object.assign(new Error('403'), { code: 'NOT_GROUP_MEMBER', status: 403 }));
     render(<Probe gid="G1" />);
-    await waitFor(() => expect(latest.error).toBe('No perteneces a este grupo.'));
+    await waitFor(() => expect(latest.error).toBe('You are not a member of this group.'));
     expect(latest.repoConnected).toBe(false);
   });
 

@@ -57,7 +57,7 @@ export function buildTree(entries) {
 const sortChildren = (node) =>
   Array.from(node.children.values()).sort((a, b) => {
     if ((a.type === 'tree') !== (b.type === 'tree')) return a.type === 'tree' ? -1 : 1;
-    return a.name.localeCompare(b.name, 'es', { sensitivity: 'base' });
+    return a.name.localeCompare(b.name, 'en', { sensitivity: 'base' });
   });
 
 const dirname = (path) => (path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '');
@@ -156,7 +156,7 @@ export default function RepoExplorer({ gid, repo }) {
             kind,
             loading: false,
             file: null,
-            error: missingReadme ? null : toViewerError(err, 'No se pudo cargar el archivo.'),
+            error: missingReadme ? null : toViewerError(err, 'Could not load the file.'),
           });
         });
     },
@@ -174,7 +174,7 @@ export default function RepoExplorer({ gid, repo }) {
       })
       .catch((err) => {
         if (controller.signal.aborted || isAbortError(err)) return;
-        setTree({ loading: false, error: errorMessage(err, 'No se pudo cargar el árbol del repositorio.'), data: null });
+        setTree({ loading: false, error: errorMessage(err, 'Could not load the repository tree.'), data: null });
       });
     return () => controller.abort();
   }, [gid, treeVersion]);
@@ -222,14 +222,14 @@ export default function RepoExplorer({ gid, repo }) {
 
   return (
     <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(240px, 320px) 1fr' }, gap: 2 }}>
-      <Card variant="default" component="nav" aria-label="Archivos del repositorio" sx={{ ...staticCardSx, p: 1.5, minWidth: 0 }}>
+      <Card variant="default" component="nav" aria-label="Repository files" sx={{ ...staticCardSx, p: 1.5, minWidth: 0 }}>
         <TextField
           size="small"
           fullWidth
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          placeholder="Filtrar archivos…"
-          inputProps={{ 'aria-label': 'Filtrar archivos por nombre o ruta' }}
+          placeholder="Filter files…"
+          inputProps={{ 'aria-label': 'Filter files by name or path' }}
           InputProps={{
             startAdornment: (
               <InputAdornment position="start">
@@ -253,15 +253,15 @@ export default function RepoExplorer({ gid, repo }) {
 
         {tree.data && tree.data.truncated && (
           <Alert severity="warning" sx={{ mb: 1 }}>
-            El repositorio es muy grande: solo se muestran los primeros {entries.length} elementos.
+            The repository is very large: only the first {entries.length} entries are shown.
           </Alert>
         )}
         {query && (
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }} role="status">
             {matchCount === 0
-              ? 'Ningún archivo coincide con el filtro.'
+              ? 'No file matches the filter.'
               : capped
-                ? `Mostrando ${MAX_FILTER_RESULTS} de ${matchCount} coincidencias.`
+                ? `Showing ${MAX_FILTER_RESULTS} of ${matchCount} matches.`
                 : `${matchCount} ${matchCount === 1 ? 'coincidencia' : 'coincidencias'}.`}
           </Typography>
         )}
@@ -270,7 +270,7 @@ export default function RepoExplorer({ gid, repo }) {
           <Box role="status" sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 2, justifyContent: 'center' }}>
             <CircularProgress size={20} />
             <Typography variant="body2" color="text.secondary">
-              Cargando árbol…
+              Loading tree…
             </Typography>
           </Box>
         )}
@@ -279,7 +279,7 @@ export default function RepoExplorer({ gid, repo }) {
             severity="error"
             action={
               <Button variant="ghost" size="small" onClick={() => setTreeVersion((v) => v + 1)}>
-                Reintentar
+                Retry
               </Button>
             }
           >
@@ -288,7 +288,7 @@ export default function RepoExplorer({ gid, repo }) {
         )}
         {tree.data && !tree.error && entries.length === 0 && (
           <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
-            El repositorio está vacío.
+            The repository is empty.
           </Typography>
         )}
         {entries.length > 0 && (
@@ -306,7 +306,7 @@ export default function RepoExplorer({ gid, repo }) {
         )}
       </Card>
 
-      <Card variant="default" component="section" aria-label="Vista del archivo" sx={{ ...staticCardSx, minWidth: 0 }}>
+      <Card variant="default" component="section" aria-label="File view" sx={{ ...staticCardSx, minWidth: 0 }}>
         <FileViewer
           path={view.path}
           loading={view.loading}
@@ -318,7 +318,7 @@ export default function RepoExplorer({ gid, repo }) {
           onRetry={() => loadView(view.kind, view.path)}
           emptyMessage={
             view.kind === 'readme'
-              ? 'Este repositorio no tiene README. Selecciona un archivo del árbol para verlo.'
+              ? 'This repository has no README. Select a file in the tree to view it.'
               : undefined
           }
         />

@@ -10,7 +10,7 @@ import { useRealtime } from './RealtimeContext';
 const MAX_QUEUE = 5;
 const FAILED = new Set(['failure', 'timed_out', 'startup_failure']);
 const DEPLOY_FAILED = new Set(['failure', 'error']);
-const ENV_LABELS = { staging: 'Staging', production: 'Producción' };
+const ENV_LABELS = { staging: 'Staging', production: 'Production' };
 const envLabel = (environment) => ENV_LABELS[environment] || String(environment || '');
 // Runs whose deploy failure was already toasted: a few, for a while (a run finishes within minutes).
 const MAX_REPORTED_RUNS = 50;
@@ -59,7 +59,7 @@ export function toNotice(message, { groups = [], uid, reportedRuns } = {}) {
   if (!message || !message.data) return null;
   const { event, data, gid } = message;
   const group = (Array.isArray(groups) ? groups : []).find((g) => sameId(g.gid, gid));
-  const prefix = `[${(group && group.name) || 'Tu grupo'}] `;
+  const prefix = `[${(group && group.name) || 'Your group'}] `;
   const isAdmin = Boolean(group && uid && sameId(group.adminId, uid));
 
   if (event === 'ci_run') {
@@ -68,22 +68,22 @@ export function toNotice(message, { groups = [], uid, reportedRuns } = {}) {
     // after it started publishing): one toast, not two. Matched by run, not by isDeploy: a deploy
     // run can fail before it creates its Deployment, and push runs deploy staging too.
     if (reportedRuns && data.runId != null && reportedRuns.has(String(data.runId))) return null;
-    const title = data.title || data.name || 'el pipeline';
+    const title = data.title || data.name || 'the pipeline';
     // A deploy cancelled before it created its Deployment (no 'deployment' event): only the admins
     // (who deploy, re-run and cancel) need to hear about it.
     if (data.isDeploy && data.conclusion === 'cancelled') {
-      return isAdmin ? { severity: 'warning', gid, message: `${prefix}Se canceló «${title}» antes de publicar.` } : null;
+      return isAdmin ? { severity: 'warning', gid, message: `${prefix}“${title}” was cancelled before publishing.` } : null;
     }
     if (!FAILED.has(data.conclusion)) return null;
-    const where = data.branch ? ` en ${data.branch}` : '';
-    return { severity: 'error', gid, message: `${prefix}Falló «${title}»${where}.` };
+    const where = data.branch ? ` on ${data.branch}` : '';
+    return { severity: 'error', gid, message: `${prefix}“${title}” failed${where}.` };
   }
   if (event === 'deployment') {
     if (data.state === 'success') {
-      return { severity: 'success', gid, url: safeHttpsUrl(data.url), message: `${prefix}${envLabel(data.environment)} se actualizó con ${data.shortSha}.` };
+      return { severity: 'success', gid, url: safeHttpsUrl(data.url), message: `${prefix}${envLabel(data.environment)} was updated to ${data.shortSha}.` };
     }
     if (data.state === 'failure' || data.state === 'error') {
-      return { severity: 'error', gid, message: `${prefix}Falló el deploy de ${data.shortSha} a ${envLabel(data.environment).toLowerCase()}.` };
+      return { severity: 'error', gid, message: `${prefix}Deploy of ${data.shortSha} to ${envLabel(data.environment).toLowerCase()} failed.` };
     }
     return null;
   }
@@ -93,19 +93,19 @@ export function toNotice(message, { groups = [], uid, reportedRuns } = {}) {
       return {
         severity: 'warning',
         gid,
-        message: `${prefix}${data.requestedByUsername || 'Un miembro'} pide publicar ${data.shortSha} en ${envLabel(data.environment).toLowerCase()}.`,
+        message: `${prefix}${data.requestedByUsername || 'A member'} asks to publish ${data.shortSha} to ${envLabel(data.environment).toLowerCase()}.`,
       };
     }
     if (mine && data.status === 'approved') {
       return {
         severity: 'success',
         gid,
-        message: `${prefix}${data.decidedByUsername || 'Un administrador'} aprobó tu solicitud: ${data.shortSha} se está publicando en ${envLabel(data.environment).toLowerCase()}.`,
+        message: `${prefix}${data.decidedByUsername || 'An admin'} approved your request: publishing ${data.shortSha} to ${envLabel(data.environment).toLowerCase()}.`,
       };
     }
     if (mine && data.status === 'rejected') {
-      const note = data.note ? ` Motivo: ${data.note}` : '';
-      return { severity: 'warning', gid, message: `${prefix}${data.decidedByUsername || 'Un administrador'} rechazó tu solicitud de ${data.shortSha}.${note}` };
+      const note = data.note ? ` Reason: ${data.note}` : '';
+      return { severity: 'warning', gid, message: `${prefix}${data.decidedByUsername || 'An admin'} rejected your request for ${data.shortSha}.${note}` };
     }
   }
   return null;
@@ -189,11 +189,11 @@ export default function CicdNotifications() {
             <>
               {current.url && (
                 <Button component={Link} href={current.url} target="_blank" rel="noopener noreferrer" color="inherit" size="small">
-                  Abrir sitio
+                  Open site
                 </Button>
               )}
               <Button color="inherit" size="small" onClick={open}>
-                Ver
+                View
               </Button>
             </>
           }

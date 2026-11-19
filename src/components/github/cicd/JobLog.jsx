@@ -12,7 +12,7 @@ const WARNING = '##[warning]';
 const IMPORTANT_RE = /^##\[(error|warning)\]|\berror\b|\bfailed\b|✕|✖/i;
 
 const LEVEL_COLORS = { failure: '#f87171', warning: '#fbbf24', notice: '#93c5fd' };
-const LEVEL_LABELS = { failure: 'Error', warning: 'Advertencia', notice: 'Aviso' };
+const LEVEL_LABELS = { failure: 'Error', warning: 'Warning', notice: 'Notice' };
 
 // GitHub's log commands become readable lines: groups as headers, errors and warnings colored.
 function LogLine({ line }) {
@@ -51,7 +51,7 @@ export function JobLog({ gid, jobId }) {
       .then((data) => setState({ loading: false, error: null, data }))
       .catch((err) => {
         if (isAbortError(err)) return;
-        setState({ loading: false, data: null, error: errorMessage(err, 'No se pudo cargar el log.') });
+        setState({ loading: false, data: null, error: errorMessage(err, 'Could not load the log.') });
       });
     return () => controller.abort();
   }, [gid, jobId, version]);
@@ -69,14 +69,14 @@ export function JobLog({ gid, jobId }) {
       <Box role="status" sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 1 }}>
         <CircularProgress size={16} />
         <Typography variant="caption" color="text.secondary">
-          Cargando log…
+          Loading log…
         </Typography>
       </Box>
     );
   }
   if (state.error) {
     return (
-      <Alert severity="warning" sx={{ mt: 1 }} action={<Button variant="ghost" size="small" onClick={reload}>Reintentar</Button>}>
+      <Alert severity="warning" sx={{ mt: 1 }} action={<Button variant="ghost" size="small" onClick={reload}>Retry</Button>}>
         {state.error}
       </Alert>
     );
@@ -86,15 +86,15 @@ export function JobLog({ gid, jobId }) {
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
         <FormControlLabel
           control={<Switch size="small" checked={onlyErrors} onChange={(event) => setOnlyErrors(event.target.checked)} />}
-          label={<Typography variant="caption">Solo errores</Typography>}
+          label={<Typography variant="caption">Errors only</Typography>}
         />
         {state.data && state.data.truncated && (
           <Typography variant="caption" color="text.secondary">
-            Se muestra el final del log.
+            Showing the end of the log.
           </Typography>
         )}
-        <Tooltip title="Actualizar log" arrow>
-          <IconButton size="small" onClick={reload} aria-label="Actualizar log" sx={{ ml: 'auto' }}>
+        <Tooltip title="Refresh log" arrow>
+          <IconButton size="small" onClick={reload} aria-label="Refresh log" sx={{ ml: 'auto' }}>
             <RefreshIcon fontSize="inherit" />
           </IconButton>
         </Tooltip>
@@ -103,7 +103,7 @@ export function JobLog({ gid, jobId }) {
         ref={pre}
         component="pre"
         tabIndex={0}
-        aria-label={`Log del job ${jobId}`}
+        aria-label={`Log of job ${jobId}`}
         sx={{
           ...monoSx,
           m: 0,
@@ -118,7 +118,7 @@ export function JobLog({ gid, jobId }) {
           border: '1px solid rgba(255, 255, 255, 0.08)',
         }}
       >
-        {shown.length === 0 ? (onlyErrors ? 'No hay líneas con errores.' : 'El log está vacío.') : shown.map((line, i) => <LogLine key={i} line={line} />)}
+        {shown.length === 0 ? (onlyErrors ? 'No lines with errors.' : 'The log is empty.') : shown.map((line, i) => <LogLine key={i} line={line} />)}
       </Box>
     </Box>
   );
@@ -142,7 +142,7 @@ export function JobAnnotations({ gid, jobId }) {
         setState({
           loading: false,
           items: [],
-          error: reason ? `No se pudieron cargar los errores y advertencias: ${reason}` : 'No se pudieron cargar los errores y advertencias de este job.',
+          error: reason ? `Could not load the errors and warnings: ${reason}` : 'Could not load the errors and warnings of this job.',
         });
       });
     return () => controller.abort();
@@ -157,7 +157,7 @@ export function JobAnnotations({ gid, jobId }) {
   }
   if (state.loading || state.items.length === 0) return null;
   return (
-    <Box component="ul" aria-label="Errores y advertencias" sx={{ listStyle: 'none', m: 0, mt: 1, p: 0, display: 'grid', gap: 0.5 }}>
+    <Box component="ul" aria-label="Errors and warnings" sx={{ listStyle: 'none', m: 0, mt: 1, p: 0, display: 'grid', gap: 0.5 }}>
       {state.items.map((item, i) => (
         <Box
           component="li"

@@ -1,7 +1,7 @@
 import { API_BASE } from '../config';
 
 export const UNAUTHORIZED_EVENT = 'taskmate:unauthorized';
-export const RATE_LIMIT_MESSAGE = 'Demasiadas solicitudes. Espera un momento e inténtalo de nuevo.';
+export const RATE_LIMIT_MESSAGE = 'Too many requests. Wait a moment and try again.';
 
 export class ApiError extends Error {
   constructor(message, { status = 0, code = 'HTTP_ERROR', details } = {}) {

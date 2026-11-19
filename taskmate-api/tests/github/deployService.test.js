@@ -325,7 +325,7 @@ describe('verified versions (only what passed the TaskMate CI on the default bra
         expect(dispatched(fetchImpl)).toBe(false);
     });
 
-    test.each([['CI (Python)'], ['CI (sitio estático)']])('every generated CI job name counts (%s)', async (name) => {
+    test.each([['CI (Python)'], ['CI (static site)'], ['CI (sitio estático)']])('every generated CI job name counts (%s)', async (name) => {
         const fetchImpl = useFakeGitHub(routes({ [CHECKS('d')]: checks(checkRun('d', { name })) }));
         await deploy(sha('d'));
         expect(dispatched(fetchImpl)).toBe(true);
@@ -414,7 +414,7 @@ describe('deploy requests', () => {
             .rejects.toMatchObject({ code: 'DEPLOY_REQUEST_STALE', status: 409 });
         expect(cicdModel.decideDeployRequest).toHaveBeenCalledTimes(1);
         expect(cicdModel.decideDeployRequest).toHaveBeenCalledWith({
-            requestId: REQ, gid: GID, status: 'cancelled', decidedBy: ADMIN, note: 'El grupo cambió de repositorio.',
+            requestId: REQ, gid: GID, status: 'cancelled', decidedBy: ADMIN, note: 'The group changed repository.',
         });
         expect(realtime.publish).toHaveBeenCalledWith(GID, 'deploy_request', expect.objectContaining({ status: 'cancelled' }));
         expect(fetchImpl.calls).toHaveLength(0);
@@ -426,7 +426,7 @@ describe('deploy requests', () => {
         await expect(deployService.approveRequest({ gid: GID, uid: ADMIN, requestId: REQ }))
             .rejects.toMatchObject({ code: 'DEPLOY_REQUEST_STALE' });
         expect(cicdModel.decideDeployRequest).toHaveBeenCalledWith({
-            requestId: REQ, gid: GID, status: 'cancelled', decidedBy: ADMIN, note: 'La versión de staging cambió; pide de nuevo.',
+            requestId: REQ, gid: GID, status: 'cancelled', decidedBy: ADMIN, note: 'The staging version changed; ask again.',
         });
         expect(cicdModel.decideDeployRequest).not.toHaveBeenCalledWith(expect.objectContaining({ status: 'approved' }));
         expect(fetchImpl.calls.some((c) => c.path.endsWith('/dispatches'))).toBe(false);

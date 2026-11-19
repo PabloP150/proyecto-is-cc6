@@ -1,4 +1,5 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import { useState } from 'react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import ChatPage from '../ChatPage';
 import { GroupContext } from '../GroupContext';
@@ -42,10 +43,22 @@ function StateProbe() {
   return <div data-testid="nav-state">{JSON.stringify(location.state)}</div>;
 }
 
-const renderChat = ({ state, groups = GROUPS, refreshGroups = jest.fn().mockResolvedValue(GROUPS) } = {}) => {
+// The chat follows the group chosen in the navbar; tests switch it through this setter.
+let mockSetGroup = null;
+function GroupState({ groups, refreshGroups, initialGroupId, children }) {
+  const [selectedGroupId, setSelectedGroupId] = useState(initialGroupId);
+  mockSetGroup = setSelectedGroupId;
+  return (
+    <GroupContext.Provider value={{ refreshGroups, groups, selectedGroupId }}>
+      {children}
+    </GroupContext.Provider>
+  );
+}
+
+const renderChat = ({ state, groups = GROUPS, refreshGroups = jest.fn().mockResolvedValue(GROUPS), selectedGroupId = null } = {}) => {
   render(
     <MemoryRouter initialEntries={[{ pathname: '/chat', state }]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-      <GroupContext.Provider value={{ refreshGroups, groups }}>
+      <GroupState refreshGroups={refreshGroups} groups={groups} initialGroupId={selectedGroupId}>
         <Routes>
           <Route
             path="/chat"
@@ -57,7 +70,7 @@ const renderChat = ({ state, groups = GROUPS, refreshGroups = jest.fn().mockReso
             }
           />
         </Routes>
-      </GroupContext.Provider>
+      </GroupState>
     </MemoryRouter>
   );
   return { refreshGroups };
@@ -67,8 +80,8 @@ const receive = (data) => act(() => { mockWsOptions.onMessage(data); });
 const sentOfType = (type) => mockSend.mock.calls.map(([msg]) => msg).filter((msg) => msg.type === type);
 
 const selectProject = (name) => {
-  fireEvent.mouseDown(screen.getByRole('combobox'));
-  fireEvent.click(within(screen.getByRole('listbox')).getByText(name));
+  const group = GROUPS.find((g) => g.name === name);
+  act(() => { mockSetGroup(group ? group.gid : null); });
 };
 
 describe('ChatPage — GitHub project analysis', () => {
@@ -87,9 +100,9 @@ describe('ChatPage — GitHub project analysis', () => {
 
   it('keeps the plain chat flow without a project', () => {
     renderChat();
-    expect(screen.getByRole('combobox')).toHaveTextContent('Nuevo proyecto (sin contexto)');
-    fireEvent.change(screen.getByRole('textbox', { name: 'Mensaje' }), { target: { value: 'hola' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Enviar mensaje' }));
+    expect(screen.getByTestId('chat-project')).toHaveTextContent('select a group in the navbar');
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), { target: { value: 'hola' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
     expect(sentOfType('user')).toEqual([expect.objectContaining({ type: 'user', content: 'hola' })]);
     expect(sentOfType('repo_analysis')).toHaveLength(0);
   });
@@ -99,7 +112,7 @@ describe('ChatPage — GitHub project analysis', () => {
     expect(refreshGroups).toHaveBeenCalledTimes(1);
   });
 
-  it('sends set_context on change and shows the repository from the context reply', () => {
+  it('sends set_context when the navbar group changes and shows the repository from the context reply', () => {
     renderChat();
     selectProject('Equipo Web');
     expect(sentOfType('set_context')).toEqual([{ type: 'set_context', groupId: 'G1' }]);
@@ -107,7 +120,7 @@ describe('ChatPage — GitHub project analysis', () => {
     receive({ type: 'context', groupId: 'G1', groupName: 'Equipo Web', repo: { fullName: 'acme/web', defaultBranch: 'main' } });
     expect(screen.getByText('acme/web')).toBeInTheDocument();
 
-    selectProject('Nuevo proyecto (sin contexto)');
+    selectProject(null);
     expect(sentOfType('set_context')[1]).toEqual({ type: 'set_context', groupId: null });
   });
 
@@ -115,8 +128,12 @@ describe('ChatPage — GitHub project analysis', () => {
     renderChat();
     selectProject('Equipo Móvil');
     receive({ type: 'context', groupId: 'G2', groupName: 'Equipo Móvil', repo: null });
-    expect(screen.getByText('Sin repositorio')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Analizar repositorio' })).toBeDisabled();
+    expect(screen.getByText('No repository')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Propose tasks' })).not.toBeInTheDocument();
+    // Chat about the project still works without a repository.
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), { target: { value: '¿qué tareas hay?' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    expect(sentOfType('user')).toEqual([expect.objectContaining({ content: '¿qué tareas hay?' })]);
   });
 
   it('runs an analysis, shows progress and confirms the plan once', () => {
@@ -124,69 +141,93 @@ describe('ChatPage — GitHub project analysis', () => {
     selectProject('Equipo Web');
     receive({ type: 'context', groupId: 'G1', groupName: 'Equipo Web', repo: { fullName: 'acme/web', defaultBranch: 'main' } });
 
-    fireEvent.change(screen.getByRole('textbox', { name: 'Instrucciones para el análisis' }), { target: { value: 'prioriza las pruebas' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Analizar repositorio' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Propose tasks' }));
 
     const [request] = sentOfType('repo_analysis');
-    expect(request).toEqual({ type: 'repo_analysis', requestId: expect.any(String), groupId: 'G1', instructions: 'prioriza las pruebas' });
+    expect(request).toEqual({ type: 'repo_analysis', requestId: expect.any(String), groupId: 'G1', instructions: '' });
     expect(sentOfType('user')).toHaveLength(0);
-    expect(screen.getByText('Preparando el análisis del repositorio…')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Analizar repositorio' })).toBeDisabled();
+    expect(screen.getByText('Preparing the repository analysis…')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Propose tasks' })).toBeDisabled();
 
     receive({ type: 'repo_analysis_status', requestId: request.requestId, stage: 'analyzing' });
-    expect(screen.getByText(/La IA está analizando el repositorio/)).toBeInTheDocument();
+    expect(screen.getByText(/The AI is analyzing the repository/)).toBeInTheDocument();
 
     receive({ ...PLAN_MESSAGE, requestId: request.requestId });
-    expect(screen.queryByText(/La IA está analizando el repositorio/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/The AI is analyzing the repository/)).not.toBeInTheDocument();
     expect(screen.getByText('Agregar pruebas')).toBeInTheDocument();
 
-    const confirm = screen.getByRole('button', { name: 'Confirmar' });
+    const confirm = screen.getByRole('button', { name: 'Confirm' });
     fireEvent.click(confirm);
     fireEvent.click(confirm);
     expect(sentOfType('repo_plan_confirm')).toEqual([{ type: 'repo_plan_confirm', planId: 'plan-1' }]);
-    expect(screen.getByRole('button', { name: /Confirmar/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Confirm/ })).toBeDisabled();
 
     receive({ type: 'repo_plan_saved', planId: 'plan-1', groupId: 'G1', created: { tasks: 1, milestones: 0 }, content: 'Plan guardado' });
-    expect(screen.getByTestId('repo-plan-compact')).toHaveTextContent('Plan guardado en «Equipo Web»: 1 tarea creada y 0 hitos.');
+    expect(screen.getByTestId('repo-plan-compact')).toHaveTextContent('Plan saved to “Equipo Web”: 1 task created and 0 milestones.');
+  });
+
+  it('with a project, typing sends a chat message; a plan asked in the chat shows the analysis progress', () => {
+    renderChat();
+    selectProject('Equipo Web');
+    receive({ type: 'context', groupId: 'G1', groupName: 'Equipo Web', repo: { fullName: 'acme/web', defaultBranch: 'main' } });
+    expect(screen.getByRole('textbox', { name: 'Message' })).toHaveAttribute('placeholder', 'Ask about “Equipo Web”…');
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), { target: { value: 'crea un plan de pruebas' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    expect(sentOfType('user')).toEqual([expect.objectContaining({ content: 'crea un plan de pruebas' })]);
+    expect(sentOfType('repo_analysis')).toHaveLength(0);
+
+    receive({ type: 'repo_analysis_status', requestId: 'srv-1', stage: 'fetching_repo' });
+    expect(screen.getByText('Reading the repository on GitHub…')).toBeInTheDocument();
+    expect(screen.queryByText('Thinking...')).not.toBeInTheDocument();
+    receive({ ...PLAN_MESSAGE, requestId: 'srv-1' });
+    expect(screen.getByText('Agregar pruebas')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Propose tasks' })).toBeEnabled();
+  });
+
+  it('a plan cooldown refused for a chat message reads as the analysis limit', () => {
+    renderChat();
+    receive({ type: 'error', code: 'RATE_LIMITED', kind: 'analysis', requestId: 'srv-2', retryAfterSec: 30, message: 'You can only ask for one analysis per minute.' });
+    expect(screen.getByRole('alert')).toHaveTextContent('You can only ask for one analysis per minute. You can retry in 30 s.');
   });
 
   it('discards a plan and marks it discarded', () => {
     renderChat();
     receive(PLAN_MESSAGE);
-    fireEvent.click(screen.getByRole('button', { name: 'Descartar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
     expect(sentOfType('repo_plan_discard')).toEqual([{ type: 'repo_plan_discard', planId: 'plan-1' }]);
     receive({ type: 'repo_plan_discarded', planId: 'plan-1', content: 'Plan descartado.' });
-    expect(screen.getByTestId('repo-plan-compact')).toHaveTextContent('Plan descartado');
+    expect(screen.getByTestId('repo-plan-compact')).toHaveTextContent('Plan discarded');
   });
 
   it('marks the plan expired and clears busy on REPO_PLAN_EXPIRED', () => {
     renderChat();
     receive(PLAN_MESSAGE);
-    fireEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
     receive({ type: 'error', code: 'REPO_PLAN_EXPIRED', planId: 'plan-1', message: 'El plan expiró; vuelve a analizar el repositorio.' });
-    expect(screen.getByTestId('repo-plan-compact')).toHaveTextContent('Plan expirado');
+    expect(screen.getByTestId('repo-plan-compact')).toHaveTextContent('Plan expired');
     expect(screen.getByRole('alert')).toHaveTextContent('El plan expiró');
   });
 
   it('re-enables the plan after SAVE_FAILED', () => {
     renderChat();
     receive(PLAN_MESSAGE);
-    fireEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
-    expect(screen.getByRole('button', { name: /Confirmar/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    expect(screen.getByRole('button', { name: /Confirm/ })).toBeDisabled();
     receive({ type: 'error', code: 'SAVE_FAILED', planId: 'plan-1', message: 'No se pudo guardar el plan.' });
-    expect(screen.getByRole('button', { name: 'Confirmar' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Confirm' })).toBeEnabled();
   });
 
   it('stops the progress indicator when the analysis fails', () => {
     renderChat();
     selectProject('Equipo Web');
-    fireEvent.click(screen.getByRole('button', { name: 'Analizar repositorio' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Propose tasks' }));
     const [request] = sentOfType('repo_analysis');
     expect(request.instructions).toBe('');
     receive({ type: 'error', code: 'LLM_TIMEOUT', requestId: request.requestId, message: 'El análisis tardó demasiado.' });
-    expect(screen.queryByText('Preparando el análisis del repositorio…')).not.toBeInTheDocument();
-    expect(screen.getByRole('alert')).toHaveTextContent('La IA tardó demasiado en responder.');
-    expect(screen.getByRole('button', { name: 'Analizar repositorio' })).toBeEnabled();
+    expect(screen.queryByText('Preparing the repository analysis…')).not.toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('The AI took too long to answer.');
+    expect(screen.getByRole('button', { name: 'Propose tasks' })).toBeEnabled();
   });
 
   it('starts the analysis requested from /github once and clears the navigation state', () => {
@@ -195,10 +236,10 @@ describe('ChatPage — GitHub project analysis', () => {
     expect(sentOfType('repo_analysis')).toEqual([
       { type: 'repo_analysis', requestId: expect.any(String), groupId: 'G1', instructions: '' },
     ]);
-    expect(screen.getByRole('combobox')).toHaveTextContent('Equipo Web');
+    expect(screen.getByTestId('chat-project')).toHaveTextContent('Equipo Web');
     expect(screen.getByTestId('nav-state')).toHaveTextContent('null');
-    // Same request bubble as from the selector (and as the server restores it).
-    expect(screen.getAllByText('Analiza el repositorio de «Equipo Web» y propón las siguientes tareas.')).toHaveLength(1);
+    // Same request bubble as from the button (and as the server restores it).
+    expect(screen.getAllByText('Analyze the repository of “Equipo Web” and propose the next tasks.')).toHaveLength(1);
   });
 
   it('keeps the /github request bubble when the restore sent as the socket opened arrives after it', () => {
@@ -207,7 +248,7 @@ describe('ChatPage — GitHub project analysis', () => {
     receive({ type: 'history_restore', messages: [{ type: 'user', content: 'hola' }] });
 
     expect(screen.getByText('hola')).toBeInTheDocument();
-    expect(screen.getAllByText('Analiza el repositorio de «Equipo Web» y propón las siguientes tareas.')).toHaveLength(1);
+    expect(screen.getAllByText('Analyze the repository of “Equipo Web” and propose the next tasks.')).toHaveLength(1);
     receive({ ...PLAN_MESSAGE, requestId: request.requestId });
     expect(screen.getByText('Agregar pruebas')).toBeInTheDocument();
   });
@@ -217,37 +258,35 @@ describe('ChatPage — GitHub project analysis', () => {
     const [request] = sentOfType('repo_analysis');
     receive({
       type: 'history_restore',
-      messages: [{ type: 'user', content: 'Analiza el repositorio de «Equipo Web» y propón las siguientes tareas.', requestId: request.requestId }],
+      messages: [{ type: 'user', content: 'Analyze the repository of “Equipo Web” and propose the next tasks.', requestId: request.requestId }],
     });
-    expect(screen.getAllByText('Analiza el repositorio de «Equipo Web» y propón las siguientes tareas.')).toHaveLength(1);
+    expect(screen.getAllByText('Analyze the repository of “Equipo Web” and propose the next tasks.')).toHaveLength(1);
   });
 
   it('drops the bubble of a finished analysis on the next restore (the server history decides)', () => {
     renderChat();
     selectProject('Equipo Web');
-    fireEvent.change(screen.getByRole('textbox', { name: 'Instrucciones para el análisis' }), { target: { value: 'prioriza las pruebas' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Analizar repositorio' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Propose tasks' }));
     const [request] = sentOfType('repo_analysis');
-    receive({ type: 'error', code: 'RATE_LIMITED', requestId: request.requestId, retryAfterSec: 41, message: 'Solo se puede pedir un análisis por minuto.' });
+    receive({ type: 'error', code: 'RATE_LIMITED', requestId: request.requestId, retryAfterSec: 41, message: 'You can only ask for one analysis per minute.' });
 
     receive({ type: 'history_restore', messages: [{ type: 'user', content: 'hola' }] });
-    expect(screen.queryByText('prioriza las pruebas')).not.toBeInTheDocument();
+    expect(screen.queryByText('Analyze the repository of “Equipo Web” and propose the next tasks.')).not.toBeInTheDocument();
   });
 
   it('shows the analysis cooldown as an analysis message with the wait, next to its request', () => {
     renderChat();
     selectProject('Equipo Web');
     receive({ type: 'context', groupId: 'G1', groupName: 'Equipo Web', repo: { fullName: 'acme/web', defaultBranch: 'main' } });
-    fireEvent.change(screen.getByRole('textbox', { name: 'Instrucciones para el análisis' }), { target: { value: 'prioriza las pruebas' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Analizar repositorio' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Propose tasks' }));
     const [request] = sentOfType('repo_analysis');
 
-    receive({ type: 'error', code: 'RATE_LIMITED', requestId: request.requestId, retryAfterSec: 41, message: 'Solo se puede pedir un análisis por minuto.' });
-    expect(screen.getByText('prioriza las pruebas')).toBeInTheDocument();
+    receive({ type: 'error', code: 'RATE_LIMITED', requestId: request.requestId, retryAfterSec: 41, message: 'You can only ask for one analysis per minute.' });
+    expect(screen.getByText('Analyze the repository of “Equipo Web” and propose the next tasks.')).toBeInTheDocument();
     const alert = screen.getByRole('alert');
-    expect(alert).toHaveTextContent('Solo se puede pedir un análisis por minuto. Podrás reintentar en 41 s.');
-    expect(alert).not.toHaveTextContent('Vas muy rápido');
-    expect(screen.getByRole('button', { name: 'Analizar repositorio' })).toBeEnabled();
+    expect(alert).toHaveTextContent('You can only ask for one analysis per minute. You can retry in 41 s.');
+    expect(alert).not.toHaveTextContent('You are going too fast');
+    expect(screen.getByRole('button', { name: 'Propose tasks' })).toBeEnabled();
   });
 
   it('restores errors with the live wording but without a stale countdown', () => {
@@ -261,9 +300,9 @@ describe('ChatPage — GitHub project analysis', () => {
       ],
     });
     const [disabled, timeout] = screen.getAllByRole('alert');
-    expect(disabled).toHaveTextContent('Un administrador del grupo puede activarlo en la página GitHub');
-    expect(timeout).toHaveTextContent('La IA tardó demasiado en responder. Inténtalo de nuevo.');
-    expect(timeout).not.toHaveTextContent('Podrás reintentar');
+    expect(disabled).toHaveTextContent('A group admin can turn it on from the GitHub page');
+    expect(timeout).toHaveTextContent('The AI took too long to answer. Please try again.');
+    expect(timeout).not.toHaveTextContent('You can retry');
   });
 
   // An API from before the refusals stopped being stored still restores them; only its text says which limit it was.
@@ -278,9 +317,9 @@ describe('ChatPage — GitHub project analysis', () => {
     });
     const [analysisLimit, chatLimit] = screen.getAllByRole('alert');
     expect(analysisLimit).toHaveTextContent('Espera un minuto antes de pedir otro análisis.');
-    expect(analysisLimit).not.toHaveTextContent('Vas muy rápido');
+    expect(analysisLimit).not.toHaveTextContent('You are going too fast');
     expect(chatLimit).toHaveTextContent('Estás enviando mensajes muy rápido; espera un momento.');
-    [analysisLimit, chatLimit].forEach(alert => expect(alert).not.toHaveTextContent('Podrás reintentar'));
+    [analysisLimit, chatLimit].forEach(alert => expect(alert).not.toHaveTextContent('You can retry'));
   });
 
   it('restores a plan card as expired from a REPO_PLAN_EXPIRED error in history', () => {
@@ -292,7 +331,7 @@ describe('ChatPage — GitHub project analysis', () => {
         { type: 'error', code: 'REPO_PLAN_EXPIRED', planId: 'plan-1', message: 'El plan expiró; vuelve a analizar el repositorio.' },
       ],
     });
-    expect(screen.getByTestId('repo-plan-compact')).toHaveTextContent('Plan expirado');
+    expect(screen.getByTestId('repo-plan-compact')).toHaveTextContent('Plan expired');
     expect(screen.getByRole('alert')).toHaveTextContent('El plan expiró');
   });
 
@@ -305,7 +344,7 @@ describe('ChatPage — GitHub project analysis', () => {
         { type: 'repo_plan_saved', planId: 'plan-1', groupId: 'G1', created: { tasks: 1, milestones: 0 }, content: 'Plan guardado: 1 tareas y 0 hitos.' },
       ],
     });
-    expect(screen.getByTestId('repo-plan-compact')).toHaveTextContent('Plan guardado');
+    expect(screen.getByTestId('repo-plan-compact')).toHaveTextContent('Plan saved');
     expect(screen.queryByText('Plan guardado: 1 tareas y 0 hitos.')).not.toBeInTheDocument();
   });
 
@@ -316,25 +355,24 @@ describe('ChatPage — GitHub project analysis', () => {
 
     it('caps chat messages at 4000 characters with a counter', () => {
       renderChat();
-      const input = screen.getByRole('textbox', { name: 'Mensaje' });
+      const input = screen.getByRole('textbox', { name: 'Message' });
       expect(input).toHaveAttribute('maxLength', '4000');
       fireEvent.change(input, { target: { value: 'hola' } });
       expect(screen.getByText('4/4000')).toBeInTheDocument();
     });
 
-    it('caps analysis instructions at 500 characters', () => {
+    it('keeps the chat limit with a project selected', () => {
       renderChat();
       selectProject('Equipo Web');
-      expect(screen.getByRole('textbox', { name: 'Instrucciones para el análisis' })).toHaveAttribute('maxLength', '500');
-      expect(screen.getByText('0/500')).toBeInTheDocument();
+      expect(screen.getByRole('textbox', { name: 'Message' })).toHaveAttribute('maxLength', '4000');
     });
 
     it.each([
-      [{ code: 'MESSAGE_TOO_LONG', message: 'too long' }, 'El mensaje es demasiado largo: el máximo es 4000 caracteres.'],
-      [{ code: 'RATE_LIMITED', message: 'slow down', retryAfterSec: 12 }, 'Vas muy rápido: espera un momento antes de volver a intentarlo. Podrás reintentar en 12 s.'],
+      [{ code: 'MESSAGE_TOO_LONG', message: 'too long' }, 'The message is too long: the limit is 4000 characters.'],
+      [{ code: 'RATE_LIMITED', message: 'slow down', retryAfterSec: 12 }, 'You are going too fast: wait a moment before trying again. You can retry in 12 s.'],
       // A chat message (its requestId is not an analysis one) keeps the chat wording.
-      [{ code: 'RATE_LIMITED', requestId: 'chat-1', message: 'Estás enviando mensajes muy rápido; espera un momento.', retryAfterSec: 5 }, 'Vas muy rápido: espera un momento antes de volver a intentarlo. Podrás reintentar en 5 s.'],
-      [{ code: 'LLM_TIMEOUT', message: 'timeout' }, 'La IA tardó demasiado en responder. Inténtalo de nuevo.'],
+      [{ code: 'RATE_LIMITED', requestId: 'chat-1', message: 'Estás enviando mensajes muy rápido; espera un momento.', retryAfterSec: 5 }, 'You are going too fast: wait a moment before trying again. You can retry in 5 s.'],
+      [{ code: 'LLM_TIMEOUT', message: 'timeout' }, 'The AI took too long to answer. Please try again.'],
     ])('shows a friendly message for %o', (error, text) => {
       renderChat();
       receive({ type: 'error', ...error });
@@ -344,55 +382,55 @@ describe('ChatPage — GitHub project analysis', () => {
     it('stops the typing indicator after ~100 s without any reply', () => {
       jest.useFakeTimers();
       renderChat();
-      fireEvent.change(screen.getByRole('textbox', { name: 'Mensaje' }), { target: { value: 'hola' } });
-      fireEvent.click(screen.getByRole('button', { name: 'Enviar mensaje' }));
-      expect(screen.getByText('AI is typing...')).toBeInTheDocument();
+      fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), { target: { value: 'hola' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+      expect(screen.getByText('Thinking...')).toBeInTheDocument();
 
       act(() => { jest.advanceTimersByTime(99000); });
-      expect(screen.getByText('AI is typing...')).toBeInTheDocument();
+      expect(screen.getByText('Thinking...')).toBeInTheDocument();
 
       act(() => { jest.advanceTimersByTime(2000); });
-      expect(screen.queryByText('AI is typing...')).not.toBeInTheDocument();
-      expect(screen.getByRole('alert')).toHaveTextContent('No llegó respuesta a tiempo');
+      expect(screen.queryByText('Thinking...')).not.toBeInTheDocument();
+      expect(screen.getByRole('alert')).toHaveTextContent('No answer arrived in time');
     });
 
     it('restarts the wait on analysis progress updates', () => {
       jest.useFakeTimers();
       renderChat();
       selectProject('Equipo Web');
-      fireEvent.click(screen.getByRole('button', { name: 'Analizar repositorio' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Propose tasks' }));
       const [request] = sentOfType('repo_analysis');
 
       act(() => { jest.advanceTimersByTime(90000); });
       receive({ type: 'repo_analysis_status', requestId: request.requestId, stage: 'analyzing' });
       act(() => { jest.advanceTimersByTime(90000); });
-      expect(screen.getByText(/La IA está analizando el repositorio/)).toBeInTheDocument();
+      expect(screen.getByText(/The AI is analyzing the repository/)).toBeInTheDocument();
     });
 
     it('disables the analysis when the repository does not allow AI analysis', () => {
       renderChat();
       selectProject('Equipo Web');
       receive({ type: 'context', groupId: 'G1', groupName: 'Equipo Web', repo: { fullName: 'acme/web', defaultBranch: 'main', aiAnalysisEnabled: false } });
-      expect(screen.getByRole('button', { name: 'Analizar repositorio' })).toBeDisabled();
-      expect(screen.getByText(/El análisis con IA está desactivado para este proyecto/)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Propose tasks' })).not.toBeInTheDocument();
+      expect(screen.getByText(/AI analysis is turned off for this project/)).toBeInTheDocument();
     });
 
     it('explains AI_ANALYSIS_DISABLED and blocks further analyses', () => {
       renderChat();
       selectProject('Equipo Web');
       receive({ type: 'context', groupId: 'G1', groupName: 'Equipo Web', repo: { fullName: 'acme/web', defaultBranch: 'main' } });
-      fireEvent.click(screen.getByRole('button', { name: 'Analizar repositorio' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Propose tasks' }));
       const [request] = sentOfType('repo_analysis');
 
       receive({ type: 'error', code: 'AI_ANALYSIS_DISABLED', requestId: request.requestId, message: 'disabled' });
-      expect(screen.getByRole('alert')).toHaveTextContent('El análisis con IA está desactivado para este proyecto');
-      expect(screen.getByRole('button', { name: 'Analizar repositorio' })).toBeDisabled();
+      expect(screen.getByRole('alert')).toHaveTextContent('AI analysis is turned off for this project');
+      expect(screen.queryByRole('button', { name: 'Propose tasks' })).not.toBeInTheDocument();
     });
 
     it('explains a connection closed for an oversized message (1009)', () => {
       renderChat();
       act(() => { mockWsOptions.onClose({ code: 1009 }); });
-      expect(screen.getByRole('alert')).toHaveTextContent('El mensaje es demasiado grande');
+      expect(screen.getByRole('alert')).toHaveTextContent('The message is too large');
     });
   });
 });

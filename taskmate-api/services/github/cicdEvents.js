@@ -30,7 +30,7 @@ const runEvent = (run, action) => {
         actor: text((run.triggering_actor && run.triggering_actor.login) || (run.actor && run.actor.login)),
         htmlUrl: githubUrl(run.html_url),
         isTaskmate,
-        isDeploy: isTaskmate && run.event === 'workflow_dispatch' && /^Deploy a /.test(title || ''),
+        isDeploy: isTaskmate && run.event === 'workflow_dispatch' && /^Deploy (a|to) /.test(title || ''),
     };
 };
 

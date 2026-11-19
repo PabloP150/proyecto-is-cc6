@@ -61,7 +61,7 @@ CHOICE RULES:
 - "build": node → {{"kind":"script","name":"<usable script>"}} or null. python and static → null.
 - "deploy": {{"target":"github-pages","framework":"...","outputDir":"..."}} only for static websites, otherwise null. Node project with framework "vite" and a build whose command ends with a plain `vite build` (nothing after it, no --base of its own) → framework "vite", outputDir "dist"; otherwise no Vite deploy. Node project with framework "cra" and a build → framework "cra", outputDir "build". Static project → framework "static", outputDir one of its "siteDirs", but never a folder that contains another Node.js or Python project of the list (publishing it would expose that code). Python projects never deploy.
 - A static project has only the deploy: runtime, install, lint, test and build are null and audit is false.
-- "explanation": two or three sentences IN SPANISH, at most 600 characters, explaining your choices to a student team: which project, what the pipeline checks, and why something was left out (for example a script that starts a server). Do not mention JSON keys or option codes such as "npm-ci" or "pip-project"; describe them in plain words.
+- "explanation": two or three sentences IN ENGLISH, at most 600 characters, explaining your choices to a student team: which project, what the pipeline checks, and why something was left out (for example a script that starts a server). Do not mention JSON keys or option codes such as "npm-ci" or "pip-project"; describe them in plain words.
 
 OUTPUT: respond ONLY with one JSON object, without markdown, with exactly this shape:
 {{"project":{{"dir":".","stack":"node"}},"runtime":"24","install":{{"kind":"npm-ci"}},"lint":{{"kind":"script","name":"lint"}},"audit":false,"test":{{"kind":"script","name":"test"}},"build":{{"kind":"script","name":"build"}},"deploy":{{"target":"github-pages","framework":"vite","outputDir":"dist"}},"explanation":"..."}}"""
@@ -283,7 +283,7 @@ class PipelineAgent:
         except ValidationError as exc:
             logger.info("Pipeline proposal rejected invalid params (%d errors)", exc.error_count())
             raise PipelineAgentError('INVALID_PARAMS',
-                                     "Los datos del repositorio no son válidos para proponer un pipeline.")
+                                     "The repository data is not valid for proposing a pipeline.")
 
         semaphore = _pipeline_semaphore()
         if not await _acquire_within(semaphore, min(QUEUE_TIMEOUT_SEC, deadline - loop.time())):
@@ -301,7 +301,7 @@ class PipelineAgent:
             remaining = deadline - loop.time()
             if remaining < MIN_CALL_SEC:
                 if attempt == 0:
-                    raise PipelineAgentError('LLM_TIMEOUT', "La propuesta tardó demasiado. Intenta de nuevo.")
+                    raise PipelineAgentError('LLM_TIMEOUT', "The proposal took too long. Please try again.")
                 break
             try:
                 data = await llm_service.generate_json(
@@ -311,16 +311,16 @@ class PipelineAgent:
             except llm_service.LLMRateLimitError as exc:
                 retry_after = exc.retry_after if exc.retry_after is not None else DEFAULT_RATE_LIMIT_RETRY_SEC
                 raise PipelineAgentError('LLM_RATE_LIMIT',
-                                         "El servicio de IA alcanzó su límite de uso. Intenta de nuevo más tarde.",
+                                         "The AI service reached its usage limit. Try again later.",
                                          retry_after_sec=max(1, int(math.ceil(retry_after))))
             except llm_service.LLMTimeoutError:
                 raise PipelineAgentError('LLM_TIMEOUT',
-                                         "El servicio de IA tardó demasiado en responder. Intenta de nuevo.")
+                                         "The AI service took too long to answer. Please try again.")
             except llm_service.LLMInvalidOutputError:
                 logger.info("Pipeline proposal attempt %d returned invalid JSON", attempt + 1)
                 continue
             except llm_service.LLMError:
-                raise PipelineAgentError('LLM_ERROR', "El servicio de IA no está disponible en este momento.")
+                raise PipelineAgentError('LLM_ERROR', "The AI service is not available right now.")
             try:
                 proposal = build_proposal(data, params.projects)
             except InvalidProposalError as exc:
@@ -329,4 +329,4 @@ class PipelineAgent:
             logger.info("Pipeline proposal chose a %s project", proposal["project"]["stack"])
             return proposal
         raise PipelineAgentError('LLM_INVALID_OUTPUT',
-                                 "La IA no devolvió una propuesta de pipeline válida. Intenta de nuevo.")
+                                 "The AI did not return a valid pipeline proposal. Please try again.")

@@ -69,9 +69,9 @@ const GroupRolesPanel = ({ groupId, isLeader, roles: externalRoles, createRole: 
   const handleDeleteRole = useCallback(async (role) => {
     try {
       await deleteRole(role.gr_id);
-      setSnackbar({ open: true, message: 'Rol eliminado', severity: 'success' });
+      setSnackbar({ open: true, message: 'Role deleted', severity: 'success' });
     } catch (e) {
-      setSnackbar({ open: true, message: errorMessage(e, 'Error al eliminar rol'), severity: 'error' });
+      setSnackbar({ open: true, message: errorMessage(e, 'Could not delete the role'), severity: 'error' });
     }
   }, [deleteRole]);
 
@@ -83,14 +83,14 @@ const GroupRolesPanel = ({ groupId, isLeader, roles: externalRoles, createRole: 
     try {
       if (editingRole) {
         await updateRole(editingRole.gr_id, data);
-        setSnackbar({ open: true, message: 'Rol editado exitosamente', severity: 'success' });
+        setSnackbar({ open: true, message: 'Role updated', severity: 'success' });
       } else {
         await createRole(data);
-        setSnackbar({ open: true, message: 'Rol creado exitosamente', severity: 'success' });
+        setSnackbar({ open: true, message: 'Role created', severity: 'success' });
       }
       setOpenForm(false);
     } catch (e) {
-      setSnackbar({ open: true, message: errorMessage(e, 'Error al guardar rol'), severity: 'error' });
+      setSnackbar({ open: true, message: errorMessage(e, 'Could not save the role'), severity: 'error' });
     } finally {
       setFormLoading(false);
       setEditingRole(null);

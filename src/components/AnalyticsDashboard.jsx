@@ -287,11 +287,11 @@ const AnalyticsDashboard = () => {
                 <div role="status" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '400px' }}>
                     <div style={{ color: 'white', textAlign: 'center', maxWidth: 520 }}>
                         <div style={{ fontSize: '20px', fontWeight: 600, marginBottom: 8 }}>
-                            Solo líderes del equipo
+                            Team leaders only
                         </div>
                         <div style={{ fontSize: '16px', opacity: 0.8 }}>
-                            El panel de analíticas está disponible únicamente para el líder del grupo. Pide a tu líder
-                            que revise las métricas o cambia a un grupo que administres.
+                            The analytics dashboard is only available to the group leader. Ask your leader
+                            to review the metrics, or switch to a group you manage.
                         </div>
                     </div>
                 </div>

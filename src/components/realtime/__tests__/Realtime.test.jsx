@@ -20,29 +20,29 @@ describe('toNotice', () => {
 
   test('failed runs, not successful or still running ones', () => {
     expect(toNotice({ event: 'ci_run', gid: 'g1', data: { action: 'completed', conclusion: 'failure', title: 'feat: login', branch: 'main' } }, ctx))
-      .toEqual({ severity: 'error', gid: 'g1', message: '[Demo CI/CD] Falló «feat: login» en main.' });
+      .toEqual({ severity: 'error', gid: 'g1', message: '[Demo CI/CD] “feat: login” failed on main.' });
     expect(toNotice({ event: 'ci_run', gid: 'G1', data: { action: 'completed', conclusion: 'success' } }, ctx)).toBeNull();
     expect(toNotice({ event: 'ci_run', gid: 'G1', data: { action: 'in_progress', conclusion: null } }, ctx)).toBeNull();
   });
 
   test('finished deploys, with the site link only when it is https', () => {
     expect(toNotice({ event: 'deployment', gid: 'G1', data: { state: 'success', environment: 'production', shortSha: 'bbbbbbb', url: 'https://acme.github.io/app/' } }, ctx))
-      .toEqual({ severity: 'success', gid: 'G1', url: 'https://acme.github.io/app/', message: '[Demo CI/CD] Producción se actualizó con bbbbbbb.' });
+      .toEqual({ severity: 'success', gid: 'G1', url: 'https://acme.github.io/app/', message: '[Demo CI/CD] Production was updated to bbbbbbb.' });
     expect(toNotice({ event: 'deployment', gid: 'G1', data: { state: 'success', environment: 'staging', shortSha: 'b', url: 'http://x' } }, ctx).url).toBeNull();
     expect(toNotice({ event: 'deployment', gid: 'G1', data: { state: 'failure', environment: 'staging', shortSha: 'eeeeeee' } }, ctx).message)
-      .toBe('[Demo CI/CD] Falló el deploy de eeeeeee a staging.');
+      .toBe('[Demo CI/CD] Deploy of eeeeeee to staging failed.');
     expect(toNotice({ event: 'deployment', gid: 'G1', data: { state: 'in_progress' } }, ctx)).toBeNull();
   });
 
   test('pending requests go to the admins (not the requester); decisions to the requester', () => {
     const pending = { event: 'deploy_request', gid: 'G1', data: { status: 'pending', requestedBy: 'U-MEMBER', requestedByUsername: 'beto', shortSha: 'bbbbbbb', environment: 'production' } };
-    expect(toNotice(pending, ctx).message).toBe('[Demo CI/CD] beto pide publicar bbbbbbb en producción.');
+    expect(toNotice(pending, ctx).message).toBe('[Demo CI/CD] beto asks to publish bbbbbbb to production.');
     expect(toNotice(pending, { groups: GROUPS, uid: 'U-MEMBER' })).toBeNull();
     expect(toNotice({ ...pending, gid: 'G2' }, ctx)).toBeNull();
 
     const decided = (status, extra = {}) => ({ event: 'deploy_request', gid: 'G1', data: { ...pending.data, status, decidedByUsername: 'admin', ...extra } });
     expect(toNotice(decided('approved'), { groups: GROUPS, uid: 'U-MEMBER' }).severity).toBe('success');
-    expect(toNotice(decided('rejected', { note: 'falta QA' }), { groups: GROUPS, uid: 'U-MEMBER' }).message).toMatch(/rechazó tu solicitud de bbbbbbb\. Motivo: falta QA/);
+    expect(toNotice(decided('rejected', { note: 'falta QA' }), { groups: GROUPS, uid: 'U-MEMBER' }).message).toMatch(/rejected your request for bbbbbbb\. Reason: falta QA/);
     expect(toNotice(decided('approved'), ctx)).toBeNull();
   });
 
@@ -63,13 +63,13 @@ describe('toNotice', () => {
     expect(toNotice(deployRun('failure'), ctx)).toEqual({
       severity: 'error',
       gid: 'G1',
-      message: '[Demo CI/CD] Falló «Deploy a producción desde TaskMate» en main.',
+      message: '[Demo CI/CD] “Deploy a producción desde TaskMate” failed on main.',
     });
     expect(toNotice(deployRun('failure'), member).severity).toBe('error');
     expect(toNotice(deployRun('cancelled'), ctx)).toEqual({
       severity: 'warning',
       gid: 'G1',
-      message: '[Demo CI/CD] Se canceló «Deploy a producción desde TaskMate» antes de publicar.',
+      message: '[Demo CI/CD] “Deploy a producción desde TaskMate” was cancelled before publishing.',
     });
     expect(toNotice(deployRun('cancelled'), member)).toBeNull();
     expect(toNotice({ ...deployRun('cancelled'), data: { ...deployRun('cancelled').data, action: 'in_progress' } }, ctx)).toBeNull();
@@ -122,7 +122,7 @@ describe('toNotice', () => {
   });
 
   test('unknown groups get a generic prefix; garbage is ignored', () => {
-    expect(toNotice({ event: 'ci_run', gid: 'G9', data: { action: 'completed', conclusion: 'failure', name: 'CI' } }, ctx).message).toBe('[Tu grupo] Falló «CI».');
+    expect(toNotice({ event: 'ci_run', gid: 'G9', data: { action: 'completed', conclusion: 'failure', name: 'CI' } }, ctx).message).toBe('[Your group] “CI” failed.');
     expect(toNotice(null, ctx)).toBeNull();
     expect(toNotice({ event: 'nope', gid: 'G1', data: {} }, ctx)).toBeNull();
   });
@@ -173,10 +173,10 @@ describe('CicdNotifications', () => {
     renderToasts();
     emit({ event: 'ci_run', gid: 'g1', data: { action: 'completed', runId: 5, conclusion: 'failure', title: 'feat: login', branch: 'main' } });
     advance(RUN_NOTICE_DELAY_MS - 100);
-    expect(screen.queryByText('[Demo CI/CD] Falló «feat: login» en main.')).not.toBeInTheDocument();
+    expect(screen.queryByText('[Demo CI/CD] “feat: login” failed on main.')).not.toBeInTheDocument();
     advance(100);
-    expect(screen.getByText('[Demo CI/CD] Falló «feat: login» en main.')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Ver' }));
+    expect(screen.getByText('[Demo CI/CD] “feat: login” failed on main.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'View' }));
     expect(groupCtx.setSelectedGroupId).toHaveBeenCalledWith('G1');
     expect(groupCtx.setSelectedGroupName).toHaveBeenCalledWith('Demo CI/CD');
     expect(screen.getByTestId('where')).toHaveTextContent('/github?tab=cicd');
@@ -199,7 +199,7 @@ describe('CicdNotifications', () => {
     renderToasts();
     messages.forEach(emit);
     advance(RUN_NOTICE_DELAY_MS + 100);
-    expect(toasts()).toEqual([expect.stringContaining('[Demo CI/CD] Falló el deploy de bbbbbbb a producción.')]);
+    expect(toasts()).toEqual([expect.stringContaining('[Demo CI/CD] Deploy of bbbbbbb to production failed.')]);
     // Nothing queued behind it.
     advance(9500);
     expect(toasts()).toEqual([]);
@@ -210,7 +210,7 @@ describe('CicdNotifications', () => {
     renderToasts();
     emit(deployRun('failure'));
     advance(RUN_NOTICE_DELAY_MS + 100);
-    expect(toasts()).toEqual([expect.stringContaining('[Demo CI/CD] Falló «Deploy a producción desde TaskMate» en main.')]);
+    expect(toasts()).toEqual([expect.stringContaining('[Demo CI/CD] “Deploy a producción desde TaskMate” failed on main.')]);
   });
 });
 

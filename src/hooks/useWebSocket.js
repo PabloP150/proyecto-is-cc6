@@ -137,13 +137,13 @@ const useWebSocket = (url, token, options = {}) => {
         // (App listens to the unauthorized event and sends the user to the login page).
         if (event.code === WS_CLOSE_TOKEN_EXPIRED) {
           shouldReconnect.current = false;
-          setError('La sesión expiró. Inicia sesión de nuevo.');
+          setError('Your session expired. Please log in again.');
           setConnectionStatus('Failed');
           window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT, { detail: { source: 'websocket', code: 'TOKEN_EXPIRED' } }));
           return;
         }
         if (event.code === WS_CLOSE_MESSAGE_TOO_BIG) {
-          setError('El mensaje era demasiado grande y el servidor cerró la conexión.');
+          setError('The message was too large and the server closed the connection.');
         }
 
         // Attempt reconnection if enabled and not a clean close

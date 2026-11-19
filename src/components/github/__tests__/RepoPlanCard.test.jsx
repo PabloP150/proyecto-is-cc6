@@ -40,57 +40,57 @@ describe('RepoPlanCard', () => {
     renderCard();
     expect(screen.getByText(XSS)).toBeInTheDocument();
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
-    expect(screen.getByText('Sobre el repositorio')).toBeInTheDocument();
+    expect(screen.getByText('About the repository')).toBeInTheDocument();
     expect(screen.getByText('Resumen **sin** markdown')).toBeInTheDocument();
     expect(screen.queryByText('sin', { selector: 'strong' })).not.toBeInTheDocument();
     expect(screen.getByText('MVP')).toBeInTheDocument();
-    expect(screen.getByText('Sin hito')).toBeInTheDocument();
+    expect(screen.getByText('No milestone')).toBeInTheDocument();
     expect(screen.getByText('Frontend')).toBeInTheDocument();
-    expect(screen.getByText('Pruebas')).toBeInTheDocument();
-    expect(screen.getByText('2 tareas · 1 hito')).toBeInTheDocument();
-    expect(screen.getByText(/Plan propuesto para «Equipo Web»/)).toBeInTheDocument();
+    expect(screen.getByText('Testing')).toBeInTheDocument();
+    expect(screen.getByText('2 tasks · 1 milestone')).toBeInTheDocument();
+    expect(screen.getByText(/Proposed plan for “Equipo Web”/)).toBeInTheDocument();
   });
 
   it('fires onConfirm once with the planId even on double click', () => {
     const onConfirm = jest.fn();
     renderCard({ onConfirm });
-    const button = screen.getByRole('button', { name: 'Confirmar' });
+    const button = screen.getByRole('button', { name: 'Confirm' });
     fireEvent.click(button);
     fireEvent.click(button);
     expect(onConfirm).toHaveBeenCalledTimes(1);
     expect(onConfirm).toHaveBeenCalledWith('plan-1', expect.objectContaining({ planId: 'plan-1' }));
-    expect(screen.getByRole('button', { name: /Confirmar/ })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /Descartar/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Confirm/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Discard/ })).toBeDisabled();
   });
 
   it('re-enables the buttons when the send fails (handler returns false)', () => {
     const onDiscard = jest.fn(() => false);
     renderCard({ onDiscard });
-    fireEvent.click(screen.getByRole('button', { name: 'Descartar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
     expect(onDiscard).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole('button', { name: 'Descartar' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Discard' })).toBeEnabled();
   });
 
   it('is disabled while busy and unlocks after busy ends', () => {
     const onConfirm = jest.fn();
     const { rerender } = renderCard({ busy: true, onConfirm });
-    expect(screen.getByRole('button', { name: 'Confirmar' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Descartar' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Confirm' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Discard' })).toBeDisabled();
 
     rerender(
       <ThemeProvider theme={theme}>
         <RepoPlanCard message={makeMessage()} onConfirm={onConfirm} onDiscard={jest.fn()} busy={false} />
       </ThemeProvider>
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 
-  it('shows "Plan expirado" and disables actions for an expired plan', () => {
+  it('shows "Plan expired" and disables actions for an expired plan', () => {
     const onConfirm = jest.fn();
     renderCard({ message: makeMessage({ expiresAt: new Date(Date.now() - 1000).toISOString() }), onConfirm });
-    expect(screen.getByText('Plan expirado')).toBeInTheDocument();
-    const confirm = screen.getByRole('button', { name: 'Confirmar' });
+    expect(screen.getByText('Plan expired')).toBeInTheDocument();
+    const confirm = screen.getByRole('button', { name: 'Confirm' });
     expect(confirm).toBeDisabled();
     fireEvent.click(confirm);
     expect(onConfirm).not.toHaveBeenCalled();
@@ -99,25 +99,25 @@ describe('RepoPlanCard', () => {
   it('expires while open', () => {
     jest.useFakeTimers();
     renderCard({ message: makeMessage({ expiresAt: new Date(Date.now() + 5000).toISOString() }) });
-    expect(screen.getByRole('button', { name: 'Confirmar' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Confirm' })).toBeEnabled();
     act(() => {
       jest.advanceTimersByTime(6000);
     });
-    expect(screen.getByText('Plan expirado')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Confirmar' })).toBeDisabled();
+    expect(screen.getByText('Plan expired')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Confirm' })).toBeDisabled();
   });
 
   it('renders a compact read-only summary once saved', () => {
     renderCard({ message: makeMessage({ status: 'saved', created: { tasks: 2, milestones: 1 } }) });
-    expect(screen.getByTestId('repo-plan-compact')).toHaveTextContent('Plan guardado en «Equipo Web»: 2 tareas creadas y 1 hito.');
-    expect(screen.queryByRole('button', { name: 'Confirmar' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Ver detalle' }));
+    expect(screen.getByTestId('repo-plan-compact')).toHaveTextContent('Plan saved to “Equipo Web”: 2 tasks created and 1 milestone.');
+    expect(screen.queryByRole('button', { name: 'Confirm' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Show details' }));
     expect(screen.getByText(XSS)).toBeInTheDocument();
   });
 
   it('renders the discarded variant via the status prop', () => {
     renderCard({ status: 'discarded' });
-    expect(screen.getByTestId('repo-plan-compact')).toHaveTextContent('Plan descartado (2 tareas propuestas).');
+    expect(screen.getByTestId('repo-plan-compact')).toHaveTextContent('Plan discarded (2 proposed tasks).');
   });
 
   it('falls back to the plain-text content when the plan is missing', () => {

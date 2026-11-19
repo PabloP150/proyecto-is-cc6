@@ -88,11 +88,11 @@ describe('run controls', () => {
   test('a failed run shows its annotations and can be re-run', async () => {
     renderList();
     fireEvent.click(await screen.findByRole('button', { name: /Commit 1/ }));
-    const annotations = await screen.findByRole('list', { name: 'Errores y advertencias' });
+    const annotations = await screen.findByRole('list', { name: 'Errors and warnings' });
     expect(within(annotations).getByText('src/a.js:3')).toBeInTheDocument();
     expect(within(annotations).getByText(/no-undef: 'x' is not defined/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Re-ejecutar fallidos' }));
-    expect(await screen.findByText('Se re-ejecutan los jobs fallidos.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Re-run failed' }));
+    expect(await screen.findByText('Re-running the failed jobs.')).toBeInTheDocument();
     expect(rerunFailed).toHaveBeenCalledWith('G1', 1);
   });
 
@@ -102,9 +102,9 @@ describe('run controls', () => {
     cancelRun.mockRejectedValue(Object.assign(new Error('x'), { code: 'RUN_NOT_CANCELLABLE' }));
     renderList();
     fireEvent.click(await screen.findByRole('button', { name: /Commit 2/ }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Cancelar' }));
-    expect(await screen.findByText('La ejecución ya terminó.')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Re-ejecutar fallidos' })).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
+    expect(await screen.findByText('The run has already finished.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Re-run failed' })).not.toBeInTheDocument();
   });
 
   test('deploy runs: members see why they cannot act, admins get the buttons', async () => {
@@ -113,26 +113,26 @@ describe('run controls', () => {
     getRun.mockResolvedValue({ run: deploy, jobs: [] });
     const { unmount } = renderList({ isAdmin: false });
     fireEvent.click(await screen.findByRole('button', { name: /Deploy a producción/ }));
-    expect(await screen.findByText(/Solo el administrador del grupo puede re-ejecutar o cancelar un deploy/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Re-ejecutar fallidos' })).not.toBeInTheDocument();
+    expect(await screen.findByText(/Only the group admin can re-run or cancel a deploy/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Re-run failed' })).not.toBeInTheDocument();
     unmount();
 
     renderList({ isAdmin: true });
     fireEvent.click(await screen.findByRole('button', { name: /Deploy a producción/ }));
-    expect(await screen.findByRole('button', { name: 'Re-ejecutar fallidos' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Re-run failed' })).toBeInTheDocument();
   });
 
   test('the log of a finished job: groups, errors and the "only errors" filter', async () => {
     renderList();
     fireEvent.click(await screen.findByRole('button', { name: /Commit 1/ }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Ver log' }));
-    const log = await screen.findByLabelText('Log del job 11');
+    fireEvent.click(await screen.findByRole('button', { name: 'View log' }));
+    const log = await screen.findByLabelText('Log of job 11');
     expect(getJobLog).toHaveBeenCalledWith('G1', 11, expect.anything());
     expect(within(log).getByText('▸ Run npm run lint')).toBeInTheDocument();
     expect(within(log).getByText('✖ Process completed with exit code 1.')).toBeInTheDocument();
     expect(within(log).getByText('otra línea')).toBeInTheDocument();
-    expect(screen.getByText('Se muestra el final del log.')).toBeInTheDocument();
-    fireEvent.click(screen.getByLabelText('Solo errores'));
+    expect(screen.getByText('Showing the end of the log.')).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('Errors only'));
     expect(within(log).queryByText('otra línea')).not.toBeInTheDocument();
     expect(within(log).getByText('3:7 error x is not defined', { normalizer: (t) => t.replace(/\s+/g, ' ').trim() })).toBeInTheDocument();
   });
@@ -142,50 +142,50 @@ describe('run controls', () => {
     renderList();
     fireEvent.click(await screen.findByRole('button', { name: /Commit 1/ }));
     expect(
-      await screen.findByText(/No se pudieron cargar los errores y advertencias: La GitHub App todavía no tiene los permisos de CI\/CD/)
+      await screen.findByText(/Could not load the errors and warnings: The GitHub App does not have the CI\/CD permissions/)
     ).toBeInTheDocument();
-    expect(screen.queryByRole('list', { name: 'Errores y advertencias' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: 'Errors and warnings' })).not.toBeInTheDocument();
   });
 
   test('annotations failing with an unknown error get a generic note', async () => {
     getJobAnnotations.mockRejectedValue(new Error('boom'));
     renderList();
     fireEvent.click(await screen.findByRole('button', { name: /Commit 1/ }));
-    expect(await screen.findByText('No se pudieron cargar los errores y advertencias de este job.')).toBeInTheDocument();
+    expect(await screen.findByText('Could not load the errors and warnings of this job.')).toBeInTheDocument();
   });
 
   test('a log that is not available yet', async () => {
     getJobLog.mockRejectedValue(Object.assign(new Error('x'), { code: 'LOG_NOT_AVAILABLE' }));
     renderList();
     fireEvent.click(await screen.findByRole('button', { name: /Commit 1/ }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Ver log' }));
-    expect(await screen.findByText(/El log todavía no está disponible/)).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'View log' }));
+    expect(await screen.findByText(/The log is not available yet/)).toBeInTheDocument();
   });
 });
 
 describe('run the pipeline', () => {
   test('runs the CI on the chosen branch', async () => {
     renderList();
-    fireEvent.click(await screen.findByRole('button', { name: 'Ejecutar pipeline' }));
-    const dialog = screen.getByRole('dialog', { name: 'Ejecutar pipeline' });
-    const branch = within(dialog).getByLabelText('Rama');
+    fireEvent.click(await screen.findByRole('button', { name: 'Run pipeline' }));
+    const dialog = screen.getByRole('dialog', { name: 'Run pipeline' });
+    const branch = within(dialog).getByLabelText('Branch');
     expect(branch).toHaveValue('main');
     fireEvent.change(branch, { target: { value: 'feature/login' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Ejecutar' }));
-    expect(await screen.findByText(/se ejecutará en «feature\/login»/)).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Run' }));
+    expect(await screen.findByText(/will run on “feature\/login”/)).toBeInTheDocument();
     expect(dispatchPipeline).toHaveBeenCalledWith('G1', 'feature/login');
   });
 
   test('errors stay in the dialog; without a TaskMate pipeline there is no button', async () => {
     dispatchPipeline.mockRejectedValue(Object.assign(new Error('x'), { code: 'BRANCH_NOT_FOUND' }));
     const { unmount } = renderList();
-    fireEvent.click(await screen.findByRole('button', { name: 'Ejecutar pipeline' }));
-    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Ejecutar' }));
-    expect(await screen.findByText('Esa rama no existe en el repositorio.')).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'Run pipeline' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Run' }));
+    expect(await screen.findByText('That branch does not exist in the repository.')).toBeInTheDocument();
     unmount();
     renderList({ canRun: false });
     await screen.findByText('Commit 1');
-    expect(screen.queryByRole('button', { name: 'Ejecutar pipeline' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Run pipeline' })).not.toBeInTheDocument();
   });
 });
 
@@ -225,7 +225,7 @@ describe('live updates', () => {
     getRun.mockResolvedValue({ run: run(1, { status: 'in_progress', conclusion: null }), jobs: [] });
     const { unmount } = renderList({ connected: false });
     fireEvent.click(await screen.findByRole('button', { name: /Commit 1/ }));
-    await screen.findByText('Esta ejecución todavía no tiene jobs.');
+    await screen.findByText('This run has no jobs yet.');
     expect(getRun).toHaveBeenCalledTimes(1);
     await act(async () => {
       jest.advanceTimersByTime(10000);
@@ -236,7 +236,7 @@ describe('live updates', () => {
     getRun.mockClear();
     renderList({ connected: true });
     fireEvent.click(await screen.findByRole('button', { name: /Commit 1/ }));
-    await screen.findByText('Esta ejecución todavía no tiene jobs.');
+    await screen.findByText('This run has no jobs yet.');
     expect(getRun).toHaveBeenCalledTimes(1);
     await act(async () => {
       jest.advanceTimersByTime(59000);
@@ -264,7 +264,7 @@ describe('live updates', () => {
     getRun.mockResolvedValue({ run: run(1), jobs: [] });
     const { rerender } = render(listTree({ epoch: 1 }));
     fireEvent.click(await screen.findByRole('button', { name: /Commit 1/ }));
-    await screen.findByText('Esta ejecución todavía no tiene jobs.');
+    await screen.findByText('This run has no jobs yet.');
     expect(listRuns).toHaveBeenCalledTimes(1);
     expect(getRun).toHaveBeenCalledTimes(1);
     rerender(listTree({ epoch: 2 }));
@@ -278,7 +278,7 @@ describe('live updates', () => {
     getRun.mockResolvedValue({ run: run(1, { status: 'in_progress', conclusion: null }), jobs: [] });
     renderList({ connected: true });
     fireEvent.click(await screen.findByRole('button', { name: /Commit 1/ }));
-    await screen.findByText('Esta ejecución todavía no tiene jobs.');
+    await screen.findByText('This run has no jobs yet.');
     expect(getRun).toHaveBeenCalledTimes(1);
     emit({ type: 'event', event: 'ci_job', gid: 'G1', data: { runId: 1, jobId: 11, status: 'completed' } });
     emit({ type: 'event', event: 'ci_job', gid: 'G1', data: { runId: 2, jobId: 21, status: 'in_progress' } });

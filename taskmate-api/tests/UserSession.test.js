@@ -11,6 +11,8 @@ jest.mock('../models/group.model', () => ({ getGroupById: jest.fn() }));
 jest.mock('../models/github.model', () => ({ getGroupRepository: jest.fn() }));
 jest.mock('../models/tasks.model', () => ({ getTasksByGroupId: jest.fn() }));
 jest.mock('../models/nodes.model', () => ({ getNodesByGroupId: jest.fn() }));
+jest.mock('../models/userGroup.model', () => ({ getMembersByGroupId: jest.fn() }));
+jest.mock('../models/usertask.model', () => ({ getAssigneesByGroup: jest.fn() }));
 jest.mock('../services/github/repoSnapshot', () => ({
     ...jest.requireActual('../services/github/repoSnapshot'),
     buildRepoSnapshot: jest.fn(),
@@ -24,6 +26,8 @@ const groupModel = require('../models/group.model');
 const githubModel = require('../models/github.model');
 const tasksModel = require('../models/tasks.model');
 const nodesModel = require('../models/nodes.model');
+const userGroupModel = require('../models/userGroup.model');
+const usertaskModel = require('../models/usertask.model');
 const { buildRepoSnapshot } = require('../services/github/repoSnapshot');
 const { localToday } = require('../services/github/repoPlan');
 const UserSession = require('../services/UserSession');
@@ -67,6 +71,8 @@ describe('UserSession', () => {
         githubModel.getGroupRepository.mockResolvedValue({ gid: GID, repoId: 500, fullName: 'octo/demo', defaultBranch: 'main', suspendedAt: null, aiAnalysisEnabled: true });
         tasksModel.getTasksByGroupId.mockResolvedValue([{ name: 'Existing task', list: 'To Do', percentage: 0 }]);
         nodesModel.getNodesByGroupId.mockResolvedValue([]);
+        userGroupModel.getMembersByGroupId.mockResolvedValue([{ uid: UID, username: 'ana' }]);
+        usertaskModel.getAssigneesByGroup.mockResolvedValue([{ taskName: 'Existing task', username: 'ana' }]);
         buildRepoSnapshot.mockResolvedValue(SNAPSHOT);
         projectService.addPlanToGroup.mockResolvedValue({ taskIds: ['t1'], nodeIds: ['n1'] });
         UserSession.lastAnalysisByUser.clear();
@@ -132,7 +138,7 @@ describe('UserSession', () => {
                 requestId: expect.any(String),
                 sessionId: session.sessionId,
                 method: 'handle_user_message',
-                params: { message: 'Quiero una app', context: { userId: UID } },
+                params: { message: 'Quiero una app', context: { userId: UID }, project: null },
             }]);
             expect(session.chatHistory[0]).toMatchObject({ type: 'user', content: 'Quiero una app' });
         });
@@ -276,7 +282,7 @@ describe('UserSession', () => {
             await replyPlan(request);
             await session.handleMessage({ type: 'repo_analysis', requestId: 'client-2', groupId: GID });
             const error = lastOfType(ws, 'error');
-            expect(error).toMatchObject({ code: 'RATE_LIMITED', requestId: 'client-2', message: 'Solo se puede pedir un análisis por minuto.' });
+            expect(error).toMatchObject({ code: 'RATE_LIMITED', requestId: 'client-2', message: 'You can only ask for one analysis per minute.' });
             expect(error.retryAfterSec).toBeGreaterThan(0);
 
             const otherSession = new UserSession(UID, mockWebSocket());
@@ -368,7 +374,7 @@ describe('UserSession', () => {
 
         test('an analysis without instructions is kept with the text the chat shows', async () => {
             await startAnalysis({ instructions: '' });
-            expect(turns()).toEqual([['user', 'Analiza el repositorio de «Mi proyecto» y propón las siguientes tareas.']]);
+            expect(turns()).toEqual([['user', 'Analyze the repository of “Mi proyecto” and propose the next tasks.']]);
         });
 
         test('kept instructions are the cleaned ones sent to the AI', async () => {
@@ -539,7 +545,7 @@ describe('UserSession', () => {
             const other = new UserSession(UID, mockWebSocket());
             await other.handleMessage({ type: 'user', content: 'one more', requestId: 'm21' });
             expect(sent(other.websocket).pop()).toMatchObject({
-                code: 'RATE_LIMITED', requestId: 'm21', retryAfterSec: expect.any(Number), message: 'Estás enviando mensajes muy rápido; espera un momento.',
+                code: 'RATE_LIMITED', requestId: 'm21', retryAfterSec: expect.any(Number), message: 'You are sending messages too fast; wait a moment.',
             });
             expect(pythonRequests()).toHaveLength(20);
             expect(other.chatHistory).toHaveLength(0);
@@ -697,4 +703,93 @@ describe('UserSession', () => {
             expect(lastOfType(ws, 'error')).toMatchObject({ code: 'MESSAGE_TOO_LONG' });
         });
     });
+
+    describe('chat with a selected project', () => {
+        const chat = async (content, requestId) => {
+            await session.handleMessage({ type: 'user', content, requestId });
+            return pythonRequests().filter((r) => r.method === 'handle_user_message').pop();
+        };
+
+        test('context is built on the first message and reused after that', async () => {
+            await session.handleMessage({ type: 'set_context', groupId: GID });
+            const first = await chat('¿qué hace el repo?');
+            const second = await chat('¿y las tareas?');
+            expect(first.params.project).toMatchObject({
+                groupId: GID, groupName: 'Mi proyecto', members: ['ana'], assignments: { 'Existing task': ['ana'] }, snapshot: SNAPSHOT,
+                existing: { tasks: [{ name: 'Existing task' }] },
+            });
+            expect(second.params.project).toEqual(first.params.project);
+            expect(buildRepoSnapshot).toHaveBeenCalledTimes(1);
+        });
+
+        test('re-selecting the same project keeps it; another project rebuilds it', async () => {
+            await session.handleMessage({ type: 'set_context', groupId: GID });
+            await chat('uno');
+            await session.handleMessage({ type: 'set_context', groupId: GID.toUpperCase() });
+            await chat('dos');
+            expect(buildRepoSnapshot).toHaveBeenCalledTimes(1);
+            const OTHER = '33333333-3333-4333-8333-333333333333';
+            await session.handleMessage({ type: 'set_context', groupId: OTHER });
+            expect((await chat('tres')).params.project.groupId).toBe(OTHER);
+            expect(buildRepoSnapshot).toHaveBeenCalledTimes(2);
+            await session.handleMessage({ type: 'set_context', groupId: null });
+            expect((await chat('cuatro')).params.project).toBeNull();
+        });
+
+        test('without AI consent the repository is not read, but tasks still are', async () => {
+            githubModel.getGroupRepository.mockResolvedValue({ gid: GID, repoId: 500, fullName: 'octo/demo', aiAnalysisEnabled: false });
+            await session.handleMessage({ type: 'set_context', groupId: GID });
+            const req = await chat('hola');
+            expect(buildRepoSnapshot).not.toHaveBeenCalled();
+            expect(req.params.project).toMatchObject({ snapshot: null, repoNote: expect.stringMatching(/not allowed AI/) });
+            expect(req.params.project.existing.tasks).toHaveLength(1);
+        });
+
+        test('a snapshot failure is not cached: the next message retries', async () => {
+            buildRepoSnapshot.mockRejectedValueOnce(new Error('github down'));
+            await session.handleMessage({ type: 'set_context', groupId: GID });
+            expect((await chat('uno')).params.project.snapshot).toBeNull();
+            expect((await chat('dos')).params.project.snapshot).toEqual(SNAPSHOT);
+        });
+
+        test('plan_request runs the analysis on the cached snapshot, without a second history entry', async () => {
+            await session.handleMessage({ type: 'set_context', groupId: GID });
+            const req = await chat('crea un plan de pruebas', 'c-plan');
+            llmService.emit(session.sessionId, { event: 'plan_request', requestId: req.requestId, sessionId: session.sessionId,
+                data: { instructions: 'crea un plan de pruebas' } });
+            await new Promise((r) => setImmediate(r));
+            await new Promise((r) => setImmediate(r));
+            const analysis = pythonRequests().find((r) => r.method === 'analyze_repository');
+            expect(analysis.params).toMatchObject({ groupId: GID, instructions: 'crea un plan de pruebas', snapshot: SNAPSHOT });
+            expect(buildRepoSnapshot).toHaveBeenCalledTimes(1);
+            expect(session.chatHistory.filter((m) => m.type === 'user')).toHaveLength(1);
+            expect(lastOfType(ws, 'repo_analysis_status')).toMatchObject({ requestId: 'c-plan' });
+        });
+
+        test('a cached context is dropped when the user leaves the group', async () => {
+            await session.handleMessage({ type: 'set_context', groupId: GID });
+            expect((await chat('uno')).params.project).not.toBeNull();
+            accessModel.isGroupMember.mockResolvedValue(false);
+            expect((await chat('dos')).params.project).toBeNull();
+        });
+
+        test('revoking AI consent strips the cached repository snapshot on the next message', async () => {
+            await session.handleMessage({ type: 'set_context', groupId: GID });
+            expect((await chat('uno')).params.project.snapshot).toEqual(SNAPSHOT);
+            githubModel.getGroupRepository.mockResolvedValue({ gid: GID, repoId: 500, fullName: 'octo/demo', aiAnalysisEnabled: false });
+            const second = (await chat('dos')).params.project;
+            expect(second.snapshot).toBeNull();
+            expect(second.existing.tasks).toHaveLength(1);
+            expect(buildRepoSnapshot).toHaveBeenCalledTimes(1);
+        });
+
+        test('the plan cooldown never blocks normal chat', async () => {
+            UserSession.lastAnalysisByUser.set(UID, Date.now());
+            await session.handleMessage({ type: 'set_context', groupId: GID });
+            await chat('hola');
+            expect(pythonRequests().filter((r) => r.method === 'handle_user_message')).toHaveLength(1);
+            expect(lastOfType(ws, 'error')).toBeUndefined();
+        });
+    });
 });
+

@@ -7,7 +7,7 @@ import { errorMessage, formatDateTime, formatRelativeDate, isAbortError, safeGit
 
 const PER_PAGE = 30;
 
-const firstLine = (message) => String(message || '').split(/\r?\n/)[0].trim() || '(sin mensaje)';
+const firstLine = (message) => String(message || '').split(/\r?\n/)[0].trim() || '(no message)';
 
 /** Latest commits of the group's repository. Props: gid, gitRef (optional branch/sha). */
 export default function CommitList({ gid, gitRef }) {
@@ -29,7 +29,7 @@ export default function CommitList({ gid, gitRef }) {
       })
       .catch((err) => {
         if (!active || isAbortError(err)) return;
-        setState({ loading: false, error: errorMessage(err, 'No se pudieron cargar los commits.'), commits: [] });
+        setState({ loading: false, error: errorMessage(err, 'Could not load the commits.'), commits: [] });
       });
     return () => {
       active = false;
@@ -43,11 +43,11 @@ export default function CommitList({ gid, gitRef }) {
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
         <Typography variant="h6" component="h2">
-          Commits recientes
+          Recent commits
         </Typography>
-        <Tooltip title="Actualizar" arrow>
+        <Tooltip title="Refresh" arrow>
           <span>
-            <IconButton onClick={reload} disabled={loading} aria-label="Actualizar commits" size="small">
+            <IconButton onClick={reload} disabled={loading} aria-label="Refresh commits" size="small">
               <RefreshIcon fontSize="small" />
             </IconButton>
           </span>
@@ -57,7 +57,7 @@ export default function CommitList({ gid, gitRef }) {
       {loading && commits.length === 0 && (
         <Box role="status" sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 4, justifyContent: 'center' }}>
           <CircularProgress size={22} />
-          <Typography color="text.secondary">Cargando commits…</Typography>
+          <Typography color="text.secondary">Loading commits…</Typography>
         </Box>
       )}
 
@@ -66,7 +66,7 @@ export default function CommitList({ gid, gitRef }) {
           severity="error"
           action={
             <Button variant="ghost" size="small" onClick={reload}>
-              Reintentar
+              Retry
             </Button>
           }
         >
@@ -76,17 +76,17 @@ export default function CommitList({ gid, gitRef }) {
 
       {!loading && !error && commits.length === 0 && (
         <Typography color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>
-          Este repositorio todavía no tiene commits.
+          This repository has no commits yet.
         </Typography>
       )}
 
       {commits.length > 0 && (
-        <List disablePadding aria-label="Commits recientes" aria-busy={loading}>
+        <List disablePadding aria-label="Recent commits" aria-busy={loading}>
           {commits.map((commit) => {
             const href = safeGitHubUrl(commit.htmlUrl);
             const shortSha = String(commit.shortSha || String(commit.sha || '').slice(0, 7));
             const title = firstLine(commit.message);
-            const author = commit.authorLogin || commit.authorName || 'Autor desconocido';
+            const author = commit.authorLogin || commit.authorName || 'Unknown author';
             return (
               <ListItem
                 key={commit.sha || shortSha}
@@ -95,7 +95,7 @@ export default function CommitList({ gid, gitRef }) {
               >
                 <Box
                   component={href ? 'a' : 'span'}
-                  {...(href ? { href, target: '_blank', rel: 'noopener noreferrer', 'aria-label': `Ver commit ${shortSha} en GitHub` } : {})}
+                  {...(href ? { href, target: '_blank', rel: 'noopener noreferrer', 'aria-label': `View commit ${shortSha} on GitHub` } : {})}
                   sx={{
                     fontFamily: 'monospace',
                     fontSize: '0.8rem',

@@ -36,11 +36,11 @@ describe('RepoSelection', () => {
 
     expect(await screen.findByText('acme/web')).toBeInTheDocument();
     expect(getSelection).toHaveBeenCalledWith('sel-1', expect.any(Object));
-    expect(screen.getByText(/al grupo «Equipo Web»/)).toBeInTheDocument();
-    expect(screen.getByText('Privado')).toBeInTheDocument();
-    expect(screen.getByText('Público')).toBeInTheDocument();
+    expect(screen.getByText(/to the group “Equipo Web”/)).toBeInTheDocument();
+    expect(screen.getByText('Private')).toBeInTheDocument();
+    expect(screen.getByText('Public')).toBeInTheDocument();
 
-    const submit = screen.getByRole('button', { name: 'Vincular repositorio' });
+    const submit = screen.getByRole('button', { name: 'Link repository' });
     expect(submit).toBeDisabled();
     fireEvent.click(screen.getByRole('radio', { name: /acme\/api/ }));
     fireEvent.click(submit);
@@ -52,7 +52,7 @@ describe('RepoSelection', () => {
   it('shows which GitHub account is connecting', async () => {
     getSelection.mockResolvedValue({ ...SELECTION, githubLogin: 'octocat' });
     renderSelection();
-    expect(await screen.findByText('Conectando como @octocat')).toBeInTheDocument();
+    expect(await screen.findByText('Connecting as @octocat')).toBeInTheDocument();
   });
 
   it('explains an expired selection', async () => {
@@ -60,9 +60,9 @@ describe('RepoSelection', () => {
     const onCancel = jest.fn();
     renderSelection({ onCancel });
 
-    expect(await screen.findByText(/La selección de repositorios expiró/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Vincular repositorio' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Cerrar' }));
+    expect(await screen.findByText(/The repository selection expired/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Link repository' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(onCancel).toHaveBeenCalled();
   });
 
@@ -71,8 +71,8 @@ describe('RepoSelection', () => {
     linkRepository.mockRejectedValue(Object.assign(new Error('404'), { code: 'SELECTION_NOT_FOUND', status: 404 }));
     renderSelection();
     fireEvent.click(await screen.findByRole('radio', { name: /acme\/web/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'Vincular repositorio' }));
-    expect(await screen.findByText(/La selección de repositorios expiró/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Link repository' }));
+    expect(await screen.findByText(/The repository selection expired/)).toBeInTheDocument();
   });
 
   it('shows other link errors inline', async () => {
@@ -80,8 +80,8 @@ describe('RepoSelection', () => {
     linkRepository.mockRejectedValue(Object.assign(new Error('403'), { code: 'NOT_GROUP_ADMIN', status: 403 }));
     renderSelection();
     fireEvent.click(await screen.findByRole('radio', { name: /acme\/web/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'Vincular repositorio' }));
-    expect(await screen.findByText('Solo el administrador del grupo puede hacer esto.')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Vincular repositorio' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Link repository' }));
+    expect(await screen.findByText('Only the group admin can do this.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Link repository' })).toBeEnabled();
   });
 });

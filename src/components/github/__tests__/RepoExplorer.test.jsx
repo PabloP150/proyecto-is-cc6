@@ -55,7 +55,7 @@ beforeEach(() => {
   getFile.mockReset();
 });
 
-const tree = () => screen.getByRole('navigation', { name: 'Archivos del repositorio' });
+const tree = () => screen.getByRole('navigation', { name: 'Repository files' });
 
 describe('RepoExplorer', () => {
   it('opens the README by default with sanitize and without rehype-raw', async () => {
@@ -65,7 +65,7 @@ describe('RepoExplorer', () => {
     expect(props.rehypePlugins).toEqual([rehypeSanitize]);
     expect(props.rehypePlugins).not.toContain(rehypeRaw);
     expect(props.remarkPlugins).toEqual([remarkGfm]);
-    expect(screen.getByRole('link', { name: /Ver en GitHub/ })).toHaveAttribute('href', README.htmlUrl);
+    expect(screen.getByRole('link', { name: /View on GitHub/ })).toHaveAttribute('href', README.htmlUrl);
   });
 
   it('builds a collapsible folder tree', async () => {
@@ -86,19 +86,19 @@ describe('RepoExplorer', () => {
   it('filters files and expands the matching folders', async () => {
     renderExplorer();
     await within(tree()).findByRole('button', { name: 'src' });
-    fireEvent.change(screen.getByRole('textbox', { name: 'Filtrar archivos por nombre o ruta' }), { target: { value: 'app' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Filter files by name or path' }), { target: { value: 'app' } });
     expect(within(tree()).getByRole('button', { name: 'App.jsx' })).toBeInTheDocument();
     expect(within(tree()).queryByRole('button', { name: 'index.js' })).not.toBeInTheDocument();
     expect(screen.getByText('1 coincidencia.')).toBeInTheDocument();
 
-    fireEvent.change(screen.getByRole('textbox', { name: 'Filtrar archivos por nombre o ruta' }), { target: { value: 'zzz' } });
-    expect(screen.getByText('Ningún archivo coincide con el filtro.')).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Filter files by name or path' }), { target: { value: 'zzz' } });
+    expect(screen.getByText('No file matches the filter.')).toBeInTheDocument();
   });
 
   it('warns when the tree is truncated', async () => {
     getTree.mockResolvedValue({ ...TREE, truncated: true });
     renderExplorer();
-    expect(await screen.findByText(/solo se muestran los primeros 7 elementos/)).toBeInTheDocument();
+    expect(await screen.findByText(/only the first 7 entries are shown/)).toBeInTheDocument();
   });
 
   it('shows text files with line numbers and a wrap toggle', async () => {
@@ -112,7 +112,7 @@ describe('RepoExplorer', () => {
     expect(code).toHaveTextContent('const a = 1;');
     expect(screen.getByTestId('line-numbers').textContent).toBe('1\n2');
 
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Ajustar líneas' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Wrap lines' }));
     expect(screen.queryByTestId('line-numbers')).not.toBeInTheDocument();
   });
 
@@ -120,8 +120,8 @@ describe('RepoExplorer', () => {
     getFile.mockResolvedValue({ path: 'logo.png', size: 2048, binary: true, content: null, htmlUrl: 'https://github.com/acme/app/blob/main/logo.png' });
     renderExplorer();
     fireEvent.click(await within(tree()).findByRole('button', { name: 'logo.png' }));
-    expect(await screen.findByText('Este archivo es binario y no se puede previsualizar.')).toBeInTheDocument();
-    const links = screen.getAllByRole('link', { name: /Ver en GitHub/ });
+    expect(await screen.findByText('This file is binary and cannot be previewed.')).toBeInTheDocument();
+    const links = screen.getAllByRole('link', { name: /View on GitHub/ });
     expect(links.some((a) => a.getAttribute('href') === 'https://github.com/acme/app/blob/main/logo.png')).toBe(true);
   });
 
@@ -129,21 +129,21 @@ describe('RepoExplorer', () => {
     getFile.mockRejectedValue(Object.assign(new Error('too large'), { code: 'FILE_TOO_LARGE', status: 413 }));
     renderExplorer();
     fireEvent.click(await within(tree()).findByRole('button', { name: 'data.csv' }));
-    expect(await screen.findByText(/El archivo supera 1 MB/)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Ver en GitHub/ })).toHaveAttribute('href', 'https://github.com/acme/app/blob/main/data.csv');
+    expect(await screen.findByText(/The file is larger than 1 MB/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /View on GitHub/ })).toHaveAttribute('href', 'https://github.com/acme/app/blob/main/data.csv');
   });
 
   it('handles a repository without README', async () => {
     getReadme.mockRejectedValue(Object.assign(new Error('404'), { code: 'FILE_NOT_FOUND', status: 404 }));
     renderExplorer();
-    expect(await screen.findByText(/Este repositorio no tiene README/)).toBeInTheDocument();
+    expect(await screen.findByText(/This repository has no README/)).toBeInTheDocument();
   });
 
   it('shows a retryable error when the tree fails', async () => {
     getTree.mockRejectedValueOnce(Object.assign(new Error('502'), { code: 'GITHUB_ERROR', status: 502 }));
     renderExplorer();
-    expect(await screen.findByText('GitHub respondió con un error. Inténtalo más tarde.')).toBeInTheDocument();
-    fireEvent.click(within(tree()).getByRole('button', { name: 'Reintentar' }));
+    expect(await screen.findByText('GitHub returned an error. Try again later.')).toBeInTheDocument();
+    fireEvent.click(within(tree()).getByRole('button', { name: 'Retry' }));
     await waitFor(() => expect(getTree).toHaveBeenCalledTimes(2));
     expect(await within(tree()).findByRole('button', { name: 'src' })).toBeInTheDocument();
   });

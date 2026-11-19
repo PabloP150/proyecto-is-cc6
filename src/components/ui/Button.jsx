@@ -39,7 +39,8 @@ const StyledButton = styled(MuiButton)(({ theme, variant = 'primary' }) => {
     },
     secondary: {
       background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
-      color: '#ffffff',
+      // Dark text: white on orange is hard to read.
+      color: '#111827',
       border: 'none',
       '&:hover': {
         background: 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)',
@@ -47,11 +48,13 @@ const StyledButton = styled(MuiButton)(({ theme, variant = 'primary' }) => {
       },
     },
     accent: {
-      background: 'linear-gradient(90deg, #3b82f6 0%, #f59e0b 100%)',
+      // Darker ends and a text shadow keep the white text readable over the orange side.
+      background: 'linear-gradient(90deg, #2563eb 0%, #d97706 100%)',
       color: '#ffffff',
+      textShadow: '0 1px 2px rgba(0, 0, 0, 0.45)',
       border: 'none',
       '&:hover': {
-        background: 'linear-gradient(90deg, #60a5fa 0%, #fbbf24 100%)',
+        background: 'linear-gradient(90deg, #3b82f6 0%, #f59e0b 100%)',
         boxShadow: '0 8px 24px 0 rgba(59, 130, 246, 0.4), 0 8px 24px 0 rgba(245, 158, 11, 0.4)',
       },
     },
