@@ -161,3 +161,17 @@ con `ast.parse`; JS se revisa que tenga `test()`/`it()`. **No se ejecutan ni se 
 código escrito por el modelo en el servidor permitiría que un diff malicioso corra código ahí.
 Medido en un cambio de ejemplo: 8 de 9 pruebas de Python pasaron tal cual; los errores fueron
 expectativas aritméticas. Se revisan antes de agregarlas a la rama.
+
+### IA revisando pull requests
+
+Cuando se abre (o recibe commits) el PR de la rama de una tarea, el webhook de GitHub dispara la
+revisión en segundo plano si el grupo tiene el permiso de IA activo. El servidor de IA (`review-pr`)
+devuelve comentarios en línea (hallazgos altos/medios de la auditoría), un resumen y riesgos.
+
+- Se guarda en `dbo.AiReviews` (migración `011_ai_reviews`), una por commit: un webhook repetido no
+  revisa dos veces. La vista de la tarea muestra la última; «Revisar PR» la pide a mano.
+- Se publica en GitHub como revisión **COMMENT** (nunca aprueba ni bloquea). Requiere que la GitHub
+  App tenga **Pull requests: write**; sin ese permiso queda guardada en TaskMate como
+  «no publicada» y la interfaz lo explica.
+- Seguridad: el texto del PR y del modelo se escapa (sin enlaces, imágenes, HTML ni @menciones
+  inyectados) y los secretos detectados no aparecen en ningún comentario.

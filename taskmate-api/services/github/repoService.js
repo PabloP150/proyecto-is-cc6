@@ -226,6 +226,15 @@ const getComparePatches = async (repo, base, head) => {
     return { files, aheadBy: Number(data && data.ahead_by) || 0 };
 };
 
+const getPullRequest = async (repo, prNumber) => {
+    const number = Number(prNumber);
+    if (!Number.isInteger(number) || number <= 0) throw invalid('prNumber must be a positive integer');
+    const { data } = await githubApp.request(repoAuth(repo), 'GET', `${repoPath(repo)}/pulls/${number}`, {
+        ...scope(repo, PERMISSIONS.pulls), notFoundCode: 'NOT_FOUND',
+    });
+    return data || {};
+};
+
 const getRepoMeta = async (repo) => {
     const { data } = await githubApp.request(repoAuth(repo), 'GET', repoPath(repo), scope(repo));
     return data || {};
@@ -245,6 +254,7 @@ module.exports = {
     getCommitsForRepo,
     getPullRequestFiles,
     getComparePatches,
+    getPullRequest,
     getRepoMeta,
     // Input is validated before touching the DB or GitHub.
     getTree: async (gid, opts = {}) => {

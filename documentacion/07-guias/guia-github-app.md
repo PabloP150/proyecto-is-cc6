@@ -135,6 +135,7 @@ Pulsa **Create GitHub App**.
 TaskMate pide tokens de instalación **acotados al repositorio del grupo** y con permisos **mínimos por operación**:
 - Fase 3: solo lectura para explorar; `contents: write` solo al crear o borrar ramas; `pull_requests: read` para sincronizar y para la limpieza de ramas.
 - Fase 4: `contents` + `workflows: write` solo al subir el workflow; `actions: write` solo para ejecutar, re-ejecutar, cancelar o desplegar; `checks: read` para anotaciones y para verificar versiones; `administration` + `pages: write` solo al activar Pages.
+- Revisión de PR con IA (línea de Christian): `pull_requests: write` solo al publicar la revisión. Es **opcional**: para usarlo, cambia *Pull requests* de *Read-only* a *Read and write* en la App y quien la instaló debe aceptarlo; sin él la revisión se guarda en TaskMate y no se publica en GitHub.
 
 Aun así, la App debe tener al menos los permisos de la tabla. Si una instalación no aceptó alguno, la acción que lo necesita responde `APP_PERMISSIONS_MISSING` y TaskMate muestra «La GitHub App todavía no tiene los permisos de CI/CD en este repositorio. Quien la instaló debe aceptarlos en GitHub.»
 

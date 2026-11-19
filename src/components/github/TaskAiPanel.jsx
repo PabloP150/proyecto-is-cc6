@@ -1,5 +1,6 @@
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import FactCheckIcon from '@mui/icons-material/FactCheck';
+import RateReviewIcon from '@mui/icons-material/RateReview';
 import ScienceIcon from '@mui/icons-material/Science';
 import {
   Accordion,
@@ -11,6 +12,7 @@ import {
   Chip,
   CircularProgress,
   IconButton,
+  Link,
   List,
   ListItem,
   Stack,
@@ -18,7 +20,8 @@ import {
   Typography,
 } from '@mui/material';
 import { useEffect, useRef, useState } from 'react';
-import { auditTask, generateTaskTests } from '../../api/github';
+import { auditTask, generateTaskTests, getTaskReview, reviewTaskPr } from '../../api/github';
+import { safeHttpsUrl } from './cicd/cicdUtils';
 import { errorMessage, isAbortError } from './githubUtils';
 
 const VERDICT = {
@@ -35,6 +38,12 @@ const SYNTAX = {
 const ACTIONS = {
   audit: { run: auditTask, wait: 'Auditando con el modelo local (puede tardar ~20 s)…', fail: 'No se pudo auditar la rama.' },
   tests: { run: generateTaskTests, wait: 'Generando pruebas con el modelo local (puede tardar ~30 s)…', fail: 'No se pudieron generar las pruebas.' },
+  review: { run: reviewTaskPr, wait: 'Revisando el pull request (puede tardar ~30 s)…', fail: 'No se pudo revisar el pull request.' },
+};
+const POSTED = {
+  posted: 'Publicada en GitHub',
+  no_permission: 'No publicada en GitHub: la GitHub App necesita el permiso «Pull requests: write».',
+  failed: 'No se pudo publicar en GitHub.',
 };
 
 function Finding({ f }) {
@@ -113,6 +122,37 @@ function Proposal({ p }) {
   );
 }
 
+function ReviewResult({ review }) {
+  if (review.status === 'pending') return <Alert severity="info" sx={{ mt: 1 }}>Revisión en curso para el último commit…</Alert>;
+  if (review.status === 'failed') {
+    return <Alert severity="error" sx={{ mt: 1 }}>La última revisión falló ({review.errorCode || 'error'}).</Alert>;
+  }
+  const r = review.result || {};
+  const verdict = VERDICT[review.verdict] || VERDICT.warn;
+  const url = safeHttpsUrl(review.reviewUrl);
+  return (
+    <Box sx={{ mt: 1 }}>
+      <Alert severity={verdict.severity}>
+        PR #{review.prNumber} · commit {String(review.headSha || '').slice(0, 7)} · {verdict.label}
+        {r.comments ? ` · ${r.comments.length} comentarios en línea` : ''}
+      </Alert>
+      {r.summary && <Typography variant="body2" sx={{ mt: 1 }}>{r.summary}</Typography>}
+      {r.risks && r.risks.length > 0 && (
+        <List dense disablePadding>
+          {r.risks.map((risk, i) => (
+            <ListItem key={i} sx={{ py: 0 }}><Typography variant="caption">• {risk}</Typography></ListItem>
+          ))}
+        </List>
+      )}
+      <Typography variant="caption" component="div" color="text.secondary" sx={{ mt: 0.5 }}>
+        {review.posted === 'posted' && url
+          ? <Link href={url} target="_blank" rel="noopener noreferrer">{POSTED.posted}</Link>
+          : POSTED[review.posted]}
+      </Typography>
+    </Box>
+  );
+}
+
 function TestsResult({ tests }) {
   const proposals = tests.proposals || [];
   return (
@@ -132,11 +172,21 @@ function TestsResult({ tests }) {
 }
 
 /** AI actions over the task branch, run by the local AI server. */
-export default function TaskAiPanel({ tid, aiEnabled }) {
-  const [state, setState] = useState({ loading: null, error: null, audit: null, tests: null });
+export default function TaskAiPanel({ tid, aiEnabled, prOpen }) {
+  const [state, setState] = useState({ loading: null, error: null, audit: null, tests: null, review: null });
   const controller = useRef(null);
 
   useEffect(() => () => controller.current && controller.current.abort(), []);
+
+  // The webhook reviews task PRs on its own: show the stored result when the panel opens.
+  useEffect(() => {
+    if (!aiEnabled || !tid) return undefined;
+    const ac = new AbortController();
+    getTaskReview(tid, { signal: ac.signal })
+      .then((review) => review && setState((s) => (s.review ? s : { ...s, review })))
+      .catch(() => {});
+    return () => ac.abort();
+  }, [tid, aiEnabled]);
 
   const run = async (kind) => {
     if (controller.current) controller.current.abort();
@@ -169,6 +219,11 @@ export default function TaskAiPanel({ tid, aiEnabled }) {
         <Button size="small" variant="outlined" startIcon={<ScienceIcon />} onClick={() => run('tests')} disabled={Boolean(state.loading)}>
           Generar pruebas
         </Button>
+        {prOpen && (
+          <Button size="small" variant="outlined" startIcon={<RateReviewIcon />} onClick={() => run('review')} disabled={Boolean(state.loading)}>
+            Revisar PR
+          </Button>
+        )}
       </Stack>
 
       {state.loading && (
@@ -179,6 +234,7 @@ export default function TaskAiPanel({ tid, aiEnabled }) {
       )}
       {state.error && <Alert severity="error" sx={{ mt: 1 }}>{state.error}</Alert>}
       {state.audit && <AuditResult audit={state.audit} />}
+      {state.review && <ReviewResult review={state.review} />}
       {state.tests && <TestsResult tests={state.tests} />}
     </Box>
   );

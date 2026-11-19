@@ -9,8 +9,12 @@ const setup = ({ links, patches = files, ai = true } = {}) => {
         getConnectedRepo: jest.fn(async () => ({ ...repo, aiAnalysisEnabled: ai })),
         getComparePatches: jest.fn(async () => ({ files: patches, aheadBy: 1 })),
     };
+    repoService.getPullRequest = jest.fn(async () => ({ head: { sha: 'b'.repeat(40), ref: 'tm/t' }, base: { ref: 'main' }, title: 'T', body: '' }));
     const aiServer = { runCommand: jest.fn(async () => ({ run_id: 'run', result: { verdict: 'warn', findings: [] } })) };
-    return { githubModel, repoService, aiServer, taskAi: createTaskAi({ githubModel, repoService, aiServer }) };
+    const aiReviewModel = { getLatest: jest.fn(async () => ({ id: 1, verdict: 'warn' })) };
+    const prReview = { reviewPullRequest: jest.fn(async () => ({})) };
+    return { githubModel, repoService, aiServer, aiReviewModel, prReview,
+        taskAi: createTaskAi({ githubModel, repoService, aiServer, aiReviewModel, prReview }) };
 };
 
 describe('taskAi.auditTask', () => {
@@ -49,5 +53,19 @@ describe('taskAi.auditTask', () => {
         const out = await s.taskAi.generateTestsForTask({ gid: 'g', tid: 't' });
         expect(s.aiServer.runCommand).toHaveBeenCalledWith('generate-tests', { files, base: 'main', head: 'tm/t' });
         expect(out).toEqual({ runId: 'g', proposals: [], skipped: [] });
+    });
+
+    test('reviewTaskPr runs on the open PR head and returns the stored review', async () => {
+        const s = setup({ links: [{ tid: 't', branchName: 'tm/t', pr: { number: 4, state: 'open' } }] });
+        expect(await s.taskAi.reviewTaskPr({ gid: 'g', tid: 't' })).toEqual({ id: 1, verdict: 'warn' });
+        expect(s.prReview.reviewPullRequest).toHaveBeenCalledWith(expect.objectContaining({
+            tid: 't', pr: expect.objectContaining({ number: 4, headSha: 'b'.repeat(40), baseBranch: 'main' }) }));
+    });
+
+    test('reviewTaskPr needs an open PR and AI consent', async () => {
+        await expect(setup({ links: [{ tid: 't', branchName: 'tm/t', pr: null }] }).taskAi.reviewTaskPr({ gid: 'g', tid: 't' }))
+            .rejects.toMatchObject({ code: 'NO_OPEN_PR' });
+        const s = setup({ links: [{ tid: 't', branchName: 'tm/t', pr: { number: 4, state: 'open' } }], ai: false });
+        await expect(s.taskAi.reviewTaskPr({ gid: 'g', tid: 't' })).rejects.toMatchObject({ code: 'AI_ANALYSIS_DISABLED' });
     });
 });

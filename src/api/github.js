@@ -141,3 +141,10 @@ export const auditTask = (tid, { signal } = {}) =>
 /** Proposed unit tests for the task branch (not executed, not committed). Slow: pass a signal. */
 export const generateTaskTests = (tid, { signal } = {}) =>
   request(`/tasks/${seg(tid)}/generate-tests`, { method: 'POST', signal });
+
+/** Latest stored AI review of the task's PR (null if none). */
+export const getTaskReview = (tid, { signal } = {}) => request(`/tasks/${seg(tid)}/review`, { signal });
+
+/** Run the AI review on the task's open PR now (the webhook normally does it). Slow: pass a signal. */
+export const reviewTaskPr = (tid, { signal } = {}) =>
+  request(`/tasks/${seg(tid)}/review`, { method: 'POST', signal });

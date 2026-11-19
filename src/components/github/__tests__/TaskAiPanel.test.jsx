@@ -1,14 +1,19 @@
 import { ThemeProvider } from '@mui/material/styles';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { auditTask, generateTaskTests } from '../../../api/github';
+import { auditTask, generateTaskTests, getTaskReview, reviewTaskPr } from '../../../api/github';
 import theme from '../../../theme/theme';
 import TaskAiPanel from '../TaskAiPanel';
 
-jest.mock('../../../api/github', () => ({ auditTask: jest.fn(), generateTaskTests: jest.fn() }));
+jest.mock('../../../api/github', () => ({
+  auditTask: jest.fn(), generateTaskTests: jest.fn(), getTaskReview: jest.fn(), reviewTaskPr: jest.fn(),
+}));
 
 const renderPanel = (props) => render(<ThemeProvider theme={theme}><TaskAiPanel tid="T-1" aiEnabled {...props} /></ThemeProvider>);
 
-beforeEach(() => { auditTask.mockReset(); generateTaskTests.mockReset(); });
+beforeEach(() => {
+  [auditTask, generateTaskTests, getTaskReview, reviewTaskPr].forEach((m) => m.mockReset());
+  getTaskReview.mockResolvedValue(null);
+});
 
 test('runs the audit and lists findings with their source', async () => {
   auditTask.mockResolvedValue({
@@ -61,4 +66,28 @@ test('generates tests and shows proposals, flags and skips', async () => {
   expect(screen.getByText('sintaxis ok')).toBeInTheDocument();
   expect(screen.getByText('inválido')).toBeInTheDocument();
   expect(screen.getByText(/Omitido README.md/)).toBeInTheDocument();
+});
+
+const REVIEW = {
+  prNumber: 4, headSha: 'abcdef1234', status: 'done', verdict: 'warn', posted: 'no_permission',
+  result: { summary: 'Agrega el pago.', risks: ['Sin pruebas para pay()'], comments: [{}, {}] },
+};
+
+test('shows the stored PR review and why it was not posted', async () => {
+  getTaskReview.mockResolvedValue(REVIEW);
+  renderPanel({ prOpen: true });
+  expect(await screen.findByText('Agrega el pago.')).toBeInTheDocument();
+  expect(screen.getByText(/PR #4 · commit abcdef1/)).toBeInTheDocument();
+  expect(screen.getByText(/2 comentarios en línea/)).toBeInTheDocument();
+  expect(screen.getByText(/Pull requests: write/)).toBeInTheDocument();
+});
+
+test('«Revisar PR» only with an open PR; runs the review', async () => {
+  const { unmount } = renderPanel({ prOpen: false });
+  expect(screen.queryByRole('button', { name: /revisar pr/i })).not.toBeInTheDocument();
+  unmount();
+  reviewTaskPr.mockResolvedValue({ ...REVIEW, posted: 'posted', reviewUrl: 'https://github.com/o/r/pull/4#r1' });
+  renderPanel({ prOpen: true });
+  fireEvent.click(screen.getByRole('button', { name: /revisar pr/i }));
+  expect(await screen.findByRole('link', { name: 'Publicada en GitHub' })).toHaveAttribute('href', 'https://github.com/o/r/pull/4#r1');
 });
