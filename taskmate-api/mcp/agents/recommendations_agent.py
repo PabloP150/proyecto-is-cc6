@@ -1,5 +1,9 @@
+import os
 from datetime import date
 import llm_service
+
+# Lowered limit due to local model
+MIN_TASKS = 8
 
 class RecommendationsAgent:
     def __init__(self):
@@ -16,8 +20,8 @@ class RecommendationsAgent:
             "- task/milestone names: max 25 chars\n"
             "- role names: max 30 chars\n"
             "- EXACTLY 4 milestones: id=m1 name=Setup, id=m2 name=Development, id=m3 name=Testing, id=m4 name=Launch\n"
-            "- Generate the number of tasks that the project ACTUALLY NEEDS based on its scope and complexity. A simple project may need 40-50 tasks, a complex one 80-120+. Use your judgment as a project manager.\n"
-            "- MINIMUM 50 tasks. There is NO maximum — generate as many as the project requires.\n"
+            f"- Generate the number of tasks that the project ACTUALLY NEEDS based on its scope and complexity (at least {MIN_TASKS}). Use your judgment as a project manager.\n"
+            f"- MINIMUM {MIN_TASKS} tasks.\n"
             "- Distribute tasks proportionally across milestones: ~20% Setup, ~40% Development, ~25% Testing, ~15% Launch\n"
             "- Distribute tasks across lists: Planning, Design, Development, Testing, Deployment\n"
             "- task list mapping: planning→Planning, design→Design, dev→Development, test→Testing, release→Deployment\n"
@@ -25,7 +29,7 @@ class RecommendationsAgent:
             "- task descriptions: 8-12 words, concise and actionable\n"
             "- Generate as many team roles as the project needs (minimum 3, no maximum). A small project may need 3-5 roles, a complex one 6-12+.\n"
             "- Each role must have a hex color and a Material Icons name as icon (e.g. 'code', 'build', 'bug_report', 'cloud', 'person', 'dashboard', 'terminal', 'edit', 'settings', 'group', 'star', 'api', 'storage', 'extension', 'insights', 'timeline', 'lock', 'public', 'visibility', 'chat'). Do NOT use emojis for icons.\n"
-            "- DO NOT stop early. Output ALL tasks you planned. If you generate fewer than 50, the output is INVALID.\n"
+            f"- DO NOT stop early. Output ALL tasks you planned. If you generate fewer than {MIN_TASKS}, the output is INVALID.\n"
             "- Keep the JSON compact: no extra whitespace, no newlines inside the JSON.\n\n"
             'Return ONLY valid JSON (no markdown, no extra text):\n'
             '{"recommendations":{"project_name":"...","project_description":"...","project_type":"web_app|mobile_app|api|game|other","estimated_duration":"...","difficulty_level":"beginner|intermediate|advanced","technology_stack":{"frontend":[],"backend":[],"database":[],"tools":[]},'

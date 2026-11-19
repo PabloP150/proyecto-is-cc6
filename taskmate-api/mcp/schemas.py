@@ -203,6 +203,35 @@ def _clamp_int(value: Any, hard_max: int) -> int:
     return max(1, min(hard_max, number))
 
 
+class ProjectContext(_Lenient):
+    """The selected project, sent by Node with each chat message (built once per selection)."""
+    groupId: str = ''
+    groupName: str = ''
+    repoNote: str = ''
+    members: List[str] = Field(default_factory=list)
+    assignments: Dict[str, List[str]] = Field(default_factory=dict)
+    snapshot: Optional[RepoSnapshot] = None
+    existing: ExistingWork = Field(default_factory=ExistingWork)
+
+    @field_validator('groupId', 'groupName', 'repoNote', mode='before')
+    @classmethod
+    def _texts(cls, value):
+        return _text(value)[:500]
+
+    @field_validator('members', mode='before')
+    @classmethod
+    def _members(cls, value):
+        return [_text(m)[:60] for m in value[:50]] if isinstance(value, list) else []
+
+    @field_validator('assignments', mode='before')
+    @classmethod
+    def _assignments(cls, value):
+        if not isinstance(value, dict):
+            return {}
+        return {_text(k)[:60]: [_text(u)[:60] for u in v[:10]] for k, v in list(value.items())[:200]
+                if isinstance(v, list)}
+
+
 class AnalyzeRepositoryParams(_Lenient):
     groupId: str = ''
     instructions: str = ''

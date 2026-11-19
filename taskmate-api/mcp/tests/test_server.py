@@ -43,9 +43,9 @@ def user_msg(session_id, request_id, text):
 
 
 async def fake_generate(prompt, generation_config_override=None, max_tokens=None, timeout=None, on_delta=None):
-    if "Respond with ONLY: YES or NO" in prompt:
-        return "NO"
-    message = re.search(r'USER\'S CURRENT MESSAGE: "(.*)"', prompt).group(1)
+    if isinstance(prompt, str):  # routing / classification prompts
+        return "CHAT"
+    message = re.search(r'USER MESSAGE: (.*)', prompt[-1]["content"]).group(1)
     if "SLOW" in message:
         await asyncio.sleep(0.4)
     text = f"echo:{message}"
