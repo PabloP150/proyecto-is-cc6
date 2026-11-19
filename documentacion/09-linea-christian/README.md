@@ -155,8 +155,8 @@ Antes, con un proyecto seleccionado, cada mensaje lanzaba un análisis completo 
     que ya no afecta al chat). Sin proyecto, se genera el plan de proyecto nuevo.
   - Chat: cualquier tema de software, del proyecto o de TaskMate.
   - Fuera de tema: respuesta fija, sin que el modelo responda lo pedido.
-- Con el modelo local, el plan de proyecto nuevo pide al menos 15 tareas en vez de 50
-  (`PLAN_MIN_TASKS`), porque un modelo pequeño no alcanza a escribir 50 dentro de su límite de tokens.
+- Con el modelo local, el plan de proyecto nuevo pide al menos 8 tareas en vez de 50
+  (`MIN_TASKS`), porque un modelo pequeño no alcanza a escribir 50 dentro de su límite de tokens.
 
 Medido con el modelo local (gemma4 e2b): respuestas de chat en 0.3–2.6 s; las preguntas fuera de tema
 se rechazan en 0.1–0.5 s; el plan del proyecto tarda unos 5 s, reutilizando el snapshot ya cargado.
