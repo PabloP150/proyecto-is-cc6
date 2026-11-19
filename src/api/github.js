@@ -137,3 +137,7 @@ export const getTaskOverlaps = (tid, { signal } = {}) =>
 /** Rules + local-model audit of the task branch. Slow (~20 s): pass a signal. */
 export const auditTask = (tid, { signal } = {}) =>
   request(`/tasks/${seg(tid)}/audit`, { method: 'POST', signal });
+
+/** Proposed unit tests for the task branch (not executed, not committed). Slow: pass a signal. */
+export const generateTaskTests = (tid, { signal } = {}) =>
+  request(`/tasks/${seg(tid)}/generate-tests`, { method: 'POST', signal });

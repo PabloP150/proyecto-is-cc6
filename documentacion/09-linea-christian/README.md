@@ -148,7 +148,16 @@ TaskMate llama al servidor de IA (repo `taskmate-ai-server`) por HTTP con un sec
 |---|---|
 | Cliente HTTP (errores → `AI_SERVER_*`) | `taskmate-api/services/aiServer/client.js` |
 | Diff de la rama de la tarea (API compare de GitHub) | `repoService.getComparePatches`, `services/aiServer/taskAi.js` |
-| Ruta | `POST /api/github/tasks/:tid/audit` (miembro del grupo, 5/min) |
+| Rutas | `POST /api/github/tasks/:tid/audit` y `/generate-tests` (miembro del grupo, 5/min, requieren el permiso de IA del grupo) |
 | Interfaz | `src/components/github/TaskAiPanel.jsx`, dentro del diálogo de archivos de la tarea |
 
 El servidor de IA no necesita una copia del repositorio: recibe los parches por archivo.
+
+### IA para generar pruebas
+
+«Generar pruebas» propone un archivo de pruebas por archivo de código cambiado en la rama (pytest o
+Jest), con sus casos y datos de ejemplo. La ruta sigue la convención del repo. Python se verifica
+con `ast.parse`; JS se revisa que tenga `test()`/`it()`. **No se ejecutan ni se suben**: ejecutar
+código escrito por el modelo en el servidor permitiría que un diff malicioso corra código ahí.
+Medido en un cambio de ejemplo: 8 de 9 pruebas de Python pasaron tal cual; los errores fueron
+expectativas aritméticas. Se revisan antes de agregarlas a la rama.

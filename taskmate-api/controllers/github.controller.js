@@ -187,6 +187,11 @@ const createGithubRouter = ({ auth = requireAuth } = {}) => {
         res.json({ data: await taskAi.auditTask({ gid: req.groupId, tid: req.resourceId }) });
     }));
 
+    // Proposed unit tests for the task branch (not executed, not committed).
+    router.post('/tasks/:tid/generate-tests', requireResourceMember('task', 'tid', { notFoundCode: 'TASK_NOT_FOUND' }), aiLimiter, route(async (req, res) => {
+        res.json({ data: await taskAi.generateTestsForTask({ gid: req.groupId, tid: req.resourceId }) });
+    }));
+
     // Which other tasks of the group touch the same paths. Fase 7 (colision de archivos)
     // is the consumer; exposed now because the data is already here.
     router.get('/tasks/:tid/overlaps', requireResourceMember('task', 'tid', { notFoundCode: 'TASK_NOT_FOUND' }), route(async (req, res) => {

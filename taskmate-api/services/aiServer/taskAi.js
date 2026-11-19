@@ -29,7 +29,14 @@ const createTaskAi = ({ githubModel = githubModelDefault, repoService = repoServ
         return { runId: out.run_id, ...out.result };
     };
 
-    return { taskDiff, auditTask };
+    // Proposed tests for the code the branch added. Nothing is written to the repository.
+    const generateTestsForTask = async ({ gid, tid }) => {
+        const { base, head, files } = await taskDiff({ gid, tid });
+        const out = await aiServer.runCommand('generate-tests', { files, base, head });
+        return { runId: out.run_id, ...out.result };
+    };
+
+    return { taskDiff, auditTask, generateTestsForTask };
 };
 
 module.exports = { createTaskAi, taskAi: createTaskAi() };

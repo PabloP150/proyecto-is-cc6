@@ -1,7 +1,24 @@
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import FactCheckIcon from '@mui/icons-material/FactCheck';
-import { Alert, Box, Button, Chip, CircularProgress, List, ListItem, Stack, Typography } from '@mui/material';
+import ScienceIcon from '@mui/icons-material/Science';
+import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
+  Alert,
+  Box,
+  Button,
+  Chip,
+  CircularProgress,
+  IconButton,
+  List,
+  ListItem,
+  Stack,
+  Tooltip,
+  Typography,
+} from '@mui/material';
 import { useEffect, useRef, useState } from 'react';
-import { auditTask } from '../../api/github';
+import { auditTask, generateTaskTests } from '../../api/github';
 import { errorMessage, isAbortError } from './githubUtils';
 
 const VERDICT = {
@@ -10,6 +27,15 @@ const VERDICT = {
   fail: { severity: 'error', label: 'Problemas graves' },
 };
 const SEVERITY_COLOR = { high: '#f87171', medium: '#fbbf24', low: '#94a3b8' };
+const SYNTAX = {
+  true: { label: 'sintaxis ok', color: 'success' },
+  false: { label: 'inválido', color: 'error' },
+  null: { label: 'sin verificar', color: 'default' },
+};
+const ACTIONS = {
+  audit: { run: auditTask, wait: 'Auditando con el modelo local (puede tardar ~20 s)…', fail: 'No se pudo auditar la rama.' },
+  tests: { run: generateTaskTests, wait: 'Generando pruebas con el modelo local (puede tardar ~30 s)…', fail: 'No se pudieron generar las pruebas.' },
+};
 
 function Finding({ f }) {
   return (
@@ -28,27 +54,103 @@ function Finding({ f }) {
   );
 }
 
+function AuditResult({ audit }) {
+  const verdict = VERDICT[audit.verdict] || VERDICT.warn;
+  return (
+    <Box sx={{ mt: 1 }}>
+      <Alert severity={verdict.severity}>
+        {verdict.label} · {audit.files ? audit.files.length : 0} archivos ·{' '}
+        {audit.counts ? `${audit.counts.high} altos, ${audit.counts.medium} medios, ${audit.counts.low} bajos` : ''}
+      </Alert>
+      {audit.findings && audit.findings.length > 0 && (
+        <List dense disablePadding>
+          {audit.findings.map((f, i) => <Finding key={`${f.path}:${f.line}:${i}`} f={f} />)}
+        </List>
+      )}
+    </Box>
+  );
+}
+
+function Proposal({ p }) {
+  const syntax = SYNTAX[String(p.syntax_ok)] || SYNTAX.null;
+  const copy = () => navigator.clipboard && navigator.clipboard.writeText(p.code).catch(() => {});
+  return (
+    <Accordion disableGutters>
+      <AccordionSummary>
+        <Stack direction="row" spacing={1} alignItems="center" useFlexGap flexWrap="wrap">
+          <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600 }}>{p.test_path}</Typography>
+          <Typography variant="caption" color="text.secondary">para {p.source}</Typography>
+          <Chip size="small" label={p.framework} variant="outlined" />
+          <Chip size="small" label={syntax.label} color={syntax.color} variant="outlined" />
+          <Typography variant="caption">{p.cases.length} casos</Typography>
+        </Stack>
+      </AccordionSummary>
+      <AccordionDetails>
+        {p.problem && <Alert severity="warning" sx={{ mb: 1 }}>{p.problem}</Alert>}
+        {p.cases.length > 0 && (
+          <List dense disablePadding sx={{ mb: 1 }}>
+            {p.cases.map((c, i) => (
+              <ListItem key={`${c.name}:${i}`} sx={{ py: 0 }}>
+                <Typography variant="caption"><b>{c.name}</b>{c.covers ? ` — ${c.covers}` : ''}</Typography>
+              </ListItem>
+            ))}
+          </List>
+        )}
+        {p.code && (
+          <Box sx={{ position: 'relative' }}>
+            <Tooltip title="Copiar">
+              <IconButton size="small" onClick={copy} aria-label={`Copiar ${p.test_path}`} sx={{ position: 'absolute', top: 4, right: 4 }}>
+                <ContentCopyIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Box component="pre" sx={{ m: 0, p: 1.5, fontSize: 12, overflow: 'auto', maxHeight: 360, bgcolor: 'action.hover', borderRadius: 1 }}>
+              {p.code}
+            </Box>
+          </Box>
+        )}
+      </AccordionDetails>
+    </Accordion>
+  );
+}
+
+function TestsResult({ tests }) {
+  const proposals = tests.proposals || [];
+  return (
+    <Box sx={{ mt: 1 }}>
+      <Alert severity="info" sx={{ mb: 1 }}>
+        {proposals.length} {proposals.length === 1 ? 'archivo de pruebas propuesto' : 'archivos de pruebas propuestos'}.
+        No se ejecutaron ni se subieron: revísalos antes de agregarlos a la rama.
+      </Alert>
+      {proposals.map((p) => <Proposal key={p.test_path} p={p} />)}
+      {(tests.skipped || []).map((s) => (
+        <Typography key={s.path} variant="caption" component="div" color="text.secondary">
+          Omitido {s.path}: {s.reason}
+        </Typography>
+      ))}
+    </Box>
+  );
+}
+
 /** AI actions over the task branch, run by the local AI server. */
 export default function TaskAiPanel({ tid, aiEnabled }) {
-  const [state, setState] = useState({ loading: false, error: null, audit: null });
+  const [state, setState] = useState({ loading: null, error: null, audit: null, tests: null });
   const controller = useRef(null);
 
   useEffect(() => () => controller.current && controller.current.abort(), []);
 
-  const runAudit = async () => {
+  const run = async (kind) => {
     if (controller.current) controller.current.abort();
     controller.current = new AbortController();
-    setState({ loading: true, error: null, audit: null });
+    setState((s) => ({ ...s, loading: kind, error: null }));
     try {
-      const audit = await auditTask(tid, { signal: controller.current.signal });
-      setState({ loading: false, error: null, audit });
+      const result = await ACTIONS[kind].run(tid, { signal: controller.current.signal });
+      setState((s) => ({ ...s, loading: null, [kind]: result }));
     } catch (err) {
       if (isAbortError(err)) return;
-      setState({ loading: false, audit: null, error: errorMessage(err, 'No se pudo auditar la rama.') });
+      setState((s) => ({ ...s, loading: null, error: errorMessage(err, ACTIONS[kind].fail) }));
     }
   };
 
-  const { audit } = state;
   if (!aiEnabled) {
     return (
       <Alert severity="info" sx={{ mt: 2 }}>
@@ -56,38 +158,28 @@ export default function TaskAiPanel({ tid, aiEnabled }) {
       </Alert>
     );
   }
-  const verdict = audit && (VERDICT[audit.verdict] || VERDICT.warn);
 
   return (
     <Box component="section" aria-label="IA sobre la rama" sx={{ mt: 2 }}>
       <Stack direction="row" spacing={1} alignItems="center">
         <Typography variant="subtitle2" sx={{ flexGrow: 1 }}>IA sobre la rama</Typography>
-        <Button size="small" variant="outlined" startIcon={<FactCheckIcon />} onClick={runAudit} disabled={state.loading}>
+        <Button size="small" variant="outlined" startIcon={<FactCheckIcon />} onClick={() => run('audit')} disabled={Boolean(state.loading)}>
           Auditar
+        </Button>
+        <Button size="small" variant="outlined" startIcon={<ScienceIcon />} onClick={() => run('tests')} disabled={Boolean(state.loading)}>
+          Generar pruebas
         </Button>
       </Stack>
 
       {state.loading && (
         <Stack role="status" direction="row" spacing={1} alignItems="center" sx={{ py: 1 }}>
           <CircularProgress size={18} />
-          <Typography variant="caption">Auditando con el modelo local (puede tardar ~20 s)…</Typography>
+          <Typography variant="caption">{ACTIONS[state.loading].wait}</Typography>
         </Stack>
       )}
       {state.error && <Alert severity="error" sx={{ mt: 1 }}>{state.error}</Alert>}
-
-      {audit && (
-        <Box sx={{ mt: 1 }}>
-          <Alert severity={verdict.severity}>
-            {verdict.label} · {audit.files ? audit.files.length : 0} archivos ·{' '}
-            {audit.counts ? `${audit.counts.high} altos, ${audit.counts.medium} medios, ${audit.counts.low} bajos` : ''}
-          </Alert>
-          {audit.findings && audit.findings.length > 0 && (
-            <List dense disablePadding>
-              {audit.findings.map((f, i) => <Finding key={`${f.path}:${f.line}:${i}`} f={f} />)}
-            </List>
-          )}
-        </Box>
-      )}
+      {state.audit && <AuditResult audit={state.audit} />}
+      {state.tests && <TestsResult tests={state.tests} />}
     </Box>
   );
 }
