@@ -111,7 +111,7 @@ const handlePullRequest = async (deliveryId, payload) => {
         await githubModel.upsertRepository(repo, { tx });
         outcome = await applyPullRequestInTx(pr, { repoId: repo.repoId, defaultBranch: repo.defaultBranch }, { tx });
     });
-    if (status === 'processed' && outcome) notifyCompletion(outcome.completion);
+    if (status === 'processed' && outcome) notifyCompletion(outcome.completion, repo);
     return status;
 };
 

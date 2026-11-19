@@ -155,3 +155,23 @@ Qué se entregó, el inventario funcional, el estado verificado, las limitacione
 
 **Documento generado:** 31 ago 2026  
 **Última actualización:** 3 nov 2026 — cierre del proyecto (fechas planificadas sin cambios, según la tabla oficial de la línea de trabajo de Pablo Pineda)
+
+---
+
+# Línea de trabajo de Christian Martínez
+
+El cierre del 3 nov aplica solo a la línea de Pablo. Esta línea sigue, con fechas corridas.
+
+| # | Funcionalidad | Complejidad | Planificada | Estado | Dónde |
+|---|---|---|---|---|---|
+| 1 | Servidor de IA local y modelo de datos | Baja | 14 – 21 ago | ✅ Completo | repo `ai-server` (`main`) |
+| 2 | Entrenamiento de IA local y comandos del proyecto | Alta | 21 ago – 11 sep | ✅ Completo | repo `ai-server` (PR #3) |
+| 3 | Integración con Vercel / AWS | Baja | 11 – 18 sep | ✅ Solo monitoreo. Desplegar desde la app queda para después (GitHub Pages de la Fase 4 ya publica los proyectos) | `feature/linea-christian` |
+| 4 | Interfaz de tareas más detallada | Baja | 18 – 25 sep | ✅ Completo | `feature/linea-christian` |
+| 5 | Comando `audit` con verificación automática | Media | 25 sep – 9 oct | ✅ Completo | repo `ai-server` (rama `audit`) |
+| 6 | IA para generar pruebas | Alta | 9 – 23 oct | ⏳ Pendiente | — |
+| 7 | IA revisando pull requests | Alta | 23 oct – 6 nov | ⏳ Pendiente | — |
+| 8 | Algoritmo de colisión de archivos | Alta | 6 – 20 nov | ⏸️ Pospuesto | — |
+| 9 | Pruebas finales | — | 20 – 27 nov | ⏳ Pendiente | — |
+
+Detalle: [09-linea-christian](../09-linea-christian/README.md).

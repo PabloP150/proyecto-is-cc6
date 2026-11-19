@@ -126,3 +126,8 @@ export const rejectDeployRequest = (gid, requestId, note, { signal } = {}) =>
 
 export const cancelDeployRequest = (gid, requestId, { signal } = {}) =>
   request(`/groups/${seg(gid)}/deploy-requests/${seg(requestId)}/cancel`, { method: 'POST', signal });
+export const getTaskFiles = (tid, { signal } = {}) =>
+  request(`/tasks/${seg(tid)}/files`, { signal });
+
+export const getTaskOverlaps = (tid, { signal } = {}) =>
+  request(`/tasks/${seg(tid)}/overlaps`, { signal });

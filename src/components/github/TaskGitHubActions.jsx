@@ -1,9 +1,11 @@
 import CallSplitIcon from '@mui/icons-material/CallSplit';
+import DescriptionIcon from '@mui/icons-material/Description';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import { Alert, Box, Chip, CircularProgress, IconButton, Portal, Snackbar, Tooltip } from '@mui/material';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createTaskBranch } from '../../api/github';
 import { errorMessage, safeGitHubUrl } from './githubUtils';
+import TaskFilesDialog from './TaskFilesDialog';
 
 const PR_STYLES = {
   open: { label: 'abierto', color: '#10b981', background: 'rgba(16, 185, 129, 0.15)' },
@@ -48,10 +50,11 @@ const FEEDBACK_MS = 3500;
  * `onNotify(severity, message, durationMs)` lets a list of tasks show every card's feedback in one
  * toast; without it the component shows its own.
  */
-export default function TaskGitHubActions({ tid, link, repoConnected, onChange, onNotify }) {
+export default function TaskGitHubActions({ tid, link, repoConnected, onChange, onNotify, taskName, repo }) {
   const [creating, setCreating] = useState(false);
   const [created, setCreated] = useState(null);
   const [feedback, setFeedback] = useState(null);
+  const [filesOpen, setFilesOpen] = useState(false);
   const feedbackCount = useRef(0);
   const mounted = useRef(true);
 
@@ -134,6 +137,14 @@ export default function TaskGitHubActions({ tid, link, repoConnected, onChange, 
       sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap', minWidth: 0 }}
       onClick={stop}
     >
+      <TaskFilesDialog
+        open={filesOpen}
+        onClose={() => setFilesOpen(false)}
+        tid={tid}
+        taskName={taskName}
+        link={link}
+        repo={repo}
+      />
       {branchName ? (
         <>
           <Tooltip title={`Copiar «git checkout ${branchName}»`} arrow>
@@ -153,6 +164,19 @@ export default function TaskGitHubActions({ tid, link, repoConnected, onChange, 
                 '& .MuiChip-icon': { color: '#93c5fd' },
               }}
             />
+          </Tooltip>
+          <Tooltip title="Ver archivos de la tarea" arrow>
+            <IconButton
+              size="small"
+              aria-label="Ver archivos de la tarea"
+              onClick={(event) => {
+                stop(event);
+                setFilesOpen(true);
+              }}
+              sx={iconButtonSx}
+            >
+              <DescriptionIcon fontSize="small" />
+            </IconButton>
           </Tooltip>
           {branchHref && (
             <Tooltip title="Ver rama en GitHub" arrow>

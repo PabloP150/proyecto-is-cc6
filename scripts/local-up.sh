@@ -1,0 +1,274 @@
+#!/usr/bin/env bash
+# Bring up all of TaskMate locally, on the local AI model, with one command.
+#
+#     ./scripts/local-up.sh            start (or restart) everything
+#     ./scripts/local-up.sh --no-web   everything except the React dev server
+#
+# Linux + Podman equivalent of start.sh (which targets macOS + Docker Desktop). Brings up, in order:
+#
+#   1. Local AI       Ollama + the TaskMate AI server (../ai-server): model, RAG, commands  :8000
+#   2. SQL Server     the taskmate-sql container, then pending migrations                    :1433
+#   3. MCP chatbot    the Python agent service, pointed at the local model                    :8001
+#   4. API            Node/Express                                                            :9000
+#   5. Web            React dev server                                                        :3000
+#
+# Idempotent: re-running restarts only TaskMate's own processes (tracked by pid files) and never
+# kills anything else holding a port. A missing .env is generated with random secrets; an existing
+# one is never overwritten, only completed with keys the local setup needs.
+#
+# Stop with ./scripts/local-down.sh
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+AI_SERVER_DIR="${AI_SERVER_DIR:-$(cd "$ROOT/.." && pwd)/ai-server}"
+ENV_FILE="$ROOT/.env"
+STATE_DIR="$ROOT/.local"
+RUN_DIR="$STATE_DIR/run"
+LOG_DIR="$STATE_DIR/logs"
+OLLAMA_BIN="${OLLAMA_BIN:-$HOME/.local/ollama/bin/ollama}"
+SQL_CONTAINER="taskmate-sql"
+SQL_IMAGE="taskmate-sql"
+WITH_WEB=1
+
+case "${1:-}" in
+    --no-web) WITH_WEB=0 ;;
+    "") ;;
+    *) echo "Usage: $0 [--no-web]" >&2; exit 2 ;;
+esac
+
+mkdir -p "$RUN_DIR" "$LOG_DIR"
+
+say()  { printf '\n\033[1m>> %s\033[0m\n' "$*"; }
+info() { printf '   %s\n' "$*"; }
+die()  { printf '\n\033[31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
+
+# wait_for <description> <seconds> <command...>
+wait_for() {
+    local desc="$1" limit="$2"; shift 2
+    printf '   waiting for %s' "$desc"
+    for _ in $(seq 1 "$limit"); do
+        if "$@" >/dev/null 2>&1; then echo " ok"; return 0; fi
+        printf '.'; sleep 1
+    done
+    echo " TIMEOUT"; return 1
+}
+
+port_busy() { ss -ltnH "sport = :$1" 2>/dev/null | grep -q .; }
+http_up()   { curl -s -o /dev/null -m 3 "$1"; }   # any HTTP answer, even 401, means "up"
+
+# Stop a process this script started earlier (pid file), never anything else.
+stop_ours() {
+    local name="$1" pidfile="$RUN_DIR/$1.pid" pid
+    pid="$(cat "$pidfile" 2>/dev/null || true)"
+    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+        # The pid is a process-group leader (setsid), so the whole tree goes: npm start
+        # spawns node children that would otherwise keep :3000.
+        kill -- "-$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
+        for _ in $(seq 1 10); do kill -0 "$pid" 2>/dev/null || break; sleep 0.5; done
+    fi
+    rm -f "$pidfile"
+    return 0
+}
+
+# start_bg <name> <port> <workdir> <command...>
+start_bg() {
+    local name="$1" port="$2" dir="$3"; shift 3
+    stop_ours "$name"
+    if port_busy "$port"; then
+        die "port $port is held by something that is not TaskMate ($(ss -ltnpH "sport = :$port" | sed 's/.*users:((\("[^"]*"\).*/\1/'))."
+    fi
+    # exec, so the pid recorded *is* the service. Without it bash backgrounds a wrapper shell around
+    # `cd && setsid ...`: the pid file pointed at the wrapper (stopping it left the service running)
+    # and the wrapper kept this script's stdout open, so anything reading it never saw the end.
+    # setsid makes the service its own process group, which stop_ours kills as a whole.
+    ( cd "$dir" || exit 1; exec setsid "$@" >"$LOG_DIR/$name.log" 2>&1 </dev/null ) &
+    echo $! >"$RUN_DIR/$name.pid"
+}
+
+# ---------------------------------------------------------------- preflight
+
+say "Checking prerequisites"
+for tool in podman node npm python3 curl ss openssl; do
+    command -v "$tool" >/dev/null || die "'$tool' is not installed."
+done
+[[ -x "$OLLAMA_BIN" ]] || die "Ollama not found at $OLLAMA_BIN (install it with $AI_SERVER_DIR/scripts/install-ollama.sh)."
+info "podman, node $(node --version), python $(python3 --version | cut -d' ' -f2), ollama $("$OLLAMA_BIN" --version 2>/dev/null | grep -o '[0-9][0-9.]*' | head -1)"
+
+# ---------------------------------------------------------------- .env
+
+env_get() { grep -E "^$1=" "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2- | sed -e "s/^'//" -e "s/'\$//" -e 's/^"//' -e 's/"$//'; }
+# Adds KEY=VALUE only when KEY is absent: an existing .env is never overwritten.
+env_ensure() { grep -qE "^$1=" "$ENV_FILE" 2>/dev/null || { echo "$1=$2" >>"$ENV_FILE"; info "added $1"; }; }
+# SQL Server rejects passwords without three character classes; hex alone has two.
+sql_password() { echo "Tm-$(openssl rand -hex 12)Q9"; }
+
+say "Configuration ($ENV_FILE)"
+if [[ ! -f "$ENV_FILE" ]]; then
+    info "no .env found, generating one with random secrets"
+    {
+        echo "# Generated by scripts/local-up.sh on $(date -I). Local development only."
+        echo "NODE_ENV=development"
+        echo "FRONTEND_URL=http://localhost:3000"
+        echo "DB_SERVER=localhost"
+        echo "DB_PORT=1433"
+        echo "DB_AUTH_TYPE=default"
+        echo "DB_USERNAME=sqladmin"
+        echo "DB_NAME=taskmate-db"
+        echo "DB_POOL_MAX=10"
+        echo "MIGRATION_DB_USERNAME=sa"
+        # Quoted: dotenv would cut an unquoted value at a '#'.
+        echo "DB_PASSWORD='$(sql_password)'"
+        echo "MIGRATION_DB_PASSWORD='$(sql_password)'"
+    } >"$ENV_FILE"
+    chmod 600 "$ENV_FILE"
+fi
+
+# Keys the local stack needs, whatever .env already had.
+OLLAMA_MODEL_DEFAULT="$(grep -E '^GEN_MODEL=' "$AI_SERVER_DIR/.env" 2>/dev/null | cut -d= -f2- || true)"
+env_ensure API_PORT 9000
+env_ensure JWT_SECRET "$(openssl rand -base64 48 | tr -d '\n=+/')"
+env_ensure MCP_PORT 8001
+env_ensure MCP_SHARED_SECRET "$(openssl rand -hex 32)"
+env_ensure LLM_WEBSOCKET_URL "ws://127.0.0.1:8001/ws"
+env_ensure LLM_PROVIDER ollama
+env_ensure OLLAMA_MODEL "${OLLAMA_MODEL_DEFAULT:-gemma4:e2b-it-qat}"
+env_ensure AI_SERVER_URL "http://127.0.0.1:8000"
+env_ensure AI_SERVER_PROJECT TaskMate
+env_ensure VERCEL_WEBHOOK_SECRET "$(openssl rand -hex 20)"
+
+API_PORT="$(env_get API_PORT)"; MCP_PORT="$(env_get MCP_PORT)"
+DB_PASSWORD="$(env_get DB_PASSWORD)"; SA_PASSWORD="$(env_get MIGRATION_DB_PASSWORD)"
+OLLAMA_MODEL="$(env_get OLLAMA_MODEL)"
+[[ -n "$DB_PASSWORD" && -n "$SA_PASSWORD" ]] || die "DB_PASSWORD and MIGRATION_DB_PASSWORD must be set in .env."
+[[ "$(env_get LLM_PROVIDER)" == "ollama" ]] || info "note: LLM_PROVIDER=$(env_get LLM_PROVIDER), the chatbot is NOT on the local model"
+
+# ---------------------------------------------------------------- 1. local AI
+
+say "1/5  Local AI"
+if [[ -x "$AI_SERVER_DIR/scripts/up.sh" ]]; then
+    # The AI server's own launcher: Ollama + Postgres/pgvector + its API on :8000.
+    "$AI_SERVER_DIR/scripts/up.sh" >"$LOG_DIR/ai-server-up.log" 2>&1 \
+        || { tail -n 20 "$LOG_DIR/ai-server-up.log" >&2; die "the AI server did not start (see $LOG_DIR/ai-server-up.log)"; }
+    info "AI server up at http://127.0.0.1:8000 (RAG + commands)"
+else
+    info "no AI server at $AI_SERVER_DIR: starting Ollama only (chat works, project knowledge is off)"
+    systemctl --user start ollama
+    wait_for "Ollama" 30 curl -sf http://127.0.0.1:11434/api/version
+fi
+
+if ! "$OLLAMA_BIN" list 2>/dev/null | awk '{print $1}' | grep -qx "$OLLAMA_MODEL"; then
+    info "model $OLLAMA_MODEL is not installed, pulling it (several GB, one time)"
+    "$OLLAMA_BIN" pull "$OLLAMA_MODEL"
+fi
+
+# Load both models now. The first embedding takes longer than the chatbot's 3 s knowledge
+# timeout, so without this the first chat message after a start would silently lose grounding.
+info "warming up the models"
+curl -s -m 120 http://127.0.0.1:11434/api/chat -d "{\"model\":\"$OLLAMA_MODEL\",\"think\":false,\"stream\":false,\"messages\":[{\"role\":\"user\",\"content\":\"ok\"}],\"options\":{\"num_predict\":1,\"num_ctx\":8192}}" >/dev/null || true
+if http_up http://127.0.0.1:8000/health; then
+    curl -s -m 60 -X POST http://127.0.0.1:8000/search -H 'content-type: application/json' \
+        -d '{"query":"warm up","top_k":1}' >/dev/null || true
+fi
+
+# ---------------------------------------------------------------- 2. SQL Server
+
+say "2/5  SQL Server"
+if ! podman image exists "$SQL_IMAGE"; then
+    info "building the $SQL_IMAGE image (one time, a few minutes)"
+    podman build -t "$SQL_IMAGE" "$ROOT/taskmate-api" >"$LOG_DIR/sql-build.log" 2>&1 \
+        || { tail -n 20 "$LOG_DIR/sql-build.log" >&2; die "image build failed (see $LOG_DIR/sql-build.log)"; }
+fi
+
+sql_ready() {
+    podman exec "$SQL_CONTAINER" /opt/mssql-tools/bin/sqlcmd -S localhost -U sqladmin -P "$DB_PASSWORD" \
+        -d taskmate-db -b -Q "SELECT 1" >/dev/null 2>&1
+}
+
+sql_running() { [[ "$(podman inspect -f '{{.State.Running}}' "$SQL_CONTAINER" 2>/dev/null)" == "true" ]]; }
+
+since=""
+if ! podman container exists "$SQL_CONTAINER"; then
+    info "creating the $SQL_CONTAINER container (first start initializes the database, ~1 min)"
+    podman run -d --name "$SQL_CONTAINER" \
+        -e ACCEPT_EULA=Y -e SA_PASSWORD="$SA_PASSWORD" -e DB_PASSWORD="$DB_PASSWORD" \
+        -p 127.0.0.1:1433:1433 "$SQL_IMAGE" >/dev/null
+    since="0s"
+elif sql_running && sql_ready; then
+    # Already up: `podman start` would be a no-op and log nothing new, so there is no fresh
+    # "Setup complete" to wait for -- waiting for one is how a re-run used to hang for 3 minutes.
+    info "already running"
+else
+    since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    podman start "$SQL_CONTAINER" >/dev/null
+fi
+
+if [[ -n "$since" ]]; then
+    # setup-db.sh prints this once bootstrap and its migrations are done, on every container start.
+    wait_for "database setup" 180 bash -c "podman logs --since '$since' $SQL_CONTAINER 2>&1 | grep -q 'Setup complete'" \
+        || { podman logs --tail 30 "$SQL_CONTAINER" >&2; die "SQL Server did not finish its setup."; }
+fi
+sql_ready || die "SQL Server is up but rejects the app login: the container was probably created with \
+different passwords than .env now has. Recreate it with: podman rm -f $SQL_CONTAINER (this deletes the local data)."
+
+# The image carries the migrations it was built with; newer ones in the repo are applied here, so
+# a git pull never needs an image rebuild (which would lose the container's data).
+(cd "$ROOT" && npm run db:migrate --workspace=taskmate-api >"$LOG_DIR/migrate.log" 2>&1) \
+    || { tail -n 20 "$LOG_DIR/migrate.log" >&2; die "migrations failed (see $LOG_DIR/migrate.log)"; }
+info "schema up to date"
+
+# ---------------------------------------------------------------- dependencies
+
+say "Dependencies"
+if [[ ! -d "$ROOT/node_modules" || "$ROOT/package-lock.json" -nt "$ROOT/node_modules/.package-lock.json" ]]; then
+    info "npm install"
+    (cd "$ROOT" && npm install --no-audit --no-fund >"$LOG_DIR/npm-install.log" 2>&1) \
+        || die "npm install failed (see $LOG_DIR/npm-install.log)"
+fi
+MCP_DIR="$ROOT/taskmate-api/mcp"
+if [[ ! -x "$MCP_DIR/venv/bin/python" || "$MCP_DIR/requirements.txt" -nt "$MCP_DIR/venv/.installed" ]]; then
+    info "Python environment for the chatbot"
+    python3 -m venv "$MCP_DIR/venv"
+    "$MCP_DIR/venv/bin/pip" install -q -r "$MCP_DIR/requirements.txt" >"$LOG_DIR/pip.log" 2>&1 \
+        || die "pip install failed (see $LOG_DIR/pip.log)"
+    touch "$MCP_DIR/venv/.installed"
+fi
+info "ok"
+
+# ---------------------------------------------------------------- 3-5. services
+
+say "3/5  Chatbot service (MCP)"
+start_bg mcp "$MCP_PORT" "$MCP_DIR" \
+    venv/bin/python -m uvicorn server:app --host 127.0.0.1 --port "$MCP_PORT" --ws-max-size 4194304
+wait_for "the chatbot service" 30 port_busy "$MCP_PORT" \
+    || { tail -n 20 "$LOG_DIR/mcp.log" >&2; die "the chatbot service did not start (see $LOG_DIR/mcp.log)"; }
+
+say "4/5  API"
+start_bg api "$API_PORT" "$ROOT" node taskmate-api/server.js
+wait_for "the API" 30 http_up "http://127.0.0.1:$API_PORT/api/tasks" \
+    || { tail -n 20 "$LOG_DIR/api.log" >&2; die "the API did not start (see $LOG_DIR/api.log)"; }
+# The API keeps one WebSocket to the chatbot service for every user.
+wait_for "API -> chatbot link" 20 grep -q "WebSocket connection established" "$LOG_DIR/api.log" \
+    || info "warning: the API has not connected to the chatbot service yet (see $LOG_DIR/api.log)"
+
+if [[ "$WITH_WEB" -eq 1 ]]; then
+    say "5/5  Web app"
+    start_bg web 3000 "$ROOT" env BROWSER=none PORT=3000 npm start
+    wait_for "the dev server to compile" 240 http_up http://127.0.0.1:3000 \
+        || { tail -n 20 "$LOG_DIR/web.log" >&2; die "the web app did not start (see $LOG_DIR/web.log)"; }
+else
+    say "5/5  Web app skipped (--no-web)"
+fi
+
+cat <<EOF
+
+$(printf '\033[1m')TaskMate is running locally.$(printf '\033[0m')
+
+    Web app        http://localhost:3000
+    API            http://localhost:$API_PORT
+    Chatbot        ws://127.0.0.1:$MCP_PORT/ws    model: $OLLAMA_MODEL (local, streaming)
+    AI server      http://127.0.0.1:8000/docs     RAG + commands
+    SQL Server     127.0.0.1:1433                 container: $SQL_CONTAINER
+
+    Logs           $LOG_DIR/{mcp,api,web}.log
+    Stop           ./scripts/local-down.sh
+EOF

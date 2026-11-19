@@ -43,3 +43,6 @@ taskmate-api/mcp/venv/
 # Phase 3: never track dependencies or private keys
 **/node_modules
 *.pem
+
+# Local run state from scripts/local-up.sh (pids, logs)
+/.local/

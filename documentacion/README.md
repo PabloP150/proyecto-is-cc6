@@ -24,6 +24,7 @@ flowchart LR
 | [06-flujos](06-flujos/README.md) | El paso a paso de cada operación (secuencias y estados) y qué ve el usuario si algo falla |
 | [07-guias](07-guias/README.md) | Primer arranque, guía de uso, pruebas, SQL Server en Docker, GitHub App, CI/CD y guía técnica |
 | [08-fases](08-fases/README.md) | Un capítulo por cada fase hecha (1–4), con fechas, PRs y resultados |
+| [09-linea-christian](09-linea-christian/README.md) | Línea de Christian Martínez: monitoreo de Vercel, vista de archivos por tarea, chatbot con IA local, servidor de IA (repo aparte) |
 
 ## ¿Por dónde empiezo?
 

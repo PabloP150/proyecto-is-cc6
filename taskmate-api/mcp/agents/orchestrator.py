@@ -7,6 +7,7 @@ from collections import OrderedDict
 from datetime import date
 from typing import Any, Dict, Optional
 
+import knowledge
 import llm_service
 from agents.recommendations_agent import RecommendationsAgent
 from agents.analytics_agent import AnalyticsAgent
@@ -28,6 +29,9 @@ PENDING_SAVE_TTL_SEC = float(os.getenv('MCP_PENDING_SAVE_TTL_SEC', 60))
 PURGE_INTERVAL_SEC = 60.0
 MAX_USER_MESSAGE_CHARS = 4000
 PROJECT_INFO_MAX_CHARS = 4000
+# Stream chat replies token by token (response_chunk events) before the final response event.
+# The final event still carries the whole text, so clients that ignore chunks lose nothing.
+STREAM_CHAT = os.getenv('LLM_STREAM_CHAT', '1') == '1'
 
 CONFIRM, DISCARD, REJECT, CHANGE = 'confirm', 'discard', 'reject', 'change'
 
@@ -317,11 +321,18 @@ class OrchestratorAgent:
                 return
 
         conversation_context = self.get_conversation_context(session_id)
+
+        async def send_chunk(delta: str) -> None:
+            await websocket.send_json({"event": "response_chunk", "requestId": request_id,
+                                       "sessionId": session_id, "data": {"content": delta}})
+
         try:
             if await self._should_generate_plan(session_id, user_message, conversation_context):
+                # Not streamed: a plan is JSON, summarized only once it is complete.
                 response_content = await self._generate_plan(session_id, state, user_message)
             else:
-                response_content = await self._chat_reply(state, user_message, conversation_context)
+                response_content = await self._chat_reply(state, user_message, conversation_context,
+                                                          on_delta=send_chunk if STREAM_CHAT else None)
         except llm_service.LLMError as exc:
             self._discard_last_user_turn(session_id)
             await self._reply(websocket, session_id, request_id, friendly_llm_error(exc), error=exc)
@@ -354,15 +365,20 @@ class OrchestratorAgent:
         self.add_to_conversation(session_id, "Saving the project plan failed; it is waiting for confirmation again.",
                                  is_user=False)
 
-    async def _chat_reply(self, state: Dict[str, Any], user_message: str, conversation_context: str) -> str:
+    async def _chat_reply(self, state: Dict[str, Any], user_message: str, conversation_context: str,
+                          on_delta=None) -> str:
         today = date.today().strftime("%B %d, %Y")
+        # Grounding from the TaskMate AI server's indexed documents and code. Empty when it is not
+        # configured, not running, or has nothing relevant -- then the prompt is exactly as before.
+        project_knowledge = knowledge.format_for_prompt(await knowledge.search(user_message))
+        knowledge_section = f"\n{project_knowledge}\n" if project_knowledge else ""
         prompt = f"""You are a helpful project planning assistant. Guide users through a natural conversation to gather comprehensive project information before creating detailed plans.
 
 CURRENT DATE: {today}
 
 CONVERSATION CONTEXT:
 {conversation_context}
-
+{knowledge_section}
 USER'S CURRENT MESSAGE: "{user_message}"
 
 THREE-STAGE PLANNING APPROACH:
@@ -409,7 +425,11 @@ CURRENT FOCUS:
 
 Be conversational, make progress each turn, and NEVER repeat yourself:"""
 
-        response = await llm_service.generate(prompt, max_tokens=llm_service.MAX_TOKENS_CHAT)
+        if on_delta is not None:
+            response = await llm_service.generate(prompt, max_tokens=llm_service.MAX_TOKENS_CHAT,
+                                                  on_delta=on_delta)
+        else:
+            response = await llm_service.generate(prompt, max_tokens=llm_service.MAX_TOKENS_CHAT)
         if self._is_project_related(user_message):
             self._accumulate_project_info(state, user_message)
         return response
