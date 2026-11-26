@@ -57,12 +57,12 @@ const processDelivery = async (deliveryId, body) => {
  * Expects req.body to be the raw Buffer (mount with express.raw before express.json), because
  * the signature covers the exact bytes received.
  *
- * A factory rather than a plain (req, res, deadlineMs) handler: Express calls route handlers
- * with (req, res, next), so a third parameter would receive `next` -- and a function passed as
- * a setTimeout delay is coerced to 0, firing the deadline immediately on every request. The
- * GitHub webhook handler is built the same way for the same reason.
+ * Mounted through createVercelWebhookHandler below, never directly: Express calls route
+ * handlers with (req, res, next), so a third parameter would receive `next` -- and a function
+ * passed as a setTimeout delay is coerced to 0, firing the deadline immediately on every
+ * request. The GitHub webhook handler is built the same way for the same reason.
  */
-const createVercelWebhookHandler = ({ deadlineMs = RESPONSE_DEADLINE_MS } = {}) => async (req, res) => {
+const handleVercelWebhook = async (req, res, deadlineMs) => {
     const rawBody = req.body;
     if (!verifyVercelSignature(rawBody, req.get('x-vercel-signature'))) {
         return sendError(res, new AppError('UNAUTHENTICATED', 'Invalid webhook signature', 401));
@@ -78,8 +78,8 @@ const createVercelWebhookHandler = ({ deadlineMs = RESPONSE_DEADLINE_MS } = {}) 
         return sendError(res, new AppError('VALIDATION_ERROR', 'Invalid JSON payload', 400));
     }
 
-    // Vercel has no delivery-id header, so the body hash is the idempotency key. Two identical
-    // retries collapse; two genuinely different events never collide.
+    // Vercel has no delivery-id header: the event's own `id` is the idempotency key, and the body
+    // hash stands in when an event has none. Two identical retries collapse.
     const deliveryId = typeof body.id === 'string' && body.id
         ? body.id.slice(0, 128)
         : crypto.createHash('sha256').update(rawBody).digest('hex');
@@ -92,7 +92,7 @@ const createVercelWebhookHandler = ({ deadlineMs = RESPONSE_DEADLINE_MS } = {}) 
     if (!claimed) return res.status(200).json({ status: 'duplicate' });
 
     // Answer within the deadline even if the database is slow; the delivery row keeps the
-    // real outcome, and Vercel retries on a non-2xx.
+    // real outcome. Once claimed, the answer is always 200, so Vercel does not retry it.
     let timer;
     const deadline = new Promise((resolve) => {
         timer = setTimeout(() => resolve('timeout'), deadlineMs);
@@ -102,6 +102,17 @@ const createVercelWebhookHandler = ({ deadlineMs = RESPONSE_DEADLINE_MS } = {}) 
     clearTimeout(timer);
 
     return res.status(200).json({ status });
+};
+
+// Express 4 does not catch a rejected async handler: without this, a database error while
+// claiming the delivery would leave the request hanging and, on Node 24, end the process.
+// Same guard as the GitHub webhook's createWebhookHandler.
+const createVercelWebhookHandler = ({ deadlineMs = RESPONSE_DEADLINE_MS } = {}) => async (req, res) => {
+    try {
+        await handleVercelWebhook(req, res, deadlineMs);
+    } catch (err) {
+        if (!res.headersSent) sendError(res, err);
+    }
 };
 
 const vercelWebhookHandler = createVercelWebhookHandler();
