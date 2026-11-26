@@ -33,6 +33,7 @@ import ThemeProvider from '../theme/ThemeProvider';
 import { WS_BASE } from '../config';
 import { GroupContext } from './GroupContext';
 import ChatProjectInfo from './github/ChatProjectInfo';
+import Button from './ui/Button';
 import RepoPlanCard from './github/RepoPlanCard';
 import { isAbortError, sameId } from './github/githubUtils';
 import { LIMITS } from '../constants/limits';
@@ -62,6 +63,8 @@ const userIdOf = (u) => u?.uid || u?.userId || u?.id || null;
 
 let messageSeq = 0;
 const nextMessageId = (prefix = 'msg') => `${prefix}-${Date.now()}-${++messageSeq}`;
+const WELCOME_TEXT = 'Hello! I\'m your AI assistant. I can help you with task management, planning, and productivity advice. How can I assist you today?';
+const welcomeMessage = () => ({ id: nextMessageId('welcome'), type: 'assistant', content: WELCOME_TEXT, timestamp: new Date() });
 
 // Normalizes live and restored server messages. Other fields (event, groupId, plan...) are kept so
 // richer renderers can use them; `error` messages carry their text in `message`.
@@ -224,13 +227,25 @@ function ChatPage() {
     const [notice, setNotice] = useState('');
     const messagesEndRef = useRef(null);
     const inputRef = useRef(null);
-    const { refreshGroups, groups, selectedGroupId } = useContext(GroupContext) || {};
+    const { refreshGroups, groups, selectedGroupId, selectedGroupName, setSelectedGroupName } = useContext(GroupContext) || {};
     const location = useLocation();
     const navigate = useNavigate();
     const analyzeGroupId = location.state?.analyzeGroupId || null;
     // Chat project context = the group chosen in the navbar (null = no context). repo undefined = not known yet.
     const [projectId, setProjectId] = useState(analyzeGroupId || selectedGroupId || null);
     const [projectRepo, setProjectRepo] = useState(undefined);
+    // The selected group was never used (no tasks, milestones or repository): the chat shapes a project
+    // for it; `fillable`: the user is its admin, so the plan is saved in it (otherwise as a new group).
+    const [projectEmpty, setProjectEmpty] = useState(false);
+    const [projectFillable, setProjectFillable] = useState(false);
+    // Whose chat is on screen (lowercase group id, '' = no project; null = none yet or cleared by a switch).
+    // A restore is shown only under its own project; an empty one for the chat already on screen (a fresh
+    // server session after a reconnect) leaves the conversation there, as before.
+    const screenChatRef = useRef(null);
+    // «New project»: no project in the chat while the navbar has a group (re-sent on reconnect).
+    const newProjectMode = !projectId && Boolean(selectedGroupId);
+    const newProjectModeRef = useRef(newProjectMode);
+    newProjectModeRef.current = newProjectMode;
     const [analysis, setAnalysis] = useState(null);
     const [busyPlanId, setBusyPlanId] = useState(null);
     const projectIdRef = useRef(projectId);
@@ -328,6 +343,8 @@ function ChatPage() {
                     const current = projectIdRef.current;
                     if ((!data.groupId && !current) || sameId(data.groupId, current)) {
                         setProjectRepo(data.repo || null);
+                        setProjectEmpty(Boolean(data.groupId) && data.empty === true);
+                        setProjectFillable(Boolean(data.groupId) && data.fillable === true);
                     }
                     return;
                 }
@@ -362,6 +379,14 @@ function ChatPage() {
                 }
 
                 if (data.type === 'history_restore') {
+                    if (typeof data.chatOf === 'string') {
+                        const shownKey = String(projectIdRef.current || '').toLowerCase();
+                        // Another project's chat (the server was still on it, or the user left it again).
+                        if (data.chatOf !== shownKey) return;
+                        const empty = !(Array.isArray(data.messages) && data.messages.length);
+                        if (empty && screenChatRef.current === shownKey) return;
+                        screenChatRef.current = shownKey;
+                    }
                     const restoredMessages = foldPlanEvents((Array.isArray(data.messages) ? data.messages : [])
                         .map(toRestoredMessage))
                         .filter(msg => msg.content.trim()); // Filter empty content from history
@@ -371,7 +396,9 @@ function ChatPage() {
                     const pending = analysisRequestRef.current;
                     const keepPending = pending && pending.bubble && !restoredMessages.some(m => m.requestId === pending.requestId);
                     dropChunks();
-                    setMessages(keepPending ? [...restoredMessages, pending.bubble] : restoredMessages);
+                    // Each project has its own chat: a project with none yet starts with the greeting.
+                    const shown = keepPending ? [...restoredMessages, pending.bubble] : restoredMessages;
+                    setMessages(shown.length ? shown : [welcomeMessage()]);
                     setHasReceivedHistory(true);
                     setIsTyping(false);
                     return;
@@ -411,6 +438,13 @@ function ChatPage() {
                 if (data.type === 'assistant' || data.type === 'system') {
                     if (data.type === 'system' && data.event === 'project_created') {
                         refreshGroups().catch(err => setNotice(errorMessage(err, 'Could not refresh your groups')));
+                        if (data.filled && sameId(data.groupId, projectIdRef.current)) {
+                            // Saved in this (formerly empty) group: it took the project's name and is no longer empty.
+                            if (sameId(data.groupId, selectedGroupId) && setSelectedGroupName) setSelectedGroupName(data.groupName);
+                            setProjectEmpty(false);
+                            setProjectFillable(false);
+                            sendWebSocketMessage({ type: 'set_context', groupId: projectIdRef.current });
+                        }
                     }
                     const msg = toChatMessage(data);
                     if (msg.requestId) dropChunks(msg.requestId);
@@ -502,16 +536,32 @@ function ChatPage() {
         }
         if (projectIdRef.current) {
             sendWebSocketMessage({ type: 'set_context', groupId: projectIdRef.current });
+        } else if (newProjectModeRef.current) {
+            // «New project» chosen (maybe while disconnected): the server may still be on the group.
+            sendWebSocketMessage({ type: 'set_context', groupId: null });
         }
         // Runs per connection; the rest is read through refs on purpose.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isConnected]);
 
     const handleProjectChange = useCallback((groupId) => {
+        projectIdRef.current = groupId || null;
+        screenChatRef.current = null;
         setProjectId(groupId);
         setProjectRepo(groupId ? undefined : null);
+        setProjectEmpty(false);
+        setProjectFillable(false);
+        // The other project's conversation must not stay on screen: the server sends that project's
+        // own chat back (history_restore) right after the switch. An analysis in flight belongs to the
+        // project left: its result goes to that project's chat.
+        dropChunks();
+        setIsTyping(false);
+        analysisRequestRef.current = null;
+        setAnalysis(null);
+        setBusyPlanId(null);
+        setMessages([]);
         sendWebSocketMessage({ type: 'set_context', groupId: groupId || null });
-    }, [sendWebSocketMessage]);
+    }, [sendWebSocketMessage, dropChunks]);
 
     // The navbar group switcher changes the chat's project too (only on a change, so the
     // group of an analysis requested from /github is kept on arrival).
@@ -559,7 +609,7 @@ function ChatPage() {
                         {
                             id: '1',
                             type: 'assistant',
-                            content: 'Hello! I\'m your AI assistant. I can help you with task management, planning, and productivity advice. How can I assist you today?',
+                            content: WELCOME_TEXT,
                             timestamp: new Date()
                         }
                     ]);
@@ -685,12 +735,37 @@ function ChatPage() {
                             AI Assistant
                         </Typography>
 
-                        <ChatProjectInfo
-                            groups={groups || []}
-                            value={projectId}
-                            repo={projectId ? projectRepo : null}
-                        />
-                        {projectId && (
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}>
+                            <ChatProjectInfo
+                                groups={groups || []}
+                                value={projectId}
+                                repo={projectId ? projectRepo : null}
+                                newProject={newProjectMode}
+                            />
+                            {projectId && !projectEmpty && (
+                                <Button variant="ghost" size="small" disabled={!isConnected} onClick={() => handleProjectChange(null)}>
+                                    New project
+                                </Button>
+                            )}
+                            {!projectId && selectedGroupId && (
+                                <Button variant="ghost" size="small" disabled={!isConnected} onClick={() => handleProjectChange(selectedGroupId)}>
+                                    Back to “{selectedGroupName || 'the group'}”
+                                </Button>
+                            )}
+                        </Box>
+                        {projectId && projectEmpty && (
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                                {projectFillable
+                                    ? 'This group is empty: describe the project you want to build and ask for the plan; it will be created in this group.'
+                                    : 'This group is empty: describe the project you want to build and ask for the plan; it will be saved as a new group (only the group admin can create it here).'}
+                            </Typography>
+                        )}
+                        {!projectId && token && (
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                                New project: describe what you want to build and ask for the plan; it will be saved as a new group.
+                            </Typography>
+                        )}
+                        {projectId && !projectEmpty && (
                             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
                                 {projectRepo === null
                                     ? 'This project has no repository connected: the AI only sees its tasks, milestones and team. Connect one from the GitHub page.'
