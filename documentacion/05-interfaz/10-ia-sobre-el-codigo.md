@@ -4,9 +4,11 @@
 
 ## Pantallas
 
-**No hay captura propia de este módulo.** Las capturas de [`capturas/`](capturas/) son del 3 y 4 nov 2026, antes de que existiera este panel y de que la interfaz pasara al inglés. Esta es la descripción del panel según el código (`TaskAiPanel.jsx`).
+![Diálogo Task files de la tarea Pipeline CI con el bloque AI on the branch: botones Audit y Generate tests](capturas/admin-tarea-archivos.jpg)
 
-**Cómo se llega.** En `/tasks`, una tarea con rama muestra el botón-icono «View task files» junto al chip de la rama. Abre el diálogo «Task files», con el nombre de la tarea y el enlace «PR #N». Arriba van los archivos de la tarea ([módulo GitHub](07-github.md)); debajo, el panel «AI on the branch».
+*Captura del 26 nov 2026: el diálogo «Task files» de la tarea «Pipeline CI» (grupo «E-Component»), todavía sin archivos registrados. Abajo, el bloque «AI on the branch» con «Audit» y «Generate tests»; «Review PR» no sale porque la tarea no tiene un PR abierto. No hay captura de los resultados: lo que sigue los describe según el código (`TaskAiPanel.jsx`).*
+
+**Cómo se llega.** En `/tasks`, una tarea con rama muestra el botón-icono «View task files» junto al chip de la rama. Abre el diálogo «Task files», con el nombre de la tarea y, si hay PR, el enlace «PR #N». Arriba van los archivos de la tarea ([módulo GitHub](07-github.md)); debajo, el panel «AI on the branch».
 
 **El panel.** El título «AI on the branch» y tres botones:
 

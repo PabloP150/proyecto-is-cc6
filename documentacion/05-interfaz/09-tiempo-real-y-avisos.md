@@ -4,7 +4,7 @@
 
 ## Pantallas
 
-Las tres capturas son del 3–4 nov 2026, anteriores a la interfaz en inglés: muestran los textos viejos en español. Abajo se citan los textos actuales.
+Las tres capturas son del 26 nov 2026 (grupo «Demo CI/CD») y son las mismas del módulo [CI/CD](08-cicd.md).
 
 **Pestaña CI/CD (admin):** «Environments» y «Production requests» se recargan con los eventos `deployment` y `deploy_request`; «Runs», con `ci_run`.
 
@@ -12,7 +12,7 @@ Las tres capturas son del 3–4 nov 2026, anteriores a la interfaz en inglés: m
 
 **Detalle de una ejecución:** los jobs y sus pasos se recargan con los `ci_run` y `ci_job` de esa ejecución.
 
-![Detalle de una ejecución con su log](capturas/admin-github-cicd-ejecucion.jpg)
+![Ejecución TaskMate CI/CD #9: el job CI (Node.js) falló en el paso Pruebas, con el log abierto](capturas/admin-github-cicd-ejecucion.jpg)
 
 **Pestaña CI/CD (miembro):** recibe los mismos eventos y se recarga igual. Solo cambian los botones: «Request production» en vez de «Publish to production», y sin «Edit pipeline» ni «Rollback…».
 

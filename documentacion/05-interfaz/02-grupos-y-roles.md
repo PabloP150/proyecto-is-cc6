@@ -4,7 +4,11 @@
 
 ![Pantalla de grupos vista por el admin](capturas/admin-grupos.jpg)
 
-*Admin en `/groups`. A la izquierda, la lista de sus grupos; «Demo CI/CD» es el grupo activo. A la derecha, sus tres miembros y la sección **Group Roles**, todavía sin roles. La captura es del 3 nov 2026, anterior a la interfaz en inglés: todavía muestra los botones **Use** (ya no existen: basta un clic en el grupo), «Assign/Edit Rol» (hoy «Assign/Edit Roles») y la barra sin el selector de grupo ([qué cambió en cada captura](README.md#galería-de-capturas)).*
+*Admin en `/groups`. A la izquierda, la tarjeta **Groups** con sus 7 grupos y **Create**; «Demo CI/CD» es el activo y también sale en el selector junto al logo. A la derecha, **Delete Member**, **Add User** y **Leave Group**, sus tres miembros (`e2e-miembro`, `Admin` y `demo-miembro`), cada uno con su insignia y «Assign/Edit Roles», y la sección **Group Roles** con «No roles defined.» y **New Role**.*
+
+![Menú del selector de grupo abierto: siete grupos, palomita en Demo CI/CD y Manage groups al final](capturas/admin-navbar-grupo.jpg)
+
+*El selector de grupo abierto junto al logo (aquí en `/home`): los mismos 7 grupos, con la palomita en el activo, y **Manage groups** al final, que lleva a esta pantalla.*
 
 ```mermaid
 flowchart TD

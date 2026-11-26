@@ -4,27 +4,31 @@
 
 ## Pantallas
 
-Las capturas son del 3–4 nov 2026, de antes de pasar la interfaz al inglés (19 nov): sus textos están en español. Los textos citados en esta página son los actuales.
+Capturas del 26 nov 2026, grupo «Demo CI/CD» con el repositorio `PabloP150/taskmate-fase4-demo`.
 
-**Repository, vista del admin.** Arriba, «Sync PRs» y «Analyze with AI». En la tarjeta: el interruptor «Allow AI analysis», los datos del repositorio y «Disconnect».
+**Repository, vista del admin.** Arriba, «GitHub» con el chip «Group: Demo CI/CD», «Sync PRs» y «Analyze with AI», y las 5 pestañas. En la tarjeta: el repositorio («Public»), el interruptor «Allow AI analysis» encendido, «Default branch», «App installation», «Connected by» y «Disconnect».
 
 ![Pestaña Repository vista por el admin](capturas/admin-github-repositorio.jpg)
 
-**Repository, vista de un miembro.** Los mismos datos y los mismos botones de arriba. En lugar del interruptor dice «AI analysis: allowed» (u «off») y «Only the group admin can change this permission.». No hay «Disconnect».
+**Repository, vista de un miembro.** Los mismos datos y los mismos botones de arriba. En lugar del interruptor dice «AI analysis: allowed» (u «off») y, al final del texto de abajo, «Only the group admin can change this permission.». No hay «Disconnect».
 
 ![Pestaña Repository vista por un miembro](capturas/miembro-github-repositorio.jpg)
 
-**Files.** Árbol con filtro («Filter files…») a la izquierda; a la derecha, el README o el archivo elegido, con «View on GitHub».
+**Files.** Árbol con filtro («Filter files…») y el botón «README» a la izquierda; a la derecha, el README o el archivo elegido, con su tamaño y «View on GitHub». El README del repo de prueba está en español.
 
 ![Pestaña Files con el README](capturas/admin-github-archivos.jpg)
 
-**Commits.** «Recent commits» de la rama por defecto, con su autor y hace cuánto (en inglés: «2 weeks ago», «just now»).
+**Commits.** «Recent commits» de la rama por defecto, con el SHA corto, el mensaje, el autor y hace cuánto (en inglés: «last month», «2 months ago»). Los mensajes son los del repo, en español.
 
 ![Pestaña Commits](capturas/admin-github-commits.jpg)
 
 Las pestañas CI/CD y «Vercel (monitoring)» son del módulo [CI/CD](08-cicd.md).
 
-**Task files.** Diálogo que abre el icono «View task files» de una tarea en `/tasks`: título «Task files» con el nombre de la tarea y el enlace «PR #N»; debajo, «N files» con el total de +/− y la lista de archivos. Abajo va el panel «AI on the branch». No hay captura todavía.
+**Task files.** Diálogo que abre el icono «View task files» de una tarea en `/tasks`: título «Task files» con el nombre de la tarea y, si hay PR, el enlace «PR #N»; debajo, «N files» con el total de +/− y la lista de archivos. Abajo va el panel «AI on the branch».
+
+![Diálogo Task files de la tarea Pipeline CI: aviso de que no hay archivos registrados y el bloque AI on the branch con Audit y Generate tests](capturas/admin-tarea-archivos.jpg)
+
+En la captura (grupo «E-Component», tarea «Pipeline CI») la rama aún no tiene PR ni archivos registrados: sale el aviso «This task has no recorded files yet. They are recorded automatically when the pull request of its branch is merged.» y, abajo, «AI on the branch» con «Audit» y «Generate tests», sin «Review PR».
 
 ## Qué puedes hacer
 

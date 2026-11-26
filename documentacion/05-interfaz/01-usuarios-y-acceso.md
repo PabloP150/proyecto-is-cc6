@@ -14,9 +14,9 @@
 
 **Con sesión: el menú con tu nombre** (arriba a la derecha, aquí «Admin») tiene la opción «Logout».
 
-![Inicio con la sesión iniciada](capturas/admin-home.jpg)
+![Inicio con la sesión iniciada: selector de grupo en Demo CI/CD junto al logo y menú Admin a la derecha](capturas/admin-home.jpg)
 
-La captura es del 3 nov 2026, anterior al selector de grupo que ahora aparece junto al logo «TaskMate». Las pantallas «Sign In» y «Create Account» no han cambiado.
+Junto al logo «TaskMate» está el selector de grupo, aquí con «Demo CI/CD». Su menú abierto se ve en [Grupos y roles](02-grupos-y-roles.md).
 
 ## Qué puedes hacer
 

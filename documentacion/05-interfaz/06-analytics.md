@@ -4,16 +4,13 @@
 
 ## Pantallas
 
-**Panel del líder (`/analytics`).** El admin es líder de su grupo. Arriba, tres tarjetas: 1 miembro, 5 tareas activas y 0.0 % de avance. «Category Expertise» muestra al mejor de cada categoría (aquí, frontend con 60/100). Abajo está el formulario de recomendaciones.
-- La captura es del 3 nov 2026, de antes de la corrección del 4 nov: ahí «Team Workload Distribution» sale vacía («No workload data available») porque solo contaba a los miembros con al menos un rol en el grupo, y la experiencia sumaba todos los grupos de la persona. Hoy el panel muestra una barra por cada miembro.
-- Los textos del panel no cambiaron con la interfaz en inglés, pero la barra todavía no tenía el selector de grupo junto al logo.
+**Panel del líder (`/analytics`).** El admin es líder de su grupo, aquí «Fitness App». Arriba, tres tarjetas: 1 miembro, 5 tareas activas y 0.0 % de avance. «Team Workload Distribution» tiene una barra, la del admin («No role», «0/5 (0%)»), y «Category Expertise» dice «No expertise data available». Abajo está el formulario «AI Task Assignment Recommendations».
 
 ![Panel de analytics del admin](capturas/admin-analytics.jpg)
 
-**Vista de un miembro (`/analytics`).** La API responde 403 y la pantalla lo cambia por un aviso: «Team leaders only» y, debajo, «The analytics dashboard is only available to the group leader. Ask your leader to review the metrics, or switch to a group you manage.». El navegador igual registra el 403 en la consola.
-- La captura es del 4 nov 2026, anterior a la interfaz en inglés: muestra el aviso viejo en español («Solo líderes del equipo») y la barra sin el selector de grupo.
+**Vista de un miembro (`/analytics`).** La API responde 403 y la pantalla lo cambia por un aviso: «Team leaders only» y, debajo, «The analytics dashboard is only available to the group leader. Ask your leader to review the metrics, or switch to a group you manage.». El navegador igual registra el 403 en la consola. En la captura, `demo-miembro` con «Demo CI/CD».
 
-![Aviso para un miembro, todavía en español («Solo líderes del equipo»); hoy dice «Team leaders only»](capturas/miembro-analytics.jpg)
+![Aviso «Team leaders only» que ve demo-miembro en el grupo Demo CI/CD](capturas/miembro-analytics.jpg)
 
 Partes del panel, de arriba abajo:
 - **Encabezado:** «Team Analytics Dashboard», el filtro de rol («All Roles») y el botón «Refresh».

@@ -4,21 +4,25 @@
 
 ## Pantallas
 
-Las tres capturas son del 3 nov 2026, de antes de pasar la interfaz al inglés (19 nov 2026): en ellas los botones se ven en español. Abajo se citan los textos de ahora.
+Capturas del 26 nov 2026, grupo «Demo CI/CD» con el repositorio `PabloP150/taskmate-fase4-demo`. El pipeline se subió el 23 oct, antes del cambio de idioma, así que la etapa y los pasos que vienen del YAML conservan sus nombres en español («Pruebas», «Instalar dependencias», «Análisis estático»).
 
-**Vista del admin:** tarjeta **CI/CD pipeline** con «Edit pipeline», y tarjeta **Environments** con «Publish to production», «Rollback…», las **Production requests** y el «Deploy history». La lista de **Runs** sigue debajo.
+**Vista del admin:** tarjeta **CI/CD pipeline** con sus etapas, «Configured by», el archivo `.github/workflows/taskmate-ci.yml`, «Site:» y «Edit pipeline»; tarjeta **Environments** con staging y producción en «Live», «Publish to production», «Rollback…», las **Production requests** (una «Rejected» y una «Approved») y el «Deploy history». La lista de **Runs** sigue debajo.
 
-![Pestaña CI/CD vista por el admin del grupo](capturas/admin-github-cicd.jpg)
+![Pestaña CI/CD vista por el admin: CI/CD pipeline, Environments con staging y producción en Live, Production requests y Deploy history](capturas/admin-github-cicd.jpg)
 
-**Una ejecución abierta:** el job «Deploy build» con sus pasos (los saltados llevan un círculo gris) y su log abierto, con «Hide log» y «Errors only». En la captura el job se llama «Build del deploy»: es un workflow subido antes del cambio de idioma.
+**Una ejecución abierta:** «TaskMate CI/CD #9», lanzada a mano en la rama `e2e/prueba-falla`. El job «CI (Node.js)» falló en el paso «Pruebas»; los pasos saltados («Build», «Post Node.js 24») llevan un círculo gris. Debajo, las anotaciones (dos «Error» y un «Notice» con archivo y línea), «Hide log», el interruptor «Errors only» y el log abierto. Arriba, «View the run on GitHub» y «Re-run failed».
 
-![Detalle de una ejecución con sus jobs](capturas/admin-github-cicd-ejecucion.jpg)
+![Ejecución TaskMate CI/CD #9 en la rama e2e/prueba-falla: el job CI (Node.js) falló en el paso Pruebas, con sus anotaciones y el log abierto](capturas/admin-github-cicd-ejecucion.jpg)
 
-**Vista de un miembro:** sin «Edit pipeline» ni «Rollback…»; en staging aparece «Request production» en lugar de «Publish to production». «Run pipeline» sigue disponible.
+**Vista de un miembro:** sin «Edit pipeline» ni «Rollback…»; en staging aparece «Request production» en lugar de «Publish to production». «Run pipeline» sigue disponible, abajo en **Runs**, junto a los filtros «Workflow» y «Status».
 
-![Pestaña CI/CD vista por un miembro](capturas/miembro-github-cicd.jpg)
+![Pestaña CI/CD vista por un miembro: Request production en staging, sin Edit pipeline ni Rollback, y Run pipeline en Runs](capturas/miembro-github-cicd.jpg)
 
-**Pestaña Vercel (monitoring)** (todavía sin captura): una tarjeta **Deployments** con «Vercel project: <id>», «Refresh» y, solo para el admin, «Unlink». Debajo, hasta 20 despliegues, del más nuevo al más viejo.
+**Pestaña Vercel (monitoring), sin proyecto vinculado (admin):** la tarjeta **Deployments** con el aviso «Paste the Vercel Project ID (Settings → General) and add the webhook /api/deploy/webhook/vercel in Vercel for deployment events.», el campo «Vercel Project ID» y el botón «Vincular», que la app todavía muestra en español.
+
+![Pestaña Vercel (monitoring) del admin sin proyecto vinculado: aviso, campo Vercel Project ID y botón Vincular](capturas/admin-github-vercel.jpg)
+
+**Con un proyecto vinculado** (sin captura): la misma tarjeta **Deployments** con «Vercel project: <id>», «Refresh» y, solo para el admin, «Unlink». Debajo, hasta 20 despliegues, del más nuevo al más viejo.
 
 ## Qué puedes hacer
 

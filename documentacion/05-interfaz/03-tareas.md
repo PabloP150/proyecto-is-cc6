@@ -12,7 +12,9 @@
 
 ![Pantalla de tareas de un miembro](capturas/miembro-tareas.jpg)
 
-Las dos capturas son del 3 y 4 nov 2026, antes de la interfaz en inglés. Los textos que se ven en ellas ya estaban en inglés y no cambiaron, pero la navbar todavía no tenía el selector de grupo.
+**Diálogo «Task files» (`/tasks`, grupo «E-Component»).** Se abrió con «View task files» en la tarea «Pipeline CI». Su rama todavía no tiene archivos registrados, así que sale el aviso «This task has no recorded files yet…»; debajo, «AI on the branch» con «Audit» y «Generate tests» («Review PR» no aparece: no hay PR abierto). Atrás se ven otras tarjetas del grupo; las que aún no tienen rama llevan un quinto botón, «Create branch on GitHub», y una muestra el chip de su rama (`tm/ci-github-actions-…`) con el ícono de archivos. Detalle en [GitHub](07-github.md).
+
+![Diálogo Task files de la tarea Pipeline CI: aviso de que no hay archivos registrados y el bloque AI on the branch con Audit y Generate tests](capturas/admin-tarea-archivos.jpg)
 
 Partes de la pantalla, de arriba abajo:
 - **Encabezado:** «Tasks (n) - grupo», donde n cuenta las tareas que se ven con el filtro actual, y el botón del embudo («Filters»).

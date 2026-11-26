@@ -62,7 +62,7 @@ flowchart TD
 |---|---|
 | ![Pantalla de login](capturas/anon-login.jpg) | ![Pantalla de inicio de un admin](capturas/admin-home.jpg) |
 
-Las capturas son del 3–4 nov 2026, anteriores a la interfaz en inglés: en la de Inicio todavía no está el selector de grupo junto al logo ([qué cambió en cada captura](README.md#galería-de-capturas)).
+Capturas del 26 nov 2026. En Inicio, junto al logo, el selector de grupo muestra «Demo CI/CD» ([todas las capturas](README.md#galería-de-capturas)).
 
 ## El marco común
 
@@ -74,6 +74,10 @@ Con sesión, todas las pantallas comparten cuatro piezas:
 | **Selector de grupo** (junto al logo) | Muestra el grupo activo, o «Select a group» si no hay. Su menú lista tus grupos, con una palomita en el activo, y termina en **Manage groups**, que lleva a `/groups`. Elegir otro grupo cambia el de todas las pantallas. No tiene opción «ninguno» | `src/components/NavGroupSelector.jsx` |
 | **Grupo activo** | El grupo con el que trabajan Tasks, Calendar, Milestones, Analytics, GitHub y el chat. Se cambia con el selector de grupo o con un clic en el grupo dentro de **Groups**. Al iniciar sesión se activa el primer grupo de tu lista | `src/components/GroupContext.jsx` |
 | **Avisos de CI/CD** | Mensajes abajo a la derecha (fallos, deploys, solicitudes). **View** activa ese grupo y abre su pestaña CI/CD; **Open site** abre el sitio publicado, si el aviso lo trae | `src/components/realtime/CicdNotifications.jsx` |
+
+**El selector de grupo abierto** (aquí en `/home`): los 7 grupos del admin, la palomita en el activo («Demo CI/CD») y, separado abajo, «Manage groups».
+
+![Menú del selector de grupo abierto junto al logo: siete grupos, palomita en Demo CI/CD y Manage groups al final](capturas/admin-navbar-grupo.jpg)
 
 - Sin grupo activo, cada pantalla pide elegir uno (por ejemplo, «Select a group to manage tasks.»). Casi no pasa: al registrarte se crea tu grupo personal y al iniciar sesión se activa el primero.
 - El chat no tiene selector propio: usa el grupo del navbar, lo muestra arriba como «Project: &lt;grupo&gt;» y cambia de proyecto cuando cambias el grupo. «Analyze with AI» de `/github` también fija ese grupo antes de abrir el chat.
@@ -104,9 +108,7 @@ Con sesión, todas las pantallas comparten cuatro piezas:
 
 | Admin (cuenta como líder) | Miembro sin rol de líder |
 |---|---|
-| ![Panel de analytics que ve el admin](capturas/admin-analytics.jpg) | ![Aviso «Team leaders only» que ve un miembro (captura anterior, en español)](capturas/miembro-analytics.jpg) |
-
-La captura del miembro es del 4 nov 2026 y todavía dice «Solo líderes del equipo». Hoy dice «Team leaders only».
+| ![Panel de analytics que ve el admin](capturas/admin-analytics.jpg) | ![Aviso «Team leaders only» que ve un miembro](capturas/miembro-analytics.jpg) |
 
 ## Rutas que redirigen
 

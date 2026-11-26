@@ -2,9 +2,9 @@
 
 **En una frase:** la pantalla «AI Bot» (`/chat`) es un chat que sigue al grupo elegido en la barra de navegación: arriba muestra el proyecto, en el centro la conversación (las respuestas llegan mientras se escriben) y abajo el cuadro de texto con el botón «Propose tasks».
 
-![Pantalla del chat con IA, vista del admin](capturas/admin-chat.jpg)
+![Pantalla del chat con IA, vista del admin: Project Demo CI/CD con su repositorio y el saludo inicial](capturas/admin-chat.jpg)
 
-*Captura del 3 nov 2026, anterior a la interfaz en inglés: muestra el selector «Proyecto» en «Nuevo proyecto (sin contexto)», que ya no existe. Hoy el encabezado dice «Project: <grupo>», el grupo se elige en la barra y el chat ocupa todo el ancho.*
+*Admin con «Demo CI/CD» elegido en la barra. Arriba, «AI Assistant», «Project: Demo CI/CD», el chip `PabloP150/taskmate-fase4-demo` y el texto de ayuda (repo conectado y análisis permitido). En el centro, el saludo inicial de la IA. Abajo, el cuadro «Ask about “Demo CI/CD”…» con el contador 0/4000, «Propose tasks» (ícono de lista con un +) y «Send message».*
 
 ```mermaid
 flowchart TD

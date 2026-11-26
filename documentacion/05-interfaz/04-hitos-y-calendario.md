@@ -6,23 +6,22 @@
 
 **Hitos: `/block-diagram`** (menú «Milestones» o tarjeta «Milestone Viewer» del inicio)
 
-![Pantalla de hitos: barra para crear hitos, botón Import Task y lienzo de React Flow](capturas/admin-hitos.jpg)
+![Pantalla Milestone Planner del grupo Fitness App: barra para crear hitos, botón Import Task y siete hitos, cinco de ellos unidos por flechas](capturas/admin-hitos.jpg)
 
 - Barra de arriba: nombre, descripción, fecha y el botón para crear. El botón dice qué falta: «Select a group first», «Name required» o «Date required»; con todo listo dice «Add Milestone».
 - «Import Task»: lista las tareas del grupo que todavía no son hito.
 - Lienzo: cada tarjeta muestra nombre, descripción, «Deadline», «Progress: N %» y el botón «Edit». Con 100 % se pone verde y dice «✓ Completed».
 - Cada flecha lleva una etiqueta, «Prerequisite» o «Progressor». Un clic la cambia.
 - Abajo a la izquierda: acercar, alejar, ajustar a la vista y bloquear el lienzo.
-- En la captura el grupo activo todavía no tiene hitos.
-- La captura es del 3 nov 2026: los textos de la pantalla no cambiaron, pero la barra todavía no tenía el selector de grupo junto al logo.
+- En la captura (título «Milestone Planner», grupo «Fitness App») hay 7 hitos: cinco unidos por cuatro flechas (tres «Prerequisite» y una «Progressor») y dos sueltos, «Setup Done» y «Launch Ready»; «Design Complete» está al 100 %, en verde. El botón de crear dice «Name required» porque la barra está vacía.
 
 **Calendario: `/calendar`** (menú «Calendar» o tarjeta «Calendar View» del inicio)
 
-![Pantalla del calendario: vista de mes con los botones Today, Back y Next](capturas/admin-calendario.jpg)
+![Pantalla Your Calendar en enero de 2026: vista de mes con Today, Back y Next y las fechas de tareas e hitos de Fitness App](capturas/admin-calendario.jpg)
 
 - Solo vista de mes, con «Today», «Back» y «Next».
 - Cada evento es un hito o una tarea activa, con su nombre, en su fecha. Es de solo lectura.
-- En la captura el grupo activo no tiene fechas en noviembre de 2026. Es del 3 nov 2026, anterior al selector de grupo de la barra.
+- En la captura («Your Calendar», grupo «Fitness App») se ve enero de 2026 con tareas («Implement Core», «Test Core», «Test Advanced») e hitos («Core Features», «Advanced Features») en su fecha.
 
 ## Qué puedes hacer
 

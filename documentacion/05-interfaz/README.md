@@ -5,7 +5,7 @@
 ```mermaid
 flowchart LR
     G["00 · Visión general<br/>mapa de pantallas"] --> M["01–10 · Pantallas de cada módulo"]
-    C[("capturas/<br/>18 imágenes del 3–4 nov 2026<br/>(antes de la interfaz en inglés)")] -.-> G
+    C[("capturas/<br/>21 imágenes del 26 nov 2026<br/>(interfaz en inglés)")] -.-> G
     C -.-> M
 ```
 
@@ -34,37 +34,36 @@ flowchart LR
 
 ## Galería de capturas
 
-Capturas JPG de 1440 × 1000 en [`capturas/`](capturas/). El nombre dice quién la ve: `anon-` (sin sesión), `admin-` (admin del grupo) o `miembro-` (un miembro que no es admin).
+Capturas JPG de 1440 × 1000 en [`capturas/`](capturas/), tomadas el **26 nov 2026** con la interfaz en inglés (Chrome sin ventana). El nombre dice quién la ve: `anon-` (sin sesión), `admin-` (admin del grupo) o `miembro-` (`demo-miembro`, que no es admin).
 
-**Son del 3 y 4 nov 2026, anteriores a la interfaz en inglés (19 nov) y al selector de grupo del navbar.** Todavía no se han vuelto a tomar:
+- Las 19 con sesión muestran el selector de grupo junto al logo.
+- Lo que se ve en español son datos (nombres de grupos, tareas, commits y el README del repo de prueba), los pasos del workflow subido el 23 oct («Pruebas», «Instalar dependencias»…) y el botón «Vincular» de Vercel, que la app sigue mostrando así ([limitaciones de la interfaz](../01-proyecto/cierre-del-proyecto.md#interfaz)).
 
-- Ninguna de las 16 con sesión muestra el selector de grupo junto al logo.
-- 9 salen con los textos viejos en español: las de GitHub, las de CI/CD, la del chat y el aviso de analytics.
-- `anon-login` y `anon-registro` siguen al día: «Sign In» y «Create Account» no cambiaron.
-- La columna «Qué cambió» dice qué se ve distinto hoy.
+| Captura | Qué muestra | Página |
+|---|---|---|
+| <img src="capturas/anon-login.jpg" alt="Pantalla Sign In" width="220"> | «Welcome Back» / «Sign In» (`/`), sin sesión, con el enlace «Create Account» | [Usuarios](01-usuarios-y-acceso.md) |
+| <img src="capturas/anon-registro.jpg" alt="Pantalla Create Account" width="220"> | «Create Account» (`/register`): usuario, contraseña y «Confirm Password» | [Usuarios](01-usuarios-y-acceso.md) |
+| <img src="capturas/admin-home.jpg" alt="Inicio del admin con el selector de grupo en Demo CI/CD" width="220"> | Inicio (`/home`) del admin: barra con el selector en «Demo CI/CD», las 8 entradas y el menú «Admin» | [Usuarios](01-usuarios-y-acceso.md) |
+| <img src="capturas/admin-navbar-grupo.jpg" alt="Menú del selector de grupo abierto" width="220"> | El menú del selector de grupo abierto en `/home`: los 7 grupos del admin, palomita en «Demo CI/CD» y «Manage groups» al final | [Visión general](00-general.md), [Grupos](02-grupos-y-roles.md) |
+| <img src="capturas/admin-grupos.jpg" alt="Grupos del admin" width="220"> | `/groups` con «Demo CI/CD» activo: 3 miembros con «Assign/Edit Roles», «Delete Member», «Add User», «Leave Group» y «No roles defined.» con «New Role» | [Grupos](02-grupos-y-roles.md) |
+| <img src="capturas/admin-tareas.jpg" alt="Tareas del admin" width="220"> | `/tasks` del admin en «Fitness App»: «Tasks (5)», la lista «To Do» con 5 tarjetas, sin GitHub | [Tareas](03-tareas.md) |
+| <img src="capturas/miembro-tareas.jpg" alt="Tareas de un miembro" width="220"> | `/tasks` de `demo-miembro` en «Demo CI/CD», sin listas: «Add a list to start» | [Tareas](03-tareas.md) |
+| <img src="capturas/admin-tarea-archivos.jpg" alt="Diálogo Task files de la tarea Pipeline CI" width="220"> | Diálogo «Task files» de la tarea «Pipeline CI» (grupo «E-Component»): aviso de que aún no hay archivos registrados y el bloque «AI on the branch» con «Audit» y «Generate tests» | [GitHub](07-github.md), [IA sobre el código](10-ia-sobre-el-codigo.md) |
+| <img src="capturas/admin-hitos.jpg" alt="Hitos del admin" width="220"> | «Milestone Planner» (`/block-diagram`) en «Fitness App»: 7 hitos, cinco unidos por flechas «Prerequisite» y «Progressor»; «Design Complete» en verde al 100 % | [Hitos](04-hitos-y-calendario.md) |
+| <img src="capturas/admin-calendario.jpg" alt="Calendario" width="220"> | «Your Calendar» en enero de 2026 («Fitness App»): tareas e hitos en su fecha, con Today, Back y Next | [Hitos](04-hitos-y-calendario.md) |
+| <img src="capturas/admin-chat.jpg" alt="Chat con IA" width="220"> | «AI Assistant» con «Project: Demo CI/CD», el chip `PabloP150/taskmate-fase4-demo`, el saludo inicial y el cuadro «Ask about “Demo CI/CD”…» | [Chat](05-chat-ia.md) |
+| <img src="capturas/admin-analytics.jpg" alt="Panel de analytics" width="220"> | «Team Analytics Dashboard» del admin en «Fitness App»: 1 miembro, 5 tareas activas, 0.0 %, la barra del admin y el formulario de recomendaciones | [Analytics](06-analytics.md) |
+| <img src="capturas/miembro-analytics.jpg" alt="Aviso Team leaders only" width="220"> | El aviso «Team leaders only» que ve `demo-miembro` | [Analytics](06-analytics.md) |
+| <img src="capturas/admin-github-repositorio.jpg" alt="Pestaña Repository del admin" width="220"> | GitHub → Repository del admin: «Sync PRs», «Analyze with AI», las 5 pestañas, «Allow AI analysis» encendido y «Disconnect» | [GitHub](07-github.md) |
+| <img src="capturas/miembro-github-repositorio.jpg" alt="Pestaña Repository de un miembro" width="220"> | Repository de un miembro: «AI analysis: allowed» en lugar del interruptor y sin «Disconnect» | [GitHub](07-github.md) |
+| <img src="capturas/admin-github-archivos.jpg" alt="Pestaña Files" width="220"> | Files: árbol con «Filter files…» y el README con «View on GitHub» | [GitHub](07-github.md) |
+| <img src="capturas/admin-github-commits.jpg" alt="Pestaña Commits" width="220"> | Commits: «Recent commits» de `main`, con autor y fechas como «last month» | [GitHub](07-github.md) |
+| <img src="capturas/admin-github-cicd.jpg" alt="Pestaña CI/CD del admin" width="220"> | CI/CD del admin: «CI/CD pipeline» con «Edit pipeline», «Environments» con «Publish to production» y «Rollback…», «Production requests» y «Deploy history» | [CI/CD](08-cicd.md) |
+| <img src="capturas/admin-github-cicd-ejecucion.jpg" alt="Ejecución TaskMate CI/CD #9 fallida en el paso Pruebas" width="220"> | La ejecución «TaskMate CI/CD #9» (manual, rama `e2e/prueba-falla`) abierta: el job «CI (Node.js)» falló en «Pruebas», con sus anotaciones, «Re-run failed», «Hide log» y «Errors only» | [CI/CD](08-cicd.md) |
+| <img src="capturas/miembro-github-cicd.jpg" alt="Pestaña CI/CD de un miembro" width="220"> | CI/CD de un miembro: «Request production» en vez de «Publish to production», sin «Edit pipeline» ni «Rollback…»; abajo, «Runs» con «Run pipeline» | [CI/CD](08-cicd.md) |
+| <img src="capturas/admin-github-vercel.jpg" alt="Pestaña Vercel (monitoring) sin proyecto vinculado" width="220"> | «Vercel (monitoring)» del admin sin proyecto vinculado: la tarjeta «Deployments», el aviso para pegar el Project ID, el campo «Vercel Project ID» y «Vincular» | [CI/CD](08-cicd.md) |
 
-| Captura | Qué muestra | Qué cambió | Página |
-|---|---|---|---|
-| <img src="capturas/anon-login.jpg" alt="Pantalla Sign In" width="220"> | «Sign In» (`/`), sin sesión | Nada | [Usuarios](01-usuarios-y-acceso.md) |
-| <img src="capturas/anon-registro.jpg" alt="Pantalla Create Account" width="220"> | «Create Account» (`/register`), sin sesión | Nada | [Usuarios](01-usuarios-y-acceso.md) |
-| <img src="capturas/admin-home.jpg" alt="Inicio del admin" width="220"> | Inicio (`/home`) con la barra de navegación | Falta el selector de grupo junto al logo | [Usuarios](01-usuarios-y-acceso.md) |
-| <img src="capturas/admin-grupos.jpg" alt="Grupos del admin" width="220"> | `/groups` con «Demo CI/CD» como grupo activo | Ya no hay botones «Use»: basta un clic en el grupo. «Assign/Edit Rol» ahora es «Assign/Edit Roles» | [Grupos](02-grupos-y-roles.md) |
-| <img src="capturas/admin-tareas.jpg" alt="Tareas del admin" width="220"> | `/tasks` del admin, grupo «Fitness App» | Solo falta el selector de grupo | [Tareas](03-tareas.md) |
-| <img src="capturas/miembro-tareas.jpg" alt="Tareas de un miembro" width="220"> | `/tasks` de un miembro en «Demo CI/CD», sin listas todavía | Solo falta el selector de grupo | [Tareas](03-tareas.md) |
-| <img src="capturas/admin-hitos.jpg" alt="Hitos del admin" width="220"> | «Milestones»: barra para crear hitos y lienzo | Solo falta el selector de grupo | [Hitos](04-hitos-y-calendario.md) |
-| <img src="capturas/admin-calendario.jpg" alt="Calendario" width="220"> | «Calendar»: vista de mes con Today, Back y Next | Solo falta el selector de grupo | [Hitos](04-hitos-y-calendario.md) |
-| <img src="capturas/admin-chat.jpg" alt="Chat con IA" width="220"> | «AI Bot»: saludo inicial, sin proyecto de contexto | Ya no existe el selector «Proyecto» / «Nuevo proyecto (sin contexto)»: arriba dice «Project: &lt;grupo del navbar&gt;». El cuadro dice «Ask about “&lt;grupo&gt;”…» («Type your message…» sin grupo; antes «Type your message here...») y el chat ocupa todo el ancho | [Chat](05-chat-ia.md) |
-| <img src="capturas/admin-analytics.jpg" alt="Panel de analytics" width="220"> | Panel de analytics que ve el admin (es líder) | Solo falta el selector de grupo | [Analytics](06-analytics.md) |
-| <img src="capturas/miembro-analytics.jpg" alt="Aviso Team leaders only" width="220"> | Aviso que ve un miembro sin rol de líder | Sale en español («Solo líderes del equipo»); hoy dice «Team leaders only» | [Analytics](06-analytics.md) |
-| <img src="capturas/admin-github-repositorio.jpg" alt="Pestaña Repository del admin" width="220"> | GitHub → Repository, vista del admin | En español: hoy «Group: …», «Sync PRs», «Analyze with AI», «Repository», «Files» y «Allow AI analysis». El aviso de la IA ya no nombra a Groq. Falta la pestaña «Vercel (monitoring)» | [GitHub](07-github.md) |
-| <img src="capturas/miembro-github-repositorio.jpg" alt="Pestaña Repository de un miembro" width="220"> | Repository, vista de un miembro: sin «Disconnect» | En español, como la del admin; el estado que ve el miembro hoy dice «AI analysis: allowed». Falta la pestaña «Vercel (monitoring)» | [GitHub](07-github.md) |
-| <img src="capturas/admin-github-archivos.jpg" alt="Pestaña Files" width="220"> | Files: árbol y README | Encabezado y pestañas en español; falta «Vercel (monitoring)» | [GitHub](07-github.md) |
-| <img src="capturas/admin-github-commits.jpg" alt="Pestaña Commits" width="220"> | Commits de la rama por defecto | En español: hoy «Recent commits» y fechas como «2 weeks ago» | [GitHub](07-github.md) |
-| <img src="capturas/admin-github-cicd.jpg" alt="Pestaña CI/CD del admin" width="220"> | CI/CD del admin: pipeline, entornos y ejecuciones | En español: hoy «CI/CD pipeline», «Edit pipeline», «Environments», «Publish to production», «Deploy history» y «Runs». Las etapas salen en inglés, salvo «Pruebas» | [CI/CD](08-cicd.md) |
-| <img src="capturas/admin-github-cicd-ejecucion.jpg" alt="Detalle de una ejecución" width="220"> | Una ejecución abierta, con sus jobs y su log | «Ocultar log» y «Solo errores» ahora son «Hide log» y «Errors only». El nombre del job sale del YAML subido: con un pipeline subido después del cambio es «Deploy build», no «Build del deploy» | [CI/CD](08-cicd.md) |
-| <img src="capturas/miembro-github-cicd.jpg" alt="Pestaña CI/CD de un miembro" width="220"> | CI/CD de un miembro: «Request production» en vez de «Publish to production» | En español: hoy «Request production» y «Run pipeline» | [CI/CD](08-cicd.md) |
-
-No hay captura del aviso en vivo (módulo 9), del menú del selector de grupo, de la pestaña «Vercel (monitoring)», del diálogo «Task files» ni del panel «AI on the branch». Su aspecto se describe en sus páginas.
+No hay captura del aviso en vivo (módulo 9), de un diálogo «Task files» con archivos, de los resultados de «Audit», «Generate tests» y «Review PR», ni de «Vercel (monitoring)» con un proyecto vinculado. Su aspecto se describe en sus páginas.
 
 ## Diagramas e imágenes
 
