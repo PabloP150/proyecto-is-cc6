@@ -29,7 +29,7 @@ flowchart LR
     uc6 -.->|"si el grupo dio el permiso"| uc7
 ```
 
-Todo se usa desde el diálogo «Task files» de una tarea con rama, en el panel «AI on the branch». Es de la línea de Christian y vive en `test/e2e`.
+Todo se usa desde el diálogo «Task files» de una tarea con rama, en el panel «AI on the branch». Es de la línea de Christian y está en `master` desde el 26 nov 2026.
 
 ## Casos de uso
 
@@ -62,7 +62,7 @@ Notas:
 - **Miembro** basta: no hace falta ser admin ni líder para auditar, generar pruebas o revisar. **Admin** es el usuario de `Groups.adminId`.
 - El límite de 5 por minuto es **uno solo por usuario** para las tres acciones (`audit`, `generate-tests` y `POST review`), porque cada una ocupa la GPU unos 20 s. El webhook no tiene límite: lo frena la regla de una revisión por commit.
 - Una tarea completada ya no está en `Tasks`: las rutas responden `TASK_NOT_FOUND` (404). Un usuario de otro grupo recibe 403.
-- Un commit cuya revisión falló no se vuelve a revisar, ni pidiéndolo a mano: hace falta un commit nuevo ([limitaciones conocidas](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)).
+- Una revisión fallida se puede repetir sobre el mismo commit, con «Review PR» o con el siguiente webhook de ese commit; una que quedó a medias (`pending`), pasados 15 minutos. Una revisión terminada no se repite. Así desde el 26 nov 2026; antes hacía falta un commit nuevo.
 - La interfaz esconde los botones sin el permiso o sin PR abierto, pero quien decide es la API.
 
 ## Para saber más

@@ -150,6 +150,17 @@ describe('vercel webhook', () => {
         );
     });
 
+    // Regression: beginDelivery was awaited outside any try/catch. Express 4 does not catch a
+    // rejected async handler, so the request hung and, on Node 24, the process exited.
+    test('a database failure while claiming the delivery answers 500 instead of hanging', async () => {
+        deploymentModel.beginDelivery.mockRejectedValue(new Error('connection lost'));
+        const res = await post(body('deployment.succeeded'));
+
+        expect(res.status).toBe(500);
+        expect(res.body.code).toBe('INTERNAL_ERROR');
+        expect(deploymentModel.applyDeployment).not.toHaveBeenCalled();
+    });
+
     test('rejects a validly signed non-JSON body', async () => {
         const payload = 'not json';
         const res = await request(buildApp())

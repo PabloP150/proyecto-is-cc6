@@ -1,5 +1,6 @@
 // AI review of a task's pull request: AI server `review-pr` on the PR diff, stored in dbo.AiReviews
 // and posted to GitHub as a COMMENT review (never approve / request changes) when the App may.
+const { AppError } = require('../../helpers/errors');
 const aiReviewModelDefault = require('../../models/aiReview.model');
 const githubModelDefault = require('../../models/github.model');
 const repoServiceDefault = require('../github/repoService');
@@ -44,10 +45,18 @@ const createPrReview = ({
         }
     };
 
-    /** Review one PR head commit. Returns null when that commit was already reviewed (or claimed). */
+    /**
+     * Review one PR head commit. Returns null when that commit was already reviewed or is being
+     * reviewed; a review that failed is claimed again and retried.
+     */
     const reviewPullRequest = async ({ repo, tid, pr }) => {
         const headSha = String(pr.headSha || '');
         if (!SHA_RE.test(headSha)) return null;
+        // Checked before claiming: without a configured server the attempt would only leave a
+        // 'failed' row behind (the manual «Review PR» path reaches here without this check).
+        if (!aiServer.enabled()) {
+            throw new AppError('AI_SERVER_DISABLED', 'The AI server is not configured (AI_SERVER_URL).', 503);
+        }
         const id = await aiReviewModel.claim({ tid, prNumber: pr.number, headSha });
         if (id === null) return null;
 

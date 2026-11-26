@@ -146,7 +146,7 @@ Para aplicar las migraciones que falten sin perder datos. **Hazlo antes de levan
 
 ## 6. BD desechable para pruebas
 
-Las pruebas de BD (`npm run test:db`, 10 suites / 117 pruebas) ejecutan las migraciones arriba y abajo y escriben datos. Corren **solo** contra un contenedor aparte: nunca contra `taskmate-sql` ni con la etiqueta `taskmate-sql:latest`. Su conexión sale únicamente de las variables `TEST_DB_*` (nunca de `DB_*` ni de `.env`).
+Las pruebas de BD (`npm run test:db`, 10 suites / 119 pruebas) ejecutan las migraciones arriba y abajo y escriben datos. Corren **solo** contra un contenedor aparte: nunca contra `taskmate-sql` ni con la etiqueta `taskmate-sql:latest`. Su conexión sale únicamente de las variables `TEST_DB_*` (nunca de `DB_*` ni de `.env`).
 
 ```bash
 # a) Imagen y contenedor desechables en el puerto 14333
@@ -171,13 +171,13 @@ chmod 600 "$HOME/taskmate-testdb.env"
 
 # c) Ejecutar: la app se conecta con el login de mínimo privilegio y las migraciones corren como sa
 cd taskmate-api
-TEST_DB_ENV_FILE="$HOME/taskmate-testdb.env" npm run test:db    # 10 suites / 117 pruebas (25 nov 2026)
+TEST_DB_ENV_FILE="$HOME/taskmate-testdb.env" npm run test:db    # 10 suites / 119 pruebas (26 nov 2026)
 
 # d) Borrar el contenedor y la imagen de prueba
 docker rm -f taskmate-sql-test && docker rmi taskmate-sql:test
 ```
 
-Con Podman, los mismos comandos con `podman`. Antes de las pruebas, `globalSetup` crea el esquema base si falta y aplica todas las migraciones pendientes (001–011). La suite nueva, `aiReview.dbtest.js`, prueba la tabla `AiReviews` de la 011.
+Con Podman, los mismos comandos con `podman`. Antes de las pruebas, `globalSetup` crea el esquema base si falta y aplica todas las migraciones pendientes (001–011). La suite nueva, `aiReview.dbtest.js`, prueba la tabla `AiReviews` de la 011, también que una revisión `failed` o una `pending` de más de 15 min se pueda reclamar de nuevo. Con estos pasos se midieron las 119 el 26 nov 2026.
 
 En lugar de `TEST_DB_SA_PASSWORD` se pueden dar `TEST_DB_MIGRATION_USERNAME` y `TEST_DB_MIGRATION_PASSWORD`. Las variables también se pueden exportar en la terminal en vez de usar `TEST_DB_ENV_FILE`. Detalle de las suites: [taskmate-api/tests/README.md](../../taskmate-api/tests/README.md).
 

@@ -1,6 +1,6 @@
 # Guía técnica de TaskMate
 
-**En una frase:** la referencia técnica de TaskMate tal como está en el código de la rama `test/e2e` (`50f77da`, 25 nov 2026): arquitectura, carpetas, módulos, API, base de datos, variables, puertos, pruebas y convenciones.
+**En una frase:** la referencia técnica de TaskMate tal como está en el código de `master` al 26 nov 2026 (la rama `test/e2e`, `50f77da`, con los arreglos del 26 nov): arquitectura, carpetas, módulos, API, base de datos, variables, puertos, pruebas y convenciones.
 
 ## Resumen
 - Tres procesos propios (React en `:3000`, API Express en `:9000` y el servicio Python del chat, FastAPI en `127.0.0.1:MCP_PORT`, 8001) más SQL Server 2019 en un contenedor (Docker o Podman).
@@ -8,8 +8,8 @@
 - La API es la única que habla con la BD y con GitHub. Toda la IA de TaskMate (chat y plan, analytics y recomendaciones de asignación, análisis del repositorio y propuesta de pipeline) pasa por `llm_service.py` del servicio Python y usa el **modelo local**: Gemma 4 (`gemma4:e2b-it-qat`) en Ollama (`127.0.0.1:11434`), el mismo Ollama del servidor de IA local. `scripts/local-up.sh` lo activa con `LLM_PROVIDER=ollama`.
 - Groq (`openai/gpt-oss-20b`, necesita `GROQ_API_KEY`) queda solo como **respaldo en la nube**: es el valor por defecto de `LLM_PROVIDER` en el código, para que un checkout sin Ollama siga funcionando.
 - 110 rutas REST, 3 WebSockets (`/chat`, `/insights`, `/events`) y 29 tablas (migraciones 001–011).
-- La línea de Pablo cerró el 3 nov 2026 con las Fases 1–4 (`master` sigue en `ea25733`). La de Christian siguió: monitoreo de Vercel, archivos por tarea, IA sobre el código y chat con modelo local. Todo eso vive en `test/e2e` y todavía no está en `master`.
-- 2087 pruebas en verde (25 nov 2026). Esta guía se escribió desde el código: si algo no coincide, manda el código.
+- La línea de Pablo cerró el 3 nov 2026 con las Fases 1–4 (`master` quedó en `ea25733`). La de Christian siguió: monitoreo de Vercel, archivos por tarea, IA sobre el código y chat con modelo local. Todo eso se hizo en `test/e2e` y está en `master` desde el 26 nov 2026.
+- 2091 pruebas en verde (26 nov 2026). Esta guía se escribió desde el código: si algo no coincide, manda el código.
 
 **Limitaciones conocidas y TODO pendiente:** viven en un solo lugar, el [cierre de la línea de Pablo y estado](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas). Aquí solo se mencionan.
 
@@ -32,7 +32,7 @@ Desde la Fase 3 el grupo conecta **su** repositorio de GitHub (GitHub App): expl
 | 7 · Algoritmo de colisión de archivos (con Christian Martínez) | No se realizará en la línea de Pablo. En la de Christian quedó pospuesta con la base hecha (`TaskFiles`, `findTasksTouchingPaths`, `GET …/overlaps`) | — |
 | 8 · Pruebas finales | No se realizará en la línea de Pablo. Las de Christian (su punto 9) siguen pendientes | — |
 
-**Línea de Christian** (puntos 1–7 completos; en `test/e2e` del 18 al 25 nov 2026, sin fusionar en `master`):
+**Línea de Christian** (puntos 1–7 completos; en `test/e2e` del 18 al 25 nov 2026, fusionada en `master` el 26 nov 2026):
 - **Chat:** modelo local, Gemma 4 en Ollama (`LLM_PROVIDER=ollama`), respuestas en streaming, asistente del proyecto con su contexto (equipo, tareas, hitos y asignaciones) y plan solo si se pide → [Chat con IA](../02-arquitectura/05-chat-ia.md).
 - **Archivos por tarea:** diálogo «Task files» con los archivos del PR y las otras tareas que tocan las mismas rutas → [GitHub](../02-arquitectura/07-github.md).
 - **Monitoreo de Vercel:** pestaña «Vercel (monitoring)» y webhook firmado → [CI/CD](../02-arquitectura/08-cicd.md).
@@ -468,7 +468,7 @@ Una ejecución cuenta como deploy (y solo el admin la re-ejecuta o cancela) si e
 | GET | `…/review` | Miembro (no pide el permiso de IA) | Última revisión guardada en `AiReviews`, o `null` |
 | POST | `…/review` | Miembro + análisis con IA activado + PR abierto (5 / min compartidos) | Revisa el PR ahora y devuelve la última revisión. El webhook `pull_request` lo hace solo en segundo plano |
 
-Errores propios: 409 `TASK_NO_BRANCH`, `AI_ANALYSIS_DISABLED`, `NOTHING_TO_REVIEW`, `NO_OPEN_PR`, `REPO_NOT_CONNECTED` o `INSTALLATION_SUSPENDED`; y los del servidor de IA local (ver el protocolo más abajo). Una revisión por commit (`UNIQUE (tid, head_sha)`).
+Errores propios: 409 `TASK_NO_BRANCH`, `AI_ANALYSIS_DISABLED`, `NOTHING_TO_REVIEW`, `NO_OPEN_PR`, `REPO_NOT_CONNECTED` o `INSTALLATION_SUSPENDED`; y los del servidor de IA local (ver el protocolo más abajo). Una revisión por commit (`UNIQUE (tid, head_sha)`); una `failed`, o una `pending` de más de 15 minutos, se vuelve a reclamar y se repite. Sin `AI_SERVER_URL`, `POST …/review` responde 503 `AI_SERVER_DISABLED` antes de reclamar el commit.
 
 **`/api/deploy`** — monitoreo de Vercel (4 autenticadas, todas bajo `/api/deploy/groups/:gid`)
 | Método | Ruta | Acceso | Qué hace |
@@ -483,9 +483,9 @@ Errores propios: 409 `TASK_NO_BRANCH`, `AI_ANALYSIS_DISABLED`, `NOTHING_TO_REVIE
 |---|---|---|---|
 | GET | `/api/github/callback` | Público (`state` firmado de un solo uso, 30 / min por IP) | Vuelta de GitHub tras instalar o autorizar; redirige a `FRONTEND_URL/github` |
 | POST | `/api/github/webhook` | Firma HMAC SHA-256 (`X-Hub-Signature-256`, `GITHUB_WEBHOOK_SECRET`), cuerpo crudo de hasta 1 MB | Recibe `installation`, `installation_repositories`, `pull_request`, `workflow_run`, `workflow_job`, `deployment_status` y `ping`; idempotente por id de entrega y hash del payload. `pull_request` además dispara la revisión con IA y, al fusionar, intenta registrar los archivos (según el código no llegan a guardarse; ver limitaciones) |
-| POST | `/api/deploy/webhook/vercel` | Firma HMAC SHA-1 en hex sin prefijo (`x-vercel-signature`, `VERCEL_WEBHOOK_SECRET`), cuerpo crudo de hasta 1 MB, sin limitador | Recibe `deployment.*` (`created`, `building`, `succeeded`/`ready`/`promoted`, `error`, `canceled`); idempotente por `id` del evento o SHA-256 del cuerpo. 401 con firma inválida, 400 sin `type`; tras reclamar la entrega, siempre 200 con `duplicate`, `ignored`, `processed`, `failed` o `timeout` (plazo de 8 s) |
+| POST | `/api/deploy/webhook/vercel` | Firma HMAC SHA-1 en hex sin prefijo (`x-vercel-signature`, `VERCEL_WEBHOOK_SECRET`), cuerpo crudo de hasta 1 MB, sin limitador | Recibe `deployment.*` (`created`, `building`, `succeeded`/`ready`/`promoted`, `error`, `canceled`); idempotente por `id` del evento o SHA-256 del cuerpo. 401 con firma inválida, 400 sin `type`, 500 `INTERNAL_ERROR` si la BD falla al reclamar la entrega; tras reclamarla, siempre 200 con `duplicate`, `ignored`, `processed`, `failed` o `timeout` (plazo de 8 s) |
 
-Conteo: users 3 · tasks 8 · groups 8 · nodes 9 · edges 6 · completados 2 · delete 2 · usertask 3 · grouproles 4 · usergrouproles 9 · analytics 11 · utils 1 · github 37 + callback + webhook · deploy 4 + webhook de Vercel = **110** (99 en `master`).
+Conteo: users 3 · tasks 8 · groups 8 · nodes 9 · edges 6 · completados 2 · delete 2 · usertask 3 · grouproles 4 · usergrouproles 9 · analytics 11 · utils 1 · github 37 + callback + webhook · deploy 4 + webhook de Vercel = **110** (99 en `master` antes de fusionar la línea de Christian).
 
 ### 3 WebSockets (en el puerto de la API)
 | Canal | Acceso | Mensajes del cliente | Mensajes del servidor |
@@ -524,7 +524,7 @@ Más detalle por fase: tablas de rutas en los capítulos de la [Fase 3](../08-fa
 | CI/CD (Fase 4) | `RepoPipelines` (un pipeline por repositorio, `spec` JSON), `DeployRequests` (máx. una pendiente por grupo y entorno) |
 | Despliegues de Vercel (009) | `Deployments` (estado de cada despliegue; solo avanza con eventos más nuevos), `DeploymentWebhookDeliveries` (bitácora de entregas), `GroupDeployTargets` (un proyecto por grupo y proveedor; `UNIQUE (provider, project_ref)`) |
 | Archivos por tarea (010) | `TaskFiles` (archivos del PR de la tarea; PK `(tid, path)`) |
-| IA (011) | `AiReviews` (una revisión de PR por commit: `UNIQUE (tid, head_sha)`; `status` `pending`/`done`/`failed`; `posted` `posted`/`no_permission`/`failed`) |
+| IA (011) | `AiReviews` (una revisión de PR por commit: `UNIQUE (tid, head_sha)`; `status` `pending`/`done`/`failed`, y una `failed` o una `pending` de más de 15 min vuelve a `pending` al reclamarla; `posted` `posted`/`no_permission`/`failed`) |
 | Control | `SchemaMigrations` |
 
 | Migración | Qué hace |
@@ -661,20 +661,20 @@ npx smee-client --url https://smee.io/<canal> --target http://localhost:9000/api
 ```
 `start.sh` está pensado para macOS (usa `lsof` y `nc`; sin Podman ni Docker activos abre Docker Desktop con `open`, y si `open` no existe termina con error). Solo inicia el contenedor existente, no levanta Ollama (con `LLM_PROVIDER=ollama` debe estar corriendo aparte), no aplica migraciones, y siempre imprime «Todo listo»: si algo no responde, revisar `/tmp/taskmate-mcp.log` y `/tmp/taskmate-backend.log`. `local-up.sh` es idempotente, se detiene si otro programa ocupa un puerto y deja los logs en `.local/logs/` (`mcp`, `api`, `web`, `ai-server-up`, `migrate`…). `taskmate-api/start-mcp-server.sh` fija el puerto 8001 y no sirve si `MCP_PORT` es otro. Para el webhook de Vercel con una cuenta real hace falta un túnel público hasta `:9000` ([entorno local](../09-linea-christian/ENTORNO-LOCAL.md)).
 
-### Pruebas (estado verificado el 25 nov 2026, en `test/e2e`)
+### Pruebas (estado verificado el 26 nov 2026)
 Cómo correr cada suite y dónde vive cada prueba: [pruebas](pruebas.md).
 
 | Capa | Comando | Resultado |
 |---|---|---|
-| API (Jest) | `cd taskmate-api && npm test` | 1322/1322, 54 suites (10 pruebas de rendimiento e integración retornan sin afirmar nada si no hay `NODE_ENV=integration-test`) |
+| API (Jest) | `cd taskmate-api && npm test` | 1324/1324, 54 suites (10 pruebas de rendimiento e integración retornan sin afirmar nada si no hay `NODE_ENV=integration-test`) |
 | Frontend (CRA) | `CI=true npm test -- --watchAll=false` | 438/438, 36 suites |
 | Servicio Python (pytest) | `cd taskmate-api/mcp && ./venv/bin/python -m pytest` | 210/210 |
-| BD real | `cd taskmate-api && npm run test:db` (con `TEST_DB_*`) | 117/117, 10 suites (la nueva es `aiReview.dbtest.js`), en un contenedor SQL Server desechable |
+| BD real | `cd taskmate-api && npm run test:db` (con `TEST_DB_*`) | 119/119, 10 suites (la nueva es `aiReview.dbtest.js`), en un contenedor SQL Server desechable. Medida en esta línea por primera vez el 26 nov: las 117 del 25 nov salían de contar las pruebas en el código, más 2 nuevas |
 | Rendimiento | `cd taskmate-api && npm run test:performance` | Requiere SQL Server real |
-| Lint | `npx eslint src --ext .js,.jsx` | 1 error: `testing-library/render-result-naming-convention` en `src/components/__tests__/NavGroupSelector.test.jsx` (el 5 nov daba 0) |
+| Lint | `npx eslint src --ext .js,.jsx` | 0 problemas (el 25 nov daba 1 error en `NavGroupSelector.test.jsx`, corregido el 26 nov) |
 | Build | `npm run build` | Compila |
 
-**Total: 2087 pruebas**, frente a 1960 al 5 nov 2026 (1246 + 423 + 177 + 114) y 1353 al cerrar la Fase 3. Las suites nuevas cubren Vercel (`tests/deploy/`), el servidor de IA local (`tests/aiServer/`), CORS en la red local (`tests/middleware/`), los archivos por tarea, el streaming del chat, `NavGroupSelector`, `ChatProjectInfo`, `TaskAiPanel` y, en Python, el proveedor Ollama y la búsqueda de conocimiento. Ninguna prueba de BD ejecuta el SQL de `deployment.model.js` ni el de `TaskFiles`. El 3 nov 2026, sobre `master`, además: 0 respuestas HTTP 5xx en 50 llamadas GET de solo lectura y un smoke test de UI con Chrome headless sin excepciones no capturadas. El repositorio de TaskMate no tiene CI propio: el CI/CD de la Fase 4 corre en el repositorio de cada grupo.
+**Total: 2091 pruebas** (26 nov 2026, con los arreglos del webhook de Vercel y de la revisión de PR), frente a 2087 el 25 nov, 1960 al 5 nov 2026 (1246 + 423 + 177 + 114) y 1353 al cerrar la Fase 3. Las suites nuevas cubren Vercel (`tests/deploy/`), el servidor de IA local (`tests/aiServer/`), CORS en la red local (`tests/middleware/`), los archivos por tarea, el streaming del chat, `NavGroupSelector`, `ChatProjectInfo`, `TaskAiPanel` y, en Python, el proveedor Ollama y la búsqueda de conocimiento. Ninguna prueba de BD ejecuta el SQL de `deployment.model.js` ni el de `TaskFiles`. El 3 nov 2026, sobre `master`, además: 0 respuestas HTTP 5xx en 50 llamadas GET de solo lectura y un smoke test de UI con Chrome headless sin excepciones no capturadas. El repositorio de TaskMate no tiene CI propio: el CI/CD de la Fase 4 corre en el repositorio de cada grupo.
 
 ---
 
@@ -714,7 +714,7 @@ Estado, al 3 nov 2026, de los problemas que listaban las versiones anteriores de
 | 12 | Archivos de depuración sueltos | **CORREGIDO** · `dab5d29`, `97041c5`, `5855bb3` | No queda ninguno; tampoco marcadores TODO/FIXME en el código versionado |
 | 13 | Estado en memoria (flujos de GitHub, planes pendientes, límites) | **SIGUE PRESENTE** (por diseño) | La API debe correr como una sola instancia |
 
-**Limitaciones conocidas y TODO pendiente**: configuración de analytics sin efecto, una sola instancia de la API, recomendaciones de respaldo del dashboard sin etiquetar, rutas sin UI, mocks de demo y código muerto residual, Python 3.9 sin soporte, avisos de `npm audit`, el proceso de IA recibe toda la `.env`, mejoras de la Fase 2 estimadas y Fases 5–8 no realizadas en la línea de Pablo. Las de la línea de Christian: la lista de archivos que no se guarda al fusionar el PR, el handler de Vercel sin `try/catch` en `beginDelivery`, la revisión fallida que bloquea ese commit, Vercel sin probar con una cuenta real, AWS sin implementar y la colisión de archivos pospuesta. Todas en el **[cierre de la línea de Pablo y estado](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)**.
+**Limitaciones conocidas y TODO pendiente**: configuración de analytics sin efecto, una sola instancia de la API, recomendaciones de respaldo del dashboard sin etiquetar, rutas sin UI, mocks de demo y código muerto residual, Python 3.9 sin soporte, avisos de `npm audit`, el proceso de IA recibe toda la `.env`, mejoras de la Fase 2 estimadas y Fases 5–8 no realizadas en la línea de Pablo. Las de la línea de Christian: la lista de archivos que no se guarda al fusionar el PR, la entrega de Vercel fallida que no se reintenta, Vercel sin probar con una cuenta real, AWS sin implementar y la colisión de archivos pospuesta. El 26 nov 2026 se corrigieron tres: el webhook de Vercel que podía tumbar la API, la revisión de PR fallida que bloqueaba su commit y el error de ESLint ([correcciones del 26 nov](../01-proyecto/cierre-del-proyecto.md#correcciones-del-26-nov-2026)). Todas en el **[cierre de la línea de Pablo y estado](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)**.
 
 ---
 
@@ -724,7 +724,7 @@ Estado, al 3 nov 2026, de los problemas que listaban las versiones anteriores de
 |---|---|
 | [README de la raíz](../../README.md) | Inicio rápido |
 | [Índice de la documentación](../README.md) | Mapa de todas las páginas y fases |
-| [Cierre de la línea de Pablo y estado](../01-proyecto/cierre-del-proyecto.md) | Qué entregó la línea de Pablo, estado al 25 nov, limitaciones y TODO |
+| [Cierre de la línea de Pablo y estado](../01-proyecto/cierre-del-proyecto.md) | Qué entregó la línea de Pablo, estado al 26 nov, limitaciones y TODO |
 | [Calendarización](../01-proyecto/calendarizacion.md) | Fechas de la línea de Pablo y de la de Christian |
 | [Primer arranque](primer-arranque.md) | Instalar desde cero, con tus propios secretos |
 | [Guía de uso](guia-de-uso.md) | Qué hace cada rol en cada pantalla |

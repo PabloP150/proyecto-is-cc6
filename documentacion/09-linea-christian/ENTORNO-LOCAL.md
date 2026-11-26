@@ -12,7 +12,8 @@ y `systemctl --user`). `start.sh` del repositorio nació para macOS con Docker D
 existe `open`. Sigue usando `lsof` y `nc`, solo arranca SQL Server, el servicio Python del chat y
 la API (sin web, sin IA local) y no aplica migraciones nuevas.
 
-> **Actualizado el 25 nov 2026** contra `test/e2e` (`50f77da`). La interfaz está en inglés desde el
+> **Actualizado el 26 nov 2026** contra `test/e2e` (`50f77da`) más los arreglos del 26 nov, todo
+> en `master` desde ese día. La interfaz está en inglés desde el
 > 19 nov, así que la pestaña se cita como «Vercel (monitoring)». El servidor de IA local se describe
 > en el módulo [10 · IA sobre el código](../02-arquitectura/10-ia-sobre-el-codigo.md), y los límites
 > conocidos están en [limitaciones conocidas](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas).
@@ -100,6 +101,7 @@ fetch("http://127.0.0.1:9000/api/deploy/webhook/vercel", {
 | `{"status":"timeout"}` | no terminó en 8 s; se responde igual y el proceso sigue |
 | `400` | cuerpo firmado que no es un objeto JSON con `type` |
 | `401` | firma inválida, o `VERCEL_WEBHOOK_SECRET` sin configurar |
+| `500` | la base de datos falló al registrar la entrega (`INTERNAL_ERROR`); hasta el 26 nov la petición se quedaba colgada |
 
 Para llegar a `processed`: en la web, en `/github`, pestaña **«Vercel (monitoring)»**, el admin
 del grupo vincula `prj_demo` y se repite el envío. La pestaña necesita un repositorio de GitHub

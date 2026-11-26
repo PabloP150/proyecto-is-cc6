@@ -27,12 +27,12 @@ const renderSelector = (overrides = {}) => {
 
 describe('NavGroupSelector', () => {
   it('shows the current group and switches to another one', () => {
-    const ctx = renderSelector();
+    const { setSelectedGroupId, setSelectedGroupName } = renderSelector();
     const button = screen.getByRole('button', { name: /Current group: Equipo Web/ });
     fireEvent.click(button);
     fireEvent.click(screen.getByRole('menuitem', { name: 'Equipo Móvil' }));
-    expect(ctx.setSelectedGroupId).toHaveBeenCalledWith('G2');
-    expect(ctx.setSelectedGroupName).toHaveBeenCalledWith('Equipo Móvil');
+    expect(setSelectedGroupId).toHaveBeenCalledWith('G2');
+    expect(setSelectedGroupName).toHaveBeenCalledWith('Equipo Móvil');
   });
 
   it('asks to pick a group when none is selected', () => {

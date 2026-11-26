@@ -59,6 +59,16 @@ describe('prReview.reviewPullRequest', () => {
         await expect(s.svc.reviewPullRequest({ repo, tid: 't', pr })).rejects.toMatchObject({ code: 'AI_SERVER_UNAVAILABLE' });
         expect(s.aiReviewModel.finish).toHaveBeenCalledWith(11, { status: 'failed', errorCode: 'AI_SERVER_UNAVAILABLE' });
     });
+
+    // Regression: the manual «Review PR» path claimed the commit before noticing there was no AI
+    // server, leaving a 'failed' row that (before reclaiming) blocked that commit for good.
+    test('no AI server configured: refused before anything is claimed', async () => {
+        const s = setup();
+        s.aiServer.enabled = () => false;
+        await expect(s.svc.reviewPullRequest({ repo, tid: 't', pr })).rejects.toMatchObject({ code: 'AI_SERVER_DISABLED', status: 503 });
+        expect(s.aiReviewModel.claim).not.toHaveBeenCalled();
+        expect(s.aiReviewModel.finish).not.toHaveBeenCalled();
+    });
 });
 
 describe('prReview.onPullRequestEvent', () => {

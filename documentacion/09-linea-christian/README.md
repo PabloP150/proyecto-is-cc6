@@ -7,10 +7,11 @@
 | **Fechas planificadas** | 11–18 sep · 18–25 sep · 25 sep–9 oct · 9–23 oct · 23 oct–6 nov 2026 · — (el chatbot no está en la calendarización) |
 | **Fechas reales** | 9 oct 2026 (Vercel, archivos por tarea, chatbot local) · 18–19 nov 2026 (IA sobre el código, asistente del proyecto, interfaz en inglés) |
 | **Estado** | ✅ Vista de tareas · ✅ Vercel solo monitoreo (desplegar desde la app queda para después: los proyectos ya se publican en GitHub Pages con la Fase 4) · ✅ Audit, Generate tests y Review PR · ⏸️ Colisión de archivos pospuesta (base hecha) · ⏳ Pruebas finales pendientes |
-| **Rama** | `feature/linea-christian` (merge `fea7541`, 18 nov). Sobre ella, del 18 al 19 nov, entraron `feature/ai-server-link`, `feature/generate-tests`, `feature/ai-pr-review`, `feature/chat-assistant` y `perf/app`; todo vive en `test/e2e` y todavía no está en `master` |
+| **Rama** | `feature/linea-christian` (merge `fea7541`, 18 nov). Sobre ella, del 18 al 19 nov, entraron `feature/ai-server-link`, `feature/generate-tests`, `feature/ai-pr-review`, `feature/chat-assistant` y `perf/app`; todo se juntó en `test/e2e`, que se fusionó en `master` el 26 nov 2026 |
 | **Responsable** | Christian Martínez |
 
-> **Actualizado el 25 nov 2026** contra el código de `test/e2e` (`50f77da`). La interfaz está en
+> **Actualizado el 26 nov 2026** contra el código de `test/e2e` (`50f77da`) más los arreglos del 26 nov
+> (rama `fix/christian-bugs`), todo ya en `master`. La interfaz está en
 > inglés desde el 19 nov (`d148763`), así que los botones y pestañas se citan como se ven ahora.
 > La parte de IA se documenta también en el módulo **10 · IA sobre el código**
 > ([arquitectura](../02-arquitectura/10-ia-sobre-el-codigo.md) ·
@@ -121,10 +122,11 @@ en ámbar, con «Also changed by», los archivos que otra tarea toca.
 cd taskmate-api && npx jest tests/deploy
 ```
 
-30 tests (8 de firma, 11 de eventos y 11 del webhook) cubren firma, traducción de eventos y el
+31 tests (8 de firma, 11 de eventos y 12 del webhook) cubren firma, traducción de eventos y el
 webhook completo: éxito, fallo con mensaje, reintento duplicado, proyecto no vinculado, firma
-inválida y cuerpo manipulado, más la regresión del montaje en la ruta (Express pasaba su `next`
-como plazo y el webhook respondía siempre `timeout`, `c0d28e2`). Usan el modelo simulado: no
+inválida y cuerpo manipulado, un error de BD al reclamar la entrega (responde 500 en vez de
+dejar la petición colgada, arreglado el 26 nov), más la regresión del montaje en la ruta (Express
+pasaba su `next` como plazo y el webhook respondía siempre `timeout`, `c0d28e2`). Usan el modelo simulado: no
 tocan la base de datos.
 
 ### Despliegues, con cuenta de Vercel
@@ -149,7 +151,10 @@ a «Completed», donde el icono ya no se muestra.
 ## Estado y límites conocidos
 
 La lista completa, con los fallos encontrados al revisar el código el 25 nov, está en
-[limitaciones conocidas](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas).
+[limitaciones conocidas](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas). Tres se
+corrigieron el 26 nov: el webhook de Vercel que podía tumbar la API, la revisión de PR fallida
+que bloqueaba su commit y el error de ESLint en `NavGroupSelector.test.jsx`
+([correcciones del 26 nov](../01-proyecto/cierre-del-proyecto.md#correcciones-del-26-nov-2026)).
 
 - Vercel sin probar con una cuenta real, AWS sin implementar y lo demás del despliegue:
   [Monitoreo de Vercel](../01-proyecto/cierre-del-proyecto.md#monitoreo-de-vercel).
@@ -192,8 +197,10 @@ devuelve comentarios en línea (hallazgos altos/medios de la auditoría), un res
 
 - Se guarda en `dbo.AiReviews` (migración `011_ai_reviews`), una por commit: un webhook repetido no
   revisa dos veces. La vista de la tarea muestra la última; «Review PR» (solo con el PR abierto)
-  la pide a mano. Tampoco se reintenta una que falló o quedó a medias: hace falta un commit nuevo
-  ([limitaciones](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)).
+  la pide a mano. Una que falló se vuelve a intentar sobre el mismo commit (con «Review PR» o con
+  el siguiente webhook), y una que quedó `pending` más de 15 minutos también; sin `AI_SERVER_URL`,
+  «Review PR» responde 503 sin reservar el commit (arreglado el 26 nov; antes hacía falta un
+  commit nuevo).
 - Se publica en GitHub como revisión **COMMENT** (nunca aprueba ni bloquea). Requiere que la GitHub
   App tenga **Pull requests: write**; sin ese permiso queda guardada en TaskMate como no publicada
   y la interfaz lo explica («Not posted on GitHub: the GitHub App needs the “Pull requests: write”

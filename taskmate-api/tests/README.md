@@ -4,10 +4,10 @@ Pruebas del backend (Node.js, Jest 30). Hay dos configuraciones:
 
 | Configuración | Comando (desde `taskmate-api/`) | Qué corre | Necesita BD |
 |---------------|----------------------------------|-----------|-------------|
-| `jest.config.js` | `npm test` | Todos los `tests/**/*.test.js`: **54 suites / 1322 pruebas** | No: modelos, GitHub, servicio Python del chat y servidor de IA local simulados |
-| `jest.db.config.js` | `npm run test:db` | Todos los `tests/db/**/*.dbtest.js`: **10 suites / 117 pruebas** | Sí: un SQL Server **desechable** |
+| `jest.config.js` | `npm test` | Todos los `tests/**/*.test.js`: **54 suites / 1324 pruebas** | No: modelos, GitHub, servicio Python del chat y servidor de IA local simulados |
+| `jest.db.config.js` | `npm run test:db` | Todos los `tests/db/**/*.dbtest.js`: **10 suites / 119 pruebas** | Sí: un SQL Server **desechable** |
 
-Resultado al 25 nov 2026, en la rama `test/e2e` (`50f77da`): 1322/1322 y 117/117 pasando. Las otras capas: frontend 438/438 (36 suites) y Python 210/210; en total **2087 pruebas** (al 5 nov eran 1960 y al cerrar la Fase 3, 1353). Las nuevas son de la línea de Christian: `deploy/`, `aiServer/`, `middleware/`, `github/taskFileService` y `db/aiReview`.
+Resultado al 26 nov 2026, en `test/e2e` con los arreglos de `fix/christian-bugs` (todo en `master` desde el 26 nov): 1324/1324 y 119/119 pasando. Las otras capas: frontend 438/438 (36 suites) y Python 210/210; en total **2091 pruebas** (el 25 nov eran 2087; al 5 nov, 1960; al cerrar la Fase 3, 1353). Las nuevas son de la línea de Christian: `deploy/`, `aiServer/`, `middleware/`, `github/taskFileService` y `db/aiReview`. La suite de BD de esta línea se corrió por primera vez el 26 nov, contra un SQL Server desechable: las 117 del 25 nov salían de contar las pruebas en el código, y con las 2 nuevas de `aiReview` dio 119.
 
 ## Estructura
 
@@ -38,11 +38,11 @@ tests/
 ├── deploy/                      # 3 suites: monitoreo de Vercel (línea de Christian)
 │   ├── deploySignature                   # HMAC-SHA1 en x-vercel-signature
 │   ├── vercelEvents                      # evento de Vercel → fila de Deployments
-│   └── deployWebhookHandler              # POST /api/deploy/webhook/vercel con supertest
+│   └── deployWebhookHandler              # POST /api/deploy/webhook/vercel con supertest; error de BD al reclamar → 500
 ├── aiServer/                    # 3 suites: IA sobre el código (línea de Christian)
 │   ├── client                            # cliente HTTP del servidor de IA local y códigos AI_SERVER_*
 │   ├── taskAi                            # auditar, generar pruebas y revisión manual
-│   └── prReview                          # revisión de PR: COMMENT, una por commit, no_permission, webhook
+│   └── prReview                          # revisión de PR: COMMENT, una por commit, no_permission, webhook, sin AI_SERVER_URL
 ├── middleware/                  # 1 suite
 │   └── cors                              # FRONTEND_URL y ALLOW_LAN_ORIGINS
 ├── integration/
@@ -54,7 +54,7 @@ tests/
     │   ├── transaction, tasks, groups, project, analytics, unicode
     │   ├── github                        # tablas de la Fase 3
     │   ├── cicd                          # RepoPipelines y DeployRequests (Fase 4)
-    │   └── aiReview                      # AiReviews (migración 011)
+    │   └── aiReview                      # AiReviews (migración 011); reclamar de nuevo una failed o una pending vencida
     └── globalSetup.js, setupEnv.js, afterEnv.js, helpers.js
 ```
 
@@ -62,13 +62,13 @@ tests/
 
 ```bash
 # Desde taskmate-api/
-npm test                         # 54 suites / 1322 pruebas, sin BD
+npm test                         # 54 suites / 1324 pruebas, sin BD
 npm test -- --coverage           # con reporte de cobertura en taskmate-api/coverage/ (no está en .gitignore: no la subas)
 npm test -- --watch              # modo watch (o npm run test:watch)
 npm test -- UserSession          # solo los archivos que coinciden con el patrón
 npm test -- tests/github         # solo una carpeta
 
-TEST_DB_ENV_FILE="$HOME/taskmate-testdb.env" npm run test:db   # 10 suites / 117 pruebas, BD desechable
+TEST_DB_ENV_FILE="$HOME/taskmate-testdb.env" npm run test:db   # 10 suites / 119 pruebas, BD desechable
 ```
 
 Las otras capas, para tenerlas a mano:
@@ -88,7 +88,7 @@ CI=true npm test -- --watchAll=false                   # frontend: 36 suites / 4
 
 ## Pruebas que solo corren con `NODE_ENV=integration-test`
 
-`performance.test.js` (5 pruebas) y `integration/analytics-integration.test.js` (5 pruebas) terminan sin verificar nada si `NODE_ENV` no es `integration-test`. Cuentan como pasadas dentro de las 1322 de `npm test`, así que en la corrida normal son 10 pruebas vacías.
+`performance.test.js` (5 pruebas) y `integration/analytics-integration.test.js` (5 pruebas) terminan sin verificar nada si `NODE_ENV` no es `integration-test`. Cuentan como pasadas dentro de las 1324 de `npm test`, así que en la corrida normal son 10 pruebas vacías.
 
 ```bash
 npm run test:performance                                        # NODE_ENV=integration-test, performance.test.js

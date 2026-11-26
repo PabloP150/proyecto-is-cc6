@@ -4,23 +4,49 @@ const { isUniqueViolation } = require('../helpers/transaction');
 const { TYPES } = require('tedious');
 
 const MAX_RESULT_CHARS = 200000;
+// A review normally ends in a few minutes (the AI server call alone times out at 3). A 'pending'
+// row older than this was left behind by a process that died mid-review and may be claimed again.
+const STALE_PENDING_MINUTES = 15;
 const tidParam = (tid) => ({ name: 'tid', type: TYPES.UniqueIdentifier, value: tid });
 
-/** Reserve the review of (task, head commit). null when it was already claimed: nothing to do. */
-const claim = async ({ tid, prNumber, headSha }) => {
+const claimParams = ({ tid, prNumber, headSha }) => [
+    tidParam(tid),
+    { name: 'pr', type: TYPES.Int, value: Number(prNumber) },
+    { name: 'sha', type: TYPES.Char, value: headSha, options: { length: 40 } },
+];
+
+/**
+ * Take back a review of (task, commit) that failed or was abandoned mid-review, resetting it to
+ * 'pending'. A single conditional UPDATE, so two callers racing for the same row cannot both win.
+ */
+const reclaim = async (args) => {
+    const { rows } = await execQuery(
+        `UPDATE dbo.AiReviews
+            SET status = 'pending', pr_number = @pr, verdict = NULL, posted = NULL, review_url = NULL,
+                result_json = NULL, error_code = NULL, created_at = SYSDATETIMEOFFSET()
+         OUTPUT INSERTED.id
+          WHERE tid = @tid AND head_sha = @sha
+            AND (status = 'failed'
+                 OR (status = 'pending' AND created_at < DATEADD(MINUTE, -@stale, SYSDATETIMEOFFSET())))`,
+        [...claimParams(args), { name: 'stale', type: TYPES.Int, value: STALE_PENDING_MINUTES }],
+    );
+    return rows && rows[0] ? Number(rows[0].id) : null;
+};
+
+/**
+ * Reserve the review of (task, head commit). null when it is already done or in progress: nothing
+ * to do. A failed review, or one abandoned as 'pending', is claimed again so it can be retried.
+ */
+const claim = async (args) => {
     try {
         const { rows } = await execQuery(
             `INSERT INTO dbo.AiReviews (tid, pr_number, head_sha, status)
              OUTPUT INSERTED.id VALUES (@tid, @pr, @sha, 'pending')`,
-            [
-                tidParam(tid),
-                { name: 'pr', type: TYPES.Int, value: Number(prNumber) },
-                { name: 'sha', type: TYPES.Char, value: headSha, options: { length: 40 } },
-            ],
+            claimParams(args),
         );
         return rows && rows[0] ? Number(rows[0].id) : null;
     } catch (err) {
-        if (isUniqueViolation(err)) return null;
+        if (isUniqueViolation(err)) return reclaim(args);
         throw err;
     }
 };
@@ -68,4 +94,4 @@ const getLatest = async (tid) => {
     };
 };
 
-module.exports = { claim, finish, getLatest };
+module.exports = { claim, finish, getLatest, STALE_PENDING_MINUTES };

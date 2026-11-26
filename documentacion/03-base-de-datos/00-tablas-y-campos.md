@@ -726,7 +726,7 @@ Sin índices aparte de la PK y `UQ_GroupDeployTargets_Project`.
 | `error_code` | VARCHAR(40) | **NULL**; código del error si `failed`, por ejemplo `AI_SERVER_UNAVAILABLE` |
 | `created_at` | DATETIMEOFFSET(0) | DEFAULT `SYSDATETIMEOFFSET()` |
 
-Índice: `IX_AiReviews_Task` (`tid`, `created_at DESC`): la vista de la tarea pide la revisión más reciente. Una revisión `failed` o `pending` sigue ocupando su commit: solo un commit nuevo genera otra ([limitaciones](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)).
+Índice: `IX_AiReviews_Task` (`tid`, `created_at DESC`): la vista de la tarea pide la revisión más reciente. Una revisión `done`, o una `pending` reciente, ocupa su commit. Una `failed`, o una `pending` de más de 15 minutos, vuelve a `pending` al reclamarla y se repite sobre el mismo commit (desde el 26 nov 2026).
 
 ### SchemaMigrations
 | Campo | Tipo | Nota |

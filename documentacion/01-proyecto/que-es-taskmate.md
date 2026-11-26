@@ -110,7 +110,7 @@ Qué conecta cada flecha: [arquitectura general](../02-arquitectura/00-general.m
 | Base de datos | SQL Server 2019 en Docker: 29 tablas, migraciones 001–011 | Contenedor `taskmate-sql` · puerto 1433 |
 | GitHub | GitHub App (API y webhooks firmados; smee los reenvía en desarrollo); GitHub Actions y Pages para el CI/CD del grupo. Con «Pull requests: write», la App también publica la revisión de PR con IA | Servicio externo |
 | Vercel | Solo monitoreo: un webhook firmado (HMAC-SHA1) avisa de cada despliegue del proyecto vinculado | Servicio externo |
-| Pruebas | Jest y Testing Library (API y frontend), pytest (servicio Python del chat), pruebas de BD contra un SQL Server desechable | 2087 en verde, 0 fallando (25 nov 2026): API 1322, frontend 438, Python 210 y BD 117 |
+| Pruebas | Jest y Testing Library (API y frontend), pytest (servicio Python del chat), pruebas de BD contra un SQL Server desechable | 2091 en verde, 0 fallando (26 nov 2026): API 1324, frontend 438, Python 210 y BD 119 |
 
 ## Dónde está en el código
 
@@ -127,7 +127,7 @@ Qué conecta cada flecha: [arquitectura general](../02-arquitectura/00-general.m
 - **La línea de Pablo cerró el 3 nov 2026** con las Fases 1–4, que están en `master`; sus Fases 5–8 no se realizarán.
 - **La línea de Christian siguió** con sus fechas corridas. Los puntos 1–7 están completos: servidor de IA local, comandos, monitoreo de Vercel, archivos por tarea, `audit`, `generate-tests` y `review-pr`. Además llegaron el chat como asistente sobre el modelo local y la interfaz en inglés (19 nov).
 - La colisión de archivos (punto 8) está pospuesta, con la base hecha (`findTasksTouchingPaths`); las pruebas finales (punto 9) están pendientes.
-- Lo nuevo vive en la rama `test/e2e` y todavía no está en `master`. Pruebas al 25 nov 2026: 2087 en verde, 0 fallando.
+- Lo nuevo entró por la rama `test/e2e` y está en `master` desde el 26 nov 2026, con tres arreglos de ese día: el webhook de Vercel ya no puede tumbar la API, una revisión de PR fallida se puede reintentar y ESLint vuelve a 0. Pruebas al 26 nov 2026: 2091 en verde, 0 fallando.
 - Qué entregó la línea de Pablo, limitaciones y pendientes: [cierre de la línea de Pablo y estado](cierre-del-proyecto.md). Detalle de la línea de Christian: [09-linea-christian](../09-linea-christian/README.md).
 
 ## Para saber más

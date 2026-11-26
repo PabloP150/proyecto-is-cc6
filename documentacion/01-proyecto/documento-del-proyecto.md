@@ -1,12 +1,12 @@
 # TaskMate: Plataforma Colaborativa de Gestión de Tareas para Equipos de Desarrollo
 
-**En una frase:** el documento formal del proyecto (objetivos, problema, marco teórico, solución, resultados y conclusiones), actualizado al 25 nov 2026 con las dos líneas de trabajo: la de Pablo, que cerró el 3 nov 2026, y la de Christian, que siguió después.
+**En una frase:** el documento formal del proyecto (objetivos, problema, marco teórico, solución, resultados y conclusiones), actualizado al 26 nov 2026 con las dos líneas de trabajo: la de Pablo, que cerró el 3 nov 2026, y la de Christian, que siguió después.
 
 ![Arquitectura general de TaskMate: navegador, API Express, servicio Python del chat con el modelo local en Ollama (Groq de respaldo), servidor de IA local, SQL Server, GitHub (App, Actions y Pages) y Vercel](../02-arquitectura/imagenes/00-general.png)
 
 Qué conecta cada flecha: [arquitectura general](../02-arquitectura/00-general.md).
 
-> **Estado del documento:** actualizado el 25 nov 2026 y contrastado con el código de la rama `test/e2e` (`50f77da`). La línea de trabajo de Pablo Pineda cerró el 3 nov 2026 al terminar la Fase 4; sus Fases 5–8 no se realizarán. La línea de Christian Martínez siguió con sus fechas corridas: agregó el monitoreo de despliegues en Vercel, los archivos por tarea, el servidor de IA local con la IA sobre el código (auditoría de la rama, pruebas propuestas y revisión de PR), el chat como asistente del proyecto con modelo local y la interfaz en inglés. Ese trabajo está integrado en `test/e2e` y todavía no en `master`. Los entregables oficiales (el documento del proyecto y el estudio de factibilidad en PDF/DOCX) se mantienen por separado y no forman parte del control de versiones; esta versión en Markdown es la que acompaña al código. Las limitaciones conocidas y lo que quedó pendiente están en el [cierre de la línea de Pablo y estado](cierre-del-proyecto.md); el detalle de la línea de Christian, en [09-linea-christian](../09-linea-christian/README.md). Resumen de una página: [qué es TaskMate](que-es-taskmate.md).
+> **Estado del documento:** actualizado el 26 nov 2026 y contrastado con el código de la rama `test/e2e` (`50f77da`) más los arreglos del 26 nov. La línea de trabajo de Pablo Pineda cerró el 3 nov 2026 al terminar la Fase 4; sus Fases 5–8 no se realizarán. La línea de Christian Martínez siguió con sus fechas corridas: agregó el monitoreo de despliegues en Vercel, los archivos por tarea, el servidor de IA local con la IA sobre el código (auditoría de la rama, pruebas propuestas y revisión de PR), el chat como asistente del proyecto con modelo local y la interfaz en inglés. Ese trabajo entró por la rama `test/e2e` y está en `master` desde el 26 nov 2026, junto con tres arreglos de ese día (el webhook de Vercel ya no puede tumbar la API, una revisión de PR fallida se puede reintentar y ESLint vuelve a 0). Los entregables oficiales (el documento del proyecto y el estudio de factibilidad en PDF/DOCX) se mantienen por separado y no forman parte del control de versiones; esta versión en Markdown es la que acompaña al código. Las limitaciones conocidas y lo que quedó pendiente están en el [cierre de la línea de Pablo y estado](cierre-del-proyecto.md); el detalle de la línea de Christian, en [09-linea-christian](../09-linea-christian/README.md). Resumen de una página: [qué es TaskMate](que-es-taskmate.md).
 
 ## Tabla de Contenidos
 
@@ -60,7 +60,7 @@ Desarrollar una plataforma web colaborativa de gestión de tareas que integre in
 - Facilitar la colaboración efectiva entre miembros del equipo con diferentes roles
 - Minimizar el tiempo requerido para la planificación y asignación de tareas mediante IA
 
-**Alcance al 25 nov 2026:** la línea de trabajo de Pablo Pineda tenía ocho fases (Anexo A). Se cumplieron las Fases 1–4; los objetivos de las Fases 5–8 (pruebas automáticas por tarea, análisis con SonarQube, algoritmo de colisión de archivos y pruebas finales) no se alcanzaron en esa línea, que cerró el 3 nov 2026. La línea de Christian Martínez tenía nueve puntos: los puntos 1–7 están completos, el 8 (colisión de archivos) está pospuesto con la base hecha y el 9 (pruebas finales, 20–27 nov) está pendiente. Las pruebas que propone la IA no se ejecutan, así que no cubren el objetivo de la Fase 5.
+**Alcance al 26 nov 2026:** la línea de trabajo de Pablo Pineda tenía ocho fases (Anexo A). Se cumplieron las Fases 1–4; los objetivos de las Fases 5–8 (pruebas automáticas por tarea, análisis con SonarQube, algoritmo de colisión de archivos y pruebas finales) no se alcanzaron en esa línea, que cerró el 3 nov 2026. La línea de Christian Martínez tenía nueve puntos: los puntos 1–7 están completos, el 8 (colisión de archivos) está pospuesto con la base hecha y el 9 (pruebas finales, 20–27 nov) está pendiente. Las pruebas que propone la IA no se ejecutan, así que no cubren el objetivo de la Fase 5.
 
 ---
 
@@ -454,15 +454,15 @@ La línea de Christian no tiene capítulo en `08-fases/`: su detalle está en [0
 |---|---|---|---|
 | 1 | Servidor de IA local y modelo de datos | Servicio aparte `taskmate-ai-server`: FastAPI, Ollama y PostgreSQL con pgvector | Repositorio del servidor de IA, `main` (28 ago 2026) |
 | 2 | Entrenamiento de IA local y comandos del proyecto | Búsqueda sobre documentos indexados (RAG) y comandos del proyecto (`ask`, `plan`, `ingest-repo`, `changelog`, entre otros) con su historial de ejecuciones; el modelo no se reentrena | Servidor de IA, PR #3 (9 oct 2026) |
-| 3 | Integración con Vercel / AWS | Solo monitoreo de Vercel: webhook firmado, migración 009 y pestaña «Vercel (monitoring)». AWS no está implementado | TaskMate `602b1d8` (9 oct 2026), en `test/e2e` desde el 18 nov |
-| 4 | Interfaz de tareas más detallada | Diálogo «Task files»: archivos del PR de la tarea, enlaces a GitHub y otras tareas que tocan los mismos archivos (migración 010) | TaskMate `602b1d8`, en `test/e2e` desde el 18 nov |
+| 3 | Integración con Vercel / AWS | Solo monitoreo de Vercel: webhook firmado, migración 009 y pestaña «Vercel (monitoring)». AWS no está implementado | TaskMate `602b1d8` (9 oct 2026), en `test/e2e` desde el 18 nov y en `master` desde el 26 nov |
+| 4 | Interfaz de tareas más detallada | Diálogo «Task files»: archivos del PR de la tarea, enlaces a GitHub y otras tareas que tocan los mismos archivos (migración 010) | TaskMate `602b1d8`, en `test/e2e` desde el 18 nov y en `master` desde el 26 nov |
 | 5 | Comando `audit` con verificación automática | «Audit» sobre la rama de la tarea: reglas deterministas más el modelo, con veredicto pass, warn o fail | Servidor de IA PR #4; TaskMate `f5c1359` (18 nov 2026) |
 | 6 | IA para generar pruebas | «Generate tests»: propone pruebas pytest o Jest para los archivos cambiados; no las ejecuta ni las sube | Servidor de IA PR #7; TaskMate `7d83cdf` (18 nov 2026) |
 | 7 | IA revisando pull requests | Revisión automática del PR de cada tarea (webhook) y botón «Review PR»; se guarda en `AiReviews` (migración 011) y se publica como comentario | Servidor de IA PR #8; TaskMate `c2a6833` (18 nov 2026) |
 | 8 | Algoritmo de colisión de archivos | Pospuesto. Queda la base: `TaskFiles`, `findTasksTouchingPaths` y `GET /api/github/tasks/:tid/overlaps` | — |
 | 9 | Pruebas finales | Pendiente (20–27 nov 2026) | — |
 
-Además de esos puntos, la línea de Christian agregó el chat con el modelo local y streaming (`921f8ed`, 9 oct 2026), el chat como asistente del proyecto (`f152a9e`, 19 nov), la interfaz en inglés con el selector de grupo en la barra de navegación (`d148763`, 19 nov) y la opción `ALLOW_LAN_ORIGINS` (`50f77da`, 25 nov). Del lado de TaskMate todo está en `test/e2e`, todavía sin fusionar en `master`; los PRs #4–#8 del servidor de IA se fusionaron en su `main` el 25 nov 2026.
+Además de esos puntos, la línea de Christian agregó el chat con el modelo local y streaming (`921f8ed`, 9 oct 2026), el chat como asistente del proyecto (`f152a9e`, 19 nov), la interfaz en inglés con el selector de grupo en la barra de navegación (`d148763`, 19 nov) y la opción `ALLOW_LAN_ORIGINS` (`50f77da`, 25 nov). Del lado de TaskMate todo entró por `test/e2e`, que se fusionó en `master` el 26 nov 2026; los PRs #4–#8 del servidor de IA se fusionaron en su `main` el 25 nov 2026.
 
 ### Funcionalidades Implementadas
 
@@ -503,20 +503,20 @@ El admin del grupo vincula el Project ID de Vercel en la pestaña «Vercel (moni
 En la tarjeta de una tarea con rama, «View task files» abre el diálogo «Task files»: la lista de archivos del PR de la rama, con su estado, las líneas agregadas y borradas, un enlace a GitHub y el aviso «Also changed by» cuando otra tarea activa del grupo toca el mismo archivo. Es la base del algoritmo de colisión de archivos, que quedó pospuesto. Hoy la lista no se conserva cuando la tarea se completa ([limitaciones conocidas](cierre-del-proyecto.md#limitaciones-conocidas)).
 
 **IA sobre el Código (línea de Christian):**
-En el panel «AI on the branch» del mismo diálogo, cualquier miembro puede auditar la rama de la tarea («Audit»), pedir pruebas unitarias propuestas («Generate tests») y, con el PR abierto, pedir su revisión («Review PR»). Además, cada PR abierto o actualizado de una rama de tarea, si no es borrador, se revisa solo en segundo plano. Todo exige que el admin haya activado «Allow AI analysis», y las tres acciones comparten un límite de 5 por minuto por usuario. La API manda al servidor de IA local los cambios de la rama (el diff contra la base del PR o, sin PR, contra la rama por defecto). La revisión se guarda una vez por commit en `AiReviews` y se publica en GitHub como comentario (`COMMENT`), para lo cual la App necesita el permiso *Pull requests: write*.
+En el panel «AI on the branch» del mismo diálogo, cualquier miembro puede auditar la rama de la tarea («Audit»), pedir pruebas unitarias propuestas («Generate tests») y, con el PR abierto, pedir su revisión («Review PR»). Además, cada PR abierto o actualizado de una rama de tarea, si no es borrador, se revisa solo en segundo plano. Todo exige que el admin haya activado «Allow AI analysis», y las tres acciones comparten un límite de 5 por minuto por usuario. La API manda al servidor de IA local los cambios de la rama (el diff contra la base del PR o, sin PR, contra la rama por defecto). La revisión se guarda una vez por commit en `AiReviews` (si falla, o queda a medias más de 15 minutos, se puede reintentar con «Review PR» o con el siguiente aviso del mismo commit) y se publica en GitHub como comentario (`COMMENT`), para lo cual la App necesita el permiso *Pull requests: write*.
 
 ### Calidad y Verificación
 
-Estado verificado el 25 nov 2026 en `test/e2e` (`50f77da`):
+Estado verificado el 26 nov 2026 sobre lo que se fusionó en `master` (`test/e2e` con los arreglos de ese día):
 
 | Verificación | Resultado |
 |---|---|
-| Pruebas de la API (Jest) | 1322/1322, 54 suites |
+| Pruebas de la API (Jest) | 1324/1324, 54 suites |
 | Pruebas del frontend | 438/438, 36 suites |
 | Pruebas del servicio Python del chat (pytest) | 210/210, 8 archivos |
-| Pruebas de base de datos | 117/117, 10 suites, en un contenedor SQL Server desechable |
-| Total | **2087 pruebas**, 0 fallando; eran 1353 al cerrar la Fase 3, 1914 al cerrar la Fase 4 y 1960 al cierre de la línea de Pablo (5 nov) |
-| ESLint | 1 problema: una prueba nueva (`NavGroupSelector.test.jsx`) incumple la regla `testing-library/render-result-naming-convention`. Al 5 nov eran 0 |
+| Pruebas de base de datos | 119/119, 10 suites, en un contenedor SQL Server desechable |
+| Total | **2091 pruebas**, 0 fallando; eran 1353 al cerrar la Fase 3, 1914 al cerrar la Fase 4, 1960 al cierre de la línea de Pablo (5 nov) y 2087 contadas el 25 nov, antes de los arreglos |
+| ESLint | 0 problemas (el 25 nov había 1, en `NavGroupSelector.test.jsx`; se corrigió el 26 nov) |
 | Build de producción (CRA) | Compilaba el 5 nov, sobre `master`; no se volvió a correr |
 | Comprobaciones de solo lectura con la app corriendo | 0 respuestas HTTP 5xx en 50 llamadas GET (3 nov, sobre `master`; no se repitió) |
 | Smoke test de UI con Chrome headless | Las rutas se renderizaban como admin y como miembro, sin excepciones no capturadas (3 nov, sobre `master`; no se repitió) |
@@ -570,7 +570,7 @@ Se iteró en el diseño de la navegación principal hasta la estructura actual d
 
 ### Logros Principales
 
-TaskMate logró integrar en una sola plataforma la gestión de tareas en varias vistas, la colaboración por grupos con roles, un asistente de IA que conversa sobre el proyecto y convierte una idea en un plan guardable, el trabajo con el repositorio del grupo y la operación de su CI/CD. La línea de Pablo entregó las Fases 1–4 y cerró el 3 nov 2026; la de Christian agregó el monitoreo de Vercel, los archivos por tarea, el modelo local y la IA sobre el código. Al 25 nov 2026 pasan 2087 pruebas automáticas en las cuatro suites.
+TaskMate logró integrar en una sola plataforma la gestión de tareas en varias vistas, la colaboración por grupos con roles, un asistente de IA que conversa sobre el proyecto y convierte una idea en un plan guardable, el trabajo con el repositorio del grupo y la operación de su CI/CD. La línea de Pablo entregó las Fases 1–4 y cerró el 3 nov 2026; la de Christian agregó el monitoreo de Vercel, los archivos por tarea, el modelo local y la IA sobre el código. Al 26 nov 2026 pasan 2091 pruebas automáticas en las cuatro suites.
 
 La arquitectura modular implementada demostró ser acertada, permitiendo desarrollo independiente de componentes mientras mantiene integración fluida. La separación clara entre frontend, backend, servicio Python del chat y servidor de IA local facilitó el mantenimiento y las pruebas, y permitió que las dos líneas avanzaran sobre el mismo código.
 
@@ -588,7 +588,7 @@ La integración de análisis de competencias individuales con recomendaciones de
 
 ### Limitaciones Identificadas
 
-La dependencia de servicios externos introduce puntos de falla y consideraciones de privacidad. GitHub y Vercel siempre son externos; el modelo de IA solo lo es si se usa el respaldo en la nube (Groq), que es el valor por defecto del código cuando falta `LLM_PROVIDER`. Con el modelo local, lo que se manda al modelo no sale de la máquina y el chat funciona sin internet, a cambio de exigir hardware propio y unos scripts pensados para Linux; la IA sobre el código igual necesita GitHub para leer los cambios de la rama. La API debe correr como una sola instancia porque guarda estado en memoria. El trabajo de la línea de Christian todavía no está en `master`. La lista completa de limitaciones conocidas está en el [cierre de la línea de Pablo y estado](cierre-del-proyecto.md#limitaciones-conocidas).
+La dependencia de servicios externos introduce puntos de falla y consideraciones de privacidad. GitHub y Vercel siempre son externos; el modelo de IA solo lo es si se usa el respaldo en la nube (Groq), que es el valor por defecto del código cuando falta `LLM_PROVIDER`. Con el modelo local, lo que se manda al modelo no sale de la máquina y el chat funciona sin internet, a cambio de exigir hardware propio y unos scripts pensados para Linux; la IA sobre el código igual necesita GitHub para leer los cambios de la rama. La API debe correr como una sola instancia porque guarda estado en memoria. La lista completa de limitaciones conocidas está en el [cierre de la línea de Pablo y estado](cierre-del-proyecto.md#limitaciones-conocidas).
 
 La curva de aprendizaje para usuarios no familiarizados con herramientas de gestión de proyectos avanzadas puede ser pronunciada, requiriendo inversión en entrenamiento y documentación de usuario.
 
@@ -604,7 +604,7 @@ Por último, la IA sobre el código combina reglas deterministas con un modelo l
 
 El 3 de noviembre de 2026 el responsable, Pablo Pineda, cerró su línea de trabajo al terminar la Fase 4. Las Fases 5 (testing automático por tarea), 6 (SonarQube, cancelada en la etapa de plan), 7 (algoritmo de colisión de archivos, con Christian Martínez) y 8 (pruebas finales) no se realizarán en esa línea.
 
-La línea de Christian Martínez siguió con sus fechas corridas. Al 25 nov 2026 tiene completos los puntos 1–7, la colisión de archivos pospuesta con la base hecha y las pruebas finales (20–27 nov) pendientes. Su trabajo en TaskMate está en la rama `test/e2e`, que todavía no se fusionó en `master`.
+La línea de Christian Martínez siguió con sus fechas corridas. Al 26 nov 2026 tiene completos los puntos 1–7, la colisión de archivos pospuesta con la base hecha y las pruebas finales (20–27 nov) pendientes. Su trabajo en TaskMate entró por la rama `test/e2e`, que se fusionó en `master` el 26 nov 2026.
 
 ---
 
@@ -613,7 +613,7 @@ La línea de Christian Martínez siguió con sus fechas corridas. Al 25 nov 2026
 ### Mejoras Inmediatas
 
 **Completar lo que Quedó Pendiente:**
-El trabajo futuro más directo es integrar en `master` lo que hoy vive en `test/e2e` y retomar lo que no se hizo: el ciclo de pruebas automáticas por tarea (Fase 5), que puede partir de las pruebas que hoy la IA solo propone; el análisis estático con SonarQube (Fase 6, con su plan sobre SonarQube Cloud ya definido); el algoritmo de colisión de archivos (Fase 7 de Pablo, punto 8 de Christian), que ya tiene la base en `TaskFiles` y en la consulta de solapes, pero necesita que la lista de archivos se conserve al completarse la tarea; y las pruebas finales (Fase 8 de Pablo, punto 9 de Christian). La lista de pendientes está en el [cierre de la línea de Pablo y estado](cierre-del-proyecto.md#pendientes-todo).
+El trabajo futuro más directo es retomar lo que no se hizo: el ciclo de pruebas automáticas por tarea (Fase 5), que puede partir de las pruebas que hoy la IA solo propone; el análisis estático con SonarQube (Fase 6, con su plan sobre SonarQube Cloud ya definido); el algoritmo de colisión de archivos (Fase 7 de Pablo, punto 8 de Christian), que ya tiene la base en `TaskFiles` y en la consulta de solapes, pero necesita que la lista de archivos se conserve al completarse la tarea; y las pruebas finales (Fase 8 de Pablo, punto 9 de Christian). La lista de pendientes está en el [cierre de la línea de Pablo y estado](cierre-del-proyecto.md#pendientes-todo).
 
 **Expansión de Capacidades de IA:**
 Se recomienda medir primero la calidad de las recomendaciones, de los planes generados y de las auditorías y revisiones de PR, comparando el modelo local con el respaldo en la nube (Groq). Luego conviene expandir las capacidades para incluir predicción de riesgos de proyecto, optimización automática de cronogramas y detección temprana de cuellos de botella basándose en patrones históricos de rendimiento.
@@ -756,16 +756,16 @@ La línea de Pablo cerró el 3 nov 2026, al terminar la Fase 4; la de Christian 
 - Las Fases 1 y 2 se hicieron antes de que existiera la calendarización y se mapearon a sus ventanas después.
 - La Fase 3 se implementó dentro de su ventana (10–11 sep), pero se fusionó el 6 oct, después de las pruebas E2E con GitHub real.
 - La Fase 4 empezó el último día de su ventana (9 oct) y terminó el 22 oct, 13 días después de la fecha planificada.
-- La línea de Pablo cerró el 3 nov 2026, dentro de la ventana de la Fase 6; las Fases 5–8 no se realizaron. La Fase 8 no se hizo como fase: al cierre de la línea pasaban 1960 pruebas automáticas (5 nov), y al 25 nov pasan 2087.
+- La línea de Pablo cerró el 3 nov 2026, dentro de la ventana de la Fase 6; las Fases 5–8 no se realizaron. La Fase 8 no se hizo como fase: al cierre de la línea pasaban 1960 pruebas automáticas (5 nov), y al 26 nov pasan 2091.
 
 **Línea de Christian Martínez:**
 
-| # | Punto | Fechas planificadas (2026) | Fechas reales | Estado al 25 nov 2026 |
+| # | Punto | Fechas planificadas (2026) | Fechas reales | Estado al 26 nov 2026 |
 |---|---|---|---|---|
 | 1 | Servidor de IA local y modelo de datos | 14–21 ago | 28 ago 2026 | ✅ Completo |
 | 2 | Entrenamiento de IA local y comandos del proyecto | 21 ago – 11 sep | Fusionado el 9 oct 2026 (PR #3 del servidor de IA) | ✅ Completo |
-| 3 | Integración con Vercel / AWS | 11–18 sep | 9 oct 2026; en `test/e2e` el 18 nov | ✅ Solo monitoreo de Vercel |
-| 4 | Interfaz de tareas más detallada | 18–25 sep | 9 oct 2026; en `test/e2e` el 18 nov | ✅ Completo |
+| 3 | Integración con Vercel / AWS | 11–18 sep | 9 oct 2026; en `test/e2e` el 18 nov y en `master` el 26 nov | ✅ Solo monitoreo de Vercel |
+| 4 | Interfaz de tareas más detallada | 18–25 sep | 9 oct 2026; en `test/e2e` el 18 nov y en `master` el 26 nov | ✅ Completo |
 | 5 | Comando `audit` con verificación automática | 25 sep – 9 oct | Comando el 9 oct 2026; conexión con TaskMate el 18 nov | ✅ Completo |
 | 6 | IA para generar pruebas | 9–23 oct | 18 nov 2026 | ✅ Completo (propone, no ejecuta) |
 | 7 | IA revisando pull requests | 23 oct – 6 nov | 18–19 nov 2026 | ✅ Completo |

@@ -5,38 +5,39 @@
 ```mermaid
 flowchart LR
     subgraph SIN["Sin servicios: todo simulado"]
-        API["API · Jest 30<br/>1322 en 54 suites"]
+        API["API · Jest 30<br/>1324 en 54 suites"]
         FE["Frontend · CRA<br/>438 en 36 suites"]
         PY["Servicio Python del chat · pytest<br/>210"]
     end
     subgraph CON["Con un SQL Server desechable"]
-        DB["BD · Jest<br/>117 en 10 suites"]
+        DB["BD · Jest<br/>119 en 10 suites"]
     end
-    SIN --> T(["Total: 2087 pruebas"])
+    SIN --> T(["Total: 2091 pruebas"])
     CON --> T
-    LINT["ESLint: 1 error en una prueba"]
+    LINT["ESLint: 0 problemas"]
     BUILD["npm run build"]
 ```
 
 ## Qué hace
 - Tres suites corren sin BD, sin GitHub, sin Ollama, sin Groq y sin el servidor de IA local: usan dobles de prueba.
 - La suite de BD corre migraciones arriba y abajo contra un SQL Server **desechable**, nunca contra `taskmate-sql`.
-- Resultado al 25 nov 2026, en la rama `test/e2e` (`50f77da`): **2087 pruebas en verde, 0 fallando**. Al 5 nov eran 1960 (1246 + 423 + 177 + 114); al cerrar la Fase 3, 1353.
-- Las 127 de más (saldo neto) son de la línea de Christian: monitoreo de Vercel, archivos por tarea, IA sobre el código, chat con modelo local y streaming, selector de grupo del navbar y CORS en la red local.
+- Resultado al 26 nov 2026, en `test/e2e` con los arreglos de `fix/christian-bugs` (todo en `master` desde el 26 nov): **2091 pruebas en verde, 0 fallando**. El 25 nov eran 2087; al 5 nov, 1960 (1246 + 423 + 177 + 114); al cerrar la Fase 3, 1353.
+- Las 131 de más (saldo neto frente al 5 nov) son de la línea de Christian: monitoreo de Vercel, archivos por tarea, IA sobre el código, chat con modelo local y streaming, selector de grupo del navbar y CORS en la red local. 4 de ellas (2 de API y 2 de BD) llegaron el 26 nov con los arreglos del webhook de Vercel y de la revisión de PR.
+- La suite de BD de esta línea se corrió por primera vez el 26 nov, contra un SQL Server desechable: las 117 del 25 nov salían de contar las pruebas en el código; con las 2 nuevas, 119.
 
 ## Cómo funciona
 
-| Capa | Comando | Resultado al 25 nov 2026 |
+| Capa | Comando | Resultado al 26 nov 2026 |
 |---|---|---|
-| API (Jest 30 + supertest) | `cd taskmate-api && npm test` | **1322/1322**, 54 suites |
+| API (Jest 30 + supertest) | `cd taskmate-api && npm test` | **1324/1324**, 54 suites |
 | Frontend (Jest de react-scripts + Testing Library) | `CI=true npm test -- --watchAll=false` (desde la raíz) | **438/438**, 36 suites |
 | Servicio Python del chat (pytest) | `cd taskmate-api/mcp && ./venv/bin/python -m pytest` | **210/210** |
-| BD real | `cd taskmate-api && TEST_DB_ENV_FILE="$HOME/taskmate-testdb.env" npm run test:db` | **117/117**, 10 suites |
-| Lint | `npx eslint src --ext .js,.jsx` (desde la raíz) | **1 error**: `NavGroupSelector.test.jsx:30` llama `ctx` al resultado de `render` (regla `testing-library/render-result-naming-convention`). Al 5 nov: 0 problemas |
+| BD real | `cd taskmate-api && TEST_DB_ENV_FILE="$HOME/taskmate-testdb.env" npm run test:db` | **119/119**, 10 suites |
+| Lint | `npx eslint src --ext .js,.jsx` (desde la raíz) | **0 problemas**. El 25 nov daba 1 error en `NavGroupSelector.test.jsx` (`testing-library/render-result-naming-convention`), corregido el 26 nov desestructurando el resultado de `renderSelector` |
 | Build | `npm run build` (desde la raíz) | Compilaba al 5 nov; no se volvió a medir el 25 nov |
 
 - pytest necesita el venv con `requirements-dev.txt` ([primer arranque, paso 3](primer-arranque.md)). `scripts/local-up.sh` instala solo `requirements.txt`, sin las dependencias de prueba.
-- De las 1322 de la API, 10 no comprueban nada sin `NODE_ENV=integration-test`: las 5 de `performance.test.js` y las 5 de `integration/analytics-integration.test.js`. `npm run test:performance` activa las de rendimiento y necesita un SQL Server real.
+- De las 1324 de la API, 10 no comprueban nada sin `NODE_ENV=integration-test`: las 5 de `performance.test.js` y las 5 de `integration/analytics-integration.test.js`. `npm run test:performance` activa las de rendimiento y necesita un SQL Server real.
 - `npm test -- --coverage` deja el reporte en `taskmate-api/coverage/`, que `.gitignore` no ignora: no lo subas.
 - Las 89 funciones de prueba del servidor de IA local (repo aparte de Christian, `taskmate-ai-server`) no entran en estas cifras y no se corrieron.
 
@@ -78,13 +79,13 @@ La conexión sale solo de `TEST_DB_*` (nunca de `DB_*` ni de la `.env`). Si falt
 |---|---|---|
 | `tests/deploy/deploySignature.test.js` | 8 | Firma de Vercel en `x-vercel-signature`: HMAC-SHA1 en hex sin prefijo; rechaza cuerpo alterado, otro secreto, cabecera ausente o mal formada, falta de secreto y una firma SHA-256 |
 | `tests/deploy/vercelEvents.test.js` | 11 | Qué evento es de despliegue y cómo se traduce a una fila: estado, error, producción o preview, SHA inválido, sin metadatos de git |
-| `tests/deploy/deployWebhookHandler.test.js` | 11 | El webhook con supertest: `processed`, `duplicate`, `ignored`, `failed`, 401 sin firma, 400 sin JSON; y la regresión del montaje `(req, res, next)` |
+| `tests/deploy/deployWebhookHandler.test.js` | 12 | El webhook con supertest: `processed`, `duplicate`, `ignored`, `failed`, 401 sin firma, 400 sin JSON, 500 (y no una petición colgada) si la BD falla al reclamar la entrega; y la regresión del montaje `(req, res, next)` |
 | `tests/aiServer/client.test.js` | 8 | URL `/commands/<name>`, cabecera `x-ai-server-secret` y cómo cada error HTTP se vuelve un código `AI_SERVER_*` |
 | `tests/aiServer/taskAi.test.js` | 7 | Auditar, generar pruebas y revisar a mano: base del diff, `TASK_NO_BRANCH`, `NOTHING_TO_REVIEW`, `AI_ANALYSIS_DISABLED`, `NO_OPEN_PR` |
-| `tests/aiServer/prReview.test.js` | 10 | Revisión publicada como COMMENT, una por commit, reintento sin comentarios ante un 422, `no_permission` sin *Pull requests: write*, y qué PR del webhook se revisan |
+| `tests/aiServer/prReview.test.js` | 11 | Revisión publicada como COMMENT, una por commit, reintento sin comentarios ante un 422, `no_permission` sin *Pull requests: write*, `AI_SERVER_DISABLED` sin reclamar el commit si falta `AI_SERVER_URL`, y qué PR del webhook se revisan |
 | `tests/github/taskFileService.test.js` | 6 | Guardar la lista de archivos del PR de una tarea sin lanzar errores |
 | `tests/middleware/cors.test.js` | 2 | Orígenes aceptados con y sin `ALLOW_LAN_ORIGINS` |
-| `tests/db/aiReview.dbtest.js` | 3 | `AiReviews` (011): una revisión por tarea y commit, Unicode y los CHECK |
+| `tests/db/aiReview.dbtest.js` | 5 | `AiReviews` (011): una revisión por tarea y commit, Unicode y los CHECK; una `failed` o una `pending` de más de 15 min se reclaman de nuevo, una `done` no |
 | `src/components/__tests__/ChatPageStreaming.test.jsx` | 6 | Una burbuja por petición que crece con los trozos y la respuesta final que la reemplaza |
 | `src/components/__tests__/NavGroupSelector.test.jsx` | 2 | Cambiar de grupo desde el navbar y pedir uno si no hay |
 | `src/components/github/__tests__/ChatProjectInfo.test.jsx` | 3 | El chat muestra el grupo del navbar y su repositorio, o «No repository» |
@@ -113,5 +114,5 @@ Además crecieron `UserSession.test.js` (67 → 78: streaming y chat con el proy
 
 ## Para saber más
 - Organización y detalle de las suites de la API: [taskmate-api/tests/README.md](../../taskmate-api/tests/README.md).
-- Estado verificado: [al 25 nov 2026](../01-proyecto/cierre-del-proyecto.md#estado-verificado-al-25-nov-2026) y [al 3 nov 2026](../01-proyecto/cierre-del-proyecto.md#estado-verificado-al-3-nov-2026).
+- Estado verificado: [al 26 nov 2026](../01-proyecto/cierre-del-proyecto.md#estado-verificado-al-26-nov-2026) y [al 3 nov 2026](../01-proyecto/cierre-del-proyecto.md#estado-verificado-al-3-nov-2026).
 - Huecos de cobertura conocidos: [limitaciones de pruebas](../01-proyecto/cierre-del-proyecto.md#pruebas).

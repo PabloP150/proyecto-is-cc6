@@ -58,7 +58,7 @@ Las tareas y los hitos no tienen dueño: cualquier miembro puede tocarlos todos.
 3. **Audit** revisa las líneas añadidas (unos 20 s). **Generate tests** propone pruebas pytest o Jest (unos 30 s): «They were not run or pushed», revísalas antes de usarlas. **Review PR** aparece si el PR está abierto (unos 30 s).
 4. Veredicto: «No issues» (pass), «Needs review» (warn: algún hallazgo de severidad alta o media; los de la IA llevan «AI, advisory» y nunca pasan de aquí) o «Serious issues» (fail: solo lo dan las reglas fijas con un hallazgo alto, por ejemplo una credencial en el código).
 5. La revisión del PR también corre sola cuando se abre o actualiza el PR (si no es borrador). Queda guardada (una por commit), se ve al abrir el panel y se publica en GitHub como comentario («Posted on GitHub») si la App tiene «Pull requests: write».
-6. Las tres acciones comparten un límite de 5 por minuto por usuario y necesitan el servidor de IA local encendido. Si falla, verás un mensaje genérico, por ejemplo «Could not audit the branch.». Una revisión de PR que falló no se repite en ese commit: hay que subir otro ([limitaciones](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)).
+6. Las tres acciones comparten un límite de 5 por minuto por usuario y necesitan el servidor de IA local encendido. Si falla, verás un mensaje genérico, por ejemplo «Could not audit the branch.». Una revisión de PR que falló se repite en el mismo commit con «Review PR»; desde el 26 nov 2026 ya no hace falta subir otro. Una que quedó a medias se puede repetir pasados 15 minutos.
 
 ## Líder
 

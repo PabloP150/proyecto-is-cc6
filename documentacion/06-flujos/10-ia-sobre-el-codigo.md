@@ -21,7 +21,7 @@ sequenceDiagram
     API-->>GH: 200 processed
     PR->>DB: ¿rama de una tarea? ¿permiso de IA sobre ese repo?
     PR->>DB: claim: INSERT AiReviews pending (tid, head_sha)
-    Note over PR,DB: si ese commit ya tenía fila, termina aquí
+    Note over PR,DB: si ese commit ya tenía fila done o pending reciente, termina aquí
     PR->>GH: GET compare base...head_sha
     GH-->>PR: parches por archivo
     PR->>AI: POST /commands/review-pr con X-AI-Server-Secret
@@ -67,11 +67,12 @@ stateDiagram-v2
     state "Ya revisado" as Ya
     [*] --> Nuevo
     Nuevo --> P: webhook o Review PR, claim inserta la fila
-    Nuevo --> Ya: el commit ya tenía fila
+    Nuevo --> Ya: el commit ya tenía fila done o pending reciente
     P --> D: el servidor de IA respondió
     P --> F: error de GitHub, del servidor de IA o de la BD
     D --> [*]: posted queda en posted, no_permission o failed
-    F --> [*]: queda el error_code
+    F --> P: Review PR o el siguiente webhook del commit, reclaim
+    P --> P: pending de más de 15 min, reclaim
     Ya --> [*]: no se revisa otra vez
 ```
 
@@ -81,7 +82,7 @@ stateDiagram-v2
 1. Un miembro abre el PR de la rama de una tarea (`tm/…`) o le sube un commit. GitHub manda `pull_request`; en desarrollo pasa por smee.
 2. La API verifica la firma y guarda el PR. Solo si la entrega quedó `processed` (un repetido no) llama a `prReview`, sin esperar, y responde.
 3. `prReview` sigue solo si la acción es `opened`, `synchronize`, `ready_for_review` o `reopened`; hay `AI_SERVER_URL`; el PR está abierto y no es borrador; la rama es de una tarea; y su grupo tiene el permiso de IA sobre ese mismo repo. Si no, no hace nada y no avisa.
-4. Reserva la fila `pending` de (tarea, commit). Si ya existía, termina.
+4. Reserva la fila `pending` de (tarea, commit). Si ya existía `failed`, o `pending` desde hace más de 15 minutos, la vuelve a `pending` y sigue (desde el 26 nov 2026); si estaba `done` o `pending` reciente, termina.
 5. Pide a GitHub el compare entre la base del PR y el commit, y manda al servidor de IA (`review-pr`) los parches, el título y la descripción del PR.
 6. El servidor corre la auditoría y una llamada más al modelo para escribir, en inglés, un resumen de 2–3 frases y hasta 5 riesgos. Los hallazgos altos y medios con línea se vuelven comentarios en línea (máximo 30); el resto va en el cuerpo. Todo va escapado y con los secretos tapados.
 7. La API publica la revisión `COMMENT` sobre ese commit. Si GitHub rechaza un comentario en línea (422), reintenta sin ellos.
@@ -107,8 +108,8 @@ stateDiagram-v2
 **Revisar el PR a mano**
 1. Con el PR abierto, el miembro pulsa «Review PR».
 2. La API exige un PR abierto según lo que TaskMate tiene guardado y el permiso de IA.
-3. Lee el PR en GitHub para saber su último commit y su base, y sigue como la revisión automática desde el paso 4.
-4. Devuelve la última revisión guardada. Si ese commit ya tenía revisión, es esa, aunque haya fallado o siga `pending`.
+3. Lee el PR en GitHub para saber su último commit y su base. Sin `AI_SERVER_URL` responde 503 `AI_SERVER_DISABLED` antes de reservar nada; si no, sigue como la revisión automática desde el paso 4.
+4. Devuelve la última revisión guardada. Si ese commit ya tenía una revisión `done` o una `pending` reciente, es esa; una `failed` se repite.
 
 ## Qué ve el usuario si algo falla
 
@@ -135,11 +136,11 @@ stateDiagram-v2
 | `posted = no_permission` | La App no tiene «Pull requests: write» | «Not posted on GitHub: the GitHub App needs the “Pull requests: write” permission.» |
 | `posted = failed` | GitHub rechazó la revisión por otro motivo | «Could not post on GitHub.» |
 
-Con «Review PR», cualquier error después de reservar la fila (del compare de GitHub o del servidor de IA, incluido `AI_SERVER_DISABLED`) deja ese commit `failed`.
+Con «Review PR», cualquier error después de reservar la fila (del compare de GitHub o del servidor de IA) deja ese commit `failed`, y otro «Review PR» lo repite. `AI_SERVER_DISABLED` se comprueba antes de reservar y no deja fila.
 
 Los errores de GitHub al pedir el diff (por ejemplo `GITHUB_RATE_LIMITED`) usan los mismos mensajes que el [módulo GitHub](07-github.md#qué-ve-el-usuario-si-algo-falla).
 
-La revisión del webhook nunca muestra un error en la interfaz: lo que falla queda en la fila (`failed` con su código) y en la bitácora de la API. Un commit con revisión `failed`, o con una `pending` que quedó colgada, ya no se revisa: hace falta subir otro commit. Y al fusionar el PR la tarea se completa y sus revisiones se borran de TaskMate ([limitaciones conocidas](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)).
+La revisión del webhook nunca muestra un error en la interfaz: lo que falla queda en la fila (`failed` con su código) y en la bitácora de la API. Un commit con revisión `failed` se repite con «Review PR» o con el siguiente webhook de ese commit, y uno con una `pending` que quedó colgada, pasados 15 minutos (desde el 26 nov 2026; antes hacía falta subir otro commit). Y al fusionar el PR la tarea se completa y sus revisiones se borran de TaskMate ([limitaciones conocidas](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)).
 
 ## Para saber más
 

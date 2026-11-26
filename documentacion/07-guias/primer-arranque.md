@@ -49,7 +49,7 @@ flowchart TD
 git clone https://github.com/PabloP150/proyecto-is-cc6.git && cd proyecto-is-cc6
 npm install
 ```
-- Lo más nuevo (la línea de Christian) está en la rama `test/e2e`: `git checkout test/e2e`.
+- La línea de Christian (lo más nuevo) está en `master` desde el 26 nov 2026: no hace falta cambiar de rama.
 
 **3. Entorno de Python** (`start.sh` usa `taskmate-api/mcp/venv/bin/python`):
 ```bash
@@ -130,7 +130,7 @@ Sigue en el [paso 9](#al-final-los-dos-caminos).
 Probado en Fedora. Usa herramientas de Linux (`ss`, `setsid`, `sed -i` de GNU y `systemctl --user`), así que no sirve en macOS. Más detalle, tiempos medidos y cómo simular un webhook de Vercel: [ENTORNO-LOCAL.md](../09-linea-christian/ENTORNO-LOCAL.md).
 
 **B1. Prerrequisitos.** `podman`, `node` (18+) con `npm`, `python3`, `curl`, `ss` y `openssl` (el script se detiene si falta alguno), más `git` para clonar.
-- Clona TaskMate y corre `npm install` como en el paso 2 (rama `test/e2e`). El venv no hace falta: lo crea el script.
+- Clona TaskMate y corre `npm install` como en el paso 2. El venv no hace falta: lo crea el script.
 - El `npm install` inicial sí hace falta: según el código, `local-up.sh` aplica las migraciones (2/5) antes de su paso de dependencias, y sin `node_modules` se detiene con «migrations failed».
 
 **B2. IA local: Ollama, el modelo local y el servidor de IA.** El servidor de IA local es el repositorio aparte de Christian, `taskmate-ai-server` (privado: pídele acceso). Va **junto** a TaskMate, en `../ai-server` (otra ruta con `AI_SERVER_DIR`):

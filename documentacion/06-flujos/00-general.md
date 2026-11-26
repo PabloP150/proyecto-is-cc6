@@ -156,7 +156,7 @@ sequenceDiagram
 | 7 · IA a pedido | Servidor de IA local apagado o sin `AI_SERVER_URL`, rama sin cambios o sin PR abierto | Un texto genérico: «Could not audit the branch.», «Could not generate the tests.» o «Could not review the pull request.» |
 | 7 · IA a pedido | Más de 5 acciones de IA en un minuto (sumando las tres) | «Too many requests. Wait a moment and try again.» |
 | 7 · Revisión | La App no tiene «Pull requests: write» | «Not posted on GitHub: the GitHub App needs the “Pull requests: write” permission.» |
-| 7 · Revisión | La revisión de un commit falló | Nada en el momento. Al abrir el panel: «The last review failed (<código>).». Ese commit ya no se revisa: hace falta otro |
+| 7 · Revisión | La revisión de un commit falló | Nada en el momento. Al abrir el panel: «The last review failed (<código>).». «Review PR» la repite sobre el mismo commit (desde el 26 nov 2026) |
 | 8 · CI | El pipeline falla | Aviso en vivo «[<grupo>] “<título>” failed on <rama>.» |
 | 9 · Merge | No se guarda la lista de archivos del PR | Nada: solo un `console.warn` en la API, y la tarea ya está completada |
 | 11 · Producción | La versión no pasó el CI de TaskMate | «That commit did not pass TaskMate CI, so it cannot be deployed.» |
@@ -164,7 +164,7 @@ sequenceDiagram
 | Vercel | Firma inválida o falta `VERCEL_WEBHOOK_SECRET` | Nada en la pestaña: la API responde 401 a Vercel y el despliegue no aparece |
 | Webhooks de GitHub | Una entrega falla | Nada en la interfaz: se arregla con «Sync PRs» o reenviándola desde GitHub |
 
-Todos los casos, con su código: en la sección «Qué ve el usuario si algo falla» de cada página por módulo. Los fallos sin aviso (archivos, revisión bloqueada, handler de Vercel) están en las [limitaciones conocidas](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas).
+Todos los casos, con su código: en la sección «Qué ve el usuario si algo falla» de cada página por módulo. Los fallos sin aviso (la lista de archivos al fusionar, una entrega de Vercel fallida que no se reintenta) están en las [limitaciones conocidas](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas).
 
 ## Todos los flujos, por módulo
 
