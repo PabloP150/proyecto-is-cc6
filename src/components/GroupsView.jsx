@@ -586,7 +586,7 @@ function GroupsView() {
                         {/* Botón para asignar/editar roles, visible para todos si el usuario es admin del grupo */}
                         {sameId(selectedGroup.adminId, localStorage.getItem('userId')) && (
                           <Button
-                            variant="outline"
+                            variant="primary"
                             size="small"
                             sx={{ ml: 2, minWidth: 110 }}
                             onClick={async () => {
