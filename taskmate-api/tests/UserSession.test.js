@@ -4,10 +4,10 @@ jest.mock('../services/LLMService', () => {
     emitter.send = jest.fn();
     return emitter;
 });
-jest.mock('../services/ProjectService', () => ({ createProjectFromPlan: jest.fn(), addPlanToGroup: jest.fn() }));
+jest.mock('../services/ProjectService', () => ({ createProjectFromPlan: jest.fn(), fillEmptyGroupFromPlan: jest.fn(), addPlanToGroup: jest.fn() }));
 jest.mock('../services/analyticsContext', () => ({ buildTeamContext: jest.fn() }));
 jest.mock('../models/access.model', () => ({ isGroupMember: jest.fn(), isGroupAdmin: jest.fn(), isGroupLeader: jest.fn() }));
-jest.mock('../models/group.model', () => ({ getGroupById: jest.fn() }));
+jest.mock('../models/group.model', () => ({ getGroupById: jest.fn(), isGroupUnused: jest.fn() }));
 jest.mock('../models/github.model', () => ({ getGroupRepository: jest.fn() }));
 jest.mock('../models/tasks.model', () => ({ getTasksByGroupId: jest.fn() }));
 jest.mock('../models/nodes.model', () => ({ getNodesByGroupId: jest.fn() }));
@@ -70,6 +70,7 @@ describe('UserSession', () => {
         groupModel.getGroupById.mockResolvedValue({ gid: GID.toUpperCase(), name: 'Mi proyecto', adminId: UID });
         githubModel.getGroupRepository.mockResolvedValue({ gid: GID, repoId: 500, fullName: 'octo/demo', defaultBranch: 'main', suspendedAt: null, aiAnalysisEnabled: true });
         tasksModel.getTasksByGroupId.mockResolvedValue([{ name: 'Existing task', list: 'To Do', percentage: 0 }]);
+        groupModel.isGroupUnused.mockResolvedValue(false);
         nodesModel.getNodesByGroupId.mockResolvedValue([]);
         userGroupModel.getMembersByGroupId.mockResolvedValue([{ uid: UID, username: 'ana' }]);
         usertaskModel.getAssigneesByGroup.mockResolvedValue([{ taskName: 'Existing task', username: 'ana' }]);
@@ -186,7 +187,7 @@ describe('UserSession', () => {
         test('member → context with repo info', async () => {
             await session.handleMessage({ type: 'set_context', groupId: GID });
             expect(lastOfType(ws, 'context')).toEqual({
-                type: 'context', groupId: GID, groupName: 'Mi proyecto', repo: { fullName: 'octo/demo', defaultBranch: 'main', aiAnalysisEnabled: true }, timestamp: expect.any(String),
+                type: 'context', groupId: GID, groupName: 'Mi proyecto', repo: { fullName: 'octo/demo', defaultBranch: 'main', aiAnalysisEnabled: true }, empty: false, fillable: false, timestamp: expect.any(String),
             });
             expect(accessModel.isGroupMember).toHaveBeenCalledWith(UID, GID);
         });
@@ -742,7 +743,17 @@ describe('UserSession', () => {
             const req = await chat('hola');
             expect(buildRepoSnapshot).not.toHaveBeenCalled();
             expect(req.params.project).toMatchObject({ snapshot: null, repoNote: expect.stringMatching(/not allowed AI/) });
+            // Linked though unreadable: Python must not take the group for an empty one.
+            expect(req.params.project.hasRepository).toBe(true);
             expect(req.params.project.existing.tasks).toHaveLength(1);
+        });
+
+        test('a group with no repository says so with hasRepository false', async () => {
+            githubModel.getGroupRepository.mockResolvedValue(null);
+            await session.handleMessage({ type: 'set_context', groupId: GID });
+            const req = await chat('hola');
+            expect(req.params.project).toMatchObject({ hasRepository: false, snapshot: null,
+                repoNote: expect.stringMatching(/No GitHub repository/) });
         });
 
         test('a snapshot failure is not cached: the next message retries', async () => {
@@ -789,6 +800,271 @@ describe('UserSession', () => {
             await chat('hola');
             expect(pythonRequests().filter((r) => r.method === 'handle_user_message')).toHaveLength(1);
             expect(lastOfType(ws, 'error')).toBeUndefined();
+        });
+    });
+
+    describe('one chat per project, and empty groups', () => {
+        const OTHER = '33333333-3333-4333-8333-333333333333';
+        const chat = async (content, requestId) => {
+            await session.handleMessage({ type: 'user', content, requestId });
+            return pythonRequests().filter((r) => r.method === 'handle_user_message').pop();
+        };
+        const reply = async (request, content, extra = {}) => {
+            llmService.emit(session.sessionId, { event: 'response', requestId: request.requestId, sessionId: session.sessionId, data: { content, ...extra } });
+            await new Promise((r) => setImmediate(r));
+        };
+        const restores = () => sent(ws).filter((m) => m.type === 'history_restore');
+        const emptyGroup = () => {
+            githubModel.getGroupRepository.mockResolvedValue(null);
+            tasksModel.getTasksByGroupId.mockResolvedValue([]);
+            nodesModel.getNodesByGroupId.mockResolvedValue([]);
+            groupModel.isGroupUnused.mockResolvedValue(true);
+        };
+
+        test('switching projects shows each one its own conversation, and going back restores it', async () => {
+            await session.handleMessage({ type: 'set_context', groupId: GID });
+            await reply(await chat('hola uno'), 'respuesta uno');
+            await session.handleMessage({ type: 'set_context', groupId: OTHER });
+            expect(restores().pop().messages).toEqual([]);
+            expect(session.chatHistory).toEqual([]);
+            await reply(await chat('hola otro'), 'respuesta otro');
+            await session.handleMessage({ type: 'set_context', groupId: GID.toUpperCase() });
+            expect(restores().pop().messages.map((m) => m.content)).toEqual(['hola uno', 'respuesta uno']);
+            await session.handleMessage({ type: 'set_context', groupId: null });
+            expect(restores().pop().messages).toEqual([]);
+        });
+
+        // The client may have cleared its screen for this project: it always gets its chat back.
+        test('re-sending the same project restores the same chat again', async () => {
+            await session.handleMessage({ type: 'set_context', groupId: GID });
+            await reply(await chat('hola'), 'respuesta');
+            await session.handleMessage({ type: 'set_context', groupId: GID });
+            expect(restores().pop()).toMatchObject({ chatOf: GID.toLowerCase(), messages: [expect.objectContaining({ content: 'hola' }), expect.objectContaining({ content: 'respuesta' })] });
+        });
+
+        // Regression (second review): the switch waited for the database, so a message sent right after
+        // it went to the previous project's chat and its reply never showed.
+        test('the switch happens at once: a message sent while the context is still loading is in the new project', async () => {
+            await session.handleMessage({ type: 'set_context', groupId: OTHER });
+            let release;
+            groupModel.isGroupUnused.mockImplementationOnce(() => new Promise((resolve) => { release = () => resolve(false); }));
+            const context = session.handleMessage({ type: 'set_context', groupId: GID });
+            const request = await chat('justo después');
+            await reply(request, 'respuesta en vivo');
+            release();
+            await context;
+            expect(sent(ws).some((m) => m.type === 'assistant' && m.content === 'respuesta en vivo')).toBe(true);
+            expect(session.chatHistory.map((m) => m.content)).toEqual(['justo después', 'respuesta en vivo']);
+            expect(request.params.project).toMatchObject({ groupId: GID });
+        });
+
+        test('quick back-and-forth switches always end with the chat of the last one', async () => {
+            await session.handleMessage({ type: 'set_context', groupId: null });
+            await reply(await chat('idea nueva'), 'ok idea');
+            let release;
+            groupModel.getGroupById.mockImplementationOnce(() => new Promise((resolve) => { release = () => resolve({ gid: GID, name: 'Mi proyecto', adminId: UID }); }));
+            const back = session.handleMessage({ type: 'set_context', groupId: GID });
+            await session.handleMessage({ type: 'set_context', groupId: null });
+            release();
+            await back;
+            expect(restores().pop()).toMatchObject({ chatOf: '', messages: [expect.objectContaining({ content: 'idea nueva' }), expect.objectContaining({ content: 'ok idea' })] });
+            expect(session.chatContext.groupId).toBeNull();
+        });
+
+        test('a repository plan confirmed before switching reports next to its card', async () => {
+            await session.handleMessage({ type: 'set_context', groupId: GID });
+            await session.handleMessage({ type: 'repo_analysis', requestId: 'client-5', groupId: GID, instructions: '' });
+            const request = pythonRequests().find((r) => r.method === 'analyze_repository');
+            llmService.emit(session.sessionId, { event: 'repo_analysis_plan', requestId: request.requestId, sessionId: session.sessionId, data: { plan: validPlan() } });
+            await new Promise((r) => setImmediate(r));
+            const { planId } = lastOfType(ws, 'repo_plan');
+            let finish;
+            projectService.addPlanToGroup.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+            const confirm = session.handleMessage({ type: 'repo_plan_confirm', planId });
+            await new Promise((r) => setImmediate(r));
+            await session.handleMessage({ type: 'set_context', groupId: OTHER });
+            finish({ taskIds: ['t1'], nodeIds: [] });
+            await confirm;
+            expect(lastOfType(ws, 'repo_plan_saved')).toBeUndefined();
+            await session.handleMessage({ type: 'set_context', groupId: GID });
+            expect(restores().pop().messages.map((m) => m.type)).toEqual(['user', 'repo_plan', 'repo_plan_saved']);
+        });
+
+        test('a reply that arrives after switching goes to its own project, not to the one shown', async () => {
+            await session.handleMessage({ type: 'set_context', groupId: GID });
+            const request = await chat('pregunta larga');
+            await session.handleMessage({ type: 'set_context', groupId: OTHER });
+            llmService.emit(session.sessionId, { event: 'response_chunk', requestId: request.requestId, sessionId: session.sessionId, data: { content: 'tro' } });
+            await reply(request, 'respuesta tardía', { awaiting_confirmation: true });
+            expect(sent(ws).some((m) => m.content === 'respuesta tardía' || m.type === 'assistant_chunk')).toBe(false);
+            expect(session.chatHistory).toEqual([]);
+            expect(session.awaitingPlanConfirmation).toBe(false);
+            await session.handleMessage({ type: 'set_context', groupId: GID });
+            expect(restores().pop().messages.map((m) => m.content)).toEqual(['pregunta larga', 'respuesta tardía']);
+            expect(session.awaitingPlanConfirmation).toBe(true); // its plan still waits for a yes in that project
+        });
+
+        test('a timeout of a request from another project is kept there', async () => {
+            await session.handleMessage({ type: 'set_context', groupId: GID });
+            const request = await chat('hola');
+            await session.handleMessage({ type: 'set_context', groupId: OTHER });
+            session.failRequest(request.requestId, 'LLM_TIMEOUT');
+            expect(lastOfType(ws, 'error')).toBeUndefined();
+            await session.handleMessage({ type: 'set_context', groupId: GID });
+            expect(restores().pop().messages.map((m) => m.code || m.content)).toEqual(['hola', 'LLM_TIMEOUT']);
+        });
+
+        test('an unused group is flagged in the context message; fillable only for its admin', async () => {
+            emptyGroup();
+            await session.handleMessage({ type: 'set_context', groupId: GID });
+            expect(lastOfType(ws, 'context')).toMatchObject({ groupId: GID, repo: null, empty: true, fillable: true });
+            groupModel.getGroupById.mockResolvedValue({ gid: GID, name: 'Mi proyecto', adminId: '99999999-9999-4999-8999-999999999999' });
+            await session.handleMessage({ type: 'set_context', groupId: GID });
+            expect(lastOfType(ws, 'context')).toMatchObject({ empty: true, fillable: false });
+        });
+
+        // Regression (review): a group whose tasks were all completed has no active tasks, milestones or
+        // repository, yet it is not empty: it must not be renamed and filled.
+        test('"empty" comes from the never-used rule (completed and deleted tasks count)', async () => {
+            emptyGroup();
+            groupModel.isGroupUnused.mockResolvedValue(false); // e.g. every task completed
+            await session.handleMessage({ type: 'set_context', groupId: GID });
+            expect(lastOfType(ws, 'context')).toMatchObject({ empty: false, fillable: false });
+            expect((await chat('hola')).params.project.isEmpty).toBe(false);
+        });
+
+        test('two quick switches end on the last one even if the first answers later', async () => {
+            const OTHER_NAME = { gid: OTHER, name: 'Otro', adminId: UID };
+            let release;
+            groupModel.getGroupById
+                .mockImplementationOnce(() => new Promise((resolve) => { release = () => resolve({ gid: GID, name: 'Mi proyecto', adminId: UID }); }))
+                .mockResolvedValueOnce(OTHER_NAME);
+            const first = session.handleMessage({ type: 'set_context', groupId: GID });
+            await session.handleMessage({ type: 'set_context', groupId: OTHER });
+            release();
+            await first;
+            expect(session.chatContext.groupId).toBe(OTHER);
+            expect(lastOfType(ws, 'context')).toMatchObject({ groupId: OTHER });
+        });
+
+        test('an analysis that ends after switching project goes to its project, with its request', async () => {
+            await session.handleMessage({ type: 'set_context', groupId: GID });
+            await session.handleMessage({ type: 'repo_analysis', requestId: 'client-9', groupId: GID, instructions: '' });
+            const request = pythonRequests().find((r) => r.method === 'analyze_repository');
+            await session.handleMessage({ type: 'set_context', groupId: OTHER });
+            llmService.emit(session.sessionId, { event: 'repo_analysis_plan', requestId: request.requestId, sessionId: session.sessionId, data: { plan: validPlan() } });
+            await new Promise((r) => setImmediate(r));
+            expect(lastOfType(ws, 'repo_plan')).toBeUndefined();
+            expect(session.chatHistory).toEqual([]);
+            await session.handleMessage({ type: 'set_context', groupId: GID });
+            expect(restores().pop().messages.map((m) => m.type)).toEqual(['user', 'repo_plan']);
+        });
+
+        // Regression (review): the /github shortcut sends set_context and repo_analysis at once; the request
+        // was stored in the previously shown project's chat.
+        test('the /github shortcut stores the analysis request in the analysed group, not the previous chat', async () => {
+            await session.handleMessage({ type: 'set_context', groupId: OTHER });
+            await reply(await chat('hola otro'), 'respuesta otro');
+            let release;
+            groupModel.isGroupUnused.mockImplementationOnce(() => new Promise((resolve) => { release = () => resolve(false); }));
+            const context = session.handleMessage({ type: 'set_context', groupId: GID });
+            await session.handleMessage({ type: 'repo_analysis', requestId: 'client-7', groupId: GID, instructions: '' });
+            release();
+            await context;
+            expect(session.chatHistory.map((m) => m.requestId)).toEqual(['client-7']);
+            await session.handleMessage({ type: 'set_context', groupId: OTHER });
+            expect(restores().pop().messages.map((m) => m.content)).toEqual(['hola otro', 'respuesta otro']);
+        });
+
+        test('a late reply after LLM_TIMEOUT still belongs to the project it was asked in', async () => {
+            await session.handleMessage({ type: 'set_context', groupId: GID });
+            const request = await chat('lenta');
+            session.failRequest(request.requestId, 'LLM_TIMEOUT');
+            await session.handleMessage({ type: 'set_context', groupId: OTHER });
+            await reply(request, 'llegó tarde', { awaiting_confirmation: true });
+            expect(sent(ws).some((m) => m.content === 'llegó tarde')).toBe(false);
+            expect(session.awaitingPlanConfirmation).toBe(false);
+            await session.handleMessage({ type: 'set_context', groupId: GID });
+            expect(restores().pop().messages.map((m) => m.code || m.content)).toEqual(['lenta', 'LLM_TIMEOUT', 'llegó tarde']);
+        });
+
+        test('a save that finishes after switching project reports in its own project', async () => {
+            let finish;
+            projectService.createProjectFromPlan.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+            await session.handleMessage({ type: 'set_context', groupId: GID });
+            const request = await chat('sí');
+            session.awaitingPlanConfirmation = true;
+            llmService.emit(session.sessionId, { event: 'save_plan', sessionId: session.sessionId, requestId: request.requestId, data: { plan: { project_name: 'Tienda online' }, original_message: 'x' } });
+            await new Promise((r) => setImmediate(r));
+            await session.handleMessage({ type: 'set_context', groupId: OTHER });
+            finish({ success: true, groupId: 'NEW', groupName: 'Tienda online' });
+            await new Promise((r) => setImmediate(r));
+            expect(lastOfType(ws, 'system')).toBeUndefined();
+            await session.handleMessage({ type: 'set_context', groupId: GID });
+            expect(restores().pop().messages.map((m) => m.event || m.content)).toEqual(['sí', 'project_created']);
+        });
+
+        test('every restore says whose chat it is, also the one sent on reconnect', async () => {
+            await session.handleMessage({ type: 'set_context', groupId: GID });
+            expect(restores().pop()).toMatchObject({ chatOf: GID.toLowerCase() });
+            await reply(await chat('hola'), 'respuesta');
+            session.reconnect();
+            expect(restores().pop()).toMatchObject({ chatOf: GID.toLowerCase() });
+            await session.handleMessage({ type: 'set_context', groupId: null });
+            expect(restores().pop()).toMatchObject({ chatOf: '' });
+        });
+
+        test('a non-admin member of an unused group is told why the plan became a new group', async () => {
+            projectService.fillEmptyGroupFromPlan.mockResolvedValue({ success: false, notEligible: true, reason: 'NOT_ADMIN' });
+            projectService.createProjectFromPlan.mockResolvedValue({ success: true, groupId: 'NEW', groupName: 'Tienda online' });
+            session.awaitingPlanConfirmation = true;
+            llmService.emit(session.sessionId, { event: 'save_plan', sessionId: session.sessionId, requestId: 'r',
+                data: { plan: { project_name: 'Tienda online' }, original_message: 'x', target_group_id: GID } });
+            await new Promise((r) => setImmediate(r));
+            expect(lastOfType(ws, 'system').content).toMatch(/solo el admin del grupo/);
+        });
+
+        // Regression (review): the empty context was cached, so a repository or tasks added later were not
+        // seen and the chat kept treating the group as a new project.
+        test('an empty group is not cached: what is added later is seen on the next message', async () => {
+            emptyGroup();
+            await session.handleMessage({ type: 'set_context', groupId: GID });
+            expect((await chat('hola')).params.project).toMatchObject({ hasRepository: false, isEmpty: true, existing: { tasks: [] } });
+            tasksModel.getTasksByGroupId.mockResolvedValue([{ name: 'Nueva', list: 'To Do', percentage: 0 }]);
+            groupModel.isGroupUnused.mockResolvedValue(false);
+            expect((await chat('¿y ahora?')).params.project.existing.tasks).toHaveLength(1);
+        });
+
+        test('a plan made in an empty group is saved in that group', async () => {
+            projectService.fillEmptyGroupFromPlan.mockResolvedValue({ success: true, groupId: GID, groupName: 'Tienda online', filled: true });
+            session.awaitingPlanConfirmation = true;
+            llmService.emit(session.sessionId, { event: 'save_plan', sessionId: session.sessionId, requestId: 'r',
+                data: { plan: { project_name: 'Tienda online' }, original_message: 'x', target_group_id: GID } });
+            await new Promise((r) => setImmediate(r));
+            expect(projectService.fillEmptyGroupFromPlan).toHaveBeenCalledWith(GID, { project_name: 'Tienda online' }, 'x', UID);
+            expect(projectService.createProjectFromPlan).not.toHaveBeenCalled();
+            expect(lastOfType(ws, 'system')).toMatchObject({ event: 'project_created', groupId: GID, filled: true,
+                content: 'Proyecto "Tienda online" creado en este grupo' });
+        });
+
+        test('if that group is no longer empty, the plan becomes a new project and says why', async () => {
+            projectService.fillEmptyGroupFromPlan.mockResolvedValue({ success: false, notEligible: true });
+            projectService.createProjectFromPlan.mockResolvedValue({ success: true, groupId: 'NEW', groupName: 'Tienda online' });
+            session.awaitingPlanConfirmation = true;
+            llmService.emit(session.sessionId, { event: 'save_plan', sessionId: session.sessionId, requestId: 'r',
+                data: { plan: { project_name: 'Tienda online' }, original_message: 'x', target_group_id: GID } });
+            await new Promise((r) => setImmediate(r));
+            expect(projectService.createProjectFromPlan).toHaveBeenCalledTimes(1);
+            expect(lastOfType(ws, 'system')).toMatchObject({ groupId: 'NEW', filled: false, content: expect.stringMatching(/grupo nuevo/) });
+        });
+
+        test('a plan with no target group is created as a new project, as before', async () => {
+            projectService.createProjectFromPlan.mockResolvedValue({ success: true, groupId: 'NEW', groupName: 'Tienda online' });
+            session.awaitingPlanConfirmation = true;
+            llmService.emit(session.sessionId, { event: 'save_plan', sessionId: session.sessionId, requestId: 'r', data: { plan: { project_name: 'Tienda online' }, original_message: 'x' } });
+            await new Promise((r) => setImmediate(r));
+            expect(projectService.fillEmptyGroupFromPlan).not.toHaveBeenCalled();
+            expect(lastOfType(ws, 'system')).toMatchObject({ content: 'Proyecto "Tienda online" creado', filled: false });
         });
     });
 });

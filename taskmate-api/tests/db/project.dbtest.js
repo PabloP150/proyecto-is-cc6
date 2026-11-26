@@ -226,3 +226,45 @@ describe('user.registerUserWithPersonalGroup', () => {
         expect(await h.count('dbo.Groups WHERE gid = @gid', [h.guid('gid', loser.gid)])).toBe(0);
     });
 });
+
+describe('ProjectService.fillEmptyGroupFromPlan and the never-used rule', () => {
+    const groupModel = require('../../models/group.model');
+    const plan = (name) => ({ project_name: name, roles: [{ name: 'Dev' }], tasks: [{ name: 'Carrito 🛒' }], milestones: [{ name: 'MVP' }] });
+
+    it('an unused group the user administers takes the project name (Unicode kept) and its rows', async () => {
+        const user = await h.createUser('fill');
+        const gid = await h.createGroup(user.uid, `${user.username}'s Group`);
+        expect(await groupModel.isGroupUnused(gid)).toBe(true);
+        const result = await projectService.fillEmptyGroupFromPlan(gid, plan('Tienda ñandú'), 'msg', user.uid);
+        expect(result).toEqual({ success: true, groupId: gid, groupName: 'Tienda ñandú', filled: true });
+        const p = [h.guid('gid', gid)];
+        expect(await execReadCommand('SELECT name FROM dbo.Groups WHERE gid = @gid', p)).toEqual([{ name: 'Tienda ñandú' }]);
+        expect(await h.count('dbo.Tasks WHERE gid = @gid', p)).toBe(1);
+        expect(await h.count('dbo.Nodes WHERE gid = @gid', p)).toBe(1);
+        expect(await h.count('dbo.GroupRoles WHERE gid = @gid', p)).toBe(1);
+        expect(await groupModel.isGroupUnused(gid)).toBe(false);
+    });
+
+    it('a group whose only task was completed is not unused and is left untouched', async () => {
+        const user = await h.createUser('fill');
+        const gid = await h.createGroup(user.uid, 'Con historia');
+        const tid = await h.createTask(gid, { name: 'Hecha' });
+        await tasksModel.completeTask(tid, { source: 'manual' });
+        const p = [h.guid('gid', gid)];
+        expect(await h.count('dbo.Tasks WHERE gid = @gid', p)).toBe(0);
+        expect(await groupModel.isGroupUnused(gid)).toBe(false);
+        expect(await projectService.fillEmptyGroupFromPlan(gid, plan('Otro'), 'msg', user.uid))
+            .toEqual({ success: false, notEligible: true, reason: 'NOT_EMPTY' });
+        expect(await execReadCommand('SELECT name FROM dbo.Groups WHERE gid = @gid', p)).toEqual([{ name: 'Con historia' }]);
+    });
+
+    it('a member who is not the admin cannot fill it', async () => {
+        const admin = await h.createUser('fill');
+        const member = await h.createUser('fill');
+        const gid = await h.createGroup(admin.uid, 'Ajeno');
+        await h.addMember(member.uid, gid);
+        expect(await projectService.fillEmptyGroupFromPlan(gid, plan('Otro'), 'msg', member.uid))
+            .toEqual({ success: false, notEligible: true, reason: 'NOT_ADMIN' });
+        expect(await h.count('dbo.Tasks WHERE gid = @gid', [h.guid('gid', gid)])).toBe(0);
+    });
+});

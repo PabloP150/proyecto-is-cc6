@@ -135,3 +135,70 @@ describe('ProjectService.addPlanToGroup node placement', () => {
         expect(insertedPositions()).toEqual(row(900));
     });
 });
+
+describe('ProjectService.fillEmptyGroupFromPlan', () => {
+    const groupRolesModel = require('../models/groupRoles.model');
+    const recommendations = {
+        recommendations: {
+            project_name: 'Tienda online',
+            roles: [{ name: 'Frontend', color: '#123456', icon: 'code' }, { name: 'Backend' }],
+            tasks: [{ name: 'Carrito', description: 'd', due_date: '2030-01-05' }],
+            milestones: [{ name: 'MVP', description: 'd', date: '2030-02-01' }],
+        },
+    };
+    const makeTx = (group, roles = []) => ({
+        read: jest.fn(async (sql) => (sql.includes('GroupRoles') ? roles : group ? [group] : [])),
+        write: jest.fn(async () => 1),
+    });
+    const EMPTY = { isAdmin: 1, tasks: 0, completed: 0, deleted: 0, nodes: 0, repos: 0 };
+
+    beforeEach(() => {
+        groupRolesModel.addGroupRole.mockReset().mockResolvedValue(1);
+        taskModel.addTask.mockClear();
+        nodeModel.addNode.mockClear();
+    });
+
+    test('an empty group the user administers takes the project name, roles, tasks and milestones', async () => {
+        const tx = makeTx(EMPTY);
+        withTransaction.mockImplementation(async (fn) => fn(tx));
+        const result = await projectService.fillEmptyGroupFromPlan(GID, recommendations, 'x', UID);
+        expect(result).toEqual({ success: true, groupId: GID, groupName: 'Tienda online', filled: true });
+        const [sql, params] = tx.write.mock.calls[0];
+        expect(sql).toMatch(/UPDATE dbo\.Groups SET name = @name WHERE gid = @gid/);
+        // NVarChar like group.model's INSERT: a VarChar parameter would turn non-Latin-1 characters into '?'.
+        expect(params).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'name', value: 'Tienda online', type: require('tedious').TYPES.NVarChar })]));
+        expect(groupRolesModel.addGroupRole).toHaveBeenCalledTimes(2);
+        expect(taskModel.addTask).toHaveBeenCalledWith(expect.objectContaining({ gid: GID, name: 'Carrito' }), { tx });
+        expect(nodeModel.addNode).toHaveBeenCalledWith(expect.objectContaining({ gid: GID, name: 'MVP' }), { tx });
+    });
+
+    test.each([
+        ['not its admin', { ...EMPTY, isAdmin: 0 }, 'NOT_ADMIN'],
+        ['it has tasks', { ...EMPTY, tasks: 1 }, 'NOT_EMPTY'],
+        // Regression (review): a group whose tasks were all completed counted as empty and was renamed.
+        ['all its tasks are completed', { ...EMPTY, completed: 3 }, 'NOT_EMPTY'],
+        ['its tasks are in the trash', { ...EMPTY, deleted: 1 }, 'NOT_EMPTY'],
+        ['it has milestones', { ...EMPTY, nodes: 2 }, 'NOT_EMPTY'],
+        ['it has a repository', { ...EMPTY, repos: 1 }, 'NOT_EMPTY'],
+        ['the group does not exist', null, 'NOT_EMPTY'],
+    ])('%s → not filled, nothing written', async (_name, group, reason) => {
+        const tx = makeTx(group);
+        withTransaction.mockImplementation(async (fn) => fn(tx));
+        expect(await projectService.fillEmptyGroupFromPlan(GID, recommendations, 'x', UID)).toEqual({ success: false, notEligible: true, reason });
+        expect(tx.write).not.toHaveBeenCalled();
+        expect(taskModel.addTask).not.toHaveBeenCalled();
+    });
+
+    test('roles the group already has are not added twice', async () => {
+        const tx = makeTx(EMPTY, [{ gr_name: 'frontend ' }]); // trailing space: still the same role for SQL
+        withTransaction.mockImplementation(async (fn) => fn(tx));
+        await projectService.fillEmptyGroupFromPlan(GID, recommendations, 'x', UID);
+        expect(groupRolesModel.addGroupRole.mock.calls.map(([role]) => role.gr_name)).toEqual(['Backend']);
+    });
+
+    test('an invalid plan is refused before touching the database', async () => {
+        expect(await projectService.fillEmptyGroupFromPlan(GID, { recommendations: { project_name: 'X', tasks: 'no' } }, 'x', UID))
+            .toMatchObject({ success: false, error: 'Invalid or missing tasks array' });
+        expect(withTransaction).not.toHaveBeenCalledWith(expect.any(Function));
+    });
+});
