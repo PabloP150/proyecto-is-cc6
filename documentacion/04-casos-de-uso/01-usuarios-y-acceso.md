@@ -35,7 +35,7 @@ flowchart LR
 | Caso | Quién puede | Qué pasa |
 |---|---|---|
 | Crear cuenta | Visitante (`/register`) | Elige usuario y contraseña. La API guarda el hash, crea el grupo «`<usuario>`'s Group» con él como admin y lo hace miembro. Luego vuelve a `/` para iniciar sesión |
-| Iniciar sesión | Visitante (`/`) | Si usuario y contraseña coinciden, recibe un JWT (token firmado) de 24 h. TaskMate toma el primer grupo de su lista como grupo activo y abre `/home` |
+| Iniciar sesión | Visitante (`/`) | Si usuario y contraseña coinciden, recibe un JWT (token firmado) de 24 h. TaskMate toma el primer grupo de su lista como grupo activo (se ve y se cambia en el selector junto al logo) y abre `/home` |
 | Seguir con la sesión al recargar | Usuario con sesión | Recargar la misma pestaña conserva el usuario y el grupo activo. Una pestaña nueva empieza sin sesión ([por qué](../06-flujos/01-usuarios-y-acceso.md#ciclo-de-la-sesión-en-el-navegador)) |
 | Usar la API y los WebSockets | Usuario con sesión | Cada llamada lleva el token. Los WebSockets lo mandan al conectarse |
 | Buscar el id de un usuario por su nombre | Usuario con sesión | `GET /api/users/getuid`. La pantalla de Grupos lo usa para agregar un miembro por su nombre |
@@ -44,15 +44,16 @@ flowchart LR
 
 ## Reglas de permiso
 
-Verificadas en `taskmate-api/app.js`, `controllers/user.controller.js`, `services/WebSocketServer.js` y `src/App.js`.
+Verificadas en `taskmate-api/app.js`, `controllers/user.controller.js`, `middleware/cors.js`, `services/WebSocketServer.js` y `src/App.js`.
 
 | Qué | Guardia | Quién pasa |
 |---|---|---|
 | `POST /api/users` (registro) | `authLimiter` | Cualquiera, sin token: hasta 10 intentos por IP cada 15 min, contando registro y login juntos |
 | `POST /api/users/login` | `authLimiter` | Igual que el registro |
 | `GET /api/users/getuid` | `requireAuth` + `apiLimiter` | Cualquier usuario con sesión. No exige ser admin de un grupo |
-| Resto de `/api/*` | `requireAuth` + `apiLimiter`, y los guardias de grupo de cada módulo | Usuario con sesión; el grupo decide lo demás ([Grupos y roles](02-grupos-y-roles.md)) |
-| WebSockets `/chat`, `/insights` y `/events` | `Origin` permitido y token válido antes del upgrade | Usuario con sesión, desde el frontend configurado en `FRONTEND_URL` |
+| Resto de `/api/*` | `requireAuth` + `apiLimiter`, y los guardias de grupo de cada módulo | Usuario con sesión; el grupo decide lo demás ([Grupos y roles](02-grupos-y-roles.md)). Sin token solo quedan el callback y el webhook de GitHub ([GitHub](07-github.md)) y el webhook de Vercel ([CI/CD](08-cicd.md)), que se autentican de otra forma |
+| WebSockets `/chat`, `/insights` y `/events` | `Origin` permitido y token válido antes del upgrade | Usuario con sesión, desde el frontend configurado en `FRONTEND_URL`. Con `ALLOW_LAN_ORIGINS=true` (solo desarrollo), también desde `http://` con una IPv4 privada |
+| Respuestas REST en el navegador | CORS, con la misma lista de orígenes que los WebSockets | El navegador solo entrega la respuesta a una página de un origen permitido |
 | Pantallas `/` y `/register` | `src/App.js` | Solo sin sesión; con sesión redirigen a `/home` |
 | Las demás pantallas | `src/App.js` | Solo con sesión; sin sesión redirigen a `/` |
 
@@ -69,4 +70,4 @@ Qué cuenta como «token válido»:
 - Arquitectura del módulo: [02-arquitectura/01-usuarios-y-acceso.md](../02-arquitectura/01-usuarios-y-acceso.md)
 - Pantallas: [05-interfaz/01-usuarios-y-acceso.md](../05-interfaz/01-usuarios-y-acceso.md)
 - Paso a paso y mensajes de error: [06-flujos/01-usuarios-y-acceso.md](../06-flujos/01-usuarios-y-acceso.md)
-- Limitaciones conocidas: [cierre del proyecto](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)
+- Limitaciones conocidas: [cierre de la línea de Pablo y estado](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)

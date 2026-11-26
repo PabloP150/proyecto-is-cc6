@@ -14,6 +14,7 @@
 - Cada flecha lleva una etiqueta, «Prerequisite» o «Progressor». Un clic la cambia.
 - Abajo a la izquierda: acercar, alejar, ajustar a la vista y bloquear el lienzo.
 - En la captura el grupo activo todavía no tiene hitos.
+- La captura es del 3 nov 2026: los textos de la pantalla no cambiaron, pero la barra todavía no tenía el selector de grupo junto al logo.
 
 **Calendario: `/calendar`** (menú «Calendar» o tarjeta «Calendar View» del inicio)
 
@@ -21,7 +22,7 @@
 
 - Solo vista de mes, con «Today», «Back» y «Next».
 - Cada evento es un hito o una tarea activa, con su nombre, en su fecha. Es de solo lectura.
-- En la captura el grupo activo no tiene fechas en noviembre de 2026.
+- En la captura el grupo activo no tiene fechas en noviembre de 2026. Es del 3 nov 2026, anterior al selector de grupo de la barra.
 
 ## Qué puedes hacer
 
@@ -29,7 +30,7 @@
 |---|---|---|
 | Miembro | Todo: crear, importar, editar, mover, fijar el %, completar, conectar, cambiar el tipo de flecha y borrar | Ver el mes |
 | Líder o admin | Lo mismo que un miembro; no hay botones extra | Lo mismo |
-| Sin grupo activo | Ve «Selecciona un grupo para ver y crear milestones.» | Ve «Selecciona un grupo para ver el calendario.» |
+| Sin grupo activo (al iniciar sesión queda activo tu primer grupo, si tienes alguno) | Ve «Select a group to view and create milestones.» y el botón «Select a group first» | Ve «Select a group to view the calendar.» |
 | Sin sesión | Vuelve al login (`/`) | Vuelve al login |
 
 Cómo se hace cada acción en el lienzo:
@@ -39,13 +40,14 @@ Cómo se hace cada acción en el lienzo:
 - **Editar:** botón «Edit» → ventana «Edit Milestone» con nombre, descripción y fecha → «Save».
 - **Borrar:** clic en la tarjeta o en la flecha y tecla Backspace.
 
-El grupo activo se elige en «Groups». Los textos de estas dos pantallas están en inglés, salvo los avisos de «sin grupo».
+El grupo activo se elige con el selector junto al logo de la barra (`NavGroupSelector`) o con un clic en un grupo de «Groups». Al cambiarlo, el lienzo y el calendario cargan los datos del grupo nuevo. Las dos pantallas están por completo en inglés.
 
 ## Árbol de componentes
 
 ```mermaid
 flowchart TD
     APP["App.js: rutas con sesión"] --> GC["GroupContext: grupo activo"]
+    NGS["NavGroupSelector (navbar): cambia el grupo activo"] -.-> GC
     APP --> BD["BlockDiagram: /block-diagram"]
     APP --> CV["CalendarView: /calendar"]
     BD --> FL["Flow: barra, Import Task y lienzo"]
@@ -77,7 +79,7 @@ Snackbar: aviso rojo abajo al centro que se cierra solo a los 4 s.
 | `src/components/flow/FloatingEdge.jsx` | Flecha flotante con la etiqueta Prerequisite / Progressor |
 | `src/components/flow/utils.js`, `flow/CustomConnectionLine.jsx` | Geometría de la flecha y línea mientras se arrastra |
 | `src/components/CalendarView.jsx` | Calendario de mes con hitos y tareas |
-| `src/components/GroupContext.jsx` | Grupo activo, guardado en `localStorage` |
+| `src/components/GroupContext.jsx` | Grupo activo, guardado en `localStorage` (lo cambia `NavGroupSelector.jsx` desde la barra) |
 | `src/constants/limits.js` | Largo máximo del nombre del hito (25) |
 | `src/components/__tests__/FlowFitView.test.jsx` | Prueba el ajuste de la vista al cargar y al cambiar de grupo |
 
@@ -86,4 +88,4 @@ Snackbar: aviso rojo abajo al centro que se cierra solo a los 4 s.
 - Paso a paso y mensajes de error: [06-flujos/04-hitos-y-calendario.md](../06-flujos/04-hitos-y-calendario.md)
 - Permisos: [04-casos-de-uso/04-hitos-y-calendario.md](../04-casos-de-uso/04-hitos-y-calendario.md)
 - Arquitectura del módulo: [02-arquitectura/04-hitos-y-calendario.md](../02-arquitectura/04-hitos-y-calendario.md)
-- Limitaciones conocidas: [cierre del proyecto](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)
+- Limitaciones conocidas: [cierre de la línea de Pablo y estado](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)

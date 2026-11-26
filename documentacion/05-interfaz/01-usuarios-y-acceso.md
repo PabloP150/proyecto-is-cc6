@@ -1,6 +1,6 @@
 # Usuarios y acceso: interfaz
 
-**En una frase:** dos pantallas sin sesión, «Sign In» (`/`) y «Create Account» (`/register`), y un menú con tu nombre en la barra de navegación para salir.
+**En una frase:** dos pantallas sin sesión, «Sign In» (`/`) y «Create Account» (`/register`); con sesión, la barra de navegación muestra el grupo activo junto al logo y un menú con tu nombre para salir.
 
 ## Pantallas
 
@@ -16,6 +16,8 @@
 
 ![Inicio con la sesión iniciada](capturas/admin-home.jpg)
 
+La captura es del 3 nov 2026, anterior al selector de grupo que ahora aparece junto al logo «TaskMate». Las pantallas «Sign In» y «Create Account» no han cambiado.
+
 ## Qué puedes hacer
 
 **Sin sesión (visitante)**
@@ -30,6 +32,7 @@
 
 **Con sesión (admin o miembro: no hay diferencia en este módulo)**
 - Ves la barra de navegación en todas las pantallas.
+- Al entrar, el primer grupo de tu lista queda como grupo activo. Su nombre aparece junto al logo, en el selector de grupo («Select a group» si no hay ninguno); ahí se cambia para todas las pantallas o se va a «Manage groups» ([Grupos y roles](02-grupos-y-roles.md)).
 - Menú con tu nombre → «Logout»: borra la sesión del navegador y vuelve a «Sign In».
 - Si abres `/` o `/register`, vas directo a `/home`.
 - Cuando el token vence (24 h), el servidor cierra el WebSocket de avisos con el código 4001 y TaskMate te lleva a «Sign In». Si la API responde 401 a cualquier llamada, pasa lo mismo.
@@ -43,6 +46,7 @@ flowchart TD
     GP --> AR["AppRoutes<br/>handleLogin, handleLogout, escucha los 401"]
     AR --> RP["RealtimeProvider<br/>abre /events con el token"]
     RP --> NAV["Navbar, solo con sesión<br/>menú con el nombre y Logout"]
+    NAV --> NGS["NavGroupSelector<br/>grupo activo junto al logo"]
     RP --> ROUTES["Routes"]
     ROUTES -->|"/ sin sesión"| LOGIN["Login"]
     ROUTES -->|"/register sin sesión"| REG["Register"]
@@ -57,19 +61,23 @@ flowchart TD
 
 | Archivo | Qué hace |
 |---|---|
-| `src/components/Login.jsx` | Formulario «Sign In»: valida, llama al login, guarda `token` y `userId`, elige el grupo activo y abre `/home` |
+| `src/components/Login.jsx` | Formulario «Sign In»: valida, llama al login, guarda `token` y `userId`, deja el primer grupo de la lista como activo y abre `/home` |
 | `src/components/Register.jsx` | Formulario «Create Account»: valida, crea la cuenta y vuelve a `/` a los 2 s |
 | `src/App.js` | Restaura o borra la sesión al abrir, protege las rutas, `handleLogin` y `handleLogout`, y escucha `taskmate:unauthorized` |
-| `src/components/Navbar.jsx` | Barra con las 8 entradas y el menú con el nombre del usuario y «Logout» |
+| `src/components/Navbar.jsx` | Barra con las 8 entradas, el selector de grupo y el menú con el nombre del usuario y «Logout» |
+| `src/components/NavGroupSelector.jsx` | Selector de grupo junto al logo: muestra el grupo activo y lo cambia para todas las pantallas |
 | `src/components/GroupContext.jsx` | Grupo activo; `clearGroupState` lo vacía al salir |
+| `src/config.js` | `API_BASE` y `WS_BASE`: por defecto `http://<host de la página>:9000` y `ws://<host de la página>:9000` |
 | `src/api/client.js` | Pone el `Authorization: Bearer`, traduce errores y avisa los 401 |
 | `src/hooks/useWebSocket.js` | Manda el token en `?token=` y, si el servidor cierra con 4001, cierra la sesión |
 | `src/components/ui/` | `Card`, `TextField` y `Button` del sistema de diseño |
 | `src/__tests__/AppLegacyRoutes.test.jsx` | Pruebas: `/register` sin sesión abre el registro; con sesión va a `/home` |
+| `src/components/__tests__/NavGroupSelector.test.jsx` | Pruebas: muestra el grupo activo y cambia a otro; sin grupo pide «Select a group» |
 
 ## Para saber más
 
 - Navegación completa de la app: [00-general.md](00-general.md)
 - Paso a paso del login y mensajes de error: [06-flujos/01-usuarios-y-acceso.md](../06-flujos/01-usuarios-y-acceso.md)
 - Quién puede hacer qué: [04-casos-de-uso/01-usuarios-y-acceso.md](../04-casos-de-uso/01-usuarios-y-acceso.md)
-- Limitaciones conocidas de la interfaz (por ejemplo, textos en inglés y español): [cierre del proyecto](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)
+- Grupo activo y selector de la barra: [02-grupos-y-roles.md](02-grupos-y-roles.md)
+- Limitaciones conocidas de la interfaz (por ejemplo, los pocos textos que siguen en español en otras pantallas): [cierre de la línea de Pablo y estado](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)

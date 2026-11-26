@@ -10,6 +10,7 @@ erDiagram
     Groups ||--o{ GroupRoles : "gid"
     GroupRoles ||--o{ UserGroupRoles : "gr_id + gid"
     UserGroups ||--o{ UserGroupRoles : "uid + gid, solo miembros"
+    Groups ||--o| GroupRepositories : "gid, CASCADE"
 
     Users {
         UNIQUEIDENTIFIER uid PK
@@ -39,15 +40,19 @@ erDiagram
         UNIQUEIDENTIFIER gr_id FK
         SMALLDATETIME ugr_assigned_at "NOT NULL DEFAULT GETDATE"
     }
+    GroupRepositories {
+        UNIQUEIDENTIFIER gid PK, FK "a Groups, un repositorio por grupo"
+        BIT ai_analysis_enabled "NOT NULL DEFAULT 0, permiso de IA, 005"
+    }
 ```
 
-`Users` aparece reducida: es del módulo de usuarios y acceso. Los tipos son los finales, después de las migraciones 001–008.
+`Users` y `GroupRepositories` aparecen reducidas: son de los módulos de usuarios y de GitHub. De `GroupRepositories` solo importa aquí el permiso «análisis con IA» del grupo. Los tipos son los finales, después de las migraciones 001–011 (la 009, la 010 y la 011 no cambian estas tablas).
 
 ## Tablas
 
 | Tabla | Para qué sirve | Campos clave |
 |---|---|---|
-| `Groups` | Un grupo o proyecto. Todo lo demás (tareas, hitos, repositorio, CI/CD) cuelga de él por `gid` | `gid` (PK); `adminId` → `Users`; `name` (máx. 25) |
+| `Groups` | Un grupo o proyecto. Todo lo demás (tareas, hitos, repositorio, CI/CD, despliegues de Vercel) cuelga de él por `gid` | `gid` (PK); `adminId` → `Users`; `name` (máx. 25) |
 | `UserGroups` | Membresía: una fila por cada usuario en cada grupo | PK compuesta (`uid`, `gid`); `joined_at` decide quién hereda el admin |
 | `GroupRoles` | Roles propios de cada grupo, con color e icono | `gr_id` (PK); `gid` → `Groups`; `gr_name` único dentro del grupo |
 | `UserGroupRoles` | Qué rol tiene cada miembro; un miembro puede tener varios roles | `ugr_id` (PK); (`uid`, `gid`) → `UserGroups`; (`gr_id`, `gid`) → `GroupRoles`; (`uid`, `gr_id`) único |
@@ -68,7 +73,9 @@ erDiagram
   - Quitar o salir de un miembro: primero sus `UserGroupRoles` en ese grupo, después su fila de `UserGroups`.
   - Borrar un rol: primero sus asignaciones, después el rol.
   - Borrar un grupo (`deleteGroupCascade`): `TaskAnalytics`, `UserTask`, `Tasks`, `Complete`, `DeleteTask`, `Edges`, `Nodes`, `UserGroupRoles`, `GroupRoles`, `UserGroups` y al final `Groups`.
-- Al borrar el grupo, la base sí borra sola, por cascada, `AnalyticsConfig`, `GroupRepositories` y `DeployRequests`.
+- Al borrar el grupo, la base sí borra sola, por cascada:
+  - desde `Groups`: `AnalyticsConfig`, `GroupRepositories` (con el permiso de IA), `DeployRequests`, `Deployments` y `GroupDeployTargets` (los despliegues guardados y el vínculo con el proyecto de Vercel; las dos últimas, desde la 009);
+  - desde las `Tasks` del grupo: sus `TaskBranches`, `TaskFiles` (010) y `AiReviews` (011).
 
 **Triggers**
 - Ninguno en estas tablas. Los dos triggers del sistema son de hitos (`Nodes` y `Edges`, migración 006).
@@ -79,6 +86,12 @@ erDiagram
 - **Reparaciones únicas.** Las migraciones 004 y 005 dieron un admin a los grupos cuyo admin ya no era miembro (la 005 con la regla de `joined_at`).
 - **Límites de texto** (la API responde 400 si no se cumplen): nombre del grupo hasta 25 caracteres; nombre del rol obligatorio y hasta 40; color en hexadecimal (`#1976d2`); icono con solo `a-z`, `0-9` y `_`.
 - **Agregar es idempotente.** `addUserToGroup` usa `IF NOT EXISTS`: agregar a alguien que ya es miembro no hace nada.
+
+**Permiso «análisis con IA» del grupo**
+- Es la columna `GroupRepositories.ai_analysis_enabled` (`BIT NOT NULL`, `DEFAULT 0`, migración 005): nace apagado.
+- Solo existe si el grupo tiene un repositorio conectado. Desconectarlo borra la fila, y con ella el permiso; conectar otro repositorio lo vuelve a apagar.
+- Solo lo cambia el admin (`setAiAnalysisEnabled`). Se borra con el grupo, por la cascada de `GroupRepositories`.
+- Lo leen el chat, el análisis del repositorio, el pipeline y la IA sobre el código antes de mandar datos del repositorio a la IA ([detalle](../02-arquitectura/02-grupos-y-roles.md#cómo-se-conectan)).
 
 ## Índices (migración 001)
 
@@ -100,12 +113,15 @@ erDiagram
 | `taskmate-api/models/access.model.js` | `isGroupMember`, `isGroupAdmin`, `isGroupLeader` y a qué grupo pertenece un rol o una asignación |
 | `taskmate-api/models/user.model.js` | Al registrarse: usuario, grupo personal «`<usuario>`'s Group» y membresía, en una transacción |
 | `taskmate-api/services/ProjectService.js` | Plan del chat confirmado: crea `Groups`, `UserGroups` y `GroupRoles` junto con tareas e hitos |
+| `taskmate-api/models/github.model.js` | `setAiAnalysisEnabled` cambia el permiso «análisis con IA»; `getGroupRepository` lo lee para el chat, GitHub, CI/CD y la IA sobre el código |
+| `taskmate-api/services/UserSession.js` | Chat: revisa la membresía (`isGroupMember`) al elegir el proyecto y en cada mensaje, y lee el nombre del grupo y sus miembros para el contexto |
 | `taskmate-api/services/AnalyticsService.js` | Carga de trabajo del panel: une miembros con sus roles (solo cuenta a quien tiene al menos un rol) |
 | `taskmate-api/tests/db/groups.dbtest.js` | Pruebas contra una SQL Server desechable: creación atómica, borrado, salida, sucesión del admin |
 
 ## Para saber más
 
-- Modelo completo con las 24 tablas: [00-general.md](00-general.md)
+- Modelo completo con las 29 tablas: [00-general.md](00-general.md)
 - Arquitectura del módulo: [02-arquitectura/02-grupos-y-roles.md](../02-arquitectura/02-grupos-y-roles.md)
 - Flujos que escriben en estas tablas: [06-flujos/02-grupos-y-roles.md](../06-flujos/02-grupos-y-roles.md)
-- Archivos fuente: `taskmate-api/taskmate_tables.sql` y `taskmate-api/migrations/001`, `004` y `005`
+- Quién usa el permiso «análisis con IA» y la tabla `AiReviews`: [10-ia-sobre-el-codigo.md](10-ia-sobre-el-codigo.md)
+- Archivos fuente: `taskmate-api/taskmate_tables.sql` y `taskmate-api/migrations/001`, `004` y `005`; las cascadas nuevas del grupo vienen de `009`, `010` y `011`

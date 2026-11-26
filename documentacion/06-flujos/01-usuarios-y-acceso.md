@@ -27,10 +27,10 @@ sequenceDiagram
     par Grupos
         APP->>API: GET /api/groups/user-groups con Bearer
         API-->>APP: grupos del usuario, el primero queda como grupo activo
-        L->>U: abre /home
+        L->>U: abre /home con ese grupo en el selector de la barra
     and Avisos en vivo
         APP->>WS: upgrade a /events?token=JWT
-        WS->>WS: revisa el Origin y el token, programa el cierre al vencer
+        WS->>WS: revisa el Origin (FRONTEND_URL, o IPv4 privada si ALLOW_LAN_ORIGINS=true) y el token, programa el cierre al vencer
         WS-->>APP: conexión abierta
     end
     Note over APP,WS: 24 h después del login
@@ -47,7 +47,7 @@ flowchart TD
     B -->|"No"| B1["Mensaje bajo el campo, no se envía nada"]
     B -->|"Sí"| C["POST /api/users sin token"]
     C --> D{"¿Esta IP ya hizo 10 intentos en 15 min?"}
-    D -->|"Sí"| D1["429: Demasiadas solicitudes"]
+    D -->|"Sí"| D1["429: Too many requests. Wait a moment and try again."]
     D -->|"No"| E{"¿Usuario de 1 a 25 caracteres y contraseña de 6 caracteres a 72 bytes?"}
     E -->|"No"| E1["400 VALIDATION_ERROR"]
     E -->|"Sí"| F["Hash bcrypt de la contraseña, costo 10"]
@@ -95,12 +95,13 @@ stateDiagram-v2
 **Iniciar sesión**
 1. `POST /api/users/login` pasa por `authLimiter` y la API compara la contraseña con bcrypt.
 2. La API firma un JWT con `userId`, `username` y `typ: access`, válido 24 h.
-3. El navegador guarda `token`, `userId` y `user`, toma el primer grupo como activo y abre `/home`.
+3. El navegador guarda `token`, `userId` y `user`, pide sus grupos, toma el primero como activo (aparece junto al logo, en el selector de grupo) y abre `/home`. Si la lista de grupos falla, entra igual sin grupo activo y el selector dice «Select a group».
 
 **Con sesión**
-1. Cada llamada lleva `Authorization: Bearer <token>` y `requireAuth` lo verifica.
+1. Cada llamada va a `API_BASE` (por defecto `http://<host de la página>:9000`), lleva `Authorization: Bearer <token>` y `requireAuth` lo verifica.
 2. Cada WebSocket (`/chat`, `/insights`, `/events`) manda el token en `?token=`; el servidor revisa también el `Origin`.
-3. Un 401 o un cierre 4001 disparan `taskmate:unauthorized` y `App.js` cierra la sesión.
+3. CORS y los WebSockets aceptan los orígenes de `FRONTEND_URL`. Con `ALLOW_LAN_ORIGINS=true` (solo desarrollo) aceptan además `http://` desde una IPv4 privada, para abrir la app desde otro equipo de la red.
+4. Un 401 o un cierre 4001 disparan `taskmate:unauthorized` y `App.js` cierra la sesión.
 
 **Cerrar sesión**
 1. Menú con tu nombre → «Logout».
@@ -116,9 +117,10 @@ stateDiagram-v2
 | El usuario ya existe | 400 `VALIDATION_ERROR` | «Username already exists» |
 | Contraseña de más de 72 bytes (por ejemplo, con muchos emoji) | 400 `VALIDATION_ERROR` | «Password too long» |
 | La base de datos está ocupada al registrar | 503 `DB_BUSY` | «The database is busy, please try again» |
-| Más de 10 intentos de login o registro desde la misma IP en 15 min | 429 `RATE_LIMITED` | «Demasiadas solicitudes. Espera un momento e inténtalo de nuevo.» |
+| Más de 10 intentos de login o registro desde la misma IP en 15 min | 429 `RATE_LIMITED` | «Too many requests. Wait a moment and try again.» |
 | Más de 300 llamadas por minuto con sesión | 429 `RATE_LIMITED` | El mismo mensaje, en la pantalla que hizo la llamada |
 | La API no responde | Sin respuesta (`NETWORK_ERROR`) | «Network error. Please check your connection and try again.» |
+| App abierta desde otro equipo de la red (por ejemplo `http://192.168.1.20:3000`) sin `ALLOW_LAN_ORIGINS=true` ni esa dirección en `FRONTEND_URL` | La API responde, pero sin cabeceras CORS: el navegador bloquea la respuesta (`NETWORK_ERROR`) | El mismo «Network error…» en «Sign In» |
 | Error inesperado del servidor | 500 `INTERNAL_ERROR` | «Internal server error» |
 | Token vencido o inválido en una llamada | 401 `UNAUTHENTICATED` | Se cierra la sesión y aparece «Sign In» |
 | Token vencido con un WebSocket abierto | Cierre 4001 | Se cierra la sesión y aparece «Sign In» |
@@ -130,4 +132,4 @@ stateDiagram-v2
 - Tablas que escribe el registro: [03-base-de-datos/01-usuarios-y-acceso.md](../03-base-de-datos/01-usuarios-y-acceso.md)
 - Pantallas: [05-interfaz/01-usuarios-y-acceso.md](../05-interfaz/01-usuarios-y-acceso.md)
 - El chat sobre el mismo WebSocket autenticado: [05-chat-ia.md](05-chat-ia.md)
-- Limitaciones conocidas (por ejemplo, el JWT en la URL del WebSocket): [cierre del proyecto](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)
+- Limitaciones conocidas (por ejemplo, el JWT en la URL del WebSocket): [cierre de la línea de Pablo y estado](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)

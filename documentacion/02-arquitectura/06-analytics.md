@@ -1,8 +1,8 @@
 # Analytics: arquitectura
 
-**En una frase:** el panel de analytics lee las métricas del equipo por REST y pide a la IA recomendaciones de asignación por el WebSocket `/insights`; las métricas se llenan solas cuando alguien asigna, completa o borra tareas.
+**En una frase:** el panel de analytics lee las métricas del equipo por REST y pide a la IA recomendaciones de asignación por el WebSocket `/insights`; la IA es el mismo modelo del chat (Groq u Ollama, según `LLM_PROVIDER`), y las métricas se llenan solas cuando alguien asigna, completa o borra tareas.
 
-![Arquitectura del módulo de analytics: panel, API Express, servidor de IA, Groq y SQL Server](imagenes/06-analytics.png)
+![Arquitectura del módulo de analytics: panel, API Express, servicio Python, Groq u Ollama y SQL Server](imagenes/06-analytics.png)
 
 Las flechas del dibujo no llevan texto. Esta tabla dice qué viaja por cada una:
 
@@ -13,8 +13,10 @@ Las flechas del dibujo no llevan texto. Esta tabla dice qué viaja por cada una:
 | REST /api/analytics | Servicios de analytics | resumen, carga de trabajo y experiencia del grupo (`AnalyticsService`) |
 | WebSocket /insights | Servicios de analytics | `buildTeamContext`: los datos reales del equipo, solo si quien pide es líder |
 | WebSocket /insights | LLMService | el pedido, ya con `team_context` |
-| LLMService | AnalyticsAgent | un solo WebSocket compartido con Python, con el encabezado `X-MCP-Secret` |
-| AnalyticsAgent | Groq | un prompt en modo JSON para ajustar los puntajes y proponer un plan |
+| LLMService | AnalyticsAgent | un solo WebSocket compartido con el servicio Python, con el encabezado `X-MCP-Secret` |
+| AnalyticsAgent | llm_service.py | `generate_json`: un prompt en modo JSON con la tarea y los puntajes fijos, para ajustarlos y proponer un plan |
+| llm_service.py | Groq | HTTPS con `GROQ_API_KEY`, modelo `openai/gpt-oss-20b` en modo JSON (`LLM_PROVIDER=groq`, el valor por defecto) |
+| llm_service.py | Ollama | `POST /api/chat` en `OLLAMA_HOST` (`127.0.0.1:11434`), modelo `gemma4:e2b-it-qat` con `format: json` (`LLM_PROVIDER=ollama`) |
 | Hooks de tareas | Servicios de analytics | registrar una asignación y recalcular métricas después de completar o mandar a la papelera |
 | Job de métricas opcional | Hooks de tareas | `runBatchUpdate`, que llama a `AnalyticsService.batchUpdateUserMetrics` |
 | Servicios de analytics | SQL Server 2019 | lecturas y escrituras en `TaskAnalytics`, `UserMetrics` y `UserExpertise` |
@@ -36,8 +38,8 @@ Fuente del dibujo: [fuentes/06-analytics.mmd](fuentes/06-analytics.mmd).
 | Hooks de tareas | Node | `taskmate-api/services/AnalyticsIntegration.js` |
 | Job de métricas | `node-cron` | `taskmate-api/services/AnalyticsBatchJob.js` (lo arranca `server.js`) |
 | Enlace con Python | librería `ws` | `taskmate-api/services/LLMService.js` |
-| Agente de analytics | Python 3, FastAPI | `taskmate-api/mcp/agents/analytics_agent.py` (lo llama `orchestrator.py`) |
-| Cliente del modelo | Groq, `openai/gpt-oss-20b` | `taskmate-api/mcp/llm_service.py` |
+| Agente de analytics | Python 3, FastAPI (servicio Python) | `taskmate-api/mcp/agents/analytics_agent.py` (lo llama `orchestrator.py`) |
+| Cliente del modelo | SDK `groq` (`AsyncGroq`) o `httpx` hacia Ollama, según `LLM_PROVIDER` | `taskmate-api/mcp/llm_service.py` |
 | Tablas | SQL Server 2019 | `taskmate-api/taskmate_tables.sql` y `migrations/001_schema_fixes.sql` |
 
 Términos:
@@ -49,7 +51,9 @@ Términos:
 
 - El panel hace dos cosas separadas: lee los números por REST y pide recomendaciones por `/insights`.
 - Node aplica la regla de líder en los dos caminos. Python recibe el `team_context` ya armado; el que mande el navegador se descarta.
-- El agente calcula un puntaje fijo por persona y le pide a Groq que lo ajuste. Si Groq falla, contesta solo con el puntaje fijo.
+- El agente calcula un puntaje fijo por persona y le pide al modelo que lo ajuste. Si el modelo falla, tarda más de `LLM_TIMEOUT_SEC` o devuelve un JSON que no sirve, contesta solo con el puntaje fijo.
+- **Qué modelo responde:** el mismo del chat. `LLM_PROVIDER` elige `groq` (por defecto en el código y en `.env.example`) u `ollama` (lo agrega `scripts/local-up.sh` al `.env` de la raíz si falta); no hay un ajuste aparte para analytics.
+- **Qué sale de la máquina:** el prompt lleva la categoría y la descripción de la tarea y, por miembro, su nombre de usuario, puntaje fijo, carga, capacidad, puntaje de experiencia y tasa de éxito. Con Groq va a la nube; con Ollama se queda en la máquina.
 - Si `/insights` falla o no contesta en 30 s, el navegador arma una estimación local con la tabla de carga (ver [limitaciones](../01-proyecto/cierre-del-proyecto.md#analytics)).
 - El panel no escribe métricas. Las escriben las acciones sobre tareas:
   - completar, mandar a la papelera, borrar una lista o quitar a una persona cierran el registro dentro de su propia transacción (`tasks.model.js`, `usertask.model.js`);
@@ -66,8 +70,12 @@ Términos:
 | `ANALYTICS_ENABLED` | `false` apaga los hooks de tareas | encendidos |
 | `ANALYTICS_BATCH_ENABLED` | `true` arranca el job de métricas | apagado |
 | `ANALYTICS_BATCH_SCHEDULE` | horario del job, en formato cron | `0 2 * * *` (2:00 en la zona `TZ`, o UTC) |
-| `LLM_WEBSOCKET_URL` | dirección del servidor de IA | `ws://localhost:8001/ws` |
+| `LLM_WEBSOCKET_URL` | dirección del servicio Python | `ws://localhost:8001/ws` |
 | `MCP_SHARED_SECRET` | secreto que Node manda en `X-MCP-Secret` | ninguno: Python no arranca sin él (salvo `MCP_ALLOW_NO_SECRET=1`, solo para pruebas) |
+| `LLM_PROVIDER` (Python) | qué modelo ajusta los puntajes: `groq` u `ollama`; un valor desconocido usa Groq | `groq` |
+| `LLM_TIMEOUT_SEC` (Python) | tope de la llamada al modelo; al pasarlo, el agente usa el puntaje fijo | `60` |
+
+Las demás variables del modelo (`GROQ_API_KEY`, `LLM_MODEL`, `OLLAMA_HOST`, `OLLAMA_MODEL`…) son las del chat: ver [05-chat-ia.md](05-chat-ia.md) y la [guía técnica](../07-guias/guia-tecnica.md).
 
 ## Para saber más
 
@@ -75,5 +83,6 @@ Términos:
 - Quién puede hacer qué: [04-casos-de-uso/06-analytics.md](../04-casos-de-uso/06-analytics.md)
 - La pantalla: [05-interfaz/06-analytics.md](../05-interfaz/06-analytics.md)
 - El flujo paso a paso y los errores: [06-flujos/06-analytics.md](../06-flujos/06-analytics.md)
+- Cómo se elige el modelo (`LLM_PROVIDER`) en todo el servicio Python: [05-chat-ia.md](05-chat-ia.md)
 - Arquitectura de todo el sistema: [00-general.md](00-general.md)
-- Limitaciones y pendientes: [cierre del proyecto](../01-proyecto/cierre-del-proyecto.md#analytics)
+- Limitaciones y pendientes: [cierre de la línea de Pablo y estado](../01-proyecto/cierre-del-proyecto.md#analytics)

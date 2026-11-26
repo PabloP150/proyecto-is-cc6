@@ -1,22 +1,26 @@
 architecture-beta
     group nav(mdi:web)[Navegador]
-    service fe(logos:react)[Pestaña CI CD] in nav
+    service fe(logos:react)[Pestaña CI/CD] in nav
     service avisos(mdi:bell)[Avisos en vivo] in nav
+    service vtab(logos:react)[Pestaña Vercel (monitoring)] in nav
 
     group api(logos:nodejs-icon)[API Express puerto 9000]
-    service rutas(logos:express)[Rutas CI CD] in api
+    service rutas(logos:express)[Rutas CI/CD] in api
     service pipe(mdi:sitemap)[pipelineService] in api
     service acts(mdi:rocket-launch)[Ejecuciones y deploys] in api
     service hook(mdi:api)[webhookHandler] in api
     service hub(logos:websocket)[Hub realtime] in api
+    service drt(logos:express)[Rutas /api/deploy] in api
+    service vhook(mdi:webhook)[Webhook Vercel HMAC SHA-1] in api
 
-    group docker(logos:docker-icon)[Docker]
+    group docker(logos:docker-icon)[Docker o Podman]
     service db(mdi:database)[SQL Server 2019] in docker
 
-    group ia(logos:python)[Servidor de IA]
+    group ia(logos:python)[Servicio Python del chat]
     service agent(logos:fastapi-icon)[PipelineAgent] in ia
 
     service groq(logos:groq)[Groq]
+    service ollama(logos:ollama)[Ollama]
 
     group github(logos:github-icon)[GitHub]
     service ghapi(logos:github-icon)[API de GitHub] in github
@@ -24,6 +28,7 @@ architecture-beta
     service pages(mdi:web)[GitHub Pages] in github
 
     service smee(mdi:lan)[smee]
+    service vercel(logos:vercel-icon)[Vercel]
 
     fe:R --> L:rutas
     rutas:R --> L:pipe
@@ -33,8 +38,11 @@ architecture-beta
     gha:R --> L:pages
     pipe{group}:T --> B:agent{group}
     agent:L --> R:groq
-    hook{group}:B --> T:db{group}
+    agent:R --> L:ollama
     gha{group}:B --> T:smee
     smee:L --> R:hook
     hook:L --> R:hub
     hub:L --> R:avisos
+    vtab:R --> L:drt
+    vercel:L --> R:vhook
+    vhook{group}:B --> T:db{group}

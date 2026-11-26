@@ -12,7 +12,7 @@ architecture-beta
     service rest(mdi:api)[Rutas REST] in api
     service chat(logos:websocket)[Chat WebSocket] in api
     service hook(mdi:shield-key)[Webhook HMAC] in api
-    service svc(mdi:source-branch)[Servicios GitHub] in api
+    service svc(mdi:source-branch)[Servicios GitHub e IA] in api
     junction k0 in api
     junction k1 in api
     junction k2 in api
@@ -26,8 +26,10 @@ architecture-beta
     service ghapi(logos:github-icon)[GitHub API y webhooks]
     service smee(mdi:web)[smee]
     service db(mdi:database)[SQL Server 2019]
-    service ai(logos:fastapi-icon)[Servidor de IA]
+    service aisrv(logos:fastapi-icon)[Servidor de IA local puerto 8000]
+    service ai(logos:fastapi-icon)[Servicio Python del chat]
     service groq(logos:groq)[Groq]
+    service ollama(logos:ollama)[Ollama modelo local]
 
     fe:T -- B:jf
     jf:R --> L:ghweb
@@ -50,6 +52,7 @@ architecture-beta
     m1:R --> L:ghapi
     m2:B -- T:m3
     m3:R --> L:db
+    m2:R --> L:aisrv
 
     ghapi:R -- L:n1
     n1:T -- B:n0
@@ -58,4 +61,5 @@ architecture-beta
 
     chat:R -- L:z
     z:B --> T:ai
-    ai:R --> L:groq
+    ai:L --> R:groq
+    ai:R --> L:ollama

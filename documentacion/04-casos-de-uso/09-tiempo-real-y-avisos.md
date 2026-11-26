@@ -18,7 +18,7 @@ flowchart LR
         uc3(["Recibir aviso: falló una ejecución"])
         uc4(["Recibir aviso: terminó un deploy"])
         uc5(["Abrir el sitio publicado desde el aviso"])
-        uc6(["Ir a la pestaña CI/CD del grupo con «Ver»"])
+        uc6(["Ir a la pestaña CI/CD del grupo con «View»"])
         uc7(["Recibir aviso: un miembro pide producción"])
         uc8(["Recibir aviso: se canceló un deploy antes de publicar"])
         uc9(["Recibir aviso: aprobaron o rechazaron su solicitud"])
@@ -38,8 +38,8 @@ flowchart LR
 ```
 
 Términos:
-- **Evento**: mensaje corto que la API empuja por `/events` (`ci_run`, `ci_job`, `deployment` o `deploy_request`).
-- **Aviso**: la notificación que aparece abajo a la derecha; no todo evento produce uno.
+- **Evento**: mensaje corto que la API empuja por `/events` (`ci_run`, `ci_job`, `deployment` o `deploy_request`). `deployment` es un deploy de TaskMate a GitHub Pages, no un despliegue de Vercel.
+- **Aviso**: la notificación que aparece abajo a la derecha; no todo evento produce uno. Los textos de la app están en inglés y se citan tal cual.
 - **Admin del grupo**: el usuario en `Groups.adminId`; hay uno por grupo.
 
 ## Casos de uso
@@ -48,25 +48,27 @@ Términos:
 |---|---|---|
 | Conectarse en vivo | Cualquier usuario con sesión | Al iniciar sesión se abre `/events` y se suscribe a todos sus grupos. El servidor solo deja aquellos donde es miembro |
 | Pantallas que se actualizan solas | Miembro | Ejecuciones, detalle de una ejecución y entornos se recargan al llegar `ci_run`, `ci_job`, `deployment` o `deploy_request` de ese grupo |
-| Falló una ejecución | Miembro | «[Grupo] Falló «*título*» en *rama*.» Solo si terminó en `failure`, `timed_out` o `startup_failure` |
-| Terminó un deploy | Miembro | Éxito: «[Grupo] Staging se actualizó con `abc1234`.», con el botón «Abrir sitio». Fallo: «[Grupo] Falló el deploy de `abc1234` a producción.» |
-| «Ver» | Miembro | Elige ese grupo y abre `/github?tab=cicd` |
-| Un miembro pide producción | Admin, si no es quien la pidió | «[Grupo] *usuario* pide publicar `abc1234` en producción.» |
-| Deploy cancelado antes de publicar | Admin | «[Grupo] Se canceló «*título*» antes de publicar.» |
-| Aprobaron o rechazaron su solicitud | Quien la pidió | «[Grupo] *admin* aprobó tu solicitud…» o «…rechazó tu solicitud de `abc1234`. Motivo: …» |
+| Falló una ejecución | Miembro | «[Grupo] “*título*” failed on *rama*.» Solo si terminó en `failure`, `timed_out` o `startup_failure` |
+| Terminó un deploy | Miembro | Éxito: «[Grupo] Staging was updated to `abc1234`.» (o «Production was updated to…»), con el botón «Open site». Fallo: «[Grupo] Deploy of `abc1234` to production failed.» |
+| «View» | Miembro | Vuelve ese grupo el activo (también en el selector de grupo del navbar) y abre `/github?tab=cicd` |
+| Un miembro pide producción | Admin, si no es quien la pidió | «[Grupo] *usuario* asks to publish `abc1234` to production.» |
+| Deploy cancelado antes de publicar | Admin | «[Grupo] “*título*” was cancelled before publishing.» |
+| Aprobaron o rechazaron su solicitud | Quien la pidió | «[Grupo] *admin* approved your request: publishing `abc1234` to production.» o «[Grupo] *admin* rejected your request for `abc1234`. Reason: …» |
 | Enviar webhooks | GitHub (sistema) | `workflow_run`, `workflow_job` y `deployment_status` llegan firmados; la API los reparte a los grupos del repositorio |
 
 - Los avisos no se guardan. Lo que pasó con la pestaña cerrada se ve en la pestaña CI/CD.
 - Una solicitud cancelada (por quien la pidió, o por TaskMate porque ya no aplica) no da aviso: solo recarga la lista de solicitudes.
 - Un deploy que falla da un solo aviso, el del deploy; no llega además el de su ejecución.
+- Si el grupo no tiene nombre, el aviso empieza con «[Your group]».
+- **Los despliegues de Vercel no dan aviso ni llegan en vivo:** su webhook no publica nada en `/events`. Se ven en la pestaña «Vercel (monitoring)» al abrirla o con «Refresh» ([08-cicd.md](08-cicd.md)).
 
 ## Reglas de permisos
 
-Verificadas en `WebSocketServer.js`, `realtime.js`, `github.controller.js` y `CicdNotifications.jsx`.
+Verificadas en `WebSocketServer.js`, `cors.js`, `realtime.js`, `github.controller.js` y `CicdNotifications.jsx`.
 
 | Regla | Dónde se aplica | Si no se cumple |
 |---|---|---|
-| El `Origin` debe estar en `FRONTEND_URL` (o faltar, como en clientes que no son navegadores) | Upgrade del WebSocket | HTTP 403, no se abre |
+| El `Origin` debe estar en `FRONTEND_URL` (o faltar, como en clientes que no son navegadores). Con `ALLOW_LAN_ORIGINS=true`, solo para desarrollo, también vale `http://` con IPv4 privada y cualquier puerto | Upgrade del WebSocket | HTTP 403, no se abre |
 | JWT de acceso válido en `?token=` (HS256, `typ: access`, sin vencer) | Upgrade del WebSocket | HTTP 401, no se abre |
 | Solo grupos donde el usuario es miembro (`UserGroups`), máx. 50, ids con formato UUID | `subscribe` | El grupo se omite en silencio |
 | La membresía se vuelve a comprobar antes de entregar si tiene más de 5 min | Entrega de cada evento | Deja de recibir ese grupo |

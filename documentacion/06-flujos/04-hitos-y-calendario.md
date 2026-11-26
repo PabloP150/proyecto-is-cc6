@@ -85,7 +85,7 @@ Ejemplo: A (80 %) y B (40 %) apuntan a C como progresores → C = 60 %. Si C es 
 
 ## Paso a paso
 
-1. **Abrir:** el lienzo pide hitos y flechas del grupo activo y ajusta la vista sin pasar de 100 % de zoom.
+1. **Abrir:** el lienzo pide hitos y flechas del grupo activo y ajusta la vista sin pasar de 100 % de zoom. Si se cambia el grupo en el selector de la barra, el lienzo se vuelve a montar y pide los del grupo nuevo; el calendario también.
 2. **Crear:** nombre y fecha → «Add Milestone» → `POST /api/nodes` → la tarjeta aparece con 0 %.
 3. **Importar:** «Import Task» → elegir tarea → `POST /api/nodes` con el id de la tarea, su fecha y su %.
 4. **Mover:** soltar la tarjeta → `PUT /api/nodes/:id/coords`.
@@ -112,15 +112,16 @@ En «Milestones» el error sale en un aviso rojo abajo al centro (4 s). En «Cal
 | Nombre vacío o largo, fecha vacía o inválida | 400 `VALIDATION_ERROR` | «name is required», «name must be at most 25 characters», «date is required» o «date must be a date like YYYY-MM-DD…» |
 | Conectar hitos o importar una tarea de otro grupo | 400 `VALIDATION_ERROR` | «sourceId and targetId must be nodes of the group» o «nid belongs to a task of another group» |
 | Repetir una flecha con el mismo origen y destino | 409 `DUPLICATE_EDGE` | «These nodes are already connected» |
-| Demasiados pedidos | 429 `RATE_LIMITED` | «Demasiadas solicitudes. Espera un momento e inténtalo de nuevo.» |
+| Demasiados pedidos | 429 `RATE_LIMITED` | «Too many requests. Wait a moment and try again.» |
 | La API no responde o falla | `NETWORK_ERROR` o 500 `INTERNAL_ERROR` | «Could not reach the server. Check your connection.» o «Internal server error» |
 
 - **Después del error:** si falla borrar, el lienzo se recarga y el elemento vuelve. Si falla el %, el tipo de flecha o completar, se deshace el cambio local. Si falla crear o conectar, no aparece nada nuevo.
 - **Antes de llamar,** la interfaz evita algunos errores: «Add Milestone» se desactiva sin grupo, nombre o fecha, el nombre no deja escribir más de 25 caracteres y «Progress» solo acepta de 0 a 100.
+- **Sin grupo activo** no se llama a la API: el lienzo muestra «Select a group to view and create milestones.» y el calendario «Select a group to view the calendar.».
 
 ## Para saber más
 - Tablas y triggers: [03-base-de-datos/04-hitos-y-calendario.md](../03-base-de-datos/04-hitos-y-calendario.md)
 - Pantallas: [05-interfaz/04-hitos-y-calendario.md](../05-interfaz/04-hitos-y-calendario.md)
 - Permisos: [04-casos-de-uso/04-hitos-y-calendario.md](../04-casos-de-uso/04-hitos-y-calendario.md)
 - Arquitectura: [02-arquitectura/04-hitos-y-calendario.md](../02-arquitectura/04-hitos-y-calendario.md)
-- Limitaciones conocidas: [cierre del proyecto](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)
+- Limitaciones conocidas: [cierre de la línea de Pablo y estado](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)
