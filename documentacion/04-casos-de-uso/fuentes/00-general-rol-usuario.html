@@ -1,0 +1,117 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Casos de uso: Usuario</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1370px;height:990px;background:#ffffff;overflow:hidden}
+body{font-family:'Avenir Next','Helvetica Neue',Arial,sans-serif;color:#0f172a;-webkit-font-smoothing:antialiased}
+#stage{position:relative;width:1370px;height:990px}
+#wires{position:absolute;left:0;top:0;width:1370px;height:990px;z-index:0}
+.top{position:absolute;left:22px;right:22px;top:16px;height:54px;display:flex;align-items:center;gap:10px;z-index:2}
+.pill{font-size:22px;font-weight:700;padding:6px 18px;border-radius:999px;border:2px solid #cbd5e1;color:#94a3b8;background:#fff}
+.pill.on{color:#fff}
+.sep{font-size:26px;color:#94a3b8;font-weight:700}
+.toptxt{margin-left:auto;font-size:22px;color:#475569;font-weight:500}
+.actor{position:absolute;z-index:2;display:flex;flex-direction:column;align-items:center;text-align:center}
+.disc{width:132px;height:132px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:6px solid}
+.disc svg{width:92px;height:92px;color:#fff}
+.aname{font-size:34px;font-weight:800;margin-top:8px}
+.note{margin-top:14px;font-size:22px;line-height:1.25;padding:10px 12px;border-radius:14px;border:2px dashed;color:#1e293b;text-align:left}
+.note + .note{margin-top:10px}
+.mods{position:absolute;z-index:2;display:flex;flex-direction:column;justify-content:center}
+.card{display:flex;align-items:center;background:#f8fafc;border:2px solid #94a3b8;border-left-width:10px;border-radius:18px;padding:10px 14px 10px 14px}
+.ttl{display:flex;align-items:center;gap:12px;flex:0 0 auto}
+.num{flex:0 0 auto;border-radius:50%;background:#0f172a;color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center}
+.tname{font-weight:800;line-height:1.12;color:#0f172a}
+.tname .sub{display:block;font-weight:600;color:#475569}
+.chips{display:flex;flex-wrap:wrap;gap:8px 9px;align-content:center;flex:1 1 auto}
+.chips.stack{flex-direction:column;flex-wrap:nowrap;align-items:flex-start;gap:10px}
+.chip{display:inline-flex;align-items:center;gap:7px;border:2px solid;border-radius:999px;font-family:'Avenir Next Condensed','Avenir Next',sans-serif;font-weight:600;line-height:1.15;white-space:nowrap}
+.chip .ic{display:inline-flex;gap:4px;flex:0 0 auto}
+.chip .ic img,.chip .ic .srv{width:1.1em;height:1.1em;display:block;object-fit:contain}
+.chip .ic img.tri{width:1.05em;height:0.92em;margin-top:0.08em}
+.srv svg{width:100%;height:100%;color:#15803d;display:block}
+.chip .two{display:flex;flex-direction:column}
+.chip .two small{font-size:0.85em;font-weight:500;opacity:.9;white-space:nowrap}
+.sect{font-weight:800;color:#334155;letter-spacing:.2px}
+.foot{font-size:22px;color:#475569;font-style:italic}
+.ext{position:absolute;z-index:2;width:200px;background:#14532d;border:4px solid #16a34a;border-radius:22px;padding:12px 8px 12px 8px;display:flex;flex-direction:column;align-items:center;text-align:center;color:#fff}
+.ext .badge{width:64px;height:64px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;margin-bottom:8px}
+.ext .badge img{width:44px;height:44px;object-fit:contain}
+.ext .badge img.tri{width:42px;height:37px;margin-top:-4px}
+.ext .badge .srv{width:42px;height:42px;display:block}
+.ext .en{font-size:25px;font-weight:800;line-height:1.1}
+.ext .es{font-size:22px;color:#bbf7d0;line-height:1.15;margin-top:4px;font-weight:500}
+</style></head><body><div id="stage">
+<svg id="wires" xmlns="http://www.w3.org/2000/svg"></svg><div class="top"><span class="pill on" style="background:#475569;border-color:#64748b">Usuario</span><span class="sep">›</span><span class="pill" style="color:#2563eb;border-color:#2563eb55">Miembro</span><span class="sep">›</span><span class="pill" style="color:#9333ea;border-color:#9333ea55">Líder</span><span class="sep">›</span><span class="pill" style="color:#dc2626;border-color:#dc262655">Admin</span><span class="toptxt">cada rol hereda todo lo del anterior</span></div><div class="actor" id="actor" style="left:22px;width:224px"><div class="disc" id="disc" style="background:#475569;border-color:#64748b"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 4a4 4 0 0 1 4 4a4 4 0 0 1-4 4a4 4 0 0 1-4-4a4 4 0 0 1 4-4m0 10c4.42 0 8 1.79 8 4v2H4v-2c0-2.21 3.58-4 8-4"/></svg></div><div class="aname" style="color:#475569">Usuario</div><div class="note" style="border-color:#64748b;background:#f1f5f9"><b>Sin sesión</b> solo puede crear cuenta e iniciar sesión</div></div><div class="mods" id="mods" style="left:296px;top:78px;width:796px;height:898px;gap:60px"><div class="card" id="m1" style="border-left-color:#64748b"><div class="ttl" style="width:262px"><span class="num" style="width:56px;height:56px;font-size:29px">1</span><span class="tname" style="font-size:31px">Usuarios y acceso</span></div><div class="chips stack" style="gap:16px 16px"><span class="chip" style="background:#e2e8f0;border-color:#64748b;color:#1e293b;font-size:29px;padding:10px 22px">Crear cuenta (con su grupo personal)</span><span class="chip" style="background:#e2e8f0;border-color:#64748b;color:#1e293b;font-size:29px;padding:10px 22px">Iniciar sesión</span><span class="chip" style="background:#e2e8f0;border-color:#64748b;color:#1e293b;font-size:29px;padding:10px 22px">Cerrar sesión</span></div></div><div class="card" id="m2" style="border-left-color:#64748b"><div class="ttl" style="width:262px"><span class="num" style="width:56px;height:56px;font-size:29px">2</span><span class="tname" style="font-size:31px">Grupos y roles</span></div><div class="chips stack" style="gap:16px 16px"><span class="chip" style="background:#e2e8f0;border-color:#64748b;color:#1e293b;font-size:29px;padding:10px 22px">Crear un grupo y quedar como admin</span><span class="chip" style="background:#e2e8f0;border-color:#64748b;color:#1e293b;font-size:29px;padding:10px 22px">Elegir el grupo activo en el navbar</span></div></div><div class="card" id="m5" style="border-left-color:#64748b"><div class="ttl" style="width:262px"><span class="num" style="width:56px;height:56px;font-size:29px">5</span><span class="tname" style="font-size:31px">Chat IA<span class='sub'>sin grupo activo</span></span></div><div class="chips stack" style="gap:16px 16px"><span class="chip" style="background:#e2e8f0;border-color:#64748b;color:#1e293b;font-size:29px;padding:10px 22px">Conversar sobre un proyecto nuevo</span><span class="chip" style="background:#e2e8f0;border-color:#64748b;color:#1e293b;font-size:29px;padding:10px 22px">Confirmar el plan: crea un grupo nuevo</span><span class="chip" id="c_docs" style="background:#e2e8f0;border-color:#64748b;color:#1e293b;font-size:29px;padding:10px 22px"><span class="ic"><span class="srv"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 1h16a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1m0 8h16a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1m0 8h16a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1M9 5h1V3H9zm0 8h1v-2H9zm0 8h1v-2H9zM5 3v2h2V3zm0 8v2h2v-2zm0 8v2h2v-2z"/></svg></span></span>Documentos de apoyo para el chat</span></div></div></div><div class="ext" id="x_ais" style="left:1148px;top:0px"><div class="badge"><span class="srv"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 1h16a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1m0 8h16a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1m0 8h16a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1M9 5h1V3H9zm0 8h1v-2H9zm0 8h1v-2H9zM5 3v2h2V3zm0 8v2h2v-2zm0 8v2h2v-2z"/></svg></span></div><div class="en">Servidor de IA local</div><div class="es">FastAPI + Ollama</div></div></div>
+<script>
+const C = {"role_main": "#64748b", "links": [["m5", "ais", "c_docs"]], "ext_align": {}, "exts": ["ais"], "top": 78, "H": 990};
+function R(el){const s=document.getElementById('stage').getBoundingClientRect();const b=el.getBoundingClientRect();return {x:b.left-s.left,y:b.top-s.top,w:b.width,h:b.height,cx:b.left-s.left+b.width/2,cy:b.top-s.top+b.height/2,r:b.right-s.left,b:b.bottom-s.top};}
+function go(){
+  // actor centrado verticalmente respecto del bloque de módulos
+  const mods=[...document.querySelectorAll('.card')];
+  const first=R(mods[0]), last=R(mods[mods.length-1]);
+  const actor=document.getElementById('actor');
+  const ah=actor.getBoundingClientRect().height;
+  let ay=(first.y+last.b)/2 - 66 - 10; // centro del disco alineado al centro del bloque
+  ay=Math.max(C.top+4, Math.min(ay, C.H-ah-10));
+  actor.style.top=ay+'px';
+  // si el centro del disco queda casi a la altura de una tarjeta, alinearlo para que el cable salga recto
+  { const dc=R(document.getElementById('disc')).cy; let best=null;
+    mods.forEach(m=>{const c=R(m).cy; if(Math.abs(c-dc)<40 && (best===null||Math.abs(c-dc)<Math.abs(best-dc))) best=c;});
+    if(best!==null){ ay+=best-dc; actor.style.top=ay+'px'; } }
+  // externos alineados con sus módulos
+  const items=C.exts.map(e=>{
+    const el=document.getElementById('x_'+e);
+    const al=(C.ext_align[e]||C.links.filter(l=>l[1]==e).map(l=>l[0]));
+    const ys=al.map(id=>R(document.getElementById(id)).cy);
+    const cy=ys.reduce((a,b)=>a+b,0)/ys.length;
+    const h=el.getBoundingClientRect().height;
+    return {el:el,h:h,y:cy-h/2};
+  });
+  items.sort((a,b)=>a.y-b.y);
+  for(let i=0;i<items.length;i++){ if(i>0) items[i].y=Math.max(items[i].y, items[i-1].y+items[i-1].h+22); items[i].y=Math.max(items[i].y,C.top); }
+  for(let i=items.length-1;i>=0;i--){ const lim = i==items.length-1 ? C.H-8 : items[i+1].y-22; if(items[i].y+items[i].h>lim) items[i].y=lim-items[i].h; }
+  items.forEach(it=>{it.el.style.top=it.y+'px';});
+  const svg=document.getElementById('wires');
+  let s='';
+  const disc=R(document.getElementById('disc'));
+  const ax=disc.r, ayc=disc.cy;
+  // tronco vertical entre las notas del actor y las tarjetas: los cables no rozan las notas
+  const notesR=R(document.getElementById('actor')).r;
+  const firstX=R(mods[0]).x;
+  const xt=(notesR+firstX)/2;
+  mods.forEach(m=>{
+    const b=R(m); const x2=b.x, y2=b.cy; const dy=y2-ayc;
+    if(Math.abs(dy)<2){ s+=`<path d="M${ax} ${ayc} H ${x2}" fill="none" stroke="${C.role_main}" stroke-width="4" stroke-linecap="round"/>`; return; }
+    const sg=dy>0?1:-1; const rr=Math.min(16,Math.abs(dy)/2);
+    s+=`<path d="M${ax} ${ayc} H ${xt-rr} Q ${xt} ${ayc} ${xt} ${ayc+sg*rr} V ${y2-sg*rr} Q ${xt} ${y2} ${xt+rr} ${y2} H ${x2}" fill="none" stroke="${C.role_main}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>`;
+  });
+  // cables a sistemas externos: extremos repartidos por el borde del externo
+  // si dos cables salen de la misma tarjeta a la misma altura, separarlos según la posición del externo
+  const byCard={};
+  C.links.forEach(l=>{(byCard[l[0]]=byCard[l[0]]||[]).push(l);});
+  const off={};
+  Object.values(byCard).forEach(arr=>{
+    if(arr.length<2) return;
+    const ys=arr.map(l=>l[2]?R(document.getElementById(l[2])).cy:R(document.getElementById(l[0])).cy);
+    if(Math.abs(ys[0]-ys[1])<4){
+      const ord=arr.map((l,i)=>({l:l,ey:R(document.getElementById('x_'+l[1])).cy})).sort((a,b)=>a.ey-b.ey);
+      ord.forEach((o,i)=>{off[o.l.join('|')]=(i-(ord.length-1)/2)*24;});
+    }
+  });
+  C.exts.forEach(e=>{
+    const xe=R(document.getElementById('x_'+e));
+    const ls=C.links.filter(l=>l[1]==e).map(l=>{const card=R(document.getElementById(l[0]));const a=l[2]?R(document.getElementById(l[2])):card;return {x1:card.r,y1:a.cy+(off[l.join('|')]||0)};});
+    ls.sort((p,q)=>p.y1-q.y1);
+    const n=ls.length;
+    ls.forEach((p,i)=>{
+      const y2 = n==1 ? xe.cy : xe.y+xe.h*0.25 + (xe.h*0.5)*i/(n-1);
+      const x2=xe.x; const dx=(x2-p.x1)*0.5;
+      s+=`<path d="M${p.x1} ${p.y1} C ${p.x1+dx} ${p.y1}, ${x2-dx} ${y2}, ${x2} ${y2}" fill="none" stroke="#16a34a" stroke-width="4" stroke-linecap="round"/>`;
+      s+=`<circle cx="${p.x1}" cy="${p.y1}" r="6" fill="#16a34a"/>`;
+    });
+  });
+  svg.innerHTML=s;
+  document.body.setAttribute('data-done','1');
+}
+window.addEventListener('load', go);
+</script></body></html>

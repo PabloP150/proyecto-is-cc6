@@ -4,7 +4,7 @@
 
 ![Arquitectura general de TaskMate](imagenes/00-general.png)
 
-Fuente del diagrama: [fuentes/00-general.mmd](fuentes/00-general.mmd). Las flechas que salen del borde de un grupo (API, servicio Python o GitHub) parten del grupo entero, no del icono que tienen al lado. La línea de arriba junta las dos llamadas al servidor de IA local: la de la API y la del servicio Python.
+Cómo leerlo: el azul es TaskMate en tu máquina, el verde la IA local (también en tu máquina) y el naranja lo que está en internet. Cada flecha dice qué viaja por ella. La flecha verde gruesa es el modelo principal del chat (Gemma 4 en Ollama); las punteadas son lo opcional: Groq de respaldo y smee.io, que solo se usa en desarrollo. Fuente: [fuentes/00-general.html](fuentes/00-general.html).
 
 | Conexión | Qué viaja | Cómo |
 |---|---|---|
@@ -25,6 +25,22 @@ Fuente del diagrama: [fuentes/00-general.mmd](fuentes/00-general.mmd). Las flech
 No se dibujan dos conexiones internas: el webhook de GitHub avisa a los navegadores por `/events`, y al instalar la App el navegador va a GitHub y GitHub lo devuelve a `GET /api/github/callback`.
 
 El modelo del chat es el local (Ollama con Gemma 4). Lo opcional es el servidor de IA local: sin `AI_SERVER_URL`, auditar, proponer pruebas y revisar un PR responden 503 `AI_SERVER_DISABLED` («Review PR» lo comprueba antes de reservar el commit, así que no deja una revisión `failed`), el webhook no lanza la revisión automática y el chat funciona sin los documentos del proyecto. El servidor de IA local es un repo aparte de Christian; lo explica [IA sobre el código](10-ia-sobre-el-codigo.md).
+
+## Por capas
+
+La misma arquitectura resumida en cuatro capas (presentación, lógica, IA local y datos), con los servicios de internet a la derecha.
+
+![Arquitectura de TaskMate por capas: web React, API Express, IA local, SQL Server y servicios externos](imagenes/00-capas.png)
+
+Fuente: [fuentes/00-capas.html](fuentes/00-capas.html).
+
+Las dos imágenes de arriba están dibujadas en HTML y SVG (son las mismas de la presentación), no en Mermaid. Para regenerar un PNG se abre su HTML en Chrome sin interfaz, a 1370×990 y escala 2:
+
+```bash
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --hide-scrollbars \
+  --force-device-scale-factor=2 --window-size=1370,990 \
+  --screenshot=imagenes/00-general.png "file://$PWD/fuentes/00-general.html"
+```
 
 ## Contexto
 
