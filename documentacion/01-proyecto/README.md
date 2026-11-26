@@ -25,7 +25,7 @@ Esta carpeta no tiene páginas por módulo: son documentos de todo el proyecto. 
 
 ## Lo más buscado
 
-- Estado al 26 nov 2026 (2091 pruebas en verde, lo nuevo en `master`): [qué es TaskMate, estado](que-es-taskmate.md#estado).
+- Estado al 26 nov 2026 (2163 pruebas en verde, lo nuevo en `master`): [qué es TaskMate, estado](que-es-taskmate.md#estado).
 - Lo que trajo la línea de Christian (servidor de IA local, Vercel, archivos por tarea, IA sobre el código, chat sobre el modelo local): [09-linea-christian](../09-linea-christian/README.md).
 - Estado verificado al cierre de la línea de Pablo (pruebas, lint, build): [cierre, estado verificado](cierre-del-proyecto.md#estado-verificado-al-3-nov-2026).
 - Lo que no hizo la línea de Pablo (Fases 5–8): [cierre, qué no se hizo](cierre-del-proyecto.md#qué-no-se-hizo).

@@ -18,7 +18,8 @@ solo como respaldo en la nube.
 navegador ──ws──▶ API Node (/chat) ──ws──▶ servicio Python (:8001) ──▶ Ollama (:11434)
                                                        │                  (Groq solo como respaldo en la nube)
                                                        └──▶ servidor de IA (:8000) /search
-                                                            (solo sin proyecto, con X-AI-Server-Secret)
+                                                            (solo sin proyecto o con un grupo sin usar,
+                                                             con X-AI-Server-Secret)
 ```
 
 Un mismo modelo en la GPU de 4 GB para los dos servicios, en lugar de dos compitiendo por ella.
@@ -57,13 +58,21 @@ razonamiento, y `/api/chat` de Ollama lo activa por defecto. Medido con la misma
 El razonamiento se comía todo el presupuesto de tokens. El servidor de IA nunca lo sufrió porque
 usa `/api/generate`. Ahora va desactivado (`OLLAMA_THINK=0`).
 
+### El plan del proyecto nuevo se enciclaba (26 nov)
+
+Al escribir el JSON largo del plan, Gemma 4 se repetía más o menos la mitad de las veces (salida
+inválida o «token repeat limit reached»). Solo para ese plan se pide `repeat_penalty` 1.1
+(`recommendations_agent.py`): en la medición, 12 de 12 planes buenos contra 6 de 12. Además, si el
+plan falla, se reintenta una vez si quedan al menos 20 s de un presupuesto de 80 s (Node corta a los
+90 s); un timeout o un límite de uso no se reintenta.
+
 ## 2. Conocimiento del proyecto (la fusión)
 
 Antes de responder, el chatbot pregunta al servidor de IA qué fragmentos indexados (documentos,
 código) son relevantes para el mensaje (`mcp/knowledge.py`) y los incluye en el prompt.
 
 **Desde el 19 nov (`f152a9e`) esto solo pasa sin un proyecto seleccionado** (chat de proyecto
-nuevo). Con proyecto, el prompt lleva el contexto que arma la API (equipo, tareas, hitos y, con
+nuevo; desde el 26 nov, también en un grupo sin usar). Con proyecto, el prompt lleva el contexto que arma la API (equipo, tareas, hitos y, con
 «Allow AI analysis», el repositorio). La consulta lleva la cabecera `X-AI-Server-Secret` cuando
 `AI_SERVER_SECRET` está definido; el servidor de IA rechaza las que no la traen (salvo si arrancó
 sin secreto y con `AI_SERVER_ALLOW_NO_SECRET=1`), y entonces el chat sigue sin ese contexto.
@@ -125,10 +134,10 @@ Cifras de la rama al hacer este cambio (9 oct, sobre `fe9d87d`), no las actuales
 | API | 882 | 885 |
 | Frontend | 310 | 316 |
 
-Lo que aportó este cambio (`921f8ed`): `test_local_provider.py` (8; hoy 9), `test_knowledge.py`
+Lo que aportó este cambio (`921f8ed`): `test_local_provider.py` (8; hoy 11), `test_knowledge.py`
 (6; hoy 7), `test_server.py` (+2), el streaming en las pruebas de `UserSession` (+4) y
-`ChatPageStreaming.test.jsx` (6). Medido el 26 nov 2026, con los arreglos de ese día (todo en `master` desde el 26 nov): Python 210, API 1324 y
-frontend 438, todas en verde.
+`ChatPageStreaming.test.jsx` (6). Medido el 26 nov 2026, con los arreglos y las correcciones del chat de ese día (todo en `master`): Python 238, API 1355 y
+frontend 448, todas en verde.
 
 Las pruebas de Python usan un transporte HTTP simulado: no necesitan Ollama. `tests/conftest.py`
 fija `LLM_PROVIDER=groq`, `LLM_STREAM_CHAT=1` y deja vacío `AI_SERVER_URL` para que el `.env` local
@@ -138,7 +147,7 @@ no se cuele.
 
 El proyecto de conocimiento es fijo (`AI_SERVER_PROJECT`, por defecto `TaskMate`). El chatbot no
 traduce aún «el grupo seleccionado» a un proyecto del servidor de IA; por eso, desde el 19 nov, el
-conocimiento solo se consulta en el chat sin proyecto. Los demás límites están en
+conocimiento solo se consulta en el chat sin proyecto (desde el 26 nov, también con un grupo sin usar). Los demás límites están en
 [limitaciones conocidas](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas).
 
 ## Rendimiento (19 nov 2026)

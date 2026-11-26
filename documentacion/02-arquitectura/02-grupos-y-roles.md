@@ -15,7 +15,7 @@ Fuente del diagrama: [fuentes/02-grupos-y-roles.mmd](fuentes/02-grupos-y-roles.m
 | requireAuth | Guardias de grupo | La petición con el usuario del token (`req.user.userId`) |
 | Guardias de grupo | Controllers | La petición ya autorizada, con el grupo validado (`req.groupId`) |
 | Controllers | Modelos | Llamadas como `leaveGroup(uid, gid)` o `assignRoleToUser(...)` |
-| Analytics, Plan del chat y módulos con IA | Modelos | Analytics pregunta quién es líder; el plan del chat crea un grupo con sus roles; el chat, GitHub, CI/CD y la IA sobre el código revisan la membresía y el permiso «análisis con IA» del grupo |
+| Analytics, Plan del chat y módulos con IA | Modelos | Analytics pregunta quién es líder; el plan del chat crea un grupo con sus roles (o se los agrega a un grupo sin usar); el chat, GitHub, CI/CD y la IA sobre el código revisan la membresía y el permiso «análisis con IA» del grupo |
 | Modelos | SQL Server 2019 | Consultas con parámetros (driver `tedious`); en transacción cuando cambian varias tablas |
 
 ## Piezas
@@ -33,7 +33,7 @@ Fuente del diagrama: [fuentes/02-grupos-y-roles.mmd](fuentes/02-grupos-y-roles.m
 | Controllers | Express 4 (`Router`) | `controllers/group.controller.js`, `groupRoles.controller.js`, `userGroupRoles.controller.js`; `user.controller.js` (`GET /getuid`) |
 | Modelos | `tedious` + `withTransaction` | `models/group.model.js`, `userGroup.model.js`, `groupRoles.model.js`, `userGroupRoles.model.js`; `helpers/transaction.js` |
 | Analytics | Regla de líder | `models/access.model.js` (`isGroupLeader`), `controllers/analytics.controller.js`, `services/UserSession.js` |
-| Plan del chat | Crea grupo, membresía y roles | `services/ProjectService.js` |
+| Plan del chat | Crea grupo, membresía y roles; en un grupo sin usar, le pone el nombre del proyecto y le agrega los roles | `services/ProjectService.js` |
 | Permiso «análisis con IA» | Columna `BIT` del repositorio del grupo | `GroupRepositories.ai_analysis_enabled` (migración 005); ruta `PUT /api/github/groups/:gid/ai-analysis` en `controllers/github.controller.js`; `models/github.model.js` (`setAiAnalysisEnabled`) |
 | SQL Server 2019 | Contenedor `taskmate-sql` (Docker, o Podman con `scripts/local-up.sh`) | Tablas `Groups`, `UserGroups`, `GroupRoles` y `UserGroupRoles` |
 
@@ -57,7 +57,7 @@ Fuente del diagrama: [fuentes/02-grupos-y-roles.mmd](fuentes/02-grupos-y-roles.m
   - Solo el admin lo cambia (`requireGroupAdmin`), con el interruptor «Allow AI analysis» de `/github`.
   - Vive en `GroupRepositories`, así que hace falta un repositorio conectado (si no, 409 `REPO_NOT_CONNECTED`). Vuelve a apagado si el grupo conecta otro repositorio.
   - Lo revisan el chat (el repositorio solo entra al contexto con permiso), el análisis del repositorio («Analyze with AI», «Propose tasks» o un plan pedido en el chat), «Propose with AI» del pipeline y la IA sobre el código (Audit, Generate tests, Review PR y la revisión automática del PR). Sin él, esas acciones fallan con `AI_ANALYSIS_DISABLED` (409 en las rutas) y la revisión automática no se hace.
-- **Otros módulos leen estos datos.** Analytics trata como **líder** al admin o a quien tenga un rol cuyo nombre contiene «leader». El plan del chat crea un grupo nuevo con sus roles. Todas las tablas con `gid` (tareas, hitos, repositorio, CI/CD, despliegues de Vercel…) cuelgan de `Groups`; al borrar el grupo, la base borra sola `AnalyticsConfig`, `GroupRepositories`, `DeployRequests`, `Deployments` y `GroupDeployTargets` ([detalle](../03-base-de-datos/02-grupos-y-roles.md#reglas)).
+- **Otros módulos leen estos datos.** Analytics trata como **líder** al admin o a quien tenga un rol cuyo nombre contiene «leader». El plan del chat crea un grupo nuevo con sus roles o, en un grupo sin usar del que el usuario es admin, le pone el nombre del proyecto y le agrega los roles. Todas las tablas con `gid` (tareas, hitos, repositorio, CI/CD, despliegues de Vercel…) cuelgan de `Groups`; al borrar el grupo, la base borra sola `AnalyticsConfig`, `GroupRepositories`, `DeployRequests`, `Deployments` y `GroupDeployTargets` ([detalle](../03-base-de-datos/02-grupos-y-roles.md#reglas)).
 
 ## Para saber más
 

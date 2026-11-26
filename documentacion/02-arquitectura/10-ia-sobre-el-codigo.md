@@ -19,7 +19,7 @@ Las flechas del dibujo no llevan texto. Esto es lo que viaja por cada una:
 | taskAi y prReview → SQL Server | `AiReviews` por `aiReview.model.js` (reservar, cerrar y leer la última). La rama, el PR y el permiso de IA salen de `github.model.js` |
 | taskAi y prReview → GitHub API | Con el token de instalación de la App: `GET compare/<base>...<rama>` (en la revisión del PR, `<base>...<commit>`; `contents: read`) para los parches por archivo, `GET pulls/{n}` (`pull_requests: read`) en la revisión manual y `POST pulls/{n}/reviews` con `event: COMMENT` (`pull_requests: write`) |
 | taskAi y prReview → API FastAPI | `POST {AI_SERVER_URL}/commands/<comando>` (`audit`, `generate-tests` o `review-pr`) con `{project, args}` y la cabecera `X-AI-Server-Secret`. `args` lleva los parches del diff tal cual |
-| Servicio Python del chat → API FastAPI | `POST /search` con `X-AI-Server-Secret`, solo cuando el chat no tiene proyecto elegido ([módulo Chat](05-chat-ia.md)) |
+| Servicio Python del chat → API FastAPI | `POST /search` con `X-AI-Server-Secret`, solo cuando el chat no tiene proyecto elegido o el grupo está sin usar ([módulo Chat](05-chat-ia.md)) |
 | API FastAPI → Ollama | HTTP a `127.0.0.1:11434`: `gemma4:e2b-it-qat` para escribir y `embeddinggemma:300m` para los embeddings |
 | API FastAPI → Postgres | Cada comando deja una fila en `command_runs`; `/search` busca en `chunks` y `chunk_embeddings` |
 

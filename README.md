@@ -6,7 +6,7 @@
 > - **Línea de Pablo: cerró el 3 nov 2026 con las Fases 1–4**, en `master`: PR #2 (`7e1610f`) y PR #4 (`183f1cb`) el 6 oct 2026; PR #5 (`56f7136`) el 22 oct 2026. Las Fases 5 y 8 no se realizarán; la 6 (SonarQube) se canceló en la etapa de plan, sin código; la 7 (colisión de archivos) quedó pospuesta en la línea de Christian.
 > - **La línea de Christian siguió** con sus fechas corridas: puntos 1–7 completos (servidor de IA local, comandos, monitoreo de Vercel, archivos por tarea, `audit`, generar pruebas y revisión de PR con IA), además del chat sobre el modelo local. La 8 (colisión de archivos) está pospuesta con la base hecha y la 9 (pruebas finales), pendiente. Entró por la rama `test/e2e`, que se fusionó en `master` el 26 nov 2026 → [línea de Christian](documentacion/09-linea-christian/README.md).
 > - La interfaz de la app está en inglés desde el 19 nov 2026 (`d148763`).
-> - 2091 pruebas en verde y 0 fallando, y ESLint en 0 (26 nov 2026, con los [arreglos del 26 nov](documentacion/01-proyecto/cierre-del-proyecto.md#correcciones-del-26-nov-2026)). Las fechas planificadas de la [calendarización](documentacion/01-proyecto/calendarizacion.md) no cambian.
+> - 2163 pruebas en verde y 0 fallando, y ESLint en 0 (26 nov 2026, con los [arreglos del 26 nov](documentacion/01-proyecto/cierre-del-proyecto.md#correcciones-del-26-nov-2026), también los del chat). Las fechas planificadas de la [calendarización](documentacion/01-proyecto/calendarizacion.md) no cambian.
 > - Qué quedó, limitaciones y pendientes: [cierre de la línea de Pablo y estado](documentacion/01-proyecto/cierre-del-proyecto.md).
 
 ## Qué hace
@@ -14,7 +14,7 @@
 - **Cuentas y grupos:** registro (crea un grupo personal) e inicio de sesión con JWT de 24 h; grupos con roles, y el admin agrega o quita miembros. El grupo activo se elige en el selector del navbar.
 - **Tareas** (`/tasks`): listas de tareas; crear, editar, completar, mandar a la papelera y asignar personas.
 - **Hitos y calendario:** diagrama de hitos con React Flow cuyo avance se propaga solo por la cadena, y calendario mensual.
-- **Chat con IA** (`/chat`): asistente del proyecto que conversa sobre el grupo del navbar y responde en streaming. Arma un plan solo si se lo pides: tareas a partir del repositorio del grupo o, sin grupo, un proyecto nuevo (grupo, roles, tareas e hitos) que crea al confirmarlo. Usa Groq o el modelo local (Gemma 4 en Ollama), según `LLM_PROVIDER`.
+- **Chat con IA** (`/chat`): asistente del proyecto que conversa sobre el grupo del navbar y responde en streaming; cada proyecto tiene su propia conversación. Arma un plan solo si se lo pides: tareas a partir del repositorio del grupo o, con «New project», un proyecto nuevo (grupo, roles, tareas e hitos) que crea al confirmarlo. En un grupo todavía sin usar, como el grupo personal de una cuenta nueva, el plan se guarda en ese grupo. Usa Groq o el modelo local (Gemma 4 en Ollama), según `LLM_PROVIDER`.
 - **Analytics** (`/analytics`, solo líderes): resumen del equipo, carga de trabajo, experiencia y recomendaciones de asignación de la IA.
 - **GitHub** (`/github`): conectar el repositorio con la GitHub App, explorarlo, crear la rama de cada tarea y completarla al fusionar su PR; la IA propone tareas a partir del repositorio. En la tarea, «View task files» abre «Task files»: los archivos que cambió su PR y qué otras tareas tocan los mismos.
 - **IA sobre el código** (servidor de IA local): en «Task files», «Audit» revisa la rama, «Generate tests» propone pruebas (no las ejecuta) y «Review PR» revisa el PR abierto. La revisión también corre sola al abrir o actualizar el PR y, si la GitHub App tiene «Pull requests: Read and write», se publica en GitHub como comentario. Pide el consentimiento «Allow AI analysis» del grupo.
@@ -79,14 +79,14 @@ Detalle del entorno local: [levantar TaskMate en local](documentacion/09-linea-c
 
 ## Pruebas
 
-**2091 pruebas en verde y 0 fallando (26 nov 2026, en `master`):**
+**2163 pruebas en verde y 0 fallando (26 nov 2026, en `master`):**
 
 | Capa | Pruebas |
 |---|---|
-| API (Jest) | 1324 en 54 suites |
-| Frontend (React Testing Library) | 438 en 36 suites |
-| Servicio Python del chat (pytest) | 210 |
-| Base de datos (SQL Server desechable) | 119 en 10 suites |
+| API (Jest) | 1355 en 54 suites |
+| Frontend (React Testing Library) | 448 en 37 suites |
+| Servicio Python del chat (pytest) | 238 |
+| Base de datos (SQL Server desechable) | 122 en 10 suites |
 
 - ESLint: 0 problemas. El build de producción compilaba el 5 nov 2026 (sobre `master`); no se volvió a correr.
 - El repositorio de TaskMate no tiene CI propio: las pruebas se corren a mano. El CI/CD es una funcionalidad para el repositorio de cada grupo.

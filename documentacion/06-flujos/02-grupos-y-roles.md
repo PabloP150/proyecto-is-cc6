@@ -42,7 +42,7 @@ flowchart TD
     LOG(["Inicia sesión: queda el primero de sus grupos"]) --> CTX
     AV(["View en un aviso de CI/CD"]) --> CTX
     CTX --> PAG["Tasks, Calendar, Milestones, Analytics y GitHub<br/>cargan los datos de ese grupo"]
-    CTX --> CHAT["AI Bot: manda set_context por WebSocket<br/>y el proyecto del chat pasa a ese grupo"]
+    CTX --> CHAT["AI Bot: manda set_context por WebSocket<br/>y el chat pasa a ese grupo y a su conversación"]
     CTX --> GRP["/groups abre los detalles de ese grupo"]
     PAG --> CHK{"¿La API confirma que es miembro?<br/>guardia de la ruta o sesión del chat"}
     CHAT --> CHK
@@ -110,7 +110,7 @@ flowchart TD
 **Elegir el grupo activo**
 1. El usuario abre el selector junto al logo; el menú vuelve a pedir sus grupos (`GET /api/groups/user-groups`).
 2. Elige un grupo. `GroupContext` guarda su id y su nombre en `localStorage`.
-3. La pantalla abierta carga los datos de ese grupo. Si es el chat, manda `set_context`; si es `/groups`, abre los detalles del grupo.
+3. La pantalla abierta carga los datos de ese grupo. Si es el chat, manda `set_context` y muestra la conversación de ese grupo; si es `/groups`, abre los detalles del grupo.
 4. En `/groups` pasa lo mismo con un clic en el grupo; además la pantalla vuelve a pedir la lista para tener el admin al día.
 
 **Salir del grupo**

@@ -36,15 +36,15 @@ sequenceDiagram
     participant VC as Vercel
 
     rect rgb(232, 240, 254)
-    Note over AD,AI: 1. El chat crea el proyecto (solo sin grupo en la barra, caso poco común)
+    Note over AD,AI: 1. El chat crea el proyecto (New project, o en el grupo personal todavía sin usar)
     AD->>TM: describe el proyecto en AI Bot
-    TM->>PY: handle_user_message sin project
+    TM->>PY: handle_user_message sin project, o con el de un grupo sin usar
     PY->>AI: POST /search, documentos parecidos al mensaje
     PY-->>TM: respuesta en streaming (response_chunk)
     AD->>TM: pide un plan
     PY-->>TM: plan con roles, tareas e hitos
     AD->>TM: confirma el plan
-    TM->>TM: crea grupo, roles, tareas e hitos en una transacción
+    TM->>TM: crea el grupo, o llena el grupo sin usar, con roles, tareas e hitos en una transacción
     end
     rect rgb(236, 253, 243)
     Note over AD,TM: 2. Equipo y tareas
@@ -126,7 +126,7 @@ sequenceDiagram
 ```
 
 ## Paso a paso
-1. **Plan con IA:** sin grupo elegido en la barra, el chat ayuda a armar la idea y, si se le pide un plan, lo propone. Al confirmarlo se crea un grupo nuevo; quien lo pidió queda como admin. Solo ocurre si el usuario no tiene grupos o salió del activo: al registrarse se crea un grupo personal, el login elige el primer grupo y el selector no tiene opción vacía ([limitaciones](../01-proyecto/cierre-del-proyecto.md#chat-con-ia)).
+1. **Plan con IA:** con «New project» en el chat (o sin grupo), la IA ayuda a armar la idea y, si se le pide un plan, lo propone. Al confirmarlo se crea un grupo nuevo; quien lo pidió queda como admin. En un grupo sin usar, como el grupo personal que una cuenta nueva tiene activo al entrar, pasa lo mismo, pero el plan se guarda en ese grupo (si quien confirma es su admin), que toma el nombre del proyecto.
 2. **Equipo:** el admin agrega miembros por nombre de usuario; cualquier miembro asigna tareas.
 3. **Repo, pipeline y permiso de IA:** el admin conecta el repositorio, sube `.github/workflows/taskmate-ci.yml` y, si quiere que la IA lea el repo, activa «Allow AI analysis».
 4. **Asistente del proyecto:** con el grupo elegido en la barra, el chat responde con sus tareas, hitos, equipo y (con permiso) el resumen del repo. La respuesta llega en streaming. «Propose tasks», o pedir un plan, analiza el repo y suma las tareas al grupo al pulsar «Confirm».
@@ -174,7 +174,7 @@ Todos los casos, con su código: en la sección «Qué ve el usuario si algo fal
 | [Grupos y roles](02-grupos-y-roles.md) | Agregar un miembro y darle un rol, elegir el grupo activo, ciclo de vida de un grupo, salir del grupo |
 | [Tareas](03-tareas.md) | Completar una tarea, ciclo de vida de una tarea, guardar una edición |
 | [Hitos y calendario](04-hitos-y-calendario.md) | Conectar dos hitos y propagar el avance, vida de un hito y de una flecha, cómo propaga el avance el trigger |
-| [Chat IA](05-chat-ia.md) | Sin grupo: de la idea al proyecto guardado y vida del plan; cómo decide el orquestador qué responder; con grupo: el asistente del proyecto con streaming |
+| [Chat IA](05-chat-ia.md) | Proyecto nuevo («New project», sin grupo o grupo sin usar): de la idea al proyecto guardado y vida del plan; cómo decide el orquestador qué responder; con un grupo con datos: el asistente del proyecto con streaming |
 | [Analytics](06-analytics.md) | Pedir recomendaciones de asignación por `/insights`, vida de un registro de `TaskAnalytics`, qué muestra el panel |
 | [GitHub](07-github.md) | Conectar el repositorio, un webhook que llega a la API, vida de la rama de una tarea, ver los archivos de una tarea |
 | [CI/CD](08-cicd.md) | Del pipeline a producción, jobs de cada caso, solicitudes de producción, monitoreo de Vercel |

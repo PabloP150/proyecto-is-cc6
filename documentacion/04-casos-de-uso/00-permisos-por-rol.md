@@ -93,7 +93,8 @@ Las tareas no tienen dueño: cualquier miembro puede tocarlas todas.
 
 | Acción | Usuario | Miembro | Líder | Admin | Guardia |
 |---|:-:|:-:|:-:|:-:|---|
-| Sin grupo activo, conversar con la IA y crear un proyecto (grupo nuevo) con un plan | ✅ | ✅ | ✅ | ✅ | JWT al abrir `/chat` |
+| Con «New project» o sin grupo activo, conversar con la IA y crear un proyecto (grupo nuevo) con un plan | ✅ | ✅ | ✅ | ✅ | JWT al abrir `/chat` |
+| En un grupo sin usar, guardar en él el plan del proyecto nuevo (si no, se crea como grupo nuevo) | — | — | — | ✅ | `adminId` y grupo sin usar, comprobados con bloqueo en `fillEmptyGroupFromPlan` |
 | Usar el grupo del navbar como proyecto del chat | — | ✅ | ✅ | ✅ | `isGroupMember` en `UserSession` al cambiar de grupo |
 | Preguntar sobre el proyecto (tareas, hitos, equipo y asignaciones) | — | ✅ | ✅ | ✅ | `isGroupMember` de nuevo en cada mensaje |
 | Que el chat vea también el repositorio | — | ✅ | ✅ | ✅ | `isGroupMember` + repo conectado y no suspendido + el admin activó el análisis |

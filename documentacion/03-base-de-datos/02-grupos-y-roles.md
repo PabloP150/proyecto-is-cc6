@@ -112,7 +112,7 @@ erDiagram
 | `taskmate-api/models/userGroupRoles.model.js` | Asigna y quita roles; consultas por usuario, por rol, conteo y matriz de roles del grupo |
 | `taskmate-api/models/access.model.js` | `isGroupMember`, `isGroupAdmin`, `isGroupLeader` y a qué grupo pertenece un rol o una asignación |
 | `taskmate-api/models/user.model.js` | Al registrarse: usuario, grupo personal «`<usuario>`'s Group» y membresía, en una transacción |
-| `taskmate-api/services/ProjectService.js` | Plan del chat confirmado: crea `Groups`, `UserGroups` y `GroupRoles` junto con tareas e hitos |
+| `taskmate-api/services/ProjectService.js` | Plan del chat confirmado: crea `Groups`, `UserGroups` y `GroupRoles` junto con tareas e hitos; en un grupo sin usar, cambia `Groups.name` y agrega `GroupRoles` |
 | `taskmate-api/models/github.model.js` | `setAiAnalysisEnabled` cambia el permiso «análisis con IA»; `getGroupRepository` lo lee para el chat, GitHub, CI/CD y la IA sobre el código |
 | `taskmate-api/services/UserSession.js` | Chat: revisa la membresía (`isGroupMember`) al elegir el proyecto y en cada mensaje, y lee el nombre del grupo y sus miembros para el contexto |
 | `taskmate-api/services/AnalyticsService.js` | Carga de trabajo del panel: une miembros con sus roles (solo cuenta a quien tiene al menos un rol) |

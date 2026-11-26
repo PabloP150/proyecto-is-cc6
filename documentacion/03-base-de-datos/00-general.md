@@ -183,7 +183,7 @@ erDiagram
 | Grupos y roles | `Groups`, `UserGroups`, `GroupRoles`, `UserGroupRoles` | [02-grupos-y-roles.md](02-grupos-y-roles.md) |
 | Tareas | `Tasks`, `UserTask`, `Complete`, `DeleteTask` | [03-tareas.md](03-tareas.md) |
 | Hitos y calendario | `Nodes`, `Edges` (el calendario lee también `Tasks`) | [04-hitos-y-calendario.md](04-hitos-y-calendario.md) |
-| Chat IA | Sin tablas propias: el plan de un proyecto nuevo escribe en `Groups`, `UserGroups`, `GroupRoles`, `Tasks` y `Nodes`, y el de un grupo existente en `Tasks` y `Nodes`. Para el contexto del proyecto lee `Tasks`, `Nodes`, `UserTask`, los miembros y `GroupRepositories` | [05-chat-ia.md](05-chat-ia.md) |
+| Chat IA | Sin tablas propias: el plan de un proyecto nuevo escribe en `Groups`, `UserGroups`, `GroupRoles`, `Tasks` y `Nodes` (en un grupo sin usar, el nombre en `Groups`, `GroupRoles`, `Tasks` y `Nodes`), y el de un grupo existente en `Tasks` y `Nodes`. Para el contexto del proyecto lee `Tasks`, `Nodes`, `UserTask`, los miembros y `GroupRepositories`, y `Complete` y `DeleteTask` para saber si el grupo está sin usar | [05-chat-ia.md](05-chat-ia.md) |
 | Analytics | `TaskAnalytics`, `UserMetrics`, `UserExpertise`, `AnalyticsConfig` | [06-analytics.md](06-analytics.md) |
 | GitHub | `GitHubInstallations`, `GitHubRepositories`, `GroupRepositories`, `TaskBranches`, `PullRequests`, `GitHubWebhookDeliveries` y, desde la 010, `TaskFiles` (archivos de cada tarea) | [07-github.md](07-github.md) |
 | CI/CD | `RepoPipelines`, `DeployRequests` y, desde la 009, el monitoreo de Vercel: `Deployments`, `DeploymentWebhookDeliveries`, `GroupDeployTargets` | [08-cicd.md](08-cicd.md) |

@@ -46,7 +46,7 @@ Términos:
 - La API no calcula el avance. Guarda el porcentaje y SQL Server corre el trigger dentro de la misma sentencia. Después el frontend vuelve a pedir los hitos para mostrar el resultado.
 - El calendario solo lee: una consulta une los hitos (`Nodes`) y las tareas activas (`Tasks`) del grupo.
 - El lienzo y el calendario usan el grupo activo de `GroupContext`. Si se cambia en el selector de la barra, los dos vuelven a pedir los datos del grupo nuevo.
-- La IA también crea hitos: el plan del chat (sin grupo elegido) y el análisis del repositorio («Analyze with AI», «Propose tasks» o un plan pedido en el chat) insertan filas en `Nodes` con `ProjectService`, sin conexiones.
+- La IA también crea hitos: el plan del chat (proyecto nuevo) y el análisis del repositorio («Analyze with AI», «Propose tasks» o un plan pedido en el chat) insertan filas en `Nodes` con `ProjectService`, sin conexiones.
 - La IA también los lee: con un grupo elegido, el contexto del chat lleva hasta 15 hitos (nombre, fecha y si están completos), aunque el grupo no haya dado el permiso «Allow AI analysis». Ese permiso solo decide si el chat ve los datos del repositorio. Ver [el flujo del chat](../06-flujos/05-chat-ia.md).
 - No hay tiempo real en este módulo: otro miembro ve los cambios cuando vuelve a cargar la página.
 

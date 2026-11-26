@@ -15,7 +15,7 @@ Fuente del diagrama: [fuentes/00-despliegue.mmd](fuentes/00-despliegue.mmd). El 
 | API → Servicio Python `127.0.0.1:MCP_PORT` | Un solo WebSocket a `/ws` con la cabecera `X-MCP-Secret` |
 | Servicio Python → Ollama `127.0.0.1:11434` | `POST /api/chat`, modelo `gemma4:e2b-it-qat` (el modelo del chat). Con `LLM_PROVIDER=ollama`, lo que escribe `local-up.sh` si la clave falta |
 | Servicio Python → Groq (respaldo en la nube) | Solo si se usa Groq: HTTPS con el cliente `AsyncGroq`, modelo `openai/gpt-oss-20b`. Con `LLM_PROVIDER=groq`, el valor por defecto del código para un checkout sin Ollama |
-| Servicio Python → Servidor de IA local `127.0.0.1:8000` | `POST /search` con `X-AI-Server-Secret`, solo en el chat sin proyecto seleccionado |
+| Servicio Python → Servidor de IA local `127.0.0.1:8000` | `POST /search` con `X-AI-Server-Secret`, solo en el chat sin proyecto seleccionado o con un grupo sin usar |
 | API → Servidor de IA local `127.0.0.1:8000` | `POST /commands/{audit, generate-tests, review-pr}` con `X-AI-Server-Secret` y los parches de la rama |
 | Servidor de IA local → Ollama y Postgres `127.0.0.1:5432` | Generar texto y embeddings; guardar y buscar fragmentos en pgvector |
 | API → GitHub | REST y GraphQL con tokens de instalación de la GitHub App; incluye `POST /pulls/{n}/reviews` para publicar la revisión con IA |

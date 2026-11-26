@@ -36,6 +36,7 @@ journey
 
 - El grupo personal se llama «*usuario*'s Group» y la persona queda como su admin.
 - Al iniciar sesión, TaskMate activa el primer grupo de la lista. Con un solo grupo, es el personal.
+- Mientras el grupo personal siga sin usar (sin tareas, hitos ni repositorio), el chat («AI Bot») lo trata como un proyecto nuevo: ayuda a definirlo y, si se le pide el plan y se confirma, lo guarda en ese mismo grupo, que toma el nombre del proyecto.
 - El grupo activo se ve en el selector junto al logo (o «Select a group» si no hay). Cambiarlo ahí cambia el grupo de todas las pantallas; «Manage groups» lleva a Groups.
 - Con la sesión ya iniciada, `/register` lleva directo a `/home`.
 

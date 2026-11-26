@@ -25,7 +25,7 @@ flowchart LR
 | [2 · Grupos y roles](02-grupos-y-roles.md) | `/groups`: un clic en un grupo lo vuelve el activo y muestra sus miembros y roles; el admin agrega, quita y maneja roles |
 | [3 · Tareas](03-tareas.md) | `/tasks`: listas con una tarjeta por tarea y el panel lateral de completadas y papelera |
 | [4 · Hitos y calendario](04-hitos-y-calendario.md) | «Milestones» (`/block-diagram`), el lienzo de hitos, y «Calendar» (`/calendar`), la vista de mes |
-| [5 · Chat con IA](05-chat-ia.md) | «AI Bot» (`/chat`): el proyecto es el grupo del navbar («Project: …»), respuestas en streaming, el botón «Propose tasks» y el cuadro de texto |
+| [5 · Chat con IA](05-chat-ia.md) | «AI Bot» (`/chat`): el proyecto es el grupo del navbar («Project: …») o uno nuevo («New project»), una conversación por proyecto, respuestas en streaming, el botón «Propose tasks» y el cuadro de texto |
 | [6 · Analytics](06-analytics.md) | `/analytics`: el panel del líder y el aviso «Team leaders only» para los demás |
 | [7 · GitHub](07-github.md) | `/github`: pestañas Repository, Files y Commits; en cada tarea, la rama, el PR y el diálogo «Task files» |
 | [8 · CI/CD](08-cicd.md) | La pestaña CI/CD (pipeline, entornos staging y producción, ejecuciones y logs) y la pestaña «Vercel (monitoring)» con los despliegues de Vercel |

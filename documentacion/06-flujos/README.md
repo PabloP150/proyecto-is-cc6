@@ -25,7 +25,7 @@ Cada página tiene al menos tres diagramas, un «Paso a paso» y «Qué ve el us
 | [2 · Grupos y roles](02-grupos-y-roles.md) | Agregar un miembro y darle un rol, elegir el grupo activo, ciclo de vida de un grupo, qué decide la API al salir |
 | [3 · Tareas](03-tareas.md) | Completar una tarea, ciclo de vida de una tarea, guardar una edición |
 | [4 · Hitos y calendario](04-hitos-y-calendario.md) | Conectar dos hitos y propagar el avance, vida de un hito y de una flecha, el trigger |
-| [5 · Chat con IA](05-chat-ia.md) | Sin grupo: de la idea al proyecto guardado y vida del plan; cómo decide el orquestador qué responder; con grupo: el asistente del proyecto, con respuestas en streaming |
+| [5 · Chat con IA](05-chat-ia.md) | Proyecto nuevo («New project», sin grupo o grupo sin usar): de la idea al proyecto guardado y vida del plan; cómo decide el orquestador qué responder; con un grupo con datos: el asistente del proyecto, con respuestas en streaming |
 | [6 · Analytics](06-analytics.md) | Pedir recomendaciones por `/insights`, vida de un registro de `TaskAnalytics`, qué muestra el panel |
 | [7 · GitHub](07-github.md) | Conectar el repositorio, un webhook que llega a la API, vida de la rama de una tarea, ver los archivos de una tarea (y por qué no se guardan al fusionar el PR) |
 | [8 · CI/CD](08-cicd.md) | Del pipeline a producción, qué jobs corren en cada caso, vida de una solicitud de producción, monitoreo de Vercel: del webhook a la pestaña |

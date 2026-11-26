@@ -5,14 +5,14 @@
 ```mermaid
 flowchart LR
     subgraph SIN["Sin servicios: todo simulado"]
-        API["API · Jest 30<br/>1324 en 54 suites"]
-        FE["Frontend · CRA<br/>438 en 36 suites"]
-        PY["Servicio Python del chat · pytest<br/>210"]
+        API["API · Jest 30<br/>1355 en 54 suites"]
+        FE["Frontend · CRA<br/>448 en 37 suites"]
+        PY["Servicio Python del chat · pytest<br/>238"]
     end
     subgraph CON["Con un SQL Server desechable"]
-        DB["BD · Jest<br/>119 en 10 suites"]
+        DB["BD · Jest<br/>122 en 10 suites"]
     end
-    SIN --> T(["Total: 2091 pruebas"])
+    SIN --> T(["Total: 2163 pruebas"])
     CON --> T
     LINT["ESLint: 0 problemas"]
     BUILD["npm run build"]
@@ -21,23 +21,23 @@ flowchart LR
 ## Qué hace
 - Tres suites corren sin BD, sin GitHub, sin Ollama, sin Groq y sin el servidor de IA local: usan dobles de prueba.
 - La suite de BD corre migraciones arriba y abajo contra un SQL Server **desechable**, nunca contra `taskmate-sql`.
-- Resultado al 26 nov 2026, en `test/e2e` con los arreglos de `fix/christian-bugs` (todo en `master` desde el 26 nov): **2091 pruebas en verde, 0 fallando**. El 25 nov eran 2087; al 5 nov, 1960 (1246 + 423 + 177 + 114); al cerrar la Fase 3, 1353.
-- Las 131 de más (saldo neto frente al 5 nov) son de la línea de Christian: monitoreo de Vercel, archivos por tarea, IA sobre el código, chat con modelo local y streaming, selector de grupo del navbar y CORS en la red local. 4 de ellas (2 de API y 2 de BD) llegaron el 26 nov con los arreglos del webhook de Vercel y de la revisión de PR.
-- La suite de BD de esta línea se corrió por primera vez el 26 nov, contra un SQL Server desechable: las 117 del 25 nov salían de contar las pruebas en el código; con las 2 nuevas, 119.
+- Resultado al 26 nov 2026, en `master` con las correcciones del chat (`fix/chat-new-account`): **2163 pruebas en verde, 0 fallando**. Al fusionar `test/e2e` con los arreglos de `fix/christian-bugs` eran 2091; el 25 nov, 2087; al 5 nov, 1960 (1246 + 423 + 177 + 114); al cerrar la Fase 3, 1353.
+- Las 131 de más (saldo neto frente al 5 nov) son de la línea de Christian: monitoreo de Vercel, archivos por tarea, IA sobre el código, chat con modelo local y streaming, selector de grupo del navbar y CORS en la red local. 4 de ellas (2 de API y 2 de BD) llegaron el 26 nov con los arreglos del webhook de Vercel y de la revisión de PR. Las 72 de las correcciones del chat del 26 nov (API 31, frontend 10, Python 28 y BD 3) se suman aparte.
+- La suite de BD de esta línea se corrió por primera vez el 26 nov, contra un SQL Server desechable: las 117 del 25 nov salían de contar las pruebas en el código; con las 2 nuevas, 119, y con las 3 del chat, 122.
 
 ## Cómo funciona
 
 | Capa | Comando | Resultado al 26 nov 2026 |
 |---|---|---|
-| API (Jest 30 + supertest) | `cd taskmate-api && npm test` | **1324/1324**, 54 suites |
-| Frontend (Jest de react-scripts + Testing Library) | `CI=true npm test -- --watchAll=false` (desde la raíz) | **438/438**, 36 suites |
-| Servicio Python del chat (pytest) | `cd taskmate-api/mcp && ./venv/bin/python -m pytest` | **210/210** |
-| BD real | `cd taskmate-api && TEST_DB_ENV_FILE="$HOME/taskmate-testdb.env" npm run test:db` | **119/119**, 10 suites |
+| API (Jest 30 + supertest) | `cd taskmate-api && npm test` | **1355/1355**, 54 suites |
+| Frontend (Jest de react-scripts + Testing Library) | `CI=true npm test -- --watchAll=false` (desde la raíz) | **448/448**, 37 suites |
+| Servicio Python del chat (pytest) | `cd taskmate-api/mcp && ./venv/bin/python -m pytest` | **238/238** |
+| BD real | `cd taskmate-api && TEST_DB_ENV_FILE="$HOME/taskmate-testdb.env" npm run test:db` | **122/122**, 10 suites |
 | Lint | `npx eslint src --ext .js,.jsx` (desde la raíz) | **0 problemas**. El 25 nov daba 1 error en `NavGroupSelector.test.jsx` (`testing-library/render-result-naming-convention`), corregido el 26 nov desestructurando el resultado de `renderSelector` |
 | Build | `npm run build` (desde la raíz) | Compilaba al 5 nov; no se volvió a medir el 25 nov |
 
 - pytest necesita el venv con `requirements-dev.txt` ([primer arranque, paso 3](primer-arranque.md)). `scripts/local-up.sh` instala solo `requirements.txt`, sin las dependencias de prueba.
-- De las 1324 de la API, 10 no comprueban nada sin `NODE_ENV=integration-test`: las 5 de `performance.test.js` y las 5 de `integration/analytics-integration.test.js`. `npm run test:performance` activa las de rendimiento y necesita un SQL Server real.
+- De las 1355 de la API, 10 no comprueban nada sin `NODE_ENV=integration-test`: las 5 de `performance.test.js` y las 5 de `integration/analytics-integration.test.js`. `npm run test:performance` activa las de rendimiento y necesita un SQL Server real.
 - `npm test -- --coverage` deja el reporte en `taskmate-api/coverage/`, que `.gitignore` no ignora: no lo subas.
 - Las 89 funciones de prueba del servidor de IA local (repo aparte de Christian, `taskmate-ai-server`) no entran en estas cifras y no se corrieron.
 
@@ -68,7 +68,7 @@ La conexión sale solo de `TEST_DB_*` (nunca de `DB_*` ni de la `.env`). Si falt
 | API | `taskmate-api/tests/integration/` (1) · `tests/db/transaction.test.js` (1) | Integración de analytics (solo con `NODE_ENV=integration-test`) y `withTransaction` sin BD |
 | BD | `taskmate-api/tests/db/*.dbtest.js` (10) | Migraciones 001–011 y triggers, transacciones, tareas, grupos, proyecto, analytics, Unicode, GitHub, CI/CD y `AiReviews` |
 | Frontend | `src/__tests__/` (4) | Rutas de `App.js` (`/github`, rutas desconocidas y las 5 pruebas de `/register`, `/flow` y `/create-group`) y guardas estáticas del código |
-| Frontend | `src/components/__tests__/` (11) | Tareas, grupos, chat (también streaming), analytics, hitos, límites de formularios, grupo activo y selector de grupo del navbar (`NavGroupSelector`) |
+| Frontend | `src/components/__tests__/` (12) | Tareas, grupos, chat (también streaming y los modos de proyecto, `ChatPageProjects`), analytics, hitos, límites de formularios, grupo activo y selector de grupo del navbar (`NavGroupSelector`) |
 | Frontend | `src/components/github/__tests__/` (10) · `github/cicd/__tests__/` (5) | Página GitHub, explorador, ramas, plan del repositorio, grupo del chat (`ChatProjectInfo`), panel «AI on the branch» (`TaskAiPanel`) y pestaña CI/CD |
 | Frontend | `src/api/`, `src/hooks/`, `src/components/realtime/`, `src/components/ui/` (`__tests__/`: 1, 1, 1, 3) | Cliente HTTP, `useWebSocket`, avisos en vivo y componentes del design system |
 | Servicio Python del chat | `taskmate-api/mcp/tests/` (8 archivos) | Servidor `/ws` (también streaming), orquestador, agentes de analytics, repositorio y pipeline, proveedor Ollama, el modelo local (`test_local_provider`), cliente de Groq, el respaldo y conocimiento del servidor de IA local (`test_knowledge`) |
@@ -94,6 +94,8 @@ La conexión sale solo de `TEST_DB_*` (nunca de `DB_*` ni de la `.env`). Si falt
 | `mcp/tests/test_knowledge.py` | 7 | Búsqueda en el servidor de IA local: desactivada sin URL, filtro por similitud, errores silenciados y cabecera del secreto |
 
 Además crecieron `UserSession.test.js` (67 → 78: streaming y chat con el proyecto elegido), `test_orchestrator.py` (32 → 47) y `test_server.py` (26 → 28). `ChatProjectSelector` se borró junto con su prueba.
+
+Con las correcciones del chat del 26 nov llegó `src/components/__tests__/ChatPageProjects.test.jsx` (10: los modos «New project», grupo sin usar y grupo con datos, y una conversación por proyecto) y crecieron `UserSession.test.js` (78 → 99), `ProjectService.test.js` (+10, `fillEmptyGroupFromPlan`), `tests/db/project.dbtest.js` (+3), `test_orchestrator.py` (47 → 73) y `test_local_provider.py` (9 → 11, `repeat_penalty`).
 
 **Sin prueba propia** (según el código): las rutas `/api/deploy` y las 6 nuevas de `/api/github/tasks/:tid` por HTTP, el disparo de la revisión desde `webhookHandler`, los modelos de despliegues y `TaskFiles` contra BD, y `DeploymentPanel` y `TaskFilesDialog` en el frontend. Ver [limitaciones de pruebas](../01-proyecto/cierre-del-proyecto.md#pruebas).
 

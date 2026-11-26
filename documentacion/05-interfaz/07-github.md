@@ -106,7 +106,7 @@ flowchart TD
 | `src/components/github/useTaskLinks.js` | Hook (función que guarda estado y llama a la API): repo y vínculos rama ↔ PR del grupo en dos llamadas |
 | `src/components/github/BranchToastMessage.jsx` | Convierte el resultado de la limpieza de ramas en el texto del aviso |
 | `src/components/github/RepoPlanCard.jsx` | Tarjeta del plan de la IA en el chat |
-| `src/components/github/ChatProjectInfo.jsx` | Encabezado del chat: muestra el grupo del navbar («Project: …») y el repo o «No repository»; no elige nada |
+| `src/components/github/ChatProjectInfo.jsx` | Encabezado del chat: muestra el grupo del navbar («Project: …», o «new project» con «New project») y el repo o «No repository»; no elige nada |
 | `src/components/github/githubUtils.js` | Mensajes de error en inglés por código, URLs seguras (solo `https://github.com`), fechas en inglés |
 | `src/api/github.js` | Llamadas a `/api/github`, incluidas las de la tarea: `getTaskFiles`, `getTaskOverlaps`, `auditTask`, `generateTaskTests`, `getTaskReview` y `reviewTaskPr` |
 

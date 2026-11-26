@@ -9,7 +9,7 @@
 - Groq (`openai/gpt-oss-20b`, necesita `GROQ_API_KEY`) queda solo como **respaldo en la nube**: es el valor por defecto de `LLM_PROVIDER` en el código, para que un checkout sin Ollama siga funcionando.
 - 110 rutas REST, 3 WebSockets (`/chat`, `/insights`, `/events`) y 29 tablas (migraciones 001–011).
 - La línea de Pablo cerró el 3 nov 2026 con las Fases 1–4 (`master` quedó en `ea25733`). La de Christian siguió: monitoreo de Vercel, archivos por tarea, IA sobre el código y chat con modelo local. Todo eso se hizo en `test/e2e` y está en `master` desde el 26 nov 2026.
-- 2091 pruebas en verde (26 nov 2026). Esta guía se escribió desde el código: si algo no coincide, manda el código.
+- 2163 pruebas en verde (26 nov 2026). Esta guía se escribió desde el código: si algo no coincide, manda el código.
 
 **Limitaciones conocidas y TODO pendiente:** viven en un solo lugar, el [cierre de la línea de Pablo y estado](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas). Aquí solo se mencionan.
 
@@ -97,7 +97,7 @@ flowchart LR
     ORCH -->|"LLM_PROVIDER=ollama"| OLL
     ORCH -.->|"solo con LLM_PROVIDER=groq"| GROQ
     ORCH --> KN
-    KN -->|"POST /search, solo sin proyecto"| CMD
+    KN -->|"POST /search, solo en proyecto nuevo"| CMD
     REST --> AIC
     HOOK -->|"revisión del PR en segundo plano"| AIC
     AIC -->|"HTTP con X-AI-Server-Secret"| CMD
@@ -197,7 +197,7 @@ proyecto-is-cc6/
     └── mcp/                      ← servicio Python del chat
         ├── server.py             ← FastAPI, WebSocket /ws, X-MCP-Secret
         ├── llm_service.py        ← Ollama (httpx, modelo local) o Groq (AsyncGroq, respaldo) según LLM_PROVIDER; errores tipados (LLM_TIMEOUT, LLM_RATE_LIMIT, …)
-        ├── knowledge.py          ← POST /search al servidor de IA local (conocimiento del chat sin proyecto)
+        ├── knowledge.py          ← POST /search al servidor de IA local (conocimiento del chat de proyecto nuevo)
         ├── schemas.py            ← modelos pydantic (analyze_repository, propose_pipeline, ProjectContext del chat)
         ├── agents/               ← orchestrator, recommendations_agent, analytics_agent, repo_analysis_agent, pipeline_agent
         ├── tests/                ← pytest (server, orchestrator, analytics, repo_analysis, pipeline, llm_service, knowledge, local_provider)
@@ -242,9 +242,9 @@ No existen (las mencionaban versiones anteriores de esta guía): `helpers/getCon
 | `helpers/execQuery.js` | `execReadCommand` / `execWriteCommand` con parámetros tipados |
 | `helpers/transaction.js` | `withTransaction(fn, {retries: 2, lockTimeoutMs: 5000})`: reintenta en deadlock, `DB_BUSY` 503 si no se libera; clasificadores de errores SQL |
 | `services/WebSocketServer.js` | Upgrade con token y Origin; `/chat`, `/insights`, `/events`; heartbeat 30 s; cierra con 4001 al vencer el token |
-| `services/SessionManager.js` · `UserSession.js` | Sesión de chat por usuario (se conserva 1 h desconectada, historial de 100 mensajes); límites de 4000 caracteres y 20 mensajes/min. Arma y guarda en caché el contexto del proyecto, reenvía el streaming y atiende `plan_request` |
+| `services/SessionManager.js` · `UserSession.js` | Sesión de chat por usuario (se conserva 1 h desconectada; una conversación de hasta 100 mensajes por proyecto, y las de hasta 20 proyectos más); límites de 4000 caracteres y 20 mensajes/min. Arma y guarda en caché el contexto del proyecto, reenvía el streaming y atiende `plan_request` |
 | `services/LLMService.js` | Cliente WS único hacia Python con `X-MCP-Secret`; reconexión de 5 s a 5 min; enruta respuestas por `requestId` |
-| `services/ProjectService.js` | Crea grupo, membresía, roles, tareas e hitos desde el plan de la IA en **una transacción**; también guarda en un grupo existente las tareas e hitos que la IA propone a partir del repositorio (Fase 3) |
+| `services/ProjectService.js` | Crea grupo, membresía, roles, tareas e hitos desde el plan de la IA en **una transacción** (o, con `fillEmptyGroupFromPlan`, los guarda en un grupo sin usar del que el usuario es admin); también guarda en un grupo existente las tareas e hitos que la IA propone a partir del repositorio (Fase 3) |
 | `services/Analytics*.js` · `analyticsContext.js` | Métricas, expertise y carga; hooks no bloqueantes; job batch opcional; contexto real del equipo para el agente |
 | `services/realtime.js` | Hub de `/events`: suscripción por grupo con revalidación de membresía |
 | `services/github/*` | GitHub App (JWT RS256 + tokens de instalación de 1 h), instalación/OAuth, explorador, ramas, PRs, webhooks, pipeline, Actions y deploys. `taskFileService.js` guarda y recupera la lista de archivos del PR de cada tarea |
@@ -255,12 +255,12 @@ No existen (las mencionaban versiones anteriores de esta guía): `helpers/getCon
 | Módulo | Qué hace |
 |---|---|
 | `server.py` | FastAPI, WebSocket `/ws`; rechaza con 403 sin `X-MCP-Secret` (mín. 32 caracteres) y toda conexión con `Origin` |
-| `agents/orchestrator.py` | Clasifica cada mensaje en PLAN, CHAT o fuera de tema (`_route`: frases disparadoras o una llamada corta al modelo). CHAT responde en streaming (`response_chunk`); PLAN con proyecto emite `plan_request`, y sin proyecto arma un plan nuevo. Métodos `handle_user_message`, `save_plan_result`, `analyze_repository`, `propose_pipeline` y mensajes `type: analytics` |
-| `agents/recommendations_agent.py` | Genera el plan JSON de un proyecto nuevo (mínimo 8 tareas y 3 roles; exactamente 4 hitos) |
+| `agents/orchestrator.py` | Clasifica cada mensaje en PLAN, CHAT o fuera de tema (`_route`: frases disparadoras o una llamada corta al modelo; en un proyecto nuevo, «create the project» tras describir la idea también es PLAN). CHAT responde en streaming (`response_chunk`); PLAN con un grupo con datos emite `plan_request`, y sin proyecto o con un grupo sin usar (`is_empty_project`) arma un plan nuevo, con un reintento dentro de 80 s. Guarda la conversación y el plan de cada proyecto (`saved_groups`, hasta 20). Métodos `handle_user_message`, `save_plan_result`, `analyze_repository`, `propose_pipeline` y mensajes `type: analytics` |
+| `agents/recommendations_agent.py` | Genera el plan JSON de un proyecto nuevo (mínimo 8 tareas y 3 roles; exactamente 4 hitos); con Ollama, con `repeat_penalty` 1.1 |
 | `agents/analytics_agent.py` | Recomendaciones de asignación con el `team_context` real que envía Node |
 | `agents/repo_analysis_agent.py` | Propone tareas e hitos a partir de un snapshot del repositorio (Fase 3) y convierte el contexto del proyecto del chat en texto para el prompt |
 | `agents/pipeline_agent.py` | Elige valores del pipeline entre opciones detectadas; Node revalida y renderiza desde plantilla fija (Fase 4) |
-| `knowledge.py` | `POST {AI_SERVER_URL}/search` al servidor de IA local, solo en el chat sin proyecto; si falla, sigue sin conocimiento |
+| `knowledge.py` | `POST {AI_SERVER_URL}/search` al servidor de IA local, solo en el chat sin proyecto o con un grupo sin usar; si falla, sigue sin conocimiento |
 | `llm_service.py` | Ollama (`/api/chat`, `gemma4:e2b-it-qat`, `think` apagado), el modelo de TaskMate, o Groq como respaldo en la nube (`groq` 1.0, `openai/gpt-oss-20b`, `LLM_REASONING_EFFORT=low`) según `LLM_PROVIDER`. Todos los agentes pasan por aquí |
 
 ### Servicio Python del chat vs servidor de IA local
@@ -490,23 +490,23 @@ Conteo: users 3 · tasks 8 · groups 8 · nodes 9 · edges 6 · completados 2 ·
 ### 3 WebSockets (en el puerto de la API)
 | Canal | Acceso | Mensajes del cliente | Mensajes del servidor |
 |---|---|---|---|
-| `/chat?token=` | Auth | `user`, `ping`, `analytics`, `set_context`, `repo_analysis`, `repo_plan_confirm`, `repo_plan_discard` | `assistant`, `assistant_chunk` (texto en streaming con `requestId`; no se guarda en el historial), `system` (p. ej. `project_created`), `history_restore`, `context`, `repo_analysis_status`, `repo_plan`, `repo_plan_saved`, `repo_plan_discarded`, `error` (con `kind: 'analysis'` si viene del análisis), `analytics_response`, `analytics_error`, `pong` |
+| `/chat?token=` | Auth | `user`, `ping`, `analytics`, `set_context`, `repo_analysis`, `repo_plan_confirm`, `repo_plan_discard` | `assistant`, `assistant_chunk` (texto en streaming con `requestId`; no se guarda en el historial), `system` (p. ej. `project_created`), `history_restore` (con `chatOf`: de qué proyecto es), `context` (con `empty` y `fillable`), `repo_analysis_status`, `repo_plan`, `repo_plan_saved`, `repo_plan_discarded`, `error` (con `kind: 'analysis'` si viene del análisis), `analytics_response`, `analytics_error`, `pong` |
 | `/insights?token=` | Auth; acciones de equipo solo para Líder | `ping`, `analytics` (lista blanca de acciones; 10 / min) | `analytics_response`, `analytics_error`, `pong` |
 | `/events?token=` | Auth; solo recibe eventos de grupos donde es miembro | `ping`, `subscribe` (lista de grupos; 20 / min, máx. 10 sockets por usuario) | `subscribed`, `event` con `ci_run`, `ci_job`, `deployment` o `deploy_request`, `pong` |
 
 Rechazos del handshake: sin token o token inválido → 401; `Origin` no permitido → 403 (se permiten `FRONTEND_URL` y, con `ALLOW_LAN_ORIGINS=true`, los `http://` de IPv4 privada; solo desarrollo); ruta desconocida → 404. Mensajes de más de 64 KB cierran con 1009.
 
-**Contexto del proyecto en `/chat`.** El proyecto es el grupo de la barra de navegación (el cliente manda `set_context`). En el primer mensaje, Node arma el contexto y lo guarda en caché: tareas, hitos, nombres de los miembros y asignaciones siempre, y el snapshot del repositorio solo si el admin activó el análisis con IA. En cada mensaje vuelve a comprobar la membresía. Con el modelo local (`ollama`) ese contexto se queda en la máquina; solo si se usa Groq (respaldo, `LLM_PROVIDER=groq`) sale a Groq.
+**Contexto del proyecto en `/chat`.** El proyecto es el grupo de la barra de navegación (el cliente manda `set_context`; con «New project», sin grupo). Cada proyecto tiene su conversación: Node guarda una por proyecto (`stashedChats`) y responde cada `set_context` con `history_restore` de ese proyecto. Un grupo sin usar (`isGroupUnused`: sin tareas activas, completadas ni borradas, sin hitos ni repositorio) va con `isEmpty` y no se guarda en caché. En el primer mensaje, Node arma el contexto y lo guarda en caché: tareas, hitos, nombres de los miembros y asignaciones siempre, y el snapshot del repositorio solo si el admin activó el análisis con IA. En cada mensaje vuelve a comprobar la membresía. Con el modelo local (`ollama`) ese contexto se queda en la máquina; solo si se usa Groq (respaldo, `LLM_PROVIDER=groq`) sale a Groq.
 
 ### Protocolo API ↔ servicio Python (`ws://127.0.0.1:MCP_PORT/ws`, cabecera `X-MCP-Secret`)
-- **Node → Python:** `handle_user_message` (con `params.project`: el contexto del proyecto o `null`), `save_plan_result`, `analyze_repository`, `propose_pipeline` y `type: analytics` con las acciones del AnalyticsAgent.
-- **Python → Node:** `response_chunk` (streaming del chat si `LLM_STREAM_CHAT=1`; Node lo reenvía como `assistant_chunk` mientras la petición siga viva), `response`, `save_plan` (plan de un proyecto nuevo), `plan_request` (el usuario pidió un plan con proyecto: Node lanza el análisis del repositorio con las mismas comprobaciones que `repo_analysis`: membresía, permiso de IA y 1 por minuto), `repo_analysis_plan` / `repo_analysis_error`, `pipeline_proposal` / `pipeline_proposal_error`, `analytics_response` / `analytics_error` y `error`.
+- **Node → Python:** `handle_user_message` (con `params.project`: el contexto del proyecto, con `isEmpty` y `hasRepository`, o `null`), `save_plan_result`, `analyze_repository`, `propose_pipeline` y `type: analytics` con las acciones del AnalyticsAgent.
+- **Python → Node:** `response_chunk` (streaming del chat si `LLM_STREAM_CHAT=1`; Node lo reenvía como `assistant_chunk` mientras la petición siga viva), `response`, `save_plan` (plan de un proyecto nuevo; con `target_group_id` si se armó en un grupo sin usar, que Node llena con `fillEmptyGroupFromPlan` si el usuario es su admin y el grupo sigue sin usar), `plan_request` (el usuario pidió un plan con proyecto: Node lanza el análisis del repositorio con las mismas comprobaciones que `repo_analysis`: membresía, permiso de IA y 1 por minuto), `repo_analysis_plan` / `repo_analysis_error`, `pipeline_proposal` / `pipeline_proposal_error`, `analytics_response` / `analytics_error` y `error`.
 - Node corta la espera del chat y del análisis del repositorio a los 90 s (`LLM_TIMEOUT`).
 
 ### Protocolo con el servidor de IA local (`http://127.0.0.1:8000`, cabecera `X-AI-Server-Secret`)
 - **API → servidor:** `POST {AI_SERVER_URL}/commands/{audit|generate-tests|review-pr}` con `{project, args}` (`project` = `AI_SERVER_PROJECT`, el mismo para todos los grupos) y los parches del diff de la rama. Plazo `AI_SERVER_TIMEOUT_MS` (180 s).
 - **Errores que devuelve la API:** 503 `AI_SERVER_DISABLED` (sin `AI_SERVER_URL`), 504 `AI_SERVER_TIMEOUT`, 502 `AI_SERVER_UNAVAILABLE` (sin conexión), 502 `AI_SERVER_AUTH` (el servidor respondió 401), 400 `AI_SERVER_BAD_REQUEST` (400 o 422), 501 `AI_SERVER_NOT_IMPLEMENTED` y 502 `AI_SERVER_ERROR` (el resto). La interfaz muestra para ellos un texto genérico («Could not audit the branch.», …).
-- **Servicio Python → servidor:** `POST {AI_SERVER_URL}/search` con `{query, project, top_k}`, solo en el chat sin proyecto; plazo de 3 s y, si falla, sigue sin conocimiento.
+- **Servicio Python → servidor:** `POST {AI_SERVER_URL}/search` con `{query, project, top_k}`, solo en el chat sin proyecto o con un grupo sin usar; plazo de 3 s y, si falla, sigue sin conocimiento.
 
 Más detalle por fase: tablas de rutas en los capítulos de la [Fase 3](../08-fases/fase-03-integracion-github/README.md) y de la [Fase 4](../08-fases/fase-04-pipeline-cicd/README.md) (sección «API (rutas)»). Lo nuevo: [GitHub](../02-arquitectura/07-github.md), [CI/CD](../02-arquitectura/08-cicd.md) e [IA sobre el código](../02-arquitectura/10-ia-sobre-el-codigo.md).
 
@@ -666,15 +666,15 @@ Cómo correr cada suite y dónde vive cada prueba: [pruebas](pruebas.md).
 
 | Capa | Comando | Resultado |
 |---|---|---|
-| API (Jest) | `cd taskmate-api && npm test` | 1324/1324, 54 suites (10 pruebas de rendimiento e integración retornan sin afirmar nada si no hay `NODE_ENV=integration-test`) |
-| Frontend (CRA) | `CI=true npm test -- --watchAll=false` | 438/438, 36 suites |
-| Servicio Python (pytest) | `cd taskmate-api/mcp && ./venv/bin/python -m pytest` | 210/210 |
-| BD real | `cd taskmate-api && npm run test:db` (con `TEST_DB_*`) | 119/119, 10 suites (la nueva es `aiReview.dbtest.js`), en un contenedor SQL Server desechable. Medida en esta línea por primera vez el 26 nov: las 117 del 25 nov salían de contar las pruebas en el código, más 2 nuevas |
+| API (Jest) | `cd taskmate-api && npm test` | 1355/1355, 54 suites (10 pruebas de rendimiento e integración retornan sin afirmar nada si no hay `NODE_ENV=integration-test`) |
+| Frontend (CRA) | `CI=true npm test -- --watchAll=false` | 448/448, 37 suites |
+| Servicio Python (pytest) | `cd taskmate-api/mcp && ./venv/bin/python -m pytest` | 238/238 |
+| BD real | `cd taskmate-api && npm run test:db` (con `TEST_DB_*`) | 122/122, 10 suites (la nueva es `aiReview.dbtest.js`), en un contenedor SQL Server desechable. Medida en esta línea por primera vez el 26 nov: las 117 del 25 nov salían de contar las pruebas en el código, más 2 nuevas y 3 del chat |
 | Rendimiento | `cd taskmate-api && npm run test:performance` | Requiere SQL Server real |
 | Lint | `npx eslint src --ext .js,.jsx` | 0 problemas (el 25 nov daba 1 error en `NavGroupSelector.test.jsx`, corregido el 26 nov) |
 | Build | `npm run build` | Compila |
 
-**Total: 2091 pruebas** (26 nov 2026, con los arreglos del webhook de Vercel y de la revisión de PR), frente a 2087 el 25 nov, 1960 al 5 nov 2026 (1246 + 423 + 177 + 114) y 1353 al cerrar la Fase 3. Las suites nuevas cubren Vercel (`tests/deploy/`), el servidor de IA local (`tests/aiServer/`), CORS en la red local (`tests/middleware/`), los archivos por tarea, el streaming del chat, `NavGroupSelector`, `ChatProjectInfo`, `TaskAiPanel` y, en Python, el proveedor Ollama y la búsqueda de conocimiento. Ninguna prueba de BD ejecuta el SQL de `deployment.model.js` ni el de `TaskFiles`. El 3 nov 2026, sobre `master`, además: 0 respuestas HTTP 5xx en 50 llamadas GET de solo lectura y un smoke test de UI con Chrome headless sin excepciones no capturadas. El repositorio de TaskMate no tiene CI propio: el CI/CD de la Fase 4 corre en el repositorio de cada grupo.
+**Total: 2163 pruebas** (26 nov 2026, con los arreglos del webhook de Vercel y de la revisión de PR y las correcciones del chat), frente a 2091 al fusionar en `master`, 2087 el 25 nov, 1960 al 5 nov 2026 (1246 + 423 + 177 + 114) y 1353 al cerrar la Fase 3. Las suites nuevas cubren Vercel (`tests/deploy/`), el servidor de IA local (`tests/aiServer/`), CORS en la red local (`tests/middleware/`), los archivos por tarea, el streaming del chat, los modos de proyecto del chat (`ChatPageProjects`), `NavGroupSelector`, `ChatProjectInfo`, `TaskAiPanel` y, en Python, el proveedor Ollama y la búsqueda de conocimiento. Ninguna prueba de BD ejecuta el SQL de `deployment.model.js` ni el de `TaskFiles`. El 3 nov 2026, sobre `master`, además: 0 respuestas HTTP 5xx en 50 llamadas GET de solo lectura y un smoke test de UI con Chrome headless sin excepciones no capturadas. El repositorio de TaskMate no tiene CI propio: el CI/CD de la Fase 4 corre en el repositorio de cada grupo.
 
 ---
 
@@ -708,7 +708,7 @@ Estado, al 3 nov 2026, de los problemas que listaban las versiones anteriores de
 | 6 | AnalyticsAgent con subprocess y datos mock | **CORREGIDO** · `ddf7ca4` | Node envía `team_context` real (`analyticsContext.js`); el mock queda solo para ids demo `test-group-*` |
 | 7 | El servicio Python del chat corre aparte y el chat falla sin él | **SIGUE PRESENTE** (es la arquitectura) | `start.sh` o `local-up.sh` lo arrancan; `LLMService` reconecta con backoff y el chat recibe `LLM_ERROR` en vez de colgarse; con `start.sh`, smee y el frontend se arrancan a mano |
 | 8 | `onTaskDeletion` marcaba `failed` en vez de `reassigned` | **POR DISEÑO** desde `285bf14` | Borrar = `failed` (`tasks.model.js:209`); desasignar = `reassigned`. Efecto: borrar una tarea asignada baja la tasa de éxito |
-| 9 | ProjectService sin rollback | **CORREGIDO** · `285bf14` | `ProjectService.js:206` (`withTransaction`) |
+| 9 | ProjectService sin rollback | **CORREGIDO** · `285bf14` | `ProjectService.js:245` (`withTransaction`) |
 | 10 | Tres librerías de ReactFlow | **CORREGIDO** · `12ee245` | Solo `@xyflow/react` 12 en `package.json` |
 | 11 | Fecha fija en los prompts | **CORREGIDO** · `12ee245` | `date.today()` en `orchestrator.py` y `recommendations_agent.py` |
 | 12 | Archivos de depuración sueltos | **CORREGIDO** · `dab5d29`, `97041c5`, `5855bb3` | No queda ninguno; tampoco marcadores TODO/FIXME en el código versionado |

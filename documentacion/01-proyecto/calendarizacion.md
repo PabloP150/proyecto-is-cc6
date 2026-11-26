@@ -135,7 +135,7 @@ La línea de Pablo se cerró el 3 nov 2026 al terminar la Fase 4. Las fechas de 
 - **Fase 5 — Testing automático (9–23 oct):** no se realizará; no se empezó. Tampoco se hará la idea 8 de la Fase 4 (estado del CI en el chip de cada tarea), que dependía de esta fase. La línea de Christian trajo «Generate tests», que propone pruebas para la rama de una tarea pero no las ejecuta: no es el ciclo de pruebas por tarea de esta fase.
 - **Fase 6 — Integración con SonarQube (23 oct – 6 nov):** cancelada en la etapa de plan (SonarQube Cloud), sin código. El 23 oct se definió el alcance y se escribió y revisó el plan de la Parte 1; el plan quedó fuera del repositorio.
 - **Fase 7 — Algoritmo de colisión de archivos (6–20 nov, con Christian Martínez):** no se realizará en esta línea. En la de Christian (punto 8) quedó ⏸️ pospuesta con la base hecha: la tabla `TaskFiles` (migración 010), `findTasksTouchingPaths` y `GET /api/github/tasks/:tid/overlaps`; el diálogo «Task files» marca con «Also changed by» las rutas que otra tarea también toca.
-- **Fase 8 — Pruebas finales (20–27 nov):** no se realizará como fase de Pablo. Al cierre pasaban las 1960 pruebas automáticas de las cuatro capas (verificado el 5 nov 2026); el 26 nov, ya en `master`, pasan 2091. Las pruebas finales de la línea de Christian (punto 9) siguen ⏳ pendientes.
+- **Fase 8 — Pruebas finales (20–27 nov):** no se realizará como fase de Pablo. Al cierre pasaban las 1960 pruebas automáticas de las cuatro capas (verificado el 5 nov 2026); el 26 nov, ya en `master`, pasan 2163. Las pruebas finales de la línea de Christian (punto 9) siguen ⏳ pendientes.
 
 ---
 
@@ -149,7 +149,7 @@ La línea de Pablo se cerró el 3 nov 2026 al terminar la Fase 4. Las fechas de 
 | 4 | 18 sep – 9 oct | 9–22 oct | PR #5 (`56f7136`, 22 oct 2026) |
 | 5–8 | 9 oct – 27 nov | No se realizarán (la 6 se canceló en la etapa de plan el 3 nov) | — |
 
-**Calidad al cierre:** 1960 pruebas pasando y 0 fallando (5 nov 2026): API 1246 (46 suites), frontend 423 (33 suites, con las pruebas nuevas del 3 y 4 nov), Python 177 y BD 114 (9 suites). Antes de la Fase 3 había 155 pruebas en dos capas y 52 fallaban; al cerrar la Fase 3 (6 oct) pasaban 1353 y al cerrar la Fase 4 (22 oct), 1914. **Hoy, en `master`:** 2091 pasando y 0 fallando (26 nov 2026: API 1324, frontend 438, Python 210 y BD 119), ver el [estado al 26 nov](cierre-del-proyecto.md#estado-verificado-al-26-nov-2026).
+**Calidad al cierre:** 1960 pruebas pasando y 0 fallando (5 nov 2026): API 1246 (46 suites), frontend 423 (33 suites, con las pruebas nuevas del 3 y 4 nov), Python 177 y BD 114 (9 suites). Antes de la Fase 3 había 155 pruebas en dos capas y 52 fallaban; al cerrar la Fase 3 (6 oct) pasaban 1353 y al cerrar la Fase 4 (22 oct), 1914. **Hoy, en `master`:** 2163 pasando y 0 fallando (26 nov 2026: API 1355, frontend 448, Python 238 y BD 122), ver el [estado al 26 nov](cierre-del-proyecto.md#estado-verificado-al-26-nov-2026).
 
 Qué se entregó, el inventario funcional, el estado verificado, lo que vino después, las limitaciones conocidas, los pendientes y cómo retomar el proyecto: [cierre de la línea de Pablo y estado](cierre-del-proyecto.md).
 
@@ -197,6 +197,6 @@ gantt
 | 6 | IA para generar pruebas | Alta | 9 – 23 oct | 18 nov (`7d83cdf`) | ✅ Completo (propone, no ejecuta): botón «Generate tests» | `taskmate-ai-server` PR #7 + TaskMate (`master` desde el 26 nov) |
 | 7 | IA revisando pull requests | Alta | 23 oct – 6 nov | 18–19 nov (`c2a6833`, migración 011) | ✅ Completo: revisión automática con el webhook de PR y botón «Review PR»; se publica en GitHub como comentario (COMMENT) | `taskmate-ai-server` PR #8 + TaskMate (`master` desde el 26 nov) |
 | 8 | Algoritmo de colisión de archivos | Alta | 6 – 20 nov | — | ⏸️ Pospuesto, con la base hecha: `findTasksTouchingPaths`, `GET /api/github/tasks/:tid/overlaps` y «Also changed by» en «Task files» | — |
-| 9 | Pruebas finales | — | 20 – 27 nov | — | ⏳ Pendiente. Medición del 26 nov, ya en `master`: 2091 pruebas en verde | — |
+| 9 | Pruebas finales | — | 20 – 27 nov | — | ⏳ Pendiente. Medición del 26 nov, ya en `master`: 2163 pruebas en verde | — |
 
 **Además, fuera de la tabla:** el chat sobre el modelo local con streaming (`921f8ed`, 9 oct) y como asistente del proyecto (`f152a9e`, 19 nov), la interfaz en inglés con el selector de grupo en el navbar (`d148763`, 19 nov), `scripts/local-up.sh` para Linux con Podman (`beb1e9c`), `start.sh` con Podman (`d529af6`) y `ALLOW_LAN_ORIGINS` (`50f77da`, 25 nov). Qué entró, dónde vive y las cifras actuales: [después del cierre](cierre-del-proyecto.md#después-del-cierre-línea-de-christian-hasta-el-25-nov-2026). Detalle técnico: [09-linea-christian](../09-linea-christian/README.md) y el módulo [10 · IA sobre el código](../02-arquitectura/10-ia-sobre-el-codigo.md).
