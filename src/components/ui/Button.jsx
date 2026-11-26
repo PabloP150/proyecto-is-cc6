@@ -59,15 +59,15 @@ const StyledButton = styled(MuiButton)(({ theme, variant = 'primary' }) => {
       },
     },
     outline: {
+      // A plain border: the old gradient-border trick used a transparent inner layer, so the
+      // blue-to-orange gradient filled the whole button and hid the blue text.
       background: 'transparent',
-      color: '#3b82f6',
-      border: '2px solid transparent',
-      backgroundImage: 'linear-gradient(rgba(255, 255, 255, 0), rgba(255, 255, 255, 0)), linear-gradient(135deg, #3b82f6, #f59e0b)',
-      backgroundOrigin: 'border-box',
-      backgroundClip: 'content-box, border-box',
+      color: '#93c5fd',
+      border: '2px solid rgba(59, 130, 246, 0.7)',
       '&:hover': {
         color: '#ffffff',
-        background: 'linear-gradient(135deg, #3b82f6 0%, #f59e0b 100%)',
+        borderColor: 'transparent',
+        background: 'linear-gradient(135deg, #3b82f6 0%, #1e3a8a 100%)',
         boxShadow: '0 4px 16px 0 rgba(59, 130, 246, 0.4)',
       },
     },
