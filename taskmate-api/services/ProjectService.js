@@ -7,6 +7,7 @@ const groupRolesModel = require('../models/groupRoles.model');
 const { isGroupMember } = require('../models/access.model');
 const { withTransaction, isFkViolation, isUniqueViolation } = require('../helpers/transaction');
 const { AppError } = require('../helpers/errors');
+const { TYPES } = require('tedious');
 
 // Fallback: map common emojis to Material Icons names
 const EMOJI_TO_ICON = {
@@ -147,26 +148,30 @@ class ProjectService {
      * an AI plan, all in ONE transaction: either the whole project exists or nothing does.
      * Returns {success: true, groupId, groupName} or {success: false, error}.
      */
-    async createProjectFromPlan(recommendations, originalMessage, userId) {
+    // Checks a confirmed new-project plan: { projectData } or { error }.
+    _planData(recommendations, originalMessage, userId) {
         if (!recommendations) {
-            return { success: false, error: 'Missing recommendations data' };
+            return { error: 'Missing recommendations data' };
         }
         if (!userId) {
-            return { success: false, error: 'Missing user ID' };
+            return { error: 'Missing user ID' };
         }
 
         const projectData = recommendations.recommendations || recommendations;
         if (!projectData) {
-            return { success: false, error: 'Invalid recommendations format: missing project data' };
+            return { error: 'Invalid recommendations format: missing project data' };
         }
         if (!projectData.project_name && !originalMessage) {
-            return { success: false, error: 'Missing project name and original message' };
+            return { error: 'Missing project name and original message' };
         }
         if (!projectData.tasks || !Array.isArray(projectData.tasks)) {
-            return { success: false, error: 'Invalid or missing tasks array' };
+            return { error: 'Invalid or missing tasks array' };
         }
+        return { projectData };
+    }
 
-        const groupId = uuidv4();
+    // The rows a new-project plan becomes, for the group `groupId`.
+    _planRows(projectData, originalMessage, groupId) {
         const groupName = clip(projectData.project_name || `Project: ${originalMessage}`, LIMITS.name) || 'Project';
 
         // Role names are unique per group (UQ_GroupRoles_Gid_Name, case-insensitive).
@@ -201,34 +206,99 @@ class ProjectService {
             x_pos: NODE_SPACING_X * i,
             y_pos: 0,
         }));
+        return { groupName, roles, tasks, milestones };
+    }
 
+    // Queued FIFO on the transaction's single connection.
+    _insertPlanRows(tx, groupId, { roles, tasks, milestones }) {
+        return Promise.all([
+            ...roles.map(role => groupRolesModel.addGroupRole({
+                gr_id: uuidv4(),
+                gid: groupId,
+                gr_name: role.cleanName,
+                gr_color: clip(role.color || '#6b7280', LIMITS.roleColor),
+                gr_icon: normalizeIcon(role.icon),
+            }, { tx })),
+            ...tasks.map(task => taskModel.addTask(task, { tx })),
+            ...milestones.map(node => nodeModel.addNode(node, { tx })),
+        ]);
+    }
+
+    _saveError(error, what) {
+        console.error(`Error ${what} from recommendations:`, error);
+        if (isFkViolation(error)) {
+            return { success: false, error: 'Invalid user ID or database reference error' };
+        }
+        if (isUniqueViolation(error)) {
+            return { success: false, error: 'Project with this name already exists for this user' };
+        }
+        return { success: false, error: 'Database error: the project could not be created' };
+    }
+
+    async createProjectFromPlan(recommendations, originalMessage, userId) {
+        const { projectData, error } = this._planData(recommendations, originalMessage, userId);
+        if (error) return { success: false, error };
+
+        const groupId = uuidv4();
+        const rows = this._planRows(projectData, originalMessage, groupId);
         try {
             await withTransaction(async (tx) => {
-                await groupModel.addGroup({ gid: groupId, adminId: userId, name: groupName }, { tx });
+                await groupModel.addGroup({ gid: groupId, adminId: userId, name: rows.groupName }, { tx });
                 await userGroupModel.addUserToGroup({ uid: userId, gid: groupId }, { tx });
-                // Queued FIFO on the transaction's single connection.
-                await Promise.all([
-                    ...roles.map(role => groupRolesModel.addGroupRole({
-                        gr_id: uuidv4(),
-                        gid: groupId,
-                        gr_name: role.cleanName,
-                        gr_color: clip(role.color || '#6b7280', LIMITS.roleColor),
-                        gr_icon: normalizeIcon(role.icon),
-                    }, { tx })),
-                    ...tasks.map(task => taskModel.addTask(task, { tx })),
-                    ...milestones.map(node => nodeModel.addNode(node, { tx })),
-                ]);
+                await this._insertPlanRows(tx, groupId, rows);
             });
-            return { success: true, groupId, groupName };
-        } catch (error) {
-            console.error('Error creating project from recommendations:', error);
-            if (isFkViolation(error)) {
-                return { success: false, error: 'Invalid user ID or database reference error' };
-            }
-            if (isUniqueViolation(error)) {
-                return { success: false, error: 'Project with this name already exists for this user' };
-            }
-            return { success: false, error: 'Database error: the project could not be created' };
+            return { success: true, groupId, groupName: rows.groupName };
+        } catch (err) {
+            return this._saveError(err, 'creating project');
+        }
+    }
+
+    /**
+     * fillEmptyGroupFromPlan(gid, recommendations, originalMessage, userId)
+     * Saves a new-project plan made in the chat for an empty group (no repository, tasks or milestones;
+     * every new account's personal group) into that same group: it takes the project's name and gets
+     * its roles, tasks and milestones, in one transaction. Only the group's admin can, and only while the
+     * group is still unused (no active, completed or deleted tasks, milestones or repository; checked under
+     * lock): otherwise → { success: false, notEligible: true, reason: 'NOT_ADMIN' | 'NOT_EMPTY' } and
+     * nothing is written. Roles the group already has (same name) are kept, not duplicated.
+     */
+    async fillEmptyGroupFromPlan(gid, recommendations, originalMessage, userId) {
+        const { projectData, error } = this._planData(recommendations, originalMessage, userId);
+        if (error) return { success: false, error };
+        if (!gid) return { success: false, notEligible: true, reason: 'NOT_EMPTY' };
+
+        const rows = this._planRows(projectData, originalMessage, gid);
+        const params = [
+            { name: 'gid', type: TYPES.UniqueIdentifier, value: gid },
+            { name: 'uid', type: TYPES.UniqueIdentifier, value: userId },
+        ];
+        try {
+            const outcome = await withTransaction(async (tx) => {
+                const [group] = await tx.read(
+                    `SELECT CASE WHEN g.adminId = @uid THEN 1 ELSE 0 END AS isAdmin,
+                            (SELECT COUNT(*) FROM dbo.Tasks WITH (UPDLOCK, HOLDLOCK) WHERE gid = @gid) AS tasks,
+                            (SELECT COUNT(*) FROM dbo.Complete WITH (UPDLOCK, HOLDLOCK) WHERE gid = @gid) AS completed,
+                            (SELECT COUNT(*) FROM dbo.DeleteTask WITH (UPDLOCK, HOLDLOCK) WHERE gid = @gid) AS deleted,
+                            (SELECT COUNT(*) FROM dbo.Nodes WITH (UPDLOCK, HOLDLOCK) WHERE gid = @gid) AS nodes,
+                            (SELECT COUNT(*) FROM dbo.GroupRepositories WITH (UPDLOCK, HOLDLOCK) WHERE gid = @gid) AS repos
+                     FROM dbo.Groups g WITH (UPDLOCK) WHERE g.gid = @gid`, params);
+                if (!group || group.tasks || group.completed || group.deleted || group.nodes || group.repos) return 'NOT_EMPTY';
+                if (!group.isAdmin) return 'NOT_ADMIN';
+                const existing = await tx.read('SELECT gr_name FROM dbo.GroupRoles WHERE gid = @gid', params);
+                // SQL Server ignores trailing spaces when comparing, so the unique key does too.
+                const taken = new Set(existing.map(row => String(row.gr_name).trim().toLowerCase()));
+                await tx.write('UPDATE dbo.Groups SET name = @name WHERE gid = @gid', [
+                    ...params, { name: 'name', type: TYPES.NVarChar, value: rows.groupName },
+                ]);
+                await this._insertPlanRows(tx, gid, {
+                    ...rows, roles: rows.roles.filter(role => !taken.has(role.cleanName.trim().toLowerCase())),
+                });
+                return 'FILLED';
+            });
+            if (outcome !== 'FILLED') return { success: false, notEligible: true, reason: outcome };
+            return { success: true, groupId: gid, groupName: rows.groupName, filled: true };
+        } catch (err) {
+            return this._saveError(err, 'filling the group');
         }
     }
 

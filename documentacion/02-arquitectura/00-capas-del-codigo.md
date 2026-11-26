@@ -107,7 +107,7 @@ flowchart LR
     orch --> repo
     orch --> pipe
     orch -->|"chat"| llm
-    orch -->|"chat sin proyecto"| kn
+    orch -->|"chat de proyecto nuevo"| kn
     kn -->|"POST /search<br/>X-AI-Server-Secret"| ai
     rec --> llm
     ana --> llm
@@ -119,10 +119,10 @@ flowchart LR
 
 - `server.py` acepta solo la conexión de Node: sin cabecera `Origin` y con `X-MCP-Secret` correcto.
 - `orchestrator.py` reparte cada mensaje por su `method`: `handle_user_message`, `save_plan_result`, `analyze_repository`, `propose_pipeline`, o `type: analytics`.
-- En `handle_user_message`, `_route` clasifica el mensaje en PLAN, CHAT o fuera de tema. CHAT responde en streaming (`response_chunk`). PLAN con proyecto devuelve `plan_request` a Node, que corre el análisis del repo. PLAN sin proyecto arma el plan con `RecommendationsAgent`.
+- En `handle_user_message`, `_route` clasifica el mensaje en PLAN, CHAT o fuera de tema. CHAT responde en streaming (`response_chunk`). PLAN con un grupo con datos devuelve `plan_request` a Node, que corre el análisis del repo. PLAN sin proyecto o con un grupo sin usar arma el plan con `RecommendationsAgent`.
 - Los agentes arman el prompt y validan la respuesta; `schemas.py` define con Pydantic lo que aceptan el análisis del repo, el pipeline y el contexto del proyecto del chat (`ProjectContext`).
 - `llm_service.py` elige el proveedor con `LLM_PROVIDER`. TaskMate corre con `ollama`, que pone `scripts/local-up.sh`: `httpx` a `POST /api/chat` con Gemma 4 (`gemma4:e2b-it-qat`) y un solo cliente reutilizado. `groq` (`AsyncGroq`) es el respaldo en la nube y el valor por defecto del código, para que un checkout sin Ollama siga funcionando. Todos los agentes pasan por ahí.
-- `knowledge.py` busca en los documentos del servidor de IA local (`POST /search`, 3 s de plazo) solo cuando el chat no tiene proyecto y `AI_SERVER_URL` está puesto. Si falla, el chat sigue sin ese contexto.
+- `knowledge.py` busca en los documentos del servidor de IA local (`POST /search`, 3 s de plazo) solo cuando el chat no tiene proyecto (o el grupo está sin usar) y `AI_SERVER_URL` está puesto. Si falla, el chat sigue sin ese contexto.
 - El servicio Python no toca la base de datos: todo lo que guarda lo guarda la API.
 - El servidor de IA local es un repo aparte (`taskmate-ai-server`, de Christian) con sus propias capas: ver [IA sobre el código](10-ia-sobre-el-codigo.md).
 

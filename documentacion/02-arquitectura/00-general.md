@@ -13,7 +13,7 @@ Cómo leerlo: el azul es TaskMate en tu máquina, el verde la IA local (también
 | API → Servicio Python | Mensajes del chat, recomendaciones, análisis del repo y propuesta de pipeline | Un solo WebSocket a `/ws` con la cabecera `X-MCP-Secret` |
 | Servicio Python → Ollama (Gemma 4) | Prompts y respuestas del modelo; el chat responde en streaming | `POST /api/chat` a `127.0.0.1:11434`, modelo `gemma4:e2b-it-qat`. Lo activa `LLM_PROVIDER=ollama`, que pone `scripts/local-up.sh` |
 | Servicio Python → Groq (respaldo en la nube) | Lo mismo, solo si se usa Groq | HTTPS con `AsyncGroq`, modelo `openai/gpt-oss-20b` y `GROQ_API_KEY`. Es el valor por defecto de `LLM_PROVIDER` en el código, para que un checkout sin Ollama siga funcionando |
-| Servicio Python → Servidor de IA local | Documentos del proyecto para el chat sin proyecto seleccionado (RAG) | `POST /search` con `X-AI-Server-Secret`; si falla, el chat sigue sin ellos |
+| Servicio Python → Servidor de IA local | Documentos del proyecto para el chat de proyecto nuevo, sin proyecto o con un grupo sin usar (RAG) | `POST /search` con `X-AI-Server-Secret`; si falla, el chat sigue sin ellos |
 | API → Servidor de IA local | Los parches del diff de la rama de una tarea, para auditarla, proponer pruebas o revisar su PR | `POST /commands/{audit, generate-tests, review-pr}` con `X-AI-Server-Secret` |
 | Servidor de IA local → Ollama y Postgres | Generar texto (`gemma4:e2b-it-qat`), embeddings (`embeddinggemma:300m`) y buscar por similitud | Ollama en `127.0.0.1:11434`; Postgres 17 + pgvector en `127.0.0.1:5432` |
 | API → GitHub App | Leer el repo, crear ramas, subir el workflow, lanzar y leer ejecuciones, deploys y publicar la revisión de IA del PR | REST y GraphQL con tokens de instalación de 1 h |

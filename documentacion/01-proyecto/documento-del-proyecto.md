@@ -6,7 +6,7 @@
 
 Qué conecta cada flecha: [arquitectura general](../02-arquitectura/00-general.md).
 
-> **Estado del documento:** actualizado el 26 nov 2026 y contrastado con el código de la rama `test/e2e` (`50f77da`) más los arreglos del 26 nov. La línea de trabajo de Pablo Pineda cerró el 3 nov 2026 al terminar la Fase 4; sus Fases 5–8 no se realizarán. La línea de Christian Martínez siguió con sus fechas corridas: agregó el monitoreo de despliegues en Vercel, los archivos por tarea, el servidor de IA local con la IA sobre el código (auditoría de la rama, pruebas propuestas y revisión de PR), el chat como asistente del proyecto con modelo local y la interfaz en inglés. Ese trabajo entró por la rama `test/e2e` y está en `master` desde el 26 nov 2026, junto con tres arreglos de ese día (el webhook de Vercel ya no puede tumbar la API, una revisión de PR fallida se puede reintentar y ESLint vuelve a 0). Los entregables oficiales (el documento del proyecto y el estudio de factibilidad en PDF/DOCX) se mantienen por separado y no forman parte del control de versiones; esta versión en Markdown es la que acompaña al código. Las limitaciones conocidas y lo que quedó pendiente están en el [cierre de la línea de Pablo y estado](cierre-del-proyecto.md); el detalle de la línea de Christian, en [09-linea-christian](../09-linea-christian/README.md). Resumen de una página: [qué es TaskMate](que-es-taskmate.md).
+> **Estado del documento:** actualizado el 26 nov 2026 y contrastado con el código de la rama `test/e2e` (`50f77da`) más los arreglos del 26 nov. La línea de trabajo de Pablo Pineda cerró el 3 nov 2026 al terminar la Fase 4; sus Fases 5–8 no se realizarán. La línea de Christian Martínez siguió con sus fechas corridas: agregó el monitoreo de despliegues en Vercel, los archivos por tarea, el servidor de IA local con la IA sobre el código (auditoría de la rama, pruebas propuestas y revisión de PR), el chat como asistente del proyecto con modelo local y la interfaz en inglés. Ese trabajo entró por la rama `test/e2e` y está en `master` desde el 26 nov 2026, junto con tres arreglos de ese día (el webhook de Vercel ya no puede tumbar la API, una revisión de PR fallida se puede reintentar y ESLint vuelve a 0) y las correcciones del chat de proyecto nuevo del mismo día. Los entregables oficiales (el documento del proyecto y el estudio de factibilidad en PDF/DOCX) se mantienen por separado y no forman parte del control de versiones; esta versión en Markdown es la que acompaña al código. Las limitaciones conocidas y lo que quedó pendiente están en el [cierre de la línea de Pablo y estado](cierre-del-proyecto.md); el detalle de la línea de Christian, en [09-linea-christian](../09-linea-christian/README.md). Resumen de una página: [qué es TaskMate](que-es-taskmate.md).
 
 ## Tabla de Contenidos
 
@@ -266,11 +266,11 @@ Groq queda como respaldo en la nube: es el valor por defecto de `LLM_PROVIDER` e
 
 **Servicio Python del chat con agentes especializados**
 
-El servicio Python del chat es un servicio propio (FastAPI, `127.0.0.1:8001`) con un único endpoint WebSocket (`/ws`), autenticado con un secreto compartido (`X-MCP-Secret`). Recibe mensajes JSON propios (`sessionId`, `method`, `params`). Un orquestador clasifica cada mensaje del chat (plan, conversación o fuera de tema) y reparte el trabajo entre cuatro agentes: recomendaciones (planes de proyecto), analytics (asignaciones), análisis del repositorio (Fase 3) y pipeline (Fase 4). Las respuestas de conversación salen en streaming y, cuando no hay un proyecto seleccionado y el servidor de IA local está configurado, se apoyan en su búsqueda de documentos. La carpeta y el servicio se llaman `mcp` por el diseño inicial, inspirado en el Model Context Protocol (MCP), pero el servicio **no implementa ese protocolo**: no usa su SDK, ni JSON-RPC, ni el descubrimiento de herramientas.
+El servicio Python del chat es un servicio propio (FastAPI, `127.0.0.1:8001`) con un único endpoint WebSocket (`/ws`), autenticado con un secreto compartido (`X-MCP-Secret`). Recibe mensajes JSON propios (`sessionId`, `method`, `params`). Un orquestador clasifica cada mensaje del chat (plan, conversación o fuera de tema) y reparte el trabajo entre cuatro agentes: recomendaciones (planes de proyecto), analytics (asignaciones), análisis del repositorio (Fase 3) y pipeline (Fase 4). Las respuestas de conversación salen en streaming y, cuando no hay un proyecto seleccionado (o el grupo está sin usar) y el servidor de IA local está configurado, se apoyan en su búsqueda de documentos. La carpeta y el servicio se llaman `mcp` por el diseño inicial, inspirado en el Model Context Protocol (MCP), pero el servicio **no implementa ese protocolo**: no usa su SDK, ni JSON-RPC, ni el descubrimiento de herramientas.
 
 *Ventajas:*
 - Separación clara de responsabilidades entre agentes
-- Un protocolo pequeño y propio, fácil de probar (210 pruebas en Python)
+- Un protocolo pequeño y propio, fácil de probar (238 pruebas en Python)
 - Las respuestas del modelo se validan antes de llegar al backend (por ejemplo, el pipeline se renderiza desde una plantilla fija)
 - El proveedor del modelo se cambia en un solo módulo (`llm_service.py`), sin tocar los agentes
 
@@ -390,7 +390,7 @@ La base de datos relacional mantiene integridad referencial mediante constraints
 
 ### Flujo de Trabajo Típico
 
-Un usuario inicia sesión y elige su grupo activo en la barra de navegación. Puede crear tareas manualmente o conversar con el asistente de IA, que responde con los datos del grupo: tareas, hitos, equipo, asignaciones y, si el admin lo permitió, el resumen del repositorio. El asistente arma un plan solo cuando el usuario lo pide. Con un grupo seleccionado, el pedido se convierte en un análisis del repositorio que propone las siguientes tareas e hitos (si el grupo no conectó su repositorio o no permitió el análisis con IA, el chat avisa del error); sin grupo seleccionado, genera un plan de proyecto nuevo (grupo, roles, tareas e hitos con fechas). En ambos casos el plan se guarda en una sola transacción y solo al confirmarlo, y queda disponible en las diferentes vistas de la aplicación.
+Un usuario inicia sesión y elige su grupo activo en la barra de navegación. Puede crear tareas manualmente o conversar con el asistente de IA, que responde con los datos del grupo: tareas, hitos, equipo, asignaciones y, si el admin lo permitió, el resumen del repositorio. El asistente arma un plan solo cuando el usuario lo pide. Con un grupo seleccionado, el pedido se convierte en un análisis del repositorio que propone las siguientes tareas e hitos (si el grupo no conectó su repositorio o no permitió el análisis con IA, el chat avisa del error); con «New project», sin grupo o con un grupo todavía sin usar (como el grupo personal de una cuenta nueva), genera un plan de proyecto nuevo (grupo, roles, tareas e hitos con fechas), que se guarda como grupo nuevo o, si el usuario es admin del grupo sin usar, en ese grupo. En ambos casos el plan se guarda en una sola transacción y solo al confirmarlo, y queda disponible en las diferentes vistas de la aplicación.
 
 Si el grupo conectó su repositorio, cada miembro puede crear la rama de su tarea desde TaskMate. Al abrir o actualizar el PR de esa rama, la IA local lo revisa y deja su revisión como comentario en GitHub (si el grupo lo permitió y el servidor de IA local está configurado). Desde el diálogo «Task files», el miembro ve los archivos que cambió y qué otras tareas tocan los mismos, y puede pedir una auditoría de la rama o una propuesta de pruebas. Al fusionarse el PR en la rama principal, la tarea se completa sola. Cada cambio que pasa el CI se publica en staging, y un miembro puede solicitar que esa versión pase a producción; el admin la aprueba o la rechaza desde TaskMate, y todo el grupo recibe los avisos en vivo. Si el grupo vinculó su proyecto de Vercel, sus despliegues aparecen en la pestaña «Vercel (monitoring)».
 
@@ -482,13 +482,13 @@ El esquema relacional tiene 29 tablas: 11 del núcleo, 4 de analytics, 6 de GitH
 La implementación con Material-UI resultó en una interfaz consistente y responsiva, con un tema propio y componentes reutilizables (botón, tarjeta, campo de texto). Desde el 19 nov 2026 la interfaz está en inglés; quedan pocos textos en español (por ejemplo, el botón para vincular el proyecto de Vercel).
 
 **Sistema de Inteligencia Artificial:**
-El chat funciona con el modelo local (Gemma 4 en Ollama, `LLM_PROVIDER=ollama`, lo que pone `scripts/local-up.sh`); Groq (`openai/gpt-oss-20b`) queda como respaldo en la nube y es el valor por defecto del código. Desde la línea de Christian es un asistente del proyecto: conversa con normalidad, responde con los datos del grupo elegido en la barra de navegación, muestra la respuesta mientras se escribe y arma un plan solo cuando se le pide. Con un grupo seleccionado, el plan sale del análisis del repositorio (exige el repositorio conectado y «Allow AI analysis»), que también se lanza con el botón «Propose tasks». Sin grupo, la conversación puede apoyarse en los documentos del servidor de IA local, y el plan propone un proyecto nuevo (grupo, roles, al menos 8 tareas e hitos con fechas). En los dos casos el plan se guarda solo al confirmarlo. El servicio Python coordina a cuatro agentes especializados, y sus errores llegan al usuario como mensajes claros (por ejemplo, cuando el servicio está ocupado o tarda demasiado).
+El chat funciona con el modelo local (Gemma 4 en Ollama, `LLM_PROVIDER=ollama`, lo que pone `scripts/local-up.sh`); Groq (`openai/gpt-oss-20b`) queda como respaldo en la nube y es el valor por defecto del código. Desde la línea de Christian es un asistente del proyecto: conversa con normalidad, responde con los datos del grupo elegido en la barra de navegación, muestra la respuesta mientras se escribe y arma un plan solo cuando se le pide. Con un grupo seleccionado, el plan sale del análisis del repositorio (exige el repositorio conectado y «Allow AI analysis»), que también se lanza con el botón «Propose tasks». Con «New project», sin grupo o con un grupo sin usar, la conversación puede apoyarse en los documentos del servidor de IA local, y el plan propone un proyecto nuevo (grupo, roles, al menos 8 tareas e hitos con fechas). En los dos casos el plan se guarda solo al confirmarlo. Cada proyecto conserva su propia conversación. El servicio Python coordina a cuatro agentes especializados, y sus errores llegan al usuario como mensajes claros (por ejemplo, cuando el servicio está ocupado o tarda demasiado).
 
 **Análisis de Rendimiento:**
 El panel de analytics muestra, a los líderes del equipo, el resumen del grupo, la carga de trabajo por miembro y la experiencia por categoría de tarea. Las recomendaciones de asignación las genera el agente de IA con los datos reales del equipo (competencias históricas, carga actual y tasa de éxito); su precisión no se midió. Las métricas de experiencia por categoría se actualizan al completar tareas.
 
 **Comunicación en Tiempo Real:**
-Tres canales WebSocket, todos autenticados con el token y con el origen verificado: `/chat` (chat con la IA, con respuestas en streaming e historial que se restaura al reconectar), `/insights` (recomendaciones del panel) y `/events` (eventos de CI/CD por grupo). El heartbeat cada 30 segundos, la reconexión automática con espera creciente y el cierre de la conexión al vencer el token mantienen estables las conexiones. Las ediciones de tareas e hitos, los despliegues de Vercel y las revisiones de IA no se difunden en vivo.
+Tres canales WebSocket, todos autenticados con el token y con el origen verificado: `/chat` (chat con la IA, con respuestas en streaming y una conversación por proyecto que se restaura al reconectar o al volver a ese proyecto), `/insights` (recomendaciones del panel) y `/events` (eventos de CI/CD por grupo). El heartbeat cada 30 segundos, la reconexión automática con espera creciente y el cierre de la conexión al vencer el token mantienen estables las conexiones. Las ediciones de tareas e hitos, los despliegues de Vercel y las revisiones de IA no se difunden en vivo.
 
 **Integración con GitHub (Fase 3):**
 El admin conecta el repositorio del grupo instalando la GitHub App; los miembros exploran el árbol, los archivos, el README y los commits; cada tarea puede tener su rama; un PR fusionado en la rama principal completa la tarea de forma atómica y limpia la rama; y, si el admin lo permite («Allow AI analysis»), la IA analiza el repositorio y propone las siguientes tareas e hitos, que se guardan solo al confirmarlos.
@@ -507,15 +507,15 @@ En el panel «AI on the branch» del mismo diálogo, cualquier miembro puede aud
 
 ### Calidad y Verificación
 
-Estado verificado el 26 nov 2026 sobre lo que se fusionó en `master` (`test/e2e` con los arreglos de ese día):
+Estado verificado el 26 nov 2026 sobre `master` (`test/e2e` con los arreglos de ese día y las correcciones del chat):
 
 | Verificación | Resultado |
 |---|---|
-| Pruebas de la API (Jest) | 1324/1324, 54 suites |
-| Pruebas del frontend | 438/438, 36 suites |
-| Pruebas del servicio Python del chat (pytest) | 210/210, 8 archivos |
-| Pruebas de base de datos | 119/119, 10 suites, en un contenedor SQL Server desechable |
-| Total | **2091 pruebas**, 0 fallando; eran 1353 al cerrar la Fase 3, 1914 al cerrar la Fase 4, 1960 al cierre de la línea de Pablo (5 nov) y 2087 contadas el 25 nov, antes de los arreglos |
+| Pruebas de la API (Jest) | 1355/1355, 54 suites |
+| Pruebas del frontend | 448/448, 37 suites |
+| Pruebas del servicio Python del chat (pytest) | 238/238, 8 archivos |
+| Pruebas de base de datos | 122/122, 10 suites, en un contenedor SQL Server desechable |
+| Total | **2163 pruebas**, 0 fallando; eran 1353 al cerrar la Fase 3, 1914 al cerrar la Fase 4, 1960 al cierre de la línea de Pablo (5 nov), 2087 contadas el 25 nov, antes de los arreglos, y 2091 al fusionar en `master` el 26 nov |
 | ESLint | 0 problemas (el 25 nov había 1, en `NavGroupSelector.test.jsx`; se corrigió el 26 nov) |
 | Build de producción (CRA) | Compilaba el 5 nov, sobre `master`; no se volvió a correr |
 | Comprobaciones de solo lectura con la app corriendo | 0 respuestas HTTP 5xx en 50 llamadas GET (3 nov, sobre `master`; no se repitió) |
@@ -559,7 +559,7 @@ Se añadieron índices en todas las claves foráneas y restricciones de unicidad
 El primer planteamiento era un pipeline para el repositorio de TaskMate; se corrigió para que el CI/CD fuera una funcionalidad del producto, operada por cada grupo sobre su propio repositorio.
 
 **Del Planificador al Asistente del Proyecto:**
-El chat empezó como un planificador que hacía preguntas hasta tener datos para un plan. En la línea de Christian (19 nov 2026) pasó a conversar con normalidad sobre el proyecto y a armar el plan solo cuando se le pide. El mínimo de tareas del plan de proyecto nuevo bajó de 50 a 8, pensando en el modelo local.
+El chat empezó como un planificador que hacía preguntas hasta tener datos para un plan. En la línea de Christian (19 nov 2026) pasó a conversar con normalidad sobre el proyecto y a armar el plan solo cuando se le pide. El mínimo de tareas del plan de proyecto nuevo bajó de 50 a 8, pensando en el modelo local. El 26 nov se agregó «New project», el plan de una cuenta nueva pasó a guardarse en su grupo personal todavía sin usar, cada proyecto conservó su propia conversación y el plan con el modelo local, que fallaba la mitad de las veces, pasó a salir bien en 12 de 12 pruebas con una penalización de repetición, más un reintento.
 
 **Refinamiento de Interfaz de Usuario:**
 Se iteró en el diseño de la navegación principal hasta la estructura actual de pestañas horizontales con indicador de estado activo. El 19 nov 2026 la interfaz pasó al inglés, el grupo activo pasó a elegirse desde la barra de navegación y el chat dejó de tener su propio selector de proyecto.
@@ -570,7 +570,7 @@ Se iteró en el diseño de la navegación principal hasta la estructura actual d
 
 ### Logros Principales
 
-TaskMate logró integrar en una sola plataforma la gestión de tareas en varias vistas, la colaboración por grupos con roles, un asistente de IA que conversa sobre el proyecto y convierte una idea en un plan guardable, el trabajo con el repositorio del grupo y la operación de su CI/CD. La línea de Pablo entregó las Fases 1–4 y cerró el 3 nov 2026; la de Christian agregó el monitoreo de Vercel, los archivos por tarea, el modelo local y la IA sobre el código. Al 26 nov 2026 pasan 2091 pruebas automáticas en las cuatro suites.
+TaskMate logró integrar en una sola plataforma la gestión de tareas en varias vistas, la colaboración por grupos con roles, un asistente de IA que conversa sobre el proyecto y convierte una idea en un plan guardable, el trabajo con el repositorio del grupo y la operación de su CI/CD. La línea de Pablo entregó las Fases 1–4 y cerró el 3 nov 2026; la de Christian agregó el monitoreo de Vercel, los archivos por tarea, el modelo local y la IA sobre el código. Al 26 nov 2026 pasan 2163 pruebas automáticas en las cuatro suites.
 
 La arquitectura modular implementada demostró ser acertada, permitiendo desarrollo independiente de componentes mientras mantiene integración fluida. La separación clara entre frontend, backend, servicio Python del chat y servidor de IA local facilitó el mantenimiento y las pruebas, y permitió que las dos líneas avanzaran sobre el mismo código.
 
@@ -756,7 +756,7 @@ La línea de Pablo cerró el 3 nov 2026, al terminar la Fase 4; la de Christian 
 - Las Fases 1 y 2 se hicieron antes de que existiera la calendarización y se mapearon a sus ventanas después.
 - La Fase 3 se implementó dentro de su ventana (10–11 sep), pero se fusionó el 6 oct, después de las pruebas E2E con GitHub real.
 - La Fase 4 empezó el último día de su ventana (9 oct) y terminó el 22 oct, 13 días después de la fecha planificada.
-- La línea de Pablo cerró el 3 nov 2026, dentro de la ventana de la Fase 6; las Fases 5–8 no se realizaron. La Fase 8 no se hizo como fase: al cierre de la línea pasaban 1960 pruebas automáticas (5 nov), y al 26 nov pasan 2091.
+- La línea de Pablo cerró el 3 nov 2026, dentro de la ventana de la Fase 6; las Fases 5–8 no se realizaron. La Fase 8 no se hizo como fase: al cierre de la línea pasaban 1960 pruebas automáticas (5 nov), y al 26 nov pasan 2163.
 
 **Línea de Christian Martínez:**
 

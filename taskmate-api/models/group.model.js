@@ -104,7 +104,30 @@ const deleteGroup = async (gid, adminId, options = {}) => useTransaction(options
     return { success: true };
 });
 
+// GROUP_USAGE_SQL(@gid) → one row: how much the group has been used. A group is "unused" (the chat
+// shapes a new project for it and can save the plan in it) only when every count is 0: no active,
+// completed or deleted tasks, no milestones and no linked repository.
+const GROUP_USAGE_SQL = `SELECT
+    (SELECT COUNT(*) FROM dbo.Tasks WHERE gid = @gid) AS tasks,
+    (SELECT COUNT(*) FROM dbo.Complete WHERE gid = @gid) AS completed,
+    (SELECT COUNT(*) FROM dbo.DeleteTask WHERE gid = @gid) AS deleted,
+    (SELECT COUNT(*) FROM dbo.Nodes WHERE gid = @gid) AS nodes,
+    (SELECT COUNT(*) FROM dbo.GroupRepositories WHERE gid = @gid) AS repos`;
+
+const isUnusedUsage = (usage) => Boolean(usage)
+    && ['tasks', 'completed', 'deleted', 'nodes', 'repos'].every((key) => Number(usage[key]) === 0);
+
+// isGroupUnused(gid) → true when the group has never been used (see GROUP_USAGE_SQL).
+const isGroupUnused = async (gid) => {
+    const rows = await execReadCommand(GROUP_USAGE_SQL, [{ name: 'gid', type: TYPES.UniqueIdentifier, value: gid }]);
+    const list = rows && rows.recordset ? rows.recordset : rows;
+    return isUnusedUsage(Array.isArray(list) ? list[0] : null);
+};
+
 module.exports = {
+    GROUP_USAGE_SQL,
+    isUnusedUsage,
+    isGroupUnused,
     addGroup,
     createGroupWithAdmin,
     getGroupsByUserId,

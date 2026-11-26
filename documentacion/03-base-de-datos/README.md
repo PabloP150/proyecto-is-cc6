@@ -26,7 +26,7 @@ flowchart LR
 | [2 · Grupos y roles](02-grupos-y-roles.md) | Grupos, miembros, roles de cada grupo y qué rol tiene cada miembro (4 tablas) |
 | [3 · Tareas](03-tareas.md) | `Tasks`, `UserTask`, `Complete` y `DeleteTask`; las listas son la columna `Tasks.list` |
 | [4 · Hitos y calendario](04-hitos-y-calendario.md) | `Nodes` y `Edges`, y los triggers que recalculan el porcentaje de los hitos |
-| [5 · Chat con IA](05-chat-ia.md) | Sin tablas propias: el plan confirmado crea tareas e hitos (y, en un proyecto nuevo, el grupo y sus roles) en una transacción |
+| [5 · Chat con IA](05-chat-ia.md) | Sin tablas propias: el plan confirmado crea tareas e hitos (y, en un proyecto nuevo, el grupo y sus roles, o el nombre y los roles de un grupo sin usar) en una transacción |
 | [6 · Analytics](06-analytics.md) | Historial de asignaciones, métricas que salen de él y la configuración por grupo |
 | [7 · GitHub](07-github.md) | Instalación, repositorio, rama de cada tarea, PRs y webhooks recibidos (6 tablas, sin tokens), más los archivos que tocó cada tarea (`TaskFiles`) |
 | [8 · CI/CD](08-cicd.md) | `RepoPipelines` y `DeployRequests`; de GitHub Actions no se guardan ejecuciones, logs ni deploys. Los despliegues de Vercel sí se guardan: `Deployments`, `DeploymentWebhookDeliveries` y `GroupDeployTargets` |

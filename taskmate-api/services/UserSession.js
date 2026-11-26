@@ -77,6 +77,9 @@ const isUuid = (value) => typeof value === 'string' && UUID_RE.test(value);
 const sameId = (a, b) => typeof a === 'string' && typeof b === 'string' && a.toLowerCase() === b.toLowerCase();
 const isPlainObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const sameGroup = (a, b) => (a && b ? String(a).toLowerCase() === String(b).toLowerCase() : a === b);
+// Each project (and "no project") keeps its own chat: history and plan gate, by this key.
+const historyKeyOf = (groupId) => (groupId ? String(groupId).toLowerCase() : '');
+const MAX_STASHED_CHATS = 20;
 const clientRequestIdOf = (value) => (typeof value === 'string' && CLIENT_ID_RE.test(value) ? value : null);
 
 const cooldownRemainingSec = (userId, now = Date.now()) => {
@@ -169,6 +172,18 @@ class UserSession {
         this.pendingRequests = new Map();
         // Set only while Python is waiting for the user to confirm a project plan (save_plan gate).
         this.awaitingPlanConfirmation = false;
+        // chatHistory and awaitingPlanConfirmation belong to the project shown (historyKey); the other
+        // projects' are kept here, so switching back brings its conversation back.
+        this.historyKey = '';
+        this.stashedChats = new Map();
+        // Each set_context bumps it; a slower, older one must not undo a newer project switch.
+        this.contextSeq = 0;
+        // Set while sending on behalf of a project (forProject): messages for a project not shown go
+        // to that project's chat instead of the screen.
+        this.redirectKey = undefined;
+        // Chat requests that timed out (Python requestId -> { historyKey, clientRequestId }): a late
+        // reply still belongs to the project it was asked in.
+        this.expiredRequests = new Map();
 
         this.initialize();
     }
@@ -272,7 +287,13 @@ class UserSession {
         this.clearRequest(requestId);
         const timer = setTimeout(() => this.failRequest(requestId, 'LLM_TIMEOUT'), REQUEST_TIMEOUT_MS);
         if (timer.unref) timer.unref();
-        this.pendingRequests.set(requestId, { kind, clientRequestId, timer });
+        this.pendingRequests.set(requestId, { kind, clientRequestId, timer, historyKey: this.historyKey });
+    }
+
+    takeExpired(requestId) {
+        const entry = requestId ? this.expiredRequests.get(requestId) : null;
+        if (entry) this.expiredRequests.delete(requestId);
+        return entry || null;
     }
 
     clearRequest(requestId) {
@@ -286,6 +307,15 @@ class UserSession {
     failRequest(requestId, code) {
         const pending = this.clearRequest(requestId);
         if (!pending) return;
+        if (pending.kind === 'chat') {
+            this.expiredRequests.set(requestId, { historyKey: pending.historyKey, clientRequestId: pending.clientRequestId, expired: true });
+            while (this.expiredRequests.size > 50) this.expiredRequests.delete(this.expiredRequests.keys().next().value);
+        }
+        if (pending.kind !== 'analytics' && pending.historyKey !== this.historyKey) {
+            const message = ERROR_MESSAGES[code] || ERROR_MESSAGES.INTERNAL_ERROR;
+            this.keepForItsProject(pending, { type: 'error', code, message, content: message, requestId: pending.clientRequestId });
+            return;
+        }
         if (pending.kind === 'analytics') {
             this.sendMessage({ type: 'analytics_error', error: code, requestId: pending.clientRequestId, timestamp: new Date() });
         } else {
@@ -322,25 +352,93 @@ class UserSession {
         }
         const group = await groupModel.getGroupById(groupId);
         if (!group) throw new AppError('NOT_GROUP_MEMBER', 'You are not a member of this group', 403);
-        return { groupId, groupName: group.name };
+        return { groupId, groupName: group.name, adminId: group.adminId };
     }
 
     async handleSetContext(message) {
+        const seq = ++this.contextSeq;
         const groupId = message.groupId === undefined || message.groupId === '' ? null : message.groupId;
-        if (!sameGroup(this.chatContext.groupId, groupId)) this.chatContext = { groupId: null, cache: null, building: null };
+        // Switched right away, before any database work, so whatever the client sends next (a message,
+        // an analysis, another switch) already belongs to this project. Membership is checked on every
+        // use of chatContext (buildProjectContext, revalidatedContext, the analysis), not only here.
+        if (!sameGroup(this.chatContext.groupId, groupId)) this.chatContext = { groupId, cache: null, building: null };
+        this.showChatOf(groupId, { always: true });
         if (groupId === null) {
             this.sendMessage({ type: 'context', groupId: null, groupName: null, repo: null });
             return;
         }
         const group = await this.loadMemberGroup(groupId);
-        const repo = await githubModel.getGroupRepository(groupId);
-        this.chatContext.groupId = groupId;
+        const [repo, unused] = await Promise.all([
+            githubModel.getGroupRepository(groupId),
+            groupModel.isGroupUnused(groupId),
+        ]);
+        // A newer set_context arrived meanwhile (quick switches): its context message wins.
+        if (seq !== this.contextSeq) return;
+        // Never used (no tasks at all, milestones or repository): the chat shapes a new project for it.
+        if (unused) this.chatContext.cache = null;
         this.sendMessage({
             type: 'context',
             groupId,
             groupName: group.groupName,
             repo: repo ? { fullName: repo.fullName, defaultBranch: repo.defaultBranch, aiAnalysisEnabled: repo.aiAnalysisEnabled === true } : null,
+            empty: unused,
+            // Only its admin can have the plan saved in the group; anyone else gets a new group.
+            fillable: unused && sameGroup(group.adminId, this.userId),
         });
+    }
+
+    // Shows the chat of another project: the current one is kept and the other's is restored (an
+    // empty restore clears the screen). Nothing happens when that project is already shown.
+    showChatOf(groupId, { always = false } = {}) {
+        const key = historyKeyOf(groupId);
+        if (key === this.historyKey) {
+            // Asked by the client (set_context): it may have cleared its screen, so it gets the chat again.
+            if (always) this.sendChatHistory({ evenIfEmpty: true });
+            return;
+        }
+        this.stashedChats.delete(this.historyKey);
+        this.stashedChats.set(this.historyKey, { chatHistory: this.chatHistory, awaitingPlanConfirmation: this.awaitingPlanConfirmation });
+        while (this.stashedChats.size > MAX_STASHED_CHATS) {
+            this.stashedChats.delete(this.stashedChats.keys().next().value);
+        }
+        const next = this.stashedChats.get(key);
+        this.stashedChats.delete(key);
+        this.chatHistory = next ? next.chatHistory : [];
+        this.awaitingPlanConfirmation = next ? next.awaitingPlanConfirmation : false;
+        this.historyKey = key;
+        this.sendChatHistory({ evenIfEmpty: true });
+    }
+
+    // Adds a message to the chat of project `key` (shown or not).
+    addToProjectHistory(key, message) {
+        if (key === this.historyKey) return this.addToHistory(message);
+        const chat = this.stashedChats.get(key) || { chatHistory: [], awaitingPlanConfirmation: false };
+        if (!message.timestamp) message.timestamp = new Date();
+        chat.chatHistory.push(message);
+        if (chat.chatHistory.length > this.maxHistorySize) chat.chatHistory = chat.chatHistory.slice(-this.maxHistorySize);
+        this.stashedChats.set(key, chat);
+        return undefined;
+    }
+
+    // A reply to a request made in another project than the one now shown: it goes to that project's
+    // chat (seen when the user goes back to it) instead of appearing in this one. Returns true if so.
+    keepForItsProject(pending, message, awaitingConfirmation) {
+        if (!pending || pending.historyKey === undefined || pending.historyKey === this.historyKey) return false;
+        this.addToProjectHistory(pending.historyKey, message);
+        if (awaitingConfirmation !== undefined) this.stashedChats.get(pending.historyKey).awaitingPlanConfirmation = awaitingConfirmation;
+        return true;
+    }
+
+    // Runs `send` (synchronous sendMessage/sendError calls) on behalf of project `key`: shown live when
+    // it is the project on screen, otherwise kept in that project's chat (live-only messages dropped).
+    forProject(key, send) {
+        const previous = this.redirectKey;
+        this.redirectKey = key;
+        try {
+            return send();
+        } finally {
+            this.redirectKey = previous;
+        }
     }
 
     // The selected project's context for the chat: built once (GitHub snapshot + tasks + milestones +
@@ -378,12 +476,13 @@ class UserSession {
 
     async buildProjectContext(groupId) {
         const group = await this.loadMemberGroup(groupId);
-        const [repo, tasks, nodes, members, assignees] = await Promise.all([
+        const [repo, tasks, nodes, members, assignees, unused] = await Promise.all([
             githubModel.getGroupRepository(groupId),
             tasksModel.getTasksByGroupId(groupId),
             nodesModel.getNodesByGroupId(groupId),
             userGroupModel.getMembersByGroupId(groupId),
             usertaskModel.getAssigneesByGroup(groupId),
+            groupModel.isGroupUnused(groupId),
         ]);
         const assignments = {};
         for (const { taskName, username } of assignees || []) {
@@ -403,6 +502,9 @@ class UserSession {
                 cacheable = false; // retried on the next message
             }
         }
+        // An unused group is not cached: once it gets tasks, milestones or a repository, the next message
+        // must see them (the chat treats an unused group as a new project).
+        if (unused) cacheable = false;
         console.log(`[chat] project context built for ${groupId} (repo: ${snapshot ? 'yes' : repoNote || 'no'})`);
         return {
             cacheable,
@@ -410,6 +512,9 @@ class UserSession {
                 groupId,
                 groupName: group.groupName,
                 repoNote,
+                hasRepository: Boolean(repo),
+                // Never used (no active, completed or deleted tasks, milestones or repository).
+                isEmpty: unused === true,
                 members: (members || []).map((m) => m.username).filter(Boolean),
                 assignments,
                 snapshot,
@@ -431,7 +536,13 @@ class UserSession {
         if (retryAfterSec > 0) return refuse('RATE_LIMITED', { retryAfterSec });
 
         // Claimed synchronously so a second request in flight sees ANALYSIS_IN_PROGRESS.
-        const analysis = { requestId: uuidv4(), clientRequestId, groupId, groupName: null, existingTaskNames: [], timer: null, inHistory: false };
+        // The client asks for an analysis of the project it shows (after its set_context): that chat is
+        // the one shown from now on. Done before any await so a later switch is never undone.
+        if (!fromChat) this.showChatOf(groupId);
+        const analysis = { requestId: uuidv4(), clientRequestId, groupId, groupName: null, existingTaskNames: [], timer: null, inHistory: false,
+            // The analysed group's chat: its request, status, plan or error go there even if the user
+            // switches project meanwhile (or the /github shortcut's set_context is still in flight).
+            historyKey: historyKeyOf(groupId) };
         this.analysis = analysis;
         const cleanInstructions = instructions.replace(/[\x00-\x08\x0b-\x1f\x7f]/g, ' ').trim().slice(0, MAX_INSTRUCTIONS);
         let releaseCooldown = null;
@@ -443,7 +554,7 @@ class UserSession {
             // whether a restore already holds the request it is showing.
             // A plan asked for in the chat already has its message in history.
             if (!fromChat) {
-                this.addToHistory({
+                this.addToProjectHistory(analysis.historyKey, {
                     type: 'user',
                     content: cleanInstructions || `Analyze the repository of “${group.groupName}” and propose the next tasks.`,
                     requestId: clientRequestId,
@@ -464,7 +575,7 @@ class UserSession {
                 else lastAnalysisByUser.set(this.userId, previous);
             };
 
-            this.sendMessage({ type: 'repo_analysis_status', requestId: clientRequestId, stage: 'fetching_repo' });
+            this.forProject(analysis.historyKey, () => this.sendMessage({ type: 'repo_analysis_status', requestId: clientRequestId, stage: 'fetching_repo' }));
             const cached = this.chatContext.cache;
             const [snapshot, tasks, nodes] = await Promise.all([
                 cached && sameGroup(cached.groupId, groupId) && cached.snapshot ? cached.snapshot : buildRepoSnapshot(repo),
@@ -474,7 +585,7 @@ class UserSession {
             if (this.analysis !== analysis) return undefined;
             analysis.existingTaskNames = (tasks || []).map((t) => t.name);
 
-            this.sendMessage({ type: 'repo_analysis_status', requestId: clientRequestId, stage: 'analyzing' });
+            this.forProject(analysis.historyKey, () => this.sendMessage({ type: 'repo_analysis_status', requestId: clientRequestId, stage: 'analyzing' }));
             analysis.timer = setTimeout(() => this.finishAnalysis(analysis, { code: 'LLM_TIMEOUT' }), ANALYSIS_TIMEOUT_MS);
             if (analysis.timer.unref) analysis.timer.unref();
 
@@ -511,8 +622,14 @@ class UserSession {
         if (Number.isFinite(retryAfterSec)) extra.retryAfterSec = retryAfterSec;
         // Kept only next to the request it answers (a refused request is not in history; see refuse).
         const options = { persist: analysis.inHistory };
-        if (error) this.sendErrorFrom(error, extra, options);
-        else this.sendError(code, extra, options);
+        const send = () => {
+            if (error) this.sendErrorFrom(error, extra, options);
+            else this.sendError(code, extra, options);
+        };
+        // A refusal before the request entered the conversation is answered live, as any refusal;
+        // later errors belong to the analysed project's chat.
+        if (analysis.inHistory) this.forProject(analysis.historyKey, send);
+        else send();
     }
 
     handleAnalysisReply(response) {
@@ -540,7 +657,7 @@ class UserSession {
         const planId = uuidv4();
         const expiresAt = Date.now() + PLAN_TTL_MS;
         this.storePendingPlan(planId, { plan, groupId: analysis.groupId, groupName: analysis.groupName, expiresAt });
-        this.sendMessage({
+        this.forProject(analysis.historyKey, () => this.sendMessage({
             type: 'repo_plan',
             requestId: analysis.clientRequestId,
             planId,
@@ -549,7 +666,7 @@ class UserSession {
             expiresAt: new Date(expiresAt).toISOString(),
             content: planToText(plan, analysis.groupName),
             plan,
-        });
+        }));
     }
 
     storePendingPlan(planId, entry) {
@@ -569,24 +686,26 @@ class UserSession {
         this.pendingPlans.delete(planId);
         if (pending.expiresAt <= Date.now()) return this.sendError('REPO_PLAN_EXPIRED', { planId });
 
+        // The outcome belongs next to the plan card, in that group's chat, even if the user switched meanwhile.
+        const inPlanChat = (send) => this.forProject(historyKeyOf(pending.groupId), send);
         try {
             if (!(await accessModel.isGroupMember(this.userId, pending.groupId))) {
                 throw new AppError('NOT_GROUP_MEMBER', 'You are not a member of this group', 403);
             }
             const result = await projectService.addPlanToGroup(pending.groupId, pending.plan, this.userId);
             const created = { tasks: result.taskIds.length, milestones: result.nodeIds.length };
-            this.sendMessage({
+            inPlanChat(() => this.sendMessage({
                 type: 'repo_plan_saved',
                 planId,
                 groupId: pending.groupId,
                 created,
                 content: `Plan guardado: ${created.tasks} tareas y ${created.milestones} hitos.`,
-            });
+            }));
         } catch (error) {
-            if (isAppError(error) && error.code === 'NOT_GROUP_MEMBER') return this.sendError('NOT_GROUP_MEMBER', { planId });
+            if (isAppError(error) && error.code === 'NOT_GROUP_MEMBER') return inPlanChat(() => this.sendError('NOT_GROUP_MEMBER', { planId }));
             if (!isAppError(error)) console.error('Failed to save the repository plan:', error.message);
             if (pending.expiresAt > Date.now()) this.pendingPlans.set(planId, pending);
-            this.sendError('SAVE_FAILED', { planId });
+            inPlanChat(() => this.sendError('SAVE_FAILED', { planId }));
         }
         return undefined;
     }
@@ -594,8 +713,9 @@ class UserSession {
     async handleRepoPlanDiscard(message) {
         const { planId } = message;
         if (typeof planId !== 'string' || !this.pendingPlans.has(planId)) return this.sendError('REPO_PLAN_NOT_FOUND', { planId });
+        const { groupId } = this.pendingPlans.get(planId);
         this.pendingPlans.delete(planId);
-        this.sendMessage({ type: 'repo_plan_discarded', planId, content: 'Plan descartado.' });
+        this.forProject(historyKeyOf(groupId), () => this.sendMessage({ type: 'repo_plan_discarded', planId, content: 'Plan descartado.' }));
         return undefined;
     }
 
@@ -608,17 +728,19 @@ class UserSession {
             this.handleAnalysisReply(response);
         } else if (event === 'response') {
             // LLM failures in the chat arrive here as friendly text (data.error carries the code).
-            const pending = this.clearRequest(response.requestId);
-            this.awaitingPlanConfirmation = data.awaiting_confirmation === true;
+            const pending = this.clearRequest(response.requestId) || this.takeExpired(response.requestId);
             const message = { type: 'assistant', content: data.content, timestamp: new Date() };
-            if (pending) message.requestId = pending.clientRequestId;
+            // A late reply (after LLM_TIMEOUT) is shown without the request id, as before.
+            if (pending && !pending.expired) message.requestId = pending.clientRequestId;
+            if (this.keepForItsProject(pending, message, data.awaiting_confirmation === true)) return;
+            this.awaitingPlanConfirmation = data.awaiting_confirmation === true;
             this.sendMessage(message);
         } else if (event === 'response_chunk') {
             // Streamed text of a chat reply. Only for a request still in flight: once it has
             // timed out or been answered, a late chunk would paint a bubble under that outcome.
             const pending = response.requestId ? this.pendingRequests.get(response.requestId) : null;
             const content = typeof response.data === 'string' ? response.data : data.content;
-            if (pending && typeof content === 'string' && content) {
+            if (pending && pending.historyKey === this.historyKey && typeof content === 'string' && content) {
                 // The client groups chunks into one bubble by its own request id; the final
                 // 'assistant' message carries the same id and replaces the streamed text.
                 this.sendMessage({ type: 'assistant_chunk', content, requestId: pending.clientRequestId, timestamp: new Date() });
@@ -628,7 +750,11 @@ class UserSession {
         } else if (event === 'plan_request') {
             // The user asked for a plan in the chat: run the repository analysis for that message.
             const pending = this.clearRequest(response.requestId);
-            if (!pending || !this.chatContext.groupId) return;
+            if (!pending) return;
+            // Asked in another project than the one now shown: that project is not analyzed for it.
+            if (this.keepForItsProject(pending, { type: 'error', code: 'PROJECT_CHANGED',
+                content: 'The plan was not started because the chat switched to another project.', requestId: pending.clientRequestId })) return;
+            if (!this.chatContext.groupId) return;
             await this.run(this.handleRepoAnalysis({
                 groupId: this.chatContext.groupId,
                 instructions: typeof data.instructions === 'string' ? data.instructions.slice(0, MAX_INSTRUCTIONS) : '',
@@ -636,8 +762,14 @@ class UserSession {
                 fromChat: true,
             }));
         } else if (event === 'save_plan') {
-            this.clearRequest(response.requestId);
-            await this.saveProjectPlan(response.requestId, data);
+            const pending = this.clearRequest(response.requestId) || this.takeExpired(response.requestId);
+            if (pending && pending.historyKey !== this.historyKey) {
+                // Confirmed in a project the user has left meanwhile: not saved; Python is told so.
+                this.keepForItsProject(pending, { type: 'error', code: 'SAVE_FAILED', content: 'Could not create the project.', requestId: pending.clientRequestId }, true);
+                await this.notifySaveResult(response.requestId || uuidv4(), { success: false, errorCode: 'PROJECT_CHANGED' });
+                return;
+            }
+            await this.saveProjectPlan(response.requestId, data, pending);
         } else if (event === 'analytics_response') {
             this.clearRequest(response.requestId);
             this.sendMessage({
@@ -671,8 +803,11 @@ class UserSession {
 
     // Python only asks to save after it showed a plan awaiting confirmation; any other save_plan
     // is refused. Python always gets the outcome back (it keeps the plan until then).
-    async saveProjectPlan(pythonRequestId, data) {
+    async saveProjectPlan(pythonRequestId, data, pending = null) {
         const requestId = pythonRequestId || uuidv4();
+        // The project the plan was confirmed in: its outcome goes to that chat even if the user
+        // switches project while the database work runs.
+        const key = pending && pending.historyKey !== undefined ? pending.historyKey : this.historyKey;
         if (!this.awaitingPlanConfirmation) {
             console.warn(`Ignored save_plan for user ${this.userId}: no project plan was awaiting confirmation`);
             await this.notifySaveResult(requestId, { success: false, errorCode: 'PLAN_NOT_EXPECTED' });
@@ -681,25 +816,46 @@ class UserSession {
         this.awaitingPlanConfirmation = false;
 
         let result;
+        let notFilledReason = null;
         try {
-            result = await projectService.createProjectFromPlan(data.plan, data.original_message, this.userId);
+            // Made in an unused group (a new account's personal one): saved in it when the user is its
+            // admin and it is still unused; otherwise as a new project, as before.
+            if (data.target_group_id) {
+                result = await projectService.fillEmptyGroupFromPlan(data.target_group_id, data.plan, data.original_message, this.userId);
+                if (result && result.notEligible) notFilledReason = result.reason || 'NOT_EMPTY';
+            }
+            if (!result || notFilledReason) {
+                result = await projectService.createProjectFromPlan(data.plan, data.original_message, this.userId);
+            }
         } catch (error) {
             console.error('Failed to create project:', error.message);
             result = null;
         }
         if (result && result.success) {
             const groupName = result.groupName || deriveProjectName(data.plan, data.original_message);
-            this.sendMessage({
+            const why = notFilledReason === 'NOT_ADMIN'
+                ? 'solo el admin del grupo puede guardarlo en él'
+                : 'el grupo ya no estaba vacío';
+            this.forProject(key, () => this.sendMessage({
                 type: 'system',
                 event: 'project_created',
-                content: `Proyecto "${groupName}" creado`,
+                content: result.filled
+                    ? `Proyecto "${groupName}" creado en este grupo`
+                    : notFilledReason
+                        ? `Proyecto "${groupName}" creado como un grupo nuevo (${why})`
+                        : `Proyecto "${groupName}" creado`,
                 groupId: result.groupId,
                 groupName,
+                filled: result.filled === true,
                 timestamp: new Date()
-            });
+            }));
+            // The filled group now has data: its chat context is rebuilt on the next message.
+            if (result.filled && sameGroup(this.chatContext.groupId, result.groupId)) {
+                this.chatContext = { groupId: this.chatContext.groupId, cache: null, building: null };
+            }
             await this.notifySaveResult(requestId, { success: true, groupId: result.groupId, groupName });
         } else {
-            this.sendError('SAVE_FAILED', { content: 'Could not create the project.' });
+            this.forProject(key, () => this.sendError('SAVE_FAILED', { content: 'Could not create the project.' }));
             await this.notifySaveResult(requestId, { success: false, errorCode: 'SAVE_FAILED' });
         }
     }
@@ -733,7 +889,12 @@ class UserSession {
 
             const isWelcome = message.type === 'system' && typeof message.content === 'string'
                 && message.content.includes('Connected to TaskMate');
-            if (persist && !isWelcome && !TRANSIENT_TYPES.has(message.type)) {
+            const keep = persist && !isWelcome && !TRANSIENT_TYPES.has(message.type);
+            if (this.redirectKey !== undefined && this.redirectKey !== this.historyKey) {
+                if (keep) this.addToProjectHistory(this.redirectKey, message);
+                return;
+            }
+            if (keep) {
                 this.addToHistory(message);
             }
 
@@ -780,12 +941,14 @@ class UserSession {
         }
     }
 
-    sendChatHistory() {
-        if (this.chatHistory.length > 0 && this.websocket && this.websocket.readyState === 1) {
-            // Send a special message type to indicate history restoration
+    sendChatHistory({ evenIfEmpty = false } = {}) {
+        if ((evenIfEmpty || this.chatHistory.length > 0) && this.websocket && this.websocket.readyState === 1) {
+            // chatOf: whose chat this is (group id in lowercase, '' = no project), so the client shows it
+            // only under that project (after a reconnect the server may still be on another one).
             this.websocket.send(JSON.stringify({
                 type: 'history_restore',
                 messages: this.chatHistory,
+                chatOf: this.historyKey,
                 timestamp: new Date()
             }));
         }

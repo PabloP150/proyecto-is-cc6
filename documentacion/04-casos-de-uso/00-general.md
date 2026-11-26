@@ -12,7 +12,7 @@ flowchart LR
 
     subgraph TM["Sistema TaskMate"]
         P1["<b>1 · Usuarios y acceso</b><br/>Registrarse · Iniciar y cerrar sesión"]
-        P5["<b>5 · Chat IA</b><br/>Preguntar sobre el grupo del navbar · Proponer tareas (miembro)<br/>Sin grupo activo, crear un proyecto con un plan de IA (usuario)<br/>Documentos de apoyo sin grupo activo (servidor de IA local)"]
+        P5["<b>5 · Chat IA</b><br/>Preguntar sobre el grupo del navbar · Proponer tareas (miembro)<br/>New project, sin grupo o grupo sin usar: crear un proyecto con un plan de IA (usuario)<br/>Documentos de apoyo para el proyecto nuevo (servidor de IA local)"]
         P2["<b>2 · Grupos y roles</b><br/>Crear un grupo · Elegir el activo en el navbar (usuario)<br/>Ver miembros y salir (miembro)<br/>Agregar miembros y asignar roles (admin)"]
         P3["<b>3 · Tareas</b><br/>Crear, editar y completar · Asignar personas"]
         P4["<b>4 · Hitos y calendario</b><br/>Diagrama de hitos con avance · Calendario"]
@@ -69,7 +69,7 @@ El diagrama completo de arriba tiene muchas líneas. Estos cuatro lo muestran po
 
 ### Usuario
 
-Cuenta e inicio de sesión, crear grupos (y quedar como admin), elegir el grupo activo y el chat sin grupo activo, que arma un plan para un grupo nuevo con documentos del servidor de IA local.
+Cuenta e inicio de sesión, crear grupos (y quedar como admin), elegir el grupo activo y el chat de proyecto nuevo («New project», sin grupo o con un grupo sin usar), que arma un plan con documentos del servidor de IA local y lo guarda como grupo nuevo o en el grupo sin usar.
 
 ![Casos de uso del usuario y sus conexiones](imagenes/00-general-rol-usuario.png)
 
@@ -101,7 +101,7 @@ Miembros y roles, CI/CD (pipeline, publicar, aprobar, rollback y vincular Vercel
 | Admin | El dueño del grupo (`Groups.adminId`). Hay uno por grupo. Es el único que conecta el repo, activa «Allow AI analysis» y vincula el proyecto de Vercel | `requireGroupAdmin` |
 | GitHub | Sistema externo: la GitHub App y GitHub Actions. Avisa de PRs, instalaciones y ejecuciones; recibe las ramas, el workflow y la revisión de IA del PR (como comentario) | Webhook firmado con HMAC SHA-256 (`X-Hub-Signature-256`) |
 | Vercel | Sistema externo, solo de monitoreo: avisa de cada despliegue del proyecto que el admin vinculó. TaskMate no despliega en Vercel | Webhook firmado con HMAC SHA-1 (`x-vercel-signature`) |
-| Servidor de IA local | Sistema externo: `taskmate-ai-server`, el repo aparte de Christian (FastAPI en `127.0.0.1:8000`, con Ollama). TaskMate le pide auditar la rama, generar pruebas y revisar el PR; el chat sin grupo activo le pide documentos de apoyo | Lo llama TaskMate, no al revés, con la cabecera `X-AI-Server-Secret`; sin ella responde 401 |
+| Servidor de IA local | Sistema externo: `taskmate-ai-server`, el repo aparte de Christian (FastAPI en `127.0.0.1:8000`, con Ollama). TaskMate le pide auditar la rama, generar pruebas y revisar el PR; el chat de proyecto nuevo le pide documentos de apoyo | Lo llama TaskMate, no al revés, con la cabecera `X-AI-Server-Secret`; sin ella responde 401 |
 
 La matriz completa, acción por acción, está en [Permisos por rol](00-permisos-por-rol.md).
 
@@ -113,7 +113,7 @@ La matriz completa, acción por acción, está en [Permisos por rol](00-permisos
 | 2 | [Grupos y roles](02-grupos-y-roles.md) | Crear grupos y elegir el activo; ver miembros y salir; agregar y quitar miembros, roles | Usuario, miembro, admin |
 | 3 | [Tareas](03-tareas.md) | Listas y tareas: crear, editar, completar, papelera, asignar | Miembro |
 | 4 | [Hitos y calendario](04-hitos-y-calendario.md) | Diagrama de hitos con prerrequisitos y avance; calendario | Miembro |
-| 5 | [Chat IA](05-chat-ia.md) | Preguntar sobre el grupo del navbar y pedirle tareas; sin grupo activo, plan que crea un grupo nuevo | Usuario, miembro, servidor de IA local |
+| 5 | [Chat IA](05-chat-ia.md) | Preguntar sobre el grupo del navbar y pedirle tareas; con «New project», sin grupo o en un grupo sin usar, plan de un proyecto nuevo | Usuario, miembro, servidor de IA local |
 | 6 | [Analytics](06-analytics.md) | Panel del equipo, carga, experiencia y recomendaciones de asignación | Líder |
 | 7 | [GitHub](07-github.md) | Conectar el repo, explorarlo, rama por tarea, archivos de la tarea, PR que completa la tarea | Miembro, admin, GitHub |
 | 8 | [CI/CD](08-cicd.md) | Pipeline, ejecuciones, staging, producción con aprobación, rollback; monitoreo de despliegues de Vercel | Miembro, admin, GitHub, Vercel |
@@ -124,7 +124,7 @@ La matriz completa, acción por acción, está en [Permisos por rol](00-permisos
 - **La interfaz esconde, la API decide.** Las pantallas ocultan los botones de admin, pero el permiso real lo revisa la API. Un llamado directo sin el rol recibe 403.
 - **Nadie se une solo a un grupo.** Solo el admin agrega miembros, por nombre de usuario.
 - **El grupo activo se elige en el navbar.** El selector junto al logo cambia el grupo de todas las pantallas, también el del chat; «Manage groups» lleva a Groups, donde basta un clic en el grupo. Al iniciar sesión se activa el primero de la lista.
-- **El chat sigue al grupo del navbar.** Con grupo, responde sobre ese proyecto y propone tareas solo si se le pide. Solo sin grupo activo arma un plan que crea un **grupo nuevo**, y quien lo pidió queda como admin.
+- **El chat sigue al grupo del navbar.** Con un grupo con datos, responde sobre ese proyecto y propone tareas solo si se le pide; cada proyecto tiene su propia conversación. Con «New project» o sin grupo, arma un plan que crea un **grupo nuevo**, y quien lo pidió queda como admin. En un grupo sin usar (como el grupo personal de una cuenta nueva), el plan se guarda en ese grupo si quien confirma es su admin.
 - **Sin repositorio no hay GitHub ni CI/CD.** Las pestañas Files, Commits y CI/CD se activan cuando el admin conecta el repositorio. «Vercel (monitoring)» no está deshabilitada, pero vuelve a Repository mientras no haya repo, y las tareas no muestran «View task files».
 - **La IA sobre el repositorio pide permiso.** Mientras el admin no active «Allow AI analysis», no hay análisis del repo, el chat no ve el repo, «Propose with AI» no propone el pipeline, y «Audit», «Generate tests» y «Review PR» (también la revisión automática) no corren.
 - **Vercel solo informa.** TaskMate guarda lo que Vercel avisa del proyecto vinculado; no despliega ahí ni se actualiza en vivo («Refresh»).

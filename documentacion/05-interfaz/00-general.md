@@ -80,7 +80,7 @@ Con sesión, todas las pantallas comparten cuatro piezas:
 ![Menú del selector de grupo abierto junto al logo: siete grupos, palomita en Demo CI/CD y Manage groups al final](capturas/admin-navbar-grupo.jpg)
 
 - Sin grupo activo, cada pantalla pide elegir uno (por ejemplo, «Select a group to manage tasks.»). Casi no pasa: al registrarte se crea tu grupo personal y al iniciar sesión se activa el primero.
-- El chat no tiene selector propio: usa el grupo del navbar, lo muestra arriba como «Project: &lt;grupo&gt;» y cambia de proyecto cuando cambias el grupo. «Analyze with AI» de `/github` también fija ese grupo antes de abrir el chat.
+- El chat no tiene selector propio: usa el grupo del navbar, lo muestra arriba como «Project: &lt;grupo&gt;» y cambia de proyecto (y de conversación) cuando cambias el grupo. «New project» pasa a un proyecto nuevo sin cambiar el grupo del navbar. «Analyze with AI» de `/github` también fija ese grupo antes de abrir el chat.
 - Si estás en `/groups` y eliges otro grupo en el selector, se abren los detalles de ese grupo.
 - El selector vuelve a pedir tu lista de grupos cada vez que lo abres, así que ve los grupos nuevos sin recargar.
 - El grupo activo se guarda en el navegador (`localStorage`), así que sobrevive a una recarga.

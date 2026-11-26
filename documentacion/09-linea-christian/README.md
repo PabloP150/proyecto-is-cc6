@@ -220,11 +220,13 @@ Antes, con un proyecto seleccionado, cada mensaje lanzaba un análisis completo 
 - **Contexto una sola vez.** Al primer mensaje después de elegir un proyecto, la API arma su
   contexto: estructura, README, dependencias, commits e issues de GitHub, solo con «Allow AI
   analysis»; además, tareas, hitos, equipo y quién tiene cada tarea. Lo reutiliza hasta que se
-  cambia de proyecto. Cambiar de proyecto también reinicia la memoria de la conversación.
+  cambia de proyecto. Cambiar de proyecto reiniciaba la memoria de la conversación; desde el 26 nov
+  cada proyecto conserva la suya ([correcciones del 26 nov](../01-proyecto/cierre-del-proyecto.md#correcciones-del-26-nov-2026)).
 - **Plan solo si se pide.** Un paso corto con el modelo clasifica cada mensaje:
   - Plan: «crea un plan…», o el botón «Propose tasks». Con proyecto, se convierte en el análisis
     del repositorio de siempre (tarjeta para confirmar o descartar, con el límite de uno por minuto,
-    que ya no afecta al chat). Sin proyecto, se genera el plan de proyecto nuevo.
+    que ya no afecta al chat). Sin proyecto, se genera el plan de proyecto nuevo (desde el 26 nov,
+    también con «New project» o en un grupo sin usar).
   - Chat: cualquier tema de software, del proyecto o de TaskMate.
   - Fuera de tema: respuesta fija, sin que el modelo responda lo pedido.
 - El plan de proyecto nuevo pide al menos 8 tareas en vez de 50 (`MIN_TASKS`). Se bajó pensando

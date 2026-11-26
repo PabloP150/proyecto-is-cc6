@@ -344,16 +344,123 @@ async def test_invalid_project_context_falls_back_to_plain_chat(llm, fake_socket
     assert fake_socket.sent[-1]["event"] == "response"
 
 
-async def test_an_empty_project_is_reported_as_such(llm, fake_socket):
+async def test_an_unusable_plan_is_retried_once(llm, fake_socket, monkeypatch):
+    attempts = []
+
+    async def flaky(messages, **kwargs):
+        attempts.append(messages)
+        if len(attempts) == 1:
+            raise llm_service.LLMInvalidOutputError("not JSON", raw="{")
+        return PLAN
+
+    monkeypatch.setattr(llm_service, "generate_json", flaky)
     agent = OrchestratorAgent()
-    empty = {"groupId": "g9", "groupName": "Mi grupo", "members": ["ana"],
-             "repoNote": "No GitHub repository is connected to this project."}
-    await agent.handle_message("S", fake_socket, project_request("¿de qué trata este proyecto?", project=empty))
+    await agent.handle_message("S", fake_socket, request("crea un plan para una app de recetas"))
+    assert len(attempts) == 2 and agent.sessions["S"]["waiting_for_confirmation"]
+
+
+async def test_a_failed_plan_call_is_retried_once_but_a_timeout_is_not(llm, fake_socket, monkeypatch):
+    attempts = []
+
+    async def fails_once(messages, **kwargs):
+        attempts.append(messages)
+        if len(attempts) == 1:
+            raise llm_service.LLMError("The local model returned HTTP 500.")
+        return PLAN
+
+    monkeypatch.setattr(llm_service, "generate_json", fails_once)
+    agent = OrchestratorAgent()
+    await agent.handle_message("S", fake_socket, request("crea un plan para una app de recetas"))
+    assert len(attempts) == 2 and agent.sessions["S"]["waiting_for_confirmation"]
+
+    timeouts = []
+
+    async def slow(messages, **kwargs):
+        timeouts.append(messages)
+        raise llm_service.LLMTimeoutError("too slow")
+
+    monkeypatch.setattr(llm_service, "generate_json", slow)
+    other = OrchestratorAgent()
+    await other.handle_message("T", fake_socket, request("crea un plan para una app de notas"))
+    assert len(timeouts) == 1 and fake_socket.sent[-1]["data"]["error"] == {"code": "LLM_TIMEOUT"}
+
+
+EMPTY_GROUP = {"groupId": "g9", "groupName": "Test's Group", "members": ["test"], "isEmpty": True,
+               "repoNote": "No GitHub repository is connected to this project."}
+
+
+def test_is_empty_project():
+    from agents.orchestrator import is_empty_project
+    from schemas import ProjectContext
+    assert is_empty_project(ProjectContext.model_validate(EMPTY_GROUP))
+    assert not is_empty_project(None)
+    assert not is_empty_project(ProjectContext.model_validate(PROJECT))
+    # A linked repository makes it a real project even when the AI may not read it and there are no tasks.
+    assert not is_empty_project(ProjectContext.model_validate({**EMPTY_GROUP, "hasRepository": True}))
+    with_milestone = {**EMPTY_GROUP, "existing": {"milestones": [{"name": "MVP", "percentage": 0}]}}
+    assert not is_empty_project(ProjectContext.model_validate(with_milestone))
+    # Regression (review): no active tasks but completed ones (Node says isEmpty false) is a project with data.
+    assert not is_empty_project(ProjectContext.model_validate({**EMPTY_GROUP, "isEmpty": False}))
+
+
+# Regression: a new account's personal group (empty, always active after login) answered every message about
+# building an app with "I can assist you with software engineering concepts..." and never reached the plan.
+async def test_an_empty_group_is_shaped_like_a_new_project(llm, fake_socket):
+    agent = OrchestratorAgent()
+    await agent.handle_message("S", fake_socket, project_request("¿de qué trata este proyecto?", project=EMPTY_GROUP))
     system, user = llm["generate"][-1]
-    assert "how to\n  ask for one" in system["content"] and "crear un plan" not in system["content"]
-    assert "data_note" in user["content"] and "no tasks or milestones" in user["content"]
-    assert "connecting a GitHub repository" in system["content"]
+    assert "still empty" in system["content"] and "shape a NEW software project" in system["content"]
+    assert "PROJECT DATA" not in user["content"]
+    assert "Never answer that you lack information" in system["content"]
+    assert "ask you to create the plan" in system["content"] and "how to\n  ask for one" not in system["content"]
+    assert "Never reply by describing what you can help with" in system["content"]
     assert user["content"].rstrip().endswith("Reply in Spanish, without a greeting unless it greets you.")
+
+
+async def test_a_project_with_data_keeps_its_rules(llm, fake_socket):
+    agent = OrchestratorAgent()
+    await agent.handle_message("S", fake_socket, project_request("¿qué hace booking-svc?"))
+    system, _ = llm["generate"][-1]
+    assert "how to\n  ask for one" in system["content"] and "ask you to create the plan" not in system["content"]
+    assert "Never reply by describing what you can help with" in system["content"]
+
+
+async def test_a_plan_in_an_empty_group_is_a_new_project_plan(llm, fake_socket, monkeypatch):
+    real = llm_service.generate
+
+    async def plan_route(prompt, **kw):
+        return "PLAN" if isinstance(prompt, str) and _ROUTE_MARKER in prompt else await real(prompt, **kw)
+
+    monkeypatch.setattr(llm_service, "generate", plan_route)
+    agent = OrchestratorAgent()
+    await agent.handle_message("S", fake_socket, project_request("make me a plan for an e-commerce app", "p",
+                                                                 project=EMPTY_GROUP))
+    assert llm["json"] and agent.sessions["S"]["waiting_for_confirmation"]
+    assert fake_socket.sent[-1]["event"] == "response"  # not handed to Node as a repository plan
+
+
+async def test_asking_to_create_the_project_after_describing_it_makes_the_plan(llm, fake_socket):
+    agent = OrchestratorAgent()
+    await agent.handle_message("S", fake_socket, project_request("I want to create an e-commerce app", "a",
+                                                                 project=EMPTY_GROUP))
+    assert not llm["json"]  # describing the idea is still a chat
+    await agent.handle_message("S", fake_socket, project_request("help me creating a project", "b",
+                                                                 project=EMPTY_GROUP))
+    assert llm["json"] and agent.sessions["S"]["waiting_for_confirmation"]
+    assert "e-commerce" in agent.sessions["S"]["project_info"]
+
+
+async def test_asking_to_create_a_project_with_no_idea_yet_is_a_chat(llm, fake_socket):
+    agent = OrchestratorAgent()
+    await agent.handle_message("S", fake_socket, project_request("help me create a project", project=EMPTY_GROUP))
+    assert not llm["json"] and fake_socket.sent[-1]["event"] == "response"
+
+
+async def test_create_a_project_inside_a_real_project_is_not_a_new_project(llm, fake_socket):
+    agent = OrchestratorAgent()
+    await agent.handle_message("S", fake_socket, project_request("I want to build an app for this", "a"))
+    await agent.handle_message("S", fake_socket, project_request("help me create a project", "b"))
+    assert not llm["json"] and fake_socket.sent[-1]["event"] == "response"
 
 
 @pytest.mark.parametrize("message,language", [
@@ -363,3 +470,118 @@ async def test_an_empty_project_is_reported_as_such(llm, fake_socket):
 ])
 def test_reply_language(message, language):
     assert reply_language(message) == language
+
+
+# --- Each project keeps its own conversation (switching groups used to wipe it) ---
+
+async def test_each_project_keeps_its_own_conversation(llm, fake_socket):
+    agent = OrchestratorAgent()
+    other = {**PROJECT, "groupId": "g2", "groupName": "Otro"}
+    await agent.handle_message("S", fake_socket, project_request("mensaje del proyecto uno", "a"))
+    await agent.handle_message("S", fake_socket, project_request("mensaje del proyecto dos", "b", project=other))
+    assert not any("proyecto uno" in turn for turn in agent.sessions["S"]["conversation_history"])
+    # Back to the first project (same id, other casing): its conversation is there again, without the other's.
+    await agent.handle_message("S", fake_socket, project_request("sigo en el uno", "c",
+                                                                 project={**PROJECT, "groupId": "G1"}))
+    history = agent.sessions["S"]["conversation_history"]
+    assert any("proyecto uno" in turn for turn in history) and any("sigo en el uno" in turn for turn in history)
+    assert not any("proyecto dos" in turn for turn in history)
+    _system, user = llm["generate"][-1]
+    assert "proyecto uno" in user["content"]  # the model sees that project's earlier turns
+
+
+async def test_a_pending_plan_waits_in_its_own_group(llm, fake_socket):
+    agent = OrchestratorAgent()
+    await agent.handle_message("S", fake_socket, project_request("I want a recipes app", "a", project=EMPTY_GROUP))
+    await agent.handle_message("S", fake_socket, project_request("create the plan", "b", project=EMPTY_GROUP))
+    assert agent.sessions["S"]["waiting_for_confirmation"]
+    await agent.handle_message("S", fake_socket, project_request("hola", "c"))  # another project
+    assert not agent.sessions["S"]["waiting_for_confirmation"]
+    await agent.handle_message("S", fake_socket, project_request("sí", "d", project=EMPTY_GROUP))
+    saved = fake_socket.sent[-1]
+    assert saved["event"] == "save_plan" and saved["data"]["target_group_id"] == "g9"
+
+
+async def test_a_plan_with_no_group_has_no_target_group(llm, fake_socket):
+    agent = OrchestratorAgent()
+    await agent.handle_message("S", fake_socket, request("I want a recipes app generate the plan", "a"))
+    await agent.handle_message("S", fake_socket, request("yes", "b"))
+    assert fake_socket.sent[-1]["event"] == "save_plan" and "target_group_id" not in fake_socket.sent[-1]["data"]
+
+
+@pytest.mark.parametrize("message,expected", [
+    ("help me creating a project", True), ("create the project", True), ("Créame el proyecto, por favor", True),
+    ("is Django good to create a project?", False), ("how do I create a new project in TaskMate", False),
+    ("¿cómo creo un proyecto?", False), ("don't create the project yet", False),
+    ("todavía no crees el proyecto", False), ("I want a new project", False), ("what is a project", False),
+])
+def test_asks_to_create_project(message, expected):
+    from agents.orchestrator import asks_to_create_project
+    assert asks_to_create_project(message) is expected
+
+
+async def test_a_question_about_creating_projects_is_answered_not_planned(llm, fake_socket):
+    # Regression (review): the no-group chat turned "how do I create a new project?" into a full plan.
+    agent = OrchestratorAgent()
+    await agent.handle_message("S", fake_socket, request("how do I add a user to my team?", "a"))
+    await agent.handle_message("S", fake_socket, request("how do I create a new project in TaskMate?", "b"))
+    assert not llm["json"] and fake_socket.sent[-1]["event"] == "response"
+
+
+async def test_the_plan_retry_stays_inside_nodes_request_time(llm, fake_socket, monkeypatch):
+    timeouts = []
+
+    async def fails_once(messages, **kwargs):
+        timeouts.append(kwargs.get("timeout"))
+        if len(timeouts) == 1:
+            raise llm_service.LLMInvalidOutputError("not JSON", raw="{")
+        return PLAN
+
+    monkeypatch.setattr(llm_service, "generate_json", fails_once)
+    agent = OrchestratorAgent()
+    await agent.handle_message("S", fake_socket, request("crea un plan para una app de recetas"))
+    assert timeouts[0] is None and 0 < timeouts[1] <= orchestrator_module.PLAN_BUDGET_SEC
+
+
+async def test_no_retry_when_the_first_attempt_used_up_the_time(llm, fake_socket, monkeypatch):
+    calls, now = [], [1000.0]
+    monkeypatch.setattr(orchestrator_module.time, "monotonic", lambda: now[0])
+
+    async def invalid(messages, **kwargs):
+        calls.append(kwargs)
+        now[0] += 70  # the first attempt takes 70 of the 80 s
+        raise llm_service.LLMInvalidOutputError("not JSON", raw="{")
+
+    monkeypatch.setattr(llm_service, "generate_json", invalid)
+    agent = OrchestratorAgent()
+    await agent.handle_message("S", fake_socket, request("crea un plan para una app de recetas"))
+    assert len(calls) == 1
+    assert fake_socket.sent[-1]["data"]["content"].startswith("I had trouble generating the project plan")
+
+
+# Regression (review): the first "no project" conversation was not saved when the user moved to a group,
+# so a pending new-project plan was lost on coming back.
+async def test_the_no_project_chat_is_kept_from_the_first_switch(llm, fake_socket):
+    agent = OrchestratorAgent()
+    await agent.handle_message("S", fake_socket, request("I want a recipes app generate the plan", "a"))
+    assert agent.sessions["S"]["waiting_for_confirmation"]
+    await agent.handle_message("S", fake_socket, project_request("hola", "b"))
+    await agent.handle_message("S", fake_socket, request("yes", "c"))
+    saved = fake_socket.sent[-1]
+    assert saved["event"] == "save_plan" and "target_group_id" not in saved["data"]
+
+
+# Regression (second review): switching project while a new-project plan was being saved dropped the save,
+# so its result was ignored and the saved project's description leaked into the next new project.
+async def test_a_save_result_after_switching_applies_to_its_own_project(llm, fake_socket):
+    agent = OrchestratorAgent()
+    await agent.handle_message("S", fake_socket, request("I want an app for dog walkers generate the plan", "a"))
+    await agent.handle_message("S", fake_socket, request("yes", "b"))
+    assert fake_socket.sent[-1]["event"] == "save_plan"
+    await agent.handle_message("S", fake_socket, project_request("hola", "c"))  # another project meanwhile
+    await agent.handle_message("S", fake_socket, {"requestId": "d", "sessionId": "S", "method": "save_plan_result",
+                                                  "params": {"success": True, "groupName": "Dog Walker"}})
+    await agent.handle_message("S", fake_socket, request("now a recipes app", "e"))  # back to new project
+    state = agent.sessions["S"]
+    assert "dog walkers" not in state["project_info"]
+    assert state["conversation_history"][0] == 'Assistant: The project plan was saved to the workspace as "Dog Walker".'

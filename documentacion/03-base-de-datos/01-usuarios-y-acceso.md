@@ -44,7 +44,7 @@ Origen: `taskmate_tables.sql` (esquema base). La migración 005 pasó `username`
 - **Dos registros con el mismo nombre a la vez.** La lectura previa usa `UPDLOCK, HOLDLOCK` (bloqueo de rango), así que el segundo espera y recibe «Username already exists». Si aun así choca con la restricción única, la API responde lo mismo (400).
 - **Contraseña.** La base solo guarda el hash bcrypt (`VARCHAR(60)`), nunca la contraseña.
 - **Límites de la API antes de escribir.** `username` de 1 a 25 caracteres; contraseña de 6 caracteres a 72 bytes (bcrypt ignora lo que pase de 72 bytes).
-- **Nombre del grupo personal.** «`<usuario>`'s Group», recortado a 25 caracteres.
+- **Nombre del grupo personal.** «`<usuario>`'s Group», recortado a 25 caracteres. Si, mientras sigue sin usar, se guarda en él el plan de un proyecto desde el chat, toma el nombre del proyecto ([chat](05-chat-ia.md)).
 - **Sin cascadas.** Ninguna FK hacia `Users` tiene `ON DELETE`. Además de `Groups` y `UserGroups`, apuntan a `Users.uid` `UserTask`, `UserGroupRoles`, `TaskAnalytics`, `UserMetrics`, `UserExpertise`, `GroupRepositories`, `TaskBranches`, `RepoPipelines`, `DeployRequests` y `GroupDeployTargets` (`connected_by`, migración 009). No existe ninguna ruta para borrar un usuario.
 - **Sin triggers.** Estas tablas no tienen triggers; los de la migración 006 son de los hitos (`Nodes` y `Edges`).
 - **Índices (001).** `IX_Groups_AdminId` sobre `Groups (adminId)` e `IX_UserGroups_Gid` sobre `UserGroups (gid)`.

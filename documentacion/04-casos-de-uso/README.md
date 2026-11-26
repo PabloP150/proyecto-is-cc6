@@ -25,7 +25,7 @@ flowchart LR
 | [2 · Grupos y roles](02-grupos-y-roles.md) | Cualquiera crea grupos y elige el activo en el navbar; los miembros ven y salen; solo el admin agrega, quita y maneja roles |
 | [3 · Tareas](03-tareas.md) | Cualquier miembro del grupo activo maneja cualquier tarea; GitHub la completa al fusionar su PR |
 | [4 · Hitos y calendario](04-hitos-y-calendario.md) | Cualquier miembro crea, conecta, edita y borra hitos y ve el calendario; sin permisos extra |
-| [5 · Chat con IA](05-chat-ia.md) | Preguntar sobre el grupo del navbar y pedirle tareas (miembro); sin grupo activo, crear un proyecto nuevo desde su plan |
+| [5 · Chat con IA](05-chat-ia.md) | Preguntar sobre el grupo del navbar y pedirle tareas (miembro); con «New project», sin grupo o en un grupo sin usar, crear un proyecto nuevo desde su plan |
 | [6 · Analytics](06-analytics.md) | El líder ve el panel y pide recomendaciones de asignación; lo demás es solo de API o automático |
 | [7 · GitHub](07-github.md) | El admin conecta y gobierna el repositorio; los miembros lo exploran, crean ramas, ven los archivos de cada tarea y piden propuestas |
 | [8 · CI/CD](08-cicd.md) | Los miembros ven, corren el CI, piden producción y ven los despliegues de Vercel; el admin configura, publica, aprueba, hace rollback y vincula Vercel |

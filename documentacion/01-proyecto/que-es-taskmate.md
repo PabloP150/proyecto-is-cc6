@@ -74,7 +74,7 @@ Detalle por acción: [permisos por rol](../04-casos-de-uso/00-permisos-por-rol.m
 | Capacidad | En la práctica |
 |---|---|
 | **Planificar en varias vistas** | Listas de tareas, calendario y diagrama de hitos sobre los mismos datos del grupo |
-| **Planificar y preguntar con IA** | El chat es un asistente del grupo elegido en el navbar: responde sobre su equipo, tareas, hitos, asignaciones y repositorio (si el admin lo permite) y propone tareas cuando se le piden. Sin grupo, convierte una idea en un plan (grupo, roles, tareas e hitos) que se guarda al confirmar. Usa el modelo local Gemma 4 en Ollama (Groq queda como respaldo en la nube), y la respuesta llega en streaming |
+| **Planificar y preguntar con IA** | El chat es un asistente del grupo elegido en el navbar: responde sobre su equipo, tareas, hitos, asignaciones y repositorio (si el admin lo permite) y propone tareas cuando se le piden; cada proyecto tiene su conversación. Con «New project» (o en un grupo todavía sin usar, como el grupo personal de una cuenta nueva), convierte una idea en un plan (grupo, roles, tareas e hitos) que se guarda al confirmar. Usa el modelo local Gemma 4 en Ollama (Groq queda como respaldo en la nube), y la respuesta llega en streaming |
 | **Trabajar con GitHub** | Conectar el repositorio, explorarlo, crear la rama de cada tarea y ver qué archivos cambia (y si otra tarea toca los mismos); al fusionarse el PR la tarea se completa sola |
 | **Operar el CI/CD del grupo** | TaskMate (o la IA) propone el pipeline y lo sube; el grupo ve ejecuciones y logs en vivo y publica en staging y producción (GitHub Pages) con aprobación del admin. Si el grupo publica en Vercel, ve sus despliegues (solo monitoreo) |
 | **Revisar el código con IA local** | Si el admin permite el análisis con IA, el servidor de IA local audita la rama de la tarea, propone pruebas (no las ejecuta) y revisa su PR; cada PR de tarea se revisa solo y la revisión queda como comentario en GitHub, sin aprobar ni bloquear |
@@ -106,11 +106,11 @@ Qué conecta cada flecha: [arquitectura general](../02-arquitectura/00-general.m
 | API | Node.js con Express 4; `tedious` (SQL Server), `ws` (WebSockets), `jsonwebtoken`, `helmet`, `express-rate-limit` | `taskmate-api/` · puerto 9000 |
 | Servicio Python del chat | Python con FastAPI y uvicorn; WebSocket `/ws` con un protocolo JSON propio (**no** es el Model Context Protocol, aunque la carpeta se llame `mcp`); `httpx` para Ollama y SDK `groq` para el respaldo en la nube | `taskmate-api/mcp/` · `MCP_PORT` (8001 por defecto) |
 | Modelo de lenguaje | Gemma 4 (`gemma4:e2b-it-qat`) en Ollama, el mismo que usa el servidor de IA local, para el chat y todos los agentes del servicio Python. Lo activa `LLM_PROVIDER=ollama`, que `scripts/local-up.sh` añade al `.env` si falta. Groq (`openai/gpt-oss-20b`, con `GROQ_API_KEY`) queda como respaldo en la nube y es el valor por defecto del código, para que funcione sin Ollama | Ollama: `127.0.0.1:11434` · Groq (respaldo): servicio externo |
-| Servidor de IA local | Repo aparte de Christian (`taskmate-ai-server`): FastAPI con Ollama (`gemma4:e2b-it-qat` y `embeddinggemma:300m`) y Postgres 17 + pgvector (7 tablas propias); se autentica con `X-AI-Server-Secret`. Hace la IA sobre el código y, sin grupo seleccionado, da documentos al chat | `127.0.0.1:8000` |
+| Servidor de IA local | Repo aparte de Christian (`taskmate-ai-server`): FastAPI con Ollama (`gemma4:e2b-it-qat` y `embeddinggemma:300m`) y Postgres 17 + pgvector (7 tablas propias); se autentica con `X-AI-Server-Secret`. Hace la IA sobre el código y, en el chat de proyecto nuevo, le da documentos | `127.0.0.1:8000` |
 | Base de datos | SQL Server 2019 en Docker: 29 tablas, migraciones 001–011 | Contenedor `taskmate-sql` · puerto 1433 |
 | GitHub | GitHub App (API y webhooks firmados; smee los reenvía en desarrollo); GitHub Actions y Pages para el CI/CD del grupo. Con «Pull requests: write», la App también publica la revisión de PR con IA | Servicio externo |
 | Vercel | Solo monitoreo: un webhook firmado (HMAC-SHA1) avisa de cada despliegue del proyecto vinculado | Servicio externo |
-| Pruebas | Jest y Testing Library (API y frontend), pytest (servicio Python del chat), pruebas de BD contra un SQL Server desechable | 2091 en verde, 0 fallando (26 nov 2026): API 1324, frontend 438, Python 210 y BD 119 |
+| Pruebas | Jest y Testing Library (API y frontend), pytest (servicio Python del chat), pruebas de BD contra un SQL Server desechable | 2163 en verde, 0 fallando (26 nov 2026): API 1355, frontend 448, Python 238 y BD 122 |
 
 ## Dónde está en el código
 
@@ -127,7 +127,7 @@ Qué conecta cada flecha: [arquitectura general](../02-arquitectura/00-general.m
 - **La línea de Pablo cerró el 3 nov 2026** con las Fases 1–4, que están en `master`; sus Fases 5–8 no se realizarán.
 - **La línea de Christian siguió** con sus fechas corridas. Los puntos 1–7 están completos: servidor de IA local, comandos, monitoreo de Vercel, archivos por tarea, `audit`, `generate-tests` y `review-pr`. Además llegaron el chat como asistente sobre el modelo local y la interfaz en inglés (19 nov).
 - La colisión de archivos (punto 8) está pospuesta, con la base hecha (`findTasksTouchingPaths`); las pruebas finales (punto 9) están pendientes.
-- Lo nuevo entró por la rama `test/e2e` y está en `master` desde el 26 nov 2026, con tres arreglos de ese día: el webhook de Vercel ya no puede tumbar la API, una revisión de PR fallida se puede reintentar y ESLint vuelve a 0. Pruebas al 26 nov 2026: 2091 en verde, 0 fallando.
+- Lo nuevo entró por la rama `test/e2e` y está en `master` desde el 26 nov 2026, con tres arreglos de ese día: el webhook de Vercel ya no puede tumbar la API, una revisión de PR fallida se puede reintentar y ESLint vuelve a 0. Después, ese mismo día, el chat ganó «New project», el plan de una cuenta nueva se guarda en su grupo personal y cada proyecto tiene su conversación. Pruebas al 26 nov 2026: 2163 en verde, 0 fallando.
 - Qué entregó la línea de Pablo, limitaciones y pendientes: [cierre de la línea de Pablo y estado](cierre-del-proyecto.md). Detalle de la línea de Christian: [09-linea-christian](../09-linea-christian/README.md).
 
 ## Para saber más

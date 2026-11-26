@@ -136,8 +136,9 @@ describe('AnalyticsDashboard — role filter', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
     await waitFor(() => expect(optionLabels()).toEqual(['All Roles', 'Backend', 'Frontend']));
+    // The selection is reset on the render after the new roles arrive, so the members list can lag one render.
+    await waitFor(() => expect(shownMembers()).toEqual(['ana', 'beto']));
     expect(roleFilter()).toHaveDisplayValue('All Roles');
-    expect(shownMembers()).toEqual(['ana', 'beto']);
   });
 });
 

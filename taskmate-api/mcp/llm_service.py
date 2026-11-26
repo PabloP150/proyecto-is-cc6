@@ -194,7 +194,8 @@ async def _complete(messages: List[Dict[str, str]], *, model: Optional[str], tem
 # ---------------------------------------------------------------- local model (Ollama)
 
 def _ollama_payload(messages: List[Dict[str, str]], *, temperature: Optional[float], max_tokens: Optional[int],
-                    stream: bool, json_mode: bool = False) -> Dict[str, Any]:
+                    stream: bool, json_mode: bool = False,
+                    repeat_penalty: Optional[float] = None) -> Dict[str, Any]:
     payload: Dict[str, Any] = {
         "model": OLLAMA_MODEL,
         "messages": messages,
@@ -209,6 +210,8 @@ def _ollama_payload(messages: List[Dict[str, str]], *, temperature: Optional[flo
     }
     if json_mode:
         payload["format"] = "json"
+    if repeat_penalty is not None:
+        payload["options"]["repeat_penalty"] = repeat_penalty
     return payload
 
 
@@ -240,13 +243,14 @@ def _map_ollama_error(exc: Exception) -> LLMError:
 
 async def _ollama_complete(messages: List[Dict[str, str]], *, temperature: Optional[float] = None,
                            max_tokens: Optional[int] = None, timeout: Optional[float] = None,
-                           json_mode: bool = False) -> str:
+                           json_mode: bool = False, repeat_penalty: Optional[float] = None) -> str:
     limit = timeout or TIMEOUT_SEC
     try:
         response = await asyncio.wait_for(
             _ollama_client().post(f"{OLLAMA_HOST}/api/chat", timeout=limit,
                                   json=_ollama_payload(messages, temperature=temperature, max_tokens=max_tokens,
-                                                       stream=False, json_mode=json_mode)),
+                                                       stream=False, json_mode=json_mode,
+                                                       repeat_penalty=repeat_penalty)),
             timeout=limit + 1,
         )
         response.raise_for_status()
@@ -322,7 +326,8 @@ async def generate(prompt: Messages, generation_config_override=None, max_tokens
 
 
 async def generate_json(messages: Messages, *, model: Optional[str] = None, temperature: Optional[float] = None,
-                        max_tokens: Optional[int] = None, timeout: Optional[float] = None) -> Dict[str, Any]:
+                        max_tokens: Optional[int] = None, timeout: Optional[float] = None,
+                        local_repeat_penalty: Optional[float] = None) -> Dict[str, Any]:
     """Generates a JSON object using Groq JSON mode (no streaming, no SDK retries).
 
     Raises LLMInvalidOutputError when the output is not a JSON object, plus the other LLMError subclasses.
@@ -332,7 +337,7 @@ async def generate_json(messages: Messages, *, model: Optional[str] = None, temp
         msgs = [{"role": "system", "content": "Respond only with a valid JSON object."}] + msgs
     if PROVIDER == 'ollama':
         content = await _ollama_complete(msgs, temperature=temperature, max_tokens=max_tokens,
-                                         timeout=timeout, json_mode=True)
+                                         timeout=timeout, json_mode=True, repeat_penalty=local_repeat_penalty)
         data = extract_json_object(content)
         if data is None:
             raise LLMInvalidOutputError("The model output is not a JSON object.", raw=content)
