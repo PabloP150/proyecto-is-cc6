@@ -1,6 +1,6 @@
 # Analytics: casos de uso
 
-**En una frase:** el líder ve el panel del equipo y pide recomendaciones de asignación a la IA (Groq o el modelo local, según el servidor); el resto de los casos son solo de API o los hace el sistema por su cuenta.
+**En una frase:** el líder ve el panel del equipo y pide recomendaciones de asignación a la IA (el modelo local, Gemma 4 en Ollama; Groq solo si el servidor usa el respaldo en la nube); el resto de los casos son solo de API o los hace el sistema por su cuenta.
 
 ```mermaid
 flowchart LR
@@ -51,7 +51,7 @@ Los roles se heredan: el admin siempre es líder, el líder siempre es miembro y
 |------|-------------|----------|
 | Ver el panel del equipo | Líder | `/analytics` llama a `GET /api/analytics/dashboard/:groupId` con el grupo activo (el del selector de la barra de navegación) y muestra el resumen, la carga de trabajo y la experiencia por categoría |
 | Filtrar la carga por rol | Líder | El filtro corre en el navegador y ofrece los roles que tienen los miembros del grupo, más «No role» si alguien no tiene ninguno |
-| Pedir recomendaciones de asignación a la IA | Líder | El panel manda la tarea por `/insights`. Node arma el `team_context` y el `AnalyticsAgent` devuelve hasta 3 personas y un plan. El modelo no lo elige el usuario: lo fija `LLM_PROVIDER` en el servidor (Groq por defecto, u Ollama) |
+| Pedir recomendaciones de asignación a la IA | Líder | El panel manda la tarea por `/insights`. Node arma el `team_context` y el `AnalyticsAgent` devuelve hasta 3 personas y un plan. El modelo no lo elige el usuario: lo fija `LLM_PROVIDER` en el servidor (`ollama`, el modelo local Gemma 4 que pone `scripts/local-up.sh`; o `groq`, el respaldo en la nube y valor por defecto si la variable falta) |
 | Ver datos del equipo, carga o experiencia (solo API) | Líder | `GET /team/:groupId`, `/workload/:groupId` y `/expertise/:groupId` (con `?category=` opcional) |
 | Ver los analytics de otro miembro (solo API) | Líder de un grupo de esa persona | `GET /user/:userId?groupId=…` devuelve solo lo de ese grupo |
 | Leer o guardar la configuración (solo API) | Líder | `GET` y `PUT /config/:groupId`. Se guarda en `AnalyticsConfig`, pero no cambia nada |

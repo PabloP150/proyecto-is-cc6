@@ -11,7 +11,7 @@ sequenceDiagram
     actor P as Miembro que hace push
     participant FE as Pestaña CI/CD
     participant API as API Express
-    participant IA as PipelineAgent (Groq u Ollama)
+    participant IA as PipelineAgent (Gemma 4 local en Ollama)
     participant DB as SQL Server
     participant GH as GitHub (Actions y Pages)
 
@@ -83,7 +83,7 @@ stateDiagram-v2
 ## Paso a paso
 
 1. El admin abre **GitHub → CI/CD** y pulsa **«Set up pipeline»**.
-2. TaskMate lee la rama principal y detecta los proyectos (Node.js, Python o sitio estático, hasta 2 niveles de carpetas). Si el grupo permite la IA y no hay pipeline guardado, propone la IA (Groq u Ollama, según `LLM_PROVIDER`); si falla, queda la propuesta detectada con una nota.
+2. TaskMate lee la rama principal y detecta los proyectos (Node.js, Python o sitio estático, hasta 2 niveles de carpetas). Si el grupo permite la IA y no hay pipeline guardado, propone la IA (Gemma 4 local en Ollama, o Groq si se usa el respaldo; lo fija `LLM_PROVIDER`); si falla, queda la propuesta detectada con una nota.
 3. Cada cambio en el diálogo se valida en el servidor y regenera el YAML.
 4. **«Push to repository»**: TaskMate activa Pages (si hay deploy), hace el commit del workflow y guarda `RepoPipelines`.
 5. Cada push y cada PR corren el job `ci`. Un push a la rama principal que pasa el CI se publica en staging.

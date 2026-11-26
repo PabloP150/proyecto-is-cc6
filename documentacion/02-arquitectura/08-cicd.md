@@ -12,7 +12,7 @@ Fuente del diagrama: [fuentes/08-cicd.mmd](fuentes/08-cicd.mmd)
 | Rutas CI/CD → pipelineService | Proponer, previsualizar y subir el pipeline. Las rutas de ejecuciones y deploys van directo a «Ejecuciones y deploys» |
 | pipelineService → Ejecuciones y deploys | `deployService` usa `pipelineService` para leer el estado de GitHub Pages |
 | API → Servicio Python del chat | Mensaje `propose_pipeline` por el WebSocket compartido con Python (`LLMService`), solo si el grupo permite la IA |
-| PipelineAgent → Groq u Ollama | Según `LLM_PROVIDER`: con `groq` (valor por defecto del código) usa `openai/gpt-oss-20b`; con `ollama` (lo que pone `scripts/local-up.sh`) usa el modelo local Gemma 4 (`gemma4:e2b-it-qat`). En los dos casos el modelo solo elige valores entre las opciones que TaskMate detectó |
+| PipelineAgent → Ollama (Groq de respaldo) | Usa el modelo del chat: Gemma 4 en Ollama (`gemma4:e2b-it-qat`, `LLM_PROVIDER=ollama`, lo que pone `scripts/local-up.sh`). Solo si se usa Groq (respaldo en la nube, `LLM_PROVIDER=groq`, valor por defecto del código), `openai/gpt-oss-20b`. En los dos casos el modelo solo elige valores entre las opciones que TaskMate detectó |
 | API → SQL Server 2019 | CI/CD: `RepoPipelines` (el pipeline guardado) y `DeployRequests` (solicitudes de producción). Vercel: `GroupDeployTargets` (proyecto vinculado), `Deployments` y `DeploymentWebhookDeliveries` (bitácora del webhook) |
 | Ejecuciones y deploys → API de GitHub | Con el token de la GitHub App: *dispatch* (lanzar el workflow a pedido), ejecuciones, logs, anotaciones y deployments. `pipelineService` también: lee el repositorio, sube el workflow y activa Pages |
 | API de GitHub → Actions → Pages | El workflow `taskmate-ci.yml` corre los jobs `ci → build → deploy → close` («CI (…)», «Deploy build», «Deploy to GitHub Pages» y «Close the deploy») y publica el sitio |
@@ -42,7 +42,7 @@ Fuente del diagrama: [fuentes/08-cicd.mmd](fuentes/08-cicd.mmd)
 | Webhooks de CI/CD | Express, firma HMAC SHA-256 | `taskmate-api/services/github/webhookHandler.js`, `cicdEvents.js` |
 | Webhook de Vercel | Express, firma HMAC SHA-1 | `taskmate-api/services/deploy/deploySignature.js`, `deployWebhookHandler.js` y `vercelEvents.js` (traduce el evento) |
 | Hub realtime | WebSocket `/events` | `taskmate-api/services/realtime.js`, `services/WebSocketServer.js` |
-| PipelineAgent | Python, FastAPI, Groq u Ollama | `taskmate-api/mcp/agents/pipeline_agent.py`, `mcp/llm_service.py` |
+| PipelineAgent | Python, FastAPI, Ollama (Groq de respaldo) | `taskmate-api/mcp/agents/pipeline_agent.py`, `mcp/llm_service.py` |
 | Workflow generado | GitHub Actions + Pages | `.github/workflows/taskmate-ci.yml` (en el repositorio del grupo) |
 
 ## Cómo se conectan

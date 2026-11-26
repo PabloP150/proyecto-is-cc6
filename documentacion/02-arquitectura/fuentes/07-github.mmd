@@ -28,8 +28,8 @@ architecture-beta
     service db(mdi:database)[SQL Server 2019]
     service aisrv(logos:fastapi-icon)[Servidor de IA local puerto 8000]
     service ai(logos:fastapi-icon)[Servicio Python del chat]
-    service groq(logos:groq)[Groq]
-    service ollama(logos:ollama)[Ollama modelo local]
+    service groq(logos:groq)[Groq respaldo en la nube]
+    service ollama(logos:ollama)[Ollama con Gemma 4 local]
 
     fe:T -- B:jf
     jf:R --> L:ghweb

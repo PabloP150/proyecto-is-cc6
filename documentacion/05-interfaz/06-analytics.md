@@ -39,7 +39,7 @@ Todo el panel cuenta solo este grupo: las tarjetas, las barras (tareas y capacid
 - **Pedir recomendaciones:**
   - Escribe la tarea, elige la categoría (Frontend, Backend, Database, Testing o General) y pulsa «Get Recommendations».
   - El botón está apagado mientras la descripción esté vacía, y dice «Analyzing...» mientras espera.
-  - Llegan hasta 3 tarjetas en «Recommended Assignees:», con puesto, nombre, puntaje sobre 100 y razón; si la IA los dio, también la confianza y «Growth Opportunity». La IA es el modelo que fija el servidor con `LLM_PROVIDER` (Groq u Ollama); la pantalla no dice cuál fue.
+  - Llegan hasta 3 tarjetas en «Recommended Assignees:», con puesto, nombre, puntaje sobre 100 y razón; si la IA los dio, también la confianza y «Growth Opportunity». La IA es el modelo local (Gemma 4 en Ollama) o, si el servidor usa el respaldo (`LLM_PROVIDER=groq`), Groq; la pantalla no dice cuál fue.
   - Debajo, «AI Assignment Strategy:» trae el tipo de plan, la persona principal («Primary») y su razón; a veces también un enfoque alternativo y el valor estratégico.
   - Las recomendaciones no asignan nada: para asignar se usa [Tareas](03-tareas.md).
 

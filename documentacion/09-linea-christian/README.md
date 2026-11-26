@@ -222,7 +222,7 @@ Antes, con un proyecto seleccionado, cada mensaje lanzaba un análisis completo 
   - Fuera de tema: respuesta fija, sin que el modelo responda lo pedido.
 - El plan de proyecto nuevo pide al menos 8 tareas en vez de 50 (`MIN_TASKS`). Se bajó pensando
   en el modelo local, porque un modelo pequeño no alcanza a escribir 50 dentro de su límite de
-  tokens, pero el mínimo vale con cualquier proveedor (también con Groq).
+  tokens, pero el mínimo vale con cualquier proveedor (también con Groq, el respaldo en la nube).
 
 Medido con el modelo local (gemma4 e2b): respuestas de chat en 0.3–2.6 s; las preguntas fuera de tema
 se rechazan en 0.1–0.5 s; el plan del proyecto tarda unos 5 s, reutilizando el snapshot ya cargado.

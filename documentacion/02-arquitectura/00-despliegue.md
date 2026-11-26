@@ -1,6 +1,6 @@
 # Despliegue y puertos
 
-**En una frase:** TaskMate corre entero en una máquina de desarrollo: en macOS con `start.sh` (SQL Server en Docker o Podman, el servicio Python y la API) o en Linux con `scripts/local-up.sh` (lo mismo más la IA local: Ollama, el servidor de IA local y Postgres con pgvector, todo con Podman); por internet usa GitHub, sus runners y Pages, Groq (si `LLM_PROVIDER=groq`) y Vercel.
+**En una frase:** TaskMate corre entero en una máquina de desarrollo: en macOS con `start.sh` (SQL Server en Docker o Podman, el servicio Python y la API) o en Linux con `scripts/local-up.sh` (lo mismo más la IA local: Ollama con Gemma 4, el modelo del chat, y el servidor de IA local con Postgres y pgvector, todo con Podman); por internet usa GitHub, sus runners y Pages, Vercel y, solo como respaldo, Groq.
 
 ![Despliegue de TaskMate en la máquina de desarrollo](imagenes/00-despliegue.png)
 
@@ -13,8 +13,8 @@ Fuente del diagrama: [fuentes/00-despliegue.mmd](fuentes/00-despliegue.mmd). El 
 | Otro equipo de la red → CRA y API | Solo en desarrollo: CRA y la API escuchan en todas las interfaces, y con `ALLOW_LAN_ORIGINS=true` la API acepta orígenes `http://` con IPv4 privada |
 | API → SQL Server `:1433` | Consultas SQL con `tedious`, con el login de mínimo privilegio de la app |
 | API → Servicio Python `127.0.0.1:MCP_PORT` | Un solo WebSocket a `/ws` con la cabecera `X-MCP-Secret` |
-| Servicio Python → Groq | HTTPS con el cliente `AsyncGroq`, modelo `openai/gpt-oss-20b`. Con `LLM_PROVIDER=groq`, el valor por defecto del código |
-| Servicio Python → Ollama `127.0.0.1:11434` | `POST /api/chat`, modelo `gemma4:e2b-it-qat`. Con `LLM_PROVIDER=ollama`, lo que escribe `local-up.sh` si la clave falta |
+| Servicio Python → Ollama `127.0.0.1:11434` | `POST /api/chat`, modelo `gemma4:e2b-it-qat` (el modelo del chat). Con `LLM_PROVIDER=ollama`, lo que escribe `local-up.sh` si la clave falta |
+| Servicio Python → Groq (respaldo en la nube) | Solo si se usa Groq: HTTPS con el cliente `AsyncGroq`, modelo `openai/gpt-oss-20b`. Con `LLM_PROVIDER=groq`, el valor por defecto del código para un checkout sin Ollama |
 | Servicio Python → Servidor de IA local `127.0.0.1:8000` | `POST /search` con `X-AI-Server-Secret`, solo en el chat sin proyecto seleccionado |
 | API → Servidor de IA local `127.0.0.1:8000` | `POST /commands/{audit, generate-tests, review-pr}` con `X-AI-Server-Secret` y los parches de la rama |
 | Servidor de IA local → Ollama y Postgres `127.0.0.1:5432` | Generar texto y embeddings; guardar y buscar fragmentos en pgvector |
@@ -53,7 +53,7 @@ No se dibuja: al conectar un repositorio, el navegador va a github.com y GitHub 
 
 | Servicio | Quién lo usa | Para qué |
 |---|---|---|
-| Groq | Servicio Python, si `LLM_PROVIDER=groq` | Chat, planes, análisis del repositorio y propuesta de pipeline |
+| Groq (respaldo en la nube) | Servicio Python, solo si `LLM_PROVIDER=groq` | Lo mismo que el modelo local (chat, planes, analytics, análisis del repositorio y propuesta de pipeline) |
 | GitHub (api.github.com y github.com) | API y navegador | Repositorio, ramas, PRs, ejecuciones y deploys; publicar la revisión con IA; instalar la App |
 | Runners de GitHub Actions | El workflow `.github/workflows/taskmate-ci.yml` de cada repositorio | Build, pruebas, análisis estático y deploy |
 | GitHub Pages | El job de deploy del workflow | Publica `staging` y `production` |
@@ -74,7 +74,7 @@ Otros detalles de `start.sh`:
 - Avisa si falta `MCP_SHARED_SECRET`: sin él, el servicio Python no arranca.
 - Al final siempre imprime «✓ Todo listo». Si algo no responde, revisar los dos logs de `/tmp`.
 - La imagen de SQL Server trae las migraciones con las que se construyó. Un contenedor de una imagen anterior a la 009 no tiene las tablas 009–011: aplicarlas con `npm run db:migrate --workspace=taskmate-api`.
-- No levanta la IA local. Con `AI_SERVER_URL` vacío (como en `.env.example`), auditar, proponer pruebas y revisar PR responden 503 `AI_SERVER_DISABLED`, y el chat usa el proveedor de `LLM_PROVIDER` sin los documentos del proyecto.
+- No levanta la IA local (ni Ollama). Con `AI_SERVER_URL` vacío (como en `.env.example`), auditar, proponer pruebas y revisar PR responden 503 `AI_SERVER_DISABLED`, y el chat usa el proveedor de `LLM_PROVIDER` sin los documentos del proyecto: Ollama si ya corre y la `.env` dice `ollama`, o Groq (respaldo, el valor de `.env.example`) con `GROQ_API_KEY`.
 
 **`./scripts/local-up.sh` (Linux con Podman)** comprueba `podman`, `node`, `npm`, `python3`, `curl`, `ss`, `openssl` y Ollama (`~/.local/ollama/bin/ollama`), y después:
 

@@ -19,7 +19,7 @@ flowchart LR
 ```
 
 ## Qué hace
-- Tres suites corren sin BD, sin GitHub, sin Groq, sin Ollama y sin el servidor de IA local: usan dobles de prueba.
+- Tres suites corren sin BD, sin GitHub, sin Ollama, sin Groq y sin el servidor de IA local: usan dobles de prueba.
 - La suite de BD corre migraciones arriba y abajo contra un SQL Server **desechable**, nunca contra `taskmate-sql`.
 - Resultado al 25 nov 2026, en la rama `test/e2e` (`50f77da`): **2087 pruebas en verde, 0 fallando**. Al 5 nov eran 1960 (1246 + 423 + 177 + 114); al cerrar la Fase 3, 1353.
 - Las 127 de más (saldo neto) son de la línea de Christian: monitoreo de Vercel, archivos por tarea, IA sobre el código, chat con modelo local y streaming, selector de grupo del navbar y CORS en la red local.
@@ -70,7 +70,7 @@ La conexión sale solo de `TEST_DB_*` (nunca de `DB_*` ni de la `.env`). Si falt
 | Frontend | `src/components/__tests__/` (11) | Tareas, grupos, chat (también streaming), analytics, hitos, límites de formularios, grupo activo y selector de grupo del navbar (`NavGroupSelector`) |
 | Frontend | `src/components/github/__tests__/` (10) · `github/cicd/__tests__/` (5) | Página GitHub, explorador, ramas, plan del repositorio, grupo del chat (`ChatProjectInfo`), panel «AI on the branch» (`TaskAiPanel`) y pestaña CI/CD |
 | Frontend | `src/api/`, `src/hooks/`, `src/components/realtime/`, `src/components/ui/` (`__tests__/`: 1, 1, 1, 3) | Cliente HTTP, `useWebSocket`, avisos en vivo y componentes del design system |
-| Servicio Python del chat | `taskmate-api/mcp/tests/` (8 archivos) | Servidor `/ws` (también streaming), orquestador, agentes de analytics, repositorio y pipeline, cliente de Groq, proveedor Ollama (`test_local_provider`) y conocimiento del servidor de IA local (`test_knowledge`) |
+| Servicio Python del chat | `taskmate-api/mcp/tests/` (8 archivos) | Servidor `/ws` (también streaming), orquestador, agentes de analytics, repositorio y pipeline, proveedor Ollama, el modelo local (`test_local_provider`), cliente de Groq, el respaldo y conocimiento del servidor de IA local (`test_knowledge`) |
 
 **Qué cubren los archivos nuevos (línea de Christian):**
 
@@ -100,7 +100,7 @@ Además crecieron `UserSession.test.js` (67 → 78: streaming y chat con el proy
 - Cada cambio trae su prueba en la capa que toca.
 - Las pruebas de BD solo contra un contenedor desechable. Nunca contra la BD de desarrollo.
 - Ninguna prueba llama de verdad a GitHub, Groq, Ollama ni al servidor de IA local. La excepción son dos pruebas de Python que conectan a `127.0.0.1:9`, un puerto cerrado, para simular el servicio caído.
-- `conftest.py` fija `LLM_PROVIDER=groq`, `AI_SERVER_URL` vacío y `LLM_STREAM_CHAT=1`, para que la `.env` local (la que escribe `local-up.sh`) no se meta en las pruebas.
+- `conftest.py` fija `LLM_PROVIDER=groq` (con una llave falsa), `AI_SERVER_URL` vacío y `LLM_STREAM_CHAT=1`, para que la `.env` local (la que escribe `local-up.sh`, con `LLM_PROVIDER=ollama`) no se meta en las pruebas. Las del modelo local usan su propio doble de Ollama.
 
 ## Dónde está en el código
 

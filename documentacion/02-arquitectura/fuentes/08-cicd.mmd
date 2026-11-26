@@ -19,8 +19,8 @@ architecture-beta
     group ia(logos:python)[Servicio Python del chat]
     service agent(logos:fastapi-icon)[PipelineAgent] in ia
 
-    service groq(logos:groq)[Groq]
-    service ollama(logos:ollama)[Ollama]
+    service groq(logos:groq)[Groq respaldo en la nube]
+    service ollama(logos:ollama)[Ollama con Gemma 4 local]
 
     group github(logos:github-icon)[GitHub]
     service ghapi(logos:github-icon)[API de GitHub] in github

@@ -14,7 +14,7 @@ sequenceDiagram
     participant DB as SQL Server
     participant PY as Servicio Python (Orquestador)
     participant KN as Servidor de IA local
-    participant LLM as Modelo (Groq u Ollama)
+    participant LLM as Modelo local (Gemma 4 en Ollama)
 
     U->>FE: abre /chat sin grupo seleccionado
     FE->>API: WebSocket /chat?token=JWT
@@ -111,7 +111,7 @@ sequenceDiagram
     participant DB as SQL Server
     participant GH as GitHub
     participant PY as Servicio Python (Orquestador)
-    participant LLM as Modelo (Groq u Ollama)
+    participant LLM as Modelo local (Gemma 4 en Ollama)
 
     U->>NAV: elige un grupo
     NAV->>FE: grupo activo en GroupContext
@@ -192,7 +192,7 @@ Los errores aparecen como un aviso rojo centrado, con `Code: <código>` debajo. 
 | Mensaje de más de 4000 caracteres | `MESSAGE_TOO_LONG` | El cuadro no deja escribir más; si llega, «The message is too long: the limit is 4000 characters.» |
 | Python apagado, no conecta en 5 s o se corta el enlace | `LLM_ERROR` | «The AI service is not available right now.» |
 | Python no responde en 90 s | `LLM_TIMEOUT` | «The AI took too long to answer. Please try again.» |
-| El modelo falla: límite de uso de Groq, demora, Ollama apagado o modelo sin instalar | sin código | Respuesta normal del asistente: «The AI assistant is receiving too many requests right now. Please try again in 20s.», «The AI assistant took too long to respond. Please try again.» o «The AI assistant is temporarily unavailable. Please try again in a moment.». El detalle de Ollama («is Ollama running?», «ollama pull …») solo queda en el log de Python |
+| El modelo falla: demora, Ollama apagado o modelo sin instalar (o, solo si se usa Groq de respaldo, su límite de uso) | sin código | Respuesta normal del asistente: «The AI assistant took too long to respond. Please try again.» o «The AI assistant is temporarily unavailable. Please try again in a moment.»; solo con Groq (respaldo), «The AI assistant is receiving too many requests right now. Please try again in 20s.». El detalle de Ollama («is Ollama running?», «ollama pull …») solo queda en el log de Python |
 | El modelo devuelve un plan inválido (JSON roto o sin tareas) | sin código | «I had trouble generating the project plan. Could you provide a bit more detail about what you want to build?» |
 | Falla la transacción al guardar el proyecto nuevo | `SAVE_FAILED` | «Could not create the project.» No se guarda nada |
 | Pedir un plan con un grupo sin repo | `REPO_NOT_CONNECTED` | «The project has no GitHub repository connected.» |

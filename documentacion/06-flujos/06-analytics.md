@@ -1,6 +1,6 @@
 # Analytics: flujos
 
-**En una frase:** el panel lee los números con un `GET` y pide recomendaciones por el WebSocket `/insights`; Node revisa que seas líder, arma los datos reales del equipo y el agente de Python los puntúa con ayuda del modelo (Groq u Ollama, según `LLM_PROVIDER`); si algo falla, el navegador muestra su propia estimación.
+**En una frase:** el panel lee los números con un `GET` y pide recomendaciones por el WebSocket `/insights`; Node revisa que seas líder, arma los datos reales del equipo y el agente de Python los puntúa con ayuda del modelo (Gemma 4 local en Ollama; Groq solo si se usa el respaldo, según `LLM_PROVIDER`); si algo falla, el navegador muestra su propia estimación.
 
 ## Pedir recomendaciones de asignación
 
@@ -12,7 +12,7 @@ sequenceDiagram
     participant WS as WebSocket /insights
     participant DB as SQL Server
     participant PY as AnalyticsAgent en Python
-    participant GQ as Modelo: Groq u Ollama
+    participant GQ as Modelo local: Gemma 4 en Ollama
 
     L->>FE: Escribe la tarea, elige la categoría y pulsa Get Recommendations
     FE->>WS: type analytics, action get_task_assignment_recommendations
@@ -83,7 +83,7 @@ flowchart TD
 1. El panel manda la descripción, la categoría y el grupo. También manda su tabla de carga, pero el agente no la usa.
 2. Node cuenta el pedido, descarta cualquier `team_context` del navegador y exige ser líder.
 3. Node arma el `team_context` con datos de este grupo solamente: asignaciones abiertas, capacidad y experiencia.
-4. Python calcula un puntaje fijo con experiencia, tasa de éxito, carga y capacidad, y le pide al modelo que lo ajuste con `llm_service.generate_json`. El modelo es el que fija `LLM_PROVIDER` para todo el servicio Python: Groq (`openai/gpt-oss-20b`, en modo JSON; el valor por defecto) u Ollama (`gemma4:e2b-it-qat` con `format: json`; el que agrega `scripts/local-up.sh`).
+4. Python calcula un puntaje fijo con experiencia, tasa de éxito, carga y capacidad, y le pide al modelo que lo ajuste con `llm_service.generate_json`. El modelo es el que fija `LLM_PROVIDER` para todo el servicio Python: el local, Ollama (`gemma4:e2b-it-qat` con `format: json`; el que agrega `scripts/local-up.sh`), o Groq como respaldo en la nube (`openai/gpt-oss-20b`, en modo JSON; el valor por defecto si la variable falta).
 5. Si el modelo falla, el agente responde igual con el puntaje fijo; el plan dice «Analytics-based assignment (LLM unavailable)…».
 6. La respuesta vuelve por el mismo `/insights` y el panel la dibuja. No se guarda nada.
 
@@ -116,7 +116,7 @@ flowchart TD
 | Falla el orquestador de Python | `analytics_error` («Analytics request failed.») y respaldo local al instante |
 | Se corta el enlace con Python a mitad del pedido | Llega un evento `error` que el panel no reconoce: respaldo local a los 30 s |
 | Falla el cálculo dentro del agente | Responde `success: false`, sin personas: el botón vuelve a «Get Recommendations» y, a los 30 s, aparece el respaldo local |
-| El modelo (Groq u Ollama) falla, devuelve un JSON que no sirve o pasa su límite (`LLM_TIMEOUT_SEC`, 60 s por defecto) | Llegan tarjetas con el puntaje fijo, sin confianza |
+| El modelo (Ollama, o Groq si se usa el respaldo) falla, devuelve un JSON que no sirve o pasa su límite (`LLM_TIMEOUT_SEC`, 60 s por defecto) | Llegan tarjetas con el puntaje fijo, sin confianza |
 | Con `LLM_PROVIDER=ollama`, Ollama está apagado o el modelo no está descargado | Lo mismo: tarjetas con el puntaje fijo. El detalle («is Ollama running?», «ollama pull …») solo queda en el log de Python |
 | El modelo tarda entre 30 s y 60 s | Primero aparece el respaldo local; cuando llega la respuesta real, la reemplaza |
 

@@ -51,7 +51,7 @@ Capturas del 26 nov 2026, grupo «Demo CI/CD» con el repositorio `PabloP150/tas
 - **Vercel con proyecto vinculado:** cada despliegue lleva un chip de estado («Queued», «Building», «Deployed», «Failed» o «Cancelled»), otro de `production` o `preview`, la rama, el SHA corto, la fecha y la URL; si falló, una alerta roja con el mensaje de Vercel. Sin despliegues aparece «No deployments received yet. They will show up here as soon as Vercel sends the first webhook.».
 - **Vercel no se actualiza solo:** la lista se pide al abrir la pestaña o al pulsar «Refresh»; no llega nada por `/events`.
 - **Textos que siguen en español:** «Desplegando…» y «Publicando <sha>…» en Environments, «Omitido» en los pasos saltados, la etapa y el paso «Pruebas», y «Vincular» / «Vinculando…» en Vercel. Un workflow subido antes del 19 nov conserva sus nombres en español hasta que el admin vuelva a subir el pipeline.
-- El aviso del diálogo dice que solo se manda a Groq la lista de proyectos y scripts; con `LLM_PROVIDER=ollama` la propuesta la hace el modelo local y no sale a Groq.
+- El aviso del diálogo dice que solo se manda a Groq la lista de proyectos y scripts: es un texto fijo de `PipelineSetup.jsx`. Con el modelo local (`LLM_PROVIDER=ollama`) la propuesta la hace Gemma 4 en Ollama y no sale a Groq; el aviso solo es literal si se usa Groq (respaldo).
 
 ## Árbol de componentes
 

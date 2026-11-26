@@ -1,6 +1,6 @@
 # Chat con IA: arquitectura
 
-**En una frase:** el navegador conversa con la API por un WebSocket (`/chat`); la API le suma el contexto del grupo elegido en la barra de navegación y reenvía cada mensaje al servicio Python del chat, que responde en streaming con Groq o con el modelo local (Ollama) según `LLM_PROVIDER`; cuando el usuario confirma un plan, la API lo guarda en SQL Server.
+**En una frase:** el navegador conversa con la API por un WebSocket (`/chat`); la API le suma el contexto del grupo elegido en la barra de navegación y reenvía cada mensaje al servicio Python del chat, que responde en streaming con el modelo local (Gemma 4 en Ollama; Groq queda como respaldo en la nube); cuando el usuario confirma un plan, la API lo guarda en SQL Server.
 
 ![Arquitectura del chat con IA](imagenes/05-chat-ia.png)
 
@@ -20,8 +20,8 @@ Fuente del diagrama: [fuentes/05-chat-ia.mmd](fuentes/05-chat-ia.mmd).
 | Orquestador | knowledge.py → servidor de IA local | `POST /search` en `AI_SERVER_URL` (`127.0.0.1:8000`), con `X-AI-Server-Secret` si hay `AI_SERVER_SECRET`; **solo sin grupo seleccionado** |
 | Orquestador | Agente del plan | la idea del proyecto acumulada en la conversación (solo sin grupo) |
 | Agente del plan | llm_service.py | el pedido del plan en modo JSON |
-| llm_service.py | Groq | HTTPS con `GROQ_API_KEY`, modelo `openai/gpt-oss-20b` (`LLM_PROVIDER=groq`, el valor por defecto) |
-| llm_service.py | Ollama | `POST /api/chat` en `OLLAMA_HOST` (`127.0.0.1:11434`), modelo `gemma4:e2b-it-qat`, sin `think` (`LLM_PROVIDER=ollama`) |
+| llm_service.py | Ollama (modelo del chat) | `POST /api/chat` en `OLLAMA_HOST` (`127.0.0.1:11434`), modelo `gemma4:e2b-it-qat`, sin `think` (`LLM_PROVIDER=ollama`, lo que pone `scripts/local-up.sh`) |
+| llm_service.py | Groq (respaldo en la nube) | Solo si se usa Groq: HTTPS con `GROQ_API_KEY`, modelo `openai/gpt-oss-20b` (`LLM_PROVIDER=groq`, el valor por defecto del código) |
 | Orquestador | UserSession | `response_chunk` (trozos de la respuesta), `response`, `save_plan` o `plan_request` |
 | UserSession | ChatPage | `assistant_chunk` por cada trozo y al final `assistant` con el texto completo, los dos con el mismo `requestId` |
 | UserSession | ProjectService | sin grupo, el plan confirmado (`save_plan`); con grupo, el plan del análisis del repo (`repo_plan_confirm`) |
@@ -30,7 +30,7 @@ Fuente del diagrama: [fuentes/05-chat-ia.mmd](fuentes/05-chat-ia.mmd).
 Términos:
 - **WebSocket:** conexión que queda abierta y por la que ambos lados mandan mensajes cuando quieren.
 - **JWT:** el token firmado que entrega el login; dura 24 h.
-- **LLM:** modelo de lenguaje. Aquí, Groq (en la nube) u Ollama (en la misma máquina).
+- **LLM:** modelo de lenguaje. Aquí, Gemma 4 en Ollama (en la misma máquina); Groq (en la nube) es el respaldo.
 - **Streaming:** la respuesta llega en trozos mientras el modelo la escribe.
 - **Transacción:** grupo de escrituras que se guarda completo o no se guarda nada.
 
@@ -52,7 +52,7 @@ Términos:
 | Agente del plan | Python (`RecommendationsAgent`, `MIN_TASKS = 8`) | `taskmate-api/mcp/agents/recommendations_agent.py` |
 | Contexto del proyecto en Python | Pydantic (`ProjectContext`) y `project_context_json` | `taskmate-api/mcp/schemas.py`, `taskmate-api/mcp/agents/repo_analysis_agent.py` |
 | Conocimiento del servidor de IA local | `httpx` | `taskmate-api/mcp/knowledge.py` |
-| Cliente del modelo | SDK `groq` (`AsyncGroq`) o `httpx` hacia Ollama | `taskmate-api/mcp/llm_service.py` |
+| Cliente del modelo | `httpx` hacia Ollama, o SDK `groq` (`AsyncGroq`) si se usa el respaldo | `taskmate-api/mcp/llm_service.py` |
 | Base de datos | SQL Server 2019 en Docker | `taskmate-api/taskmate_tables.sql` y `taskmate-api/migrations/` |
 
 ## Cómo se conectan
@@ -62,7 +62,9 @@ Términos:
 - **El contexto se arma una sola vez.** Con el primer mensaje tras elegir el grupo, `UserSession` lee el equipo, las tareas, los hitos, las asignaciones y, si hay permiso, el resumen del repo, y lo guarda en caché. No se refresca mientras el grupo no cambie. En cada mensaje solo vuelve a comprobar la membresía y, si la caché tiene el resumen del repo, que siga conectado, sin suspender y con permiso. Si falla la lectura del repo, no se guarda en caché y se reintenta en el siguiente mensaje.
 - Todos los usuarios comparten **un solo WebSocket** de Node a Python (`LLMService`). Cada pedido lleva `sessionId` y `requestId`, y la respuesta vuelve a la sesión correcta por el `sessionId`.
 - El servicio Python escucha solo en `127.0.0.1`, en `MCP_PORT` (8001 por defecto; esta máquina usa 8011). Rechaza conexiones sin `X-MCP-Secret` o que traen `Origin`. **No es el Model Context Protocol:** la carpeta se llama `mcp/` por historia, pero el protocolo es JSON propio.
-- **Qué modelo responde:** `LLM_PROVIDER` elige `groq` (por defecto en el código y en `.env.example`) u `ollama` (lo agrega `scripts/local-up.sh` al `.env` de la raíz si falta). Vale para todos los agentes de Python: chat, clasificación, plan, análisis del repo, pipeline y analytics. Un valor desconocido usa Groq. Con Groq, el contexto del proyecto sale a la nube; con Ollama, se queda en la máquina.
+- **Qué modelo responde:** el modelo local, Gemma 4 (`gemma4:e2b-it-qat`) en Ollama, el mismo que usa el servidor de IA local. Lo activa `LLM_PROVIDER=ollama`, que `scripts/local-up.sh` agrega al `.env` de la raíz si falta. Vale para todos los agentes de Python: chat, clasificación, plan, análisis del repo, pipeline y analytics. Con Ollama, el contexto del proyecto se queda en la máquina.
+- **Variables del modelo local:** `LLM_PROVIDER=ollama`, `OLLAMA_HOST` (`http://127.0.0.1:11434`), `OLLAMA_MODEL`, `OLLAMA_NUM_CTX` (8192), `OLLAMA_KEEP_ALIVE` (`30m`) y `OLLAMA_THINK` (`0`, sin razonamiento).
+- **Groq (respaldo en la nube):** `groq` es el valor por defecto de `LLM_PROVIDER` en el código y en `.env.example`, para que un checkout sin Ollama siga funcionando; un valor desconocido también usa Groq. Solo si se usa Groq hacen falta `GROQ_API_KEY`, `LLM_MODEL` (`openai/gpt-oss-20b`) y `LLM_REASONING_EFFORT`, y el contexto del proyecto sale a la nube.
 - **Streaming:** con `LLM_STREAM_CHAT=1` (por defecto) las respuestas de chat salen en trozos. Los planes, la respuesta fija a lo que está fuera de tema y la clasificación llegan enteros.
 - **Servidor de IA local:** solo sin grupo seleccionado, `knowledge.py` le pide a `taskmate-ai-server` los fragmentos de documentos más parecidos al mensaje (4 como máximo, similitud ≥ 0,3, 3 s de espera). Sin `AI_SERVER_URL`, o si falla, el chat sigue sin ellos.
 - **Python no toca la base de datos.** Sin grupo, Python pide `save_plan` y Node escribe todo con `ProjectService` en una sola transacción. Con grupo, Python devuelve `plan_request` y Node lanza el análisis del repositorio por el mismo socket `/chat`: ver [07-github](07-github.md).

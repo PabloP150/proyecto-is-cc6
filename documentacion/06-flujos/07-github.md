@@ -153,7 +153,7 @@ sequenceDiagram
 2. La API actualiza el nombre y la rama por defecto del repo si cambiaron en GitHub.
 3. Consulta los PRs de hasta 30 ramas (primero las que no tienen PR o lo tienen abierto) y aplica cada uno como el webhook, salvo el registro de archivos y la revisión con IA.
 
-**Analizar el repositorio con IA:** ver el [flujo del chat](05-chat-ia.md). Se lanza con «Analyze with AI», con «Propose tasks» o pidiendo un plan en el chat. Exige `ai_analysis_enabled`, y al modelo (Groq u Ollama, según `LLM_PROVIDER`) va un resumen del repo, no el código.
+**Analizar el repositorio con IA:** ver el [flujo del chat](05-chat-ia.md). Se lanza con «Analyze with AI», con «Propose tasks» o pidiendo un plan en el chat. Exige `ai_analysis_enabled`, y al modelo (Gemma 4 local en Ollama, o Groq si se usa el respaldo; lo fija `LLM_PROVIDER`) va un resumen del repo, no el código.
 
 ## Qué ve el usuario si algo falla
 

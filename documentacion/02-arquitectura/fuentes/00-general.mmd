@@ -20,11 +20,11 @@ architecture-beta
 
     group py(logos:python)[Servicio Python del chat]
     service orch(logos:fastapi-icon)[FastAPI y agentes] in py
-    service groq(logos:groq)[Groq]
+    service groq(logos:groq)[Groq respaldo en la nube]
 
-    group ial(mdi:robot-outline)[IA local opcional]
+    group ial(mdi:robot-outline)[IA local]
     service ollama(logos:ollama)[Ollama con Gemma 4] in ial
-    service aisrv(logos:fastapi-icon)[Servidor de IA local] in ial
+    service aisrv(logos:fastapi-icon)[Servidor de IA local opcional] in ial
     service pg(logos:postgresql)[Postgres y pgvector] in ial
 
     group docker(logos:docker-icon)[Contenedor]

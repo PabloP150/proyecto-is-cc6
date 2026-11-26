@@ -50,7 +50,7 @@ flowchart LR
 - TaskMate instalado: `npm install`, el venv de Python en `taskmate-api/mcp/venv` y el contenedor `taskmate-sql` ([primer arranque](primer-arranque.md)). La rama con lo más actualizado es `test/e2e`; `master` todavía no trae la línea de Christian.
 - Node.js 18+ (la API usa `fetch` nativo), Python 3.9+ y Docker Desktop o Podman (`start.sh` usa Podman si está instalado y responde).
 - Una cuenta de GitHub y un **repositorio de prueba con al menos un commit** (en un repositorio vacío no se pueden crear ramas: `REPO_EMPTY`).
-- Una API key de Groq si el chat usa Groq (`LLM_PROVIDER=groq`, el valor por defecto). Con el modelo local (`LLM_PROVIDER=ollama`) no hace falta.
+- El modelo de IA de TaskMate: Gemma 4 en Ollama (`LLM_PROVIDER=ollama`; `scripts/local-up.sh` lo levanta). Solo si usas Groq como respaldo en la nube (`LLM_PROVIDER=groq`), una API key de Groq.
 - Opcional, para auditar la rama, generar pruebas y la revisión de PR con IA: el servidor de IA local de Christian (`taskmate-ai-server`, `127.0.0.1:8000`). Cómo levantarlo: [entorno local](../09-linea-christian/ENTORNO-LOCAL.md).
 - `openssl` (viene con macOS).
 - Ser **administrador** de un grupo en TaskMate (quien crea el grupo es su admin).
@@ -247,9 +247,10 @@ MIGRATION_DB_PASSWORD=<SA_PASSWORD del contenedor>
 # --- Servicio Python del chat
 LLM_WEBSOCKET_URL=ws://127.0.0.1:8001/ws   # el puerto debe coincidir con MCP_PORT (por defecto 8001)
 MCP_SHARED_SECRET=<openssl rand -hex 32>
-LLM_PROVIDER=groq                         # groq (por defecto) u ollama (modelo local)
-GROQ_API_KEY=<tu llave de Groq>           # solo con LLM_PROVIDER=groq
-LLM_MODEL=openai/gpt-oss-20b
+LLM_PROVIDER=ollama                       # ollama = modelo local; groq = respaldo en la nube (valor de la plantilla y del código)
+OLLAMA_MODEL=gemma4:e2b-it-qat            # en OLLAMA_HOST, por defecto http://127.0.0.1:11434
+GROQ_API_KEY=<tu llave de Groq>           # solo si se usa Groq (respaldo)
+LLM_MODEL=openai/gpt-oss-20b              # solo si se usa Groq (respaldo)
 
 # --- Servidor de IA local (opcional: auditar, generar pruebas, revisar PR)
 AI_SERVER_URL=                            # vacío = desactivado; local-up.sh pone http://127.0.0.1:8000
@@ -275,8 +276,8 @@ WEBHOOK_DELIVERY_RETENTION_DAYS=90
 | `MIGRATION_DB_USERNAME` / `MIGRATION_DB_PASSWORD` | Login con permisos de DDL para las migraciones (SA en el Docker de desarrollo) | `db:migrate` falla por permisos |
 | `LLM_WEBSOCKET_URL` / `MCP_PORT` | Dónde escucha el servicio Python del chat (solo `127.0.0.1`; puerto por defecto 8001). Si el 8001 está ocupado, se usa otro (p. ej. 8011) en las dos variables | El chat responde «The AI service is not available right now.» |
 | `MCP_SHARED_SECRET` | Node lo envía en la cabecera `X-MCP-Secret`; Python rechaza (403) cualquier conexión sin él | Python no arranca si falta o es débil; con valores distintos, 403 |
-| `LLM_PROVIDER` | Proveedor del chat: `groq` (por defecto) u `ollama` (modelo local `gemma4:e2b-it-qat`; variables `OLLAMA_*`) | Un valor desconocido avisa y usa `groq` |
-| `GROQ_API_KEY`, `LLM_MODEL` | Llave y modelo de Groq; solo con `LLM_PROVIDER=groq` | Con Groq, las llamadas de IA fallan |
+| `LLM_PROVIDER` | Proveedor de toda la IA (chat, analytics, análisis del repositorio y pipeline): `ollama` = modelo local `gemma4:e2b-it-qat` (variables `OLLAMA_*`; `local-up.sh` lo pone si falta); `groq` = respaldo en la nube, valor por defecto del código y de la plantilla | Un valor desconocido avisa y usa `groq` |
+| `GROQ_API_KEY`, `LLM_MODEL` | Llave y modelo de Groq; solo si se usa Groq (respaldo, `LLM_PROVIDER=groq`) | Con Groq, las llamadas de IA fallan |
 | `AI_SERVER_URL` / `AI_SERVER_SECRET` | Servidor de IA local (cabecera `X-AI-Server-Secret`): auditar la rama, generar pruebas y la revisión de PR con IA | Opcionales. Sin URL, esas acciones responden `AI_SERVER_DISABLED` (503) y el webhook no revisa PR; con el secreto distinto, `AI_SERVER_AUTH` (502) |
 | `GITHUB_APP_ID` | `iss` del JWT RS256 de la App (para `/app/*` y para pedir tokens de instalación) | `GITHUB_NOT_CONFIGURED` (503) al explorar, crear ramas, sincronizar o vincular |
 | `GITHUB_APP_SLUG` | Arma la URL de instalación | 503 al pulsar «Connect repository» |
@@ -344,7 +345,7 @@ El mismo `npm run db:migrate` aplica solo las que falten: con 001–008, de la 0
 
 ## 8. Arrancar todo
 
-**Opción rápida (macOS, o Podman):** `./start.sh` levanta SQL Server (`taskmate-sql`, con Podman si está instalado y responde, si no Docker), la API (`:9000`) y el servicio Python del chat (`127.0.0.1:8001`, o el `MCP_PORT` de la `.env`; avisa si falta `MCP_SHARED_SECRET` en la `.env` de la raíz). No aplica migraciones ni levanta el servidor de IA local. Luego, en otras terminales, `npm start` (frontend) y `smee-client`.
+**Opción rápida (macOS, o Podman):** `./start.sh` levanta SQL Server (`taskmate-sql`, con Podman si está instalado y responde, si no Docker), la API (`:9000`) y el servicio Python del chat (`127.0.0.1:8001`, o el `MCP_PORT` de la `.env`; avisa si falta `MCP_SHARED_SECRET` en la `.env` de la raíz). No aplica migraciones ni levanta Ollama ni el servidor de IA local: con `LLM_PROVIDER=ollama`, Ollama debe estar corriendo aparte; sin él, Groq como respaldo. Luego, en otras terminales, `npm start` (frontend) y `smee-client`.
 
 **Opción Linux + Podman:** `./scripts/local-up.sh` levanta, en orden, la IA local (Ollama y el servidor de IA local, de `../ai-server`), SQL Server con `npm run db:migrate`, el servicio Python del chat, la API y el frontend; `./scripts/local-down.sh` lo detiene. `smee-client` se lanza aparte igual. Detalle: [entorno local](../09-linea-christian/ENTORNO-LOCAL.md).
 
@@ -452,7 +453,7 @@ Este checklist cubre la Fase 3. El recorrido del CI/CD (Fase 4) está en la [gu�
 | `GITHUB_RATE_LIMITED` (503, con `Retry-After`) | Límite de GitHub o presupuesto por instalación agotado | Esperar lo que indique `Retry-After` |
 | `RATE_LIMITED` (429) | Límite por usuario (p. ej. 60 lecturas/min, sincronizar 1 cada 30 s) | Esperar |
 | «AI analysis is turned off…» (`AI_ANALYSIS_DISABLED`) | El admin no activó el permiso | Activar «Allow AI analysis» en la pestaña **Repository** |
-| «The AI service is busy. Try again in a few seconds.» (`LLM_RATE_LIMIT`) | Con Groq, límite de tokens por minuto del plan gratuito, u otro análisis en curso | Reintentar en unos segundos |
+| «The AI service is busy. Try again in a few seconds.» (`LLM_RATE_LIMIT`) | Otro análisis en curso o, solo si se usa Groq (respaldo), su límite de tokens por minuto del plan gratuito | Reintentar en unos segundos |
 | «The AI took too long to answer…» / «The AI returned an invalid plan…» | Timeout (90 s) o salida inválida tras un reintento | Reintentar; acotar con instrucciones |
 | 401 por todas partes / te saca de la sesión | Token vencido (24 h), `JWT_SECRET` rotado o token antiguo sin `typ` | Iniciar sesión de nuevo |
 | `db:migrate` falla con permisos (`CREATE TABLE permission denied`…) | Se ejecutó con el login de la app | Pasar `MIGRATION_DB_USERNAME=sa` y su contraseña (paso 7) |

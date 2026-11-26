@@ -1,6 +1,6 @@
 # Arquitectura general
 
-**En una frase:** TaskMate es una web en React que habla con una API en Node; la API guarda todo en SQL Server, le pide el chat y los planes a un servicio Python que usa Groq u Ollama (según `LLM_PROVIDER`), le pide al servidor de IA local que audite ramas, proponga pruebas y revise PRs, y se conecta con GitHub (repositorios y CI/CD) y con Vercel (monitoreo de despliegues).
+**En una frase:** TaskMate es una web en React que habla con una API en Node; la API guarda todo en SQL Server, le pide el chat y los planes a un servicio Python que usa el modelo local Gemma 4 en Ollama (Groq queda como respaldo en la nube), le pide al servidor de IA local que audite ramas, proponga pruebas y revise PRs, y se conecta con GitHub (repositorios y CI/CD) y con Vercel (monitoreo de despliegues).
 
 ![Arquitectura general de TaskMate](imagenes/00-general.png)
 
@@ -11,7 +11,8 @@ Fuente del diagrama: [fuentes/00-general.mmd](fuentes/00-general.mmd). Las flech
 | Navegador → REST | Tareas, grupos, hitos, analytics, GitHub y despliegues de Vercel | HTTP con `Authorization: Bearer <JWT>` |
 | Navegador → WebSockets | Chat (`/chat`), panel de analytics (`/insights`) y avisos de CI/CD (`/events`) | WebSocket con `?token=<JWT>` |
 | API → Servicio Python | Mensajes del chat, recomendaciones, análisis del repo y propuesta de pipeline | Un solo WebSocket a `/ws` con la cabecera `X-MCP-Secret` |
-| Servicio Python → Groq u Ollama | Prompts y respuestas del modelo; el chat responde en streaming | `LLM_PROVIDER=groq` (por defecto): HTTPS con `AsyncGroq`, modelo `openai/gpt-oss-20b`. `LLM_PROVIDER=ollama`: `POST /api/chat` a `127.0.0.1:11434`, modelo `gemma4:e2b-it-qat` |
+| Servicio Python → Ollama (Gemma 4) | Prompts y respuestas del modelo; el chat responde en streaming | `POST /api/chat` a `127.0.0.1:11434`, modelo `gemma4:e2b-it-qat`. Lo activa `LLM_PROVIDER=ollama`, que pone `scripts/local-up.sh` |
+| Servicio Python → Groq (respaldo en la nube) | Lo mismo, solo si se usa Groq | HTTPS con `AsyncGroq`, modelo `openai/gpt-oss-20b` y `GROQ_API_KEY`. Es el valor por defecto de `LLM_PROVIDER` en el código, para que un checkout sin Ollama siga funcionando |
 | Servicio Python → Servidor de IA local | Documentos del proyecto para el chat sin proyecto seleccionado (RAG) | `POST /search` con `X-AI-Server-Secret`; si falla, el chat sigue sin ellos |
 | API → Servidor de IA local | Los parches del diff de la rama de una tarea, para auditarla, proponer pruebas o revisar su PR | `POST /commands/{audit, generate-tests, review-pr}` con `X-AI-Server-Secret` |
 | Servidor de IA local → Ollama y Postgres | Generar texto (`gemma4:e2b-it-qat`), embeddings (`embeddinggemma:300m`) y buscar por similitud | Ollama en `127.0.0.1:11434`; Postgres 17 + pgvector en `127.0.0.1:5432` |
@@ -23,7 +24,7 @@ Fuente del diagrama: [fuentes/00-general.mmd](fuentes/00-general.mmd). Las flech
 
 No se dibujan dos conexiones internas: el webhook de GitHub avisa a los navegadores por `/events`, y al instalar la App el navegador va a GitHub y GitHub lo devuelve a `GET /api/github/callback`.
 
-La IA local es opcional. Sin `AI_SERVER_URL`, auditar, proponer pruebas y revisar un PR responden 503 `AI_SERVER_DISABLED` («Review PR» además deja ese commit como `failed` y no se vuelve a revisar; ver [limitaciones](../01-proyecto/cierre-del-proyecto.md#ia-sobre-el-código)), el webhook no lanza la revisión automática y el chat funciona sin los documentos del proyecto. El servidor de IA local es un repo aparte de Christian; lo explica [IA sobre el código](10-ia-sobre-el-codigo.md).
+El modelo del chat es el local (Ollama con Gemma 4). Lo opcional es el servidor de IA local: sin `AI_SERVER_URL`, auditar, proponer pruebas y revisar un PR responden 503 `AI_SERVER_DISABLED` («Review PR» además deja ese commit como `failed` y no se vuelve a revisar; ver [limitaciones](../01-proyecto/cierre-del-proyecto.md#ia-sobre-el-código)), el webhook no lanza la revisión automática y el chat funciona sin los documentos del proyecto. El servidor de IA local es un repo aparte de Christian; lo explica [IA sobre el código](10-ia-sobre-el-codigo.md).
 
 ## Contexto
 
@@ -39,12 +40,12 @@ flowchart LR
         py["Servicio Python del chat"]
         db[("SQL Server")]
     end
-    subgraph IAL["IA local (opcional)"]
-        ais["Servidor de IA local<br/>RAG y comandos"]
+    subgraph IAL["IA local"]
+        ais["Servidor de IA local (opcional)<br/>RAG y comandos"]
         ollama["Ollama<br/>Gemma 4"]
         pg[("Postgres + pgvector")]
     end
-    groq["Groq<br/>openai/gpt-oss-20b"]
+    groq["Groq (respaldo en la nube)<br/>openai/gpt-oss-20b"]
     subgraph GH["GitHub"]
         app["GitHub App<br/>repos, ramas y PRs"]
         actions["GitHub Actions"]
@@ -58,8 +59,8 @@ flowchart LR
     web --> api
     api --> py
     api --> db
-    py -->|"LLM_PROVIDER=groq"| groq
-    py -->|"LLM_PROVIDER=ollama"| ollama
+    py -->|"modelo del chat<br/>LLM_PROVIDER=ollama"| ollama
+    py -.->|"respaldo<br/>LLM_PROVIDER=groq"| groq
     py -->|"/search"| ais
     api -->|"auditar, pruebas, revisar PR"| ais
     ais --> ollama
@@ -78,10 +79,10 @@ flowchart LR
 |---|---|---|---|---|
 | Frontend | React 18, MUI 6, React Router 6, `@xyflow/react` 12, react-big-calendar | `src/` | 3000 | Pantallas de la app (SPA: una sola página que cambia de vista sin recargar) |
 | API | Node.js, Express 4, `ws`, `jsonwebtoken`, `tedious` | `taskmate-api/` | 9000 | REST, 3 WebSockets, webhooks de GitHub y de Vercel, llamadas al servidor de IA local y reglas de acceso |
-| Servicio Python del chat | Python, FastAPI, uvicorn, Pydantic, cliente `groq` y `httpx` | `taskmate-api/mcp/` | `MCP_PORT` (8001 por defecto; 8011 en la Mac de desarrollo), solo `127.0.0.1` | Agentes que arman los prompts para Groq u Ollama, responden el chat en streaming y validan lo que responde el modelo |
+| Servicio Python del chat | Python, FastAPI, uvicorn, Pydantic, `httpx` (Ollama) y cliente `groq` (respaldo) | `taskmate-api/mcp/` | `MCP_PORT` (8001 por defecto; 8011 en la Mac de desarrollo), solo `127.0.0.1` | Agentes que arman los prompts para el modelo local (o Groq, si se usa el respaldo), responden el chat en streaming y validan lo que responde el modelo |
 | Servidor de IA local (opcional) | Python, FastAPI, Ollama, Postgres 17 + pgvector | Repo aparte `taskmate-ai-server` (se clona en `../ai-server`) | 8000 (Ollama 11434, Postgres 5432), solo `127.0.0.1` | RAG sobre los documentos del proyecto y los comandos `audit`, `generate-tests` y `review-pr` |
 | Base de datos | SQL Server 2019 en un contenedor (`taskmate-sql`) de Docker o Podman | `taskmate-api/taskmate_tables.sql` y `migrations/` (001–011) | 1433 | 29 tablas y 2 triggers |
-| Externos | Groq (si `LLM_PROVIDER=groq`), GitHub App, GitHub Actions, GitHub Pages, Vercel, smee.io | — | — | Modelo de IA en la nube, repositorio, CI/CD y despliegues del grupo |
+| Externos | Groq (respaldo en la nube, solo si `LLM_PROVIDER=groq`), GitHub App, GitHub Actions, GitHub Pages, Vercel, smee.io | — | — | Modelo de respaldo en la nube, repositorio, CI/CD y despliegues del grupo |
 
 Términos:
 - **JWT:** token firmado que prueba quién eres; dura 24 h.
@@ -89,7 +90,7 @@ Términos:
 - **Webhook:** aviso HTTP que GitHub o Vercel mandan cuando algo cambia.
 - **HMAC:** firma calculada con un secreto compartido; prueba que el aviso viene de GitHub (SHA-256) o de Vercel (SHA-1).
 - **smee:** proxy público que reenvía los webhooks de GitHub a `localhost` mientras se desarrolla.
-- **Ollama:** programa que corre modelos de IA en la propia máquina. TaskMate usa Gemma 4.
+- **Ollama:** programa que corre modelos de IA en la propia máquina. TaskMate usa Gemma 4 (`gemma4:e2b-it-qat`) para el chat, los planes, analytics, el análisis del repo y el pipeline, y el servidor de IA local usa el mismo.
 - **RAG:** buscar en los documentos indexados los fragmentos más parecidos a la pregunta y dárselos al modelo como contexto. Los guarda Postgres con la extensión **pgvector**.
 - **Nombres:** «servicio Python» es `taskmate-api/mcp/`; «servidor de IA local» es el repo aparte `taskmate-ai-server`. Antes estas páginas llamaban «servidor de IA» a `mcp/`.
 - La carpeta `mcp/` **no** usa el Model Context Protocol: Node y Python hablan un JSON propio por WebSocket.
@@ -125,7 +126,7 @@ Los dos webhooks no llevan JWT: se montan antes de `express.json()` y cada uno c
 | `taskmate-api/services/github/` | GitHub App, webhook, ramas, archivos de la tarea, pipeline y deploys |
 | `taskmate-api/controllers/deploy.controller.js` y `services/deploy/` | Webhook de Vercel y rutas `/api/deploy` |
 | `taskmate-api/mcp/server.py` | Servicio Python (`/ws`) |
-| `taskmate-api/mcp/llm_service.py` | Groq u Ollama según `LLM_PROVIDER` |
+| `taskmate-api/mcp/llm_service.py` | Llama al modelo: Ollama con `LLM_PROVIDER=ollama`, o Groq (respaldo) con `groq` |
 | `taskmate-api/mcp/knowledge.py` | Consulta `/search` del servidor de IA local |
 | `start.sh` | macOS: levanta SQL Server (Docker o Podman), el servicio Python y la API |
 | `scripts/local-up.sh` y `scripts/local-down.sh` | Linux con Podman: levantan y detienen todo, IA local incluida |

@@ -5,7 +5,7 @@
 ```mermaid
 flowchart LR
     PA["Primer arranque<br/>macOS o Linux"] --> DB["SQL Server<br/>Docker o Podman"]
-    PA -.->|"camino Linux"| IA["IA local<br/>Ollama y servidor de IA local"]
+    PA -.->|"camino Linux"| IA["IA local<br/>Gemma 4 en Ollama<br/>y servidor de IA local"]
     PA --> GU["Guía de uso"]
     PA --> PR["Pruebas"]
     PA -.->|"solo con GitHub"| GA["GitHub App"]
@@ -19,7 +19,7 @@ Esta carpeta no tiene páginas por módulo. Empieza por el primer arranque.
 
 | Guía | Para qué sirve |
 |---|---|
-| [Primer arranque](primer-arranque.md) | De `git clone` a TaskMate corriendo, con **tus propios** secretos, cuando nadie te pasó una `.env`. Dos caminos: `./start.sh` (macOS, Docker o Podman, chat con Groq) o `./scripts/local-up.sh` (Linux con Podman: genera la `.env`, migra y levanta el modelo local y el servidor de IA local) |
+| [Primer arranque](primer-arranque.md) | De `git clone` a TaskMate corriendo, con **tus propios** secretos, cuando nadie te pasó una `.env`. Dos caminos: `./start.sh` (macOS, Docker o Podman; no levanta Ollama: modelo local si lo corres tú, o Groq como respaldo) o `./scripts/local-up.sh` (Linux con Podman: genera la `.env`, migra y levanta el modelo local y el servidor de IA local) |
 | [Guía de uso por rol](guia-de-uso.md) | Qué puede hacer un miembro, un líder y un admin en cada pantalla |
 | [Pruebas](pruebas.md) | Correr las cuatro suites (API, frontend, servicio Python del chat y BD), el lint y el build; 2087 pruebas al 25 nov 2026 |
 | [SQL Server en Docker](base-de-datos-docker.md) | La imagen, el contenedor `taskmate-sql` (Docker o Podman), las migraciones 001–011 y la BD desechable para las pruebas (10 suites, 117 pruebas) |

@@ -2,7 +2,7 @@
 
 **En una frase:** el documento formal del proyecto (objetivos, problema, marco teórico, solución, resultados y conclusiones), actualizado al 25 nov 2026 con las dos líneas de trabajo: la de Pablo, que cerró el 3 nov 2026, y la de Christian, que siguió después.
 
-![Arquitectura general de TaskMate: navegador, API Express, servicio Python del chat con Groq u Ollama, servidor de IA local, SQL Server, GitHub (App, Actions y Pages) y Vercel](../02-arquitectura/imagenes/00-general.png)
+![Arquitectura general de TaskMate: navegador, API Express, servicio Python del chat con el modelo local en Ollama (Groq de respaldo), servidor de IA local, SQL Server, GitHub (App, Actions y Pages) y Vercel](../02-arquitectura/imagenes/00-general.png)
 
 Qué conecta cada flecha: [arquitectura general](../02-arquitectura/00-general.md).
 
@@ -51,7 +51,7 @@ Desarrollar una plataforma web colaborativa de gestión de tareas que integre in
 - Implementar una base de datos relacional robusta con triggers automáticos para mantener consistencia de datos
 - Desarrollar una interfaz de usuario moderna y responsiva utilizando tecnologías web actuales
 - Coordinar agentes de IA especializados mediante un servicio propio en Python que se comunica con el backend por WebSocket
-- Permitir que la IA funcione con un proveedor en la nube (Groq) o con un modelo local (Gemma 4 en Ollama), elegido con una variable de entorno (línea de Christian)
+- Hacer que la IA de TaskMate funcione con un modelo local (Gemma 4 en Ollama), con un proveedor en la nube (Groq) como respaldo, elegido con una variable de entorno (línea de Christian)
 - Establecer un sistema de autenticación y autorización seguro basado en JWT
 
 **Objetivos de Usabilidad:**
@@ -229,9 +229,23 @@ El servidor de IA local guarda sus documentos, fragmentos y embeddings en su pro
 
 ### Inteligencia Artificial
 
-**Groq (modelo openai/gpt-oss-20b)**
+**Modelo local (Gemma 4 en Ollama)**
 
-Groq es el proveedor por defecto del servicio Python del chat (`LLM_PROVIDER=groq`). TaskMate usa su API con el modelo `openai/gpt-oss-20b` (SDK `groq`, con esfuerzo de razonamiento bajo) para el chat, la clasificación de cada mensaje, la generación de planes de proyecto, las recomendaciones de asignación, el análisis del repositorio y la propuesta del pipeline. En el primer ciclo del proyecto se usó la API de Google Gemini; en marzo de 2026 se migró a Groq.
+Es el modelo que usa TaskMate. Con `LLM_PROVIDER=ollama`, todo lo generativo del servicio Python del chat pasa por Ollama (`127.0.0.1:11434`) con el modelo `gemma4:e2b-it-qat`: el chat, los planes, el análisis del repositorio, el pipeline y analytics. El razonamiento del modelo va desactivado, con un contexto de 8192 tokens, y el modelo queda cargado 30 minutos entre usos. Es el mismo modelo que usa el servidor de IA local, de modo que ambos comparten una sola copia en la GPU. Lo activa `scripts/local-up.sh`, que agrega `LLM_PROVIDER=ollama` al `.env` si la variable no existe; el valor por defecto del código sigue siendo Groq (el respaldo, ver el punto siguiente) para que un checkout sin Ollama siga funcionando.
+
+*Ventajas:*
+- Los datos del proyecto no salen de la máquina
+- Sin cuotas de tokens ni costo por uso
+- El chat funciona sin conexión a internet
+
+*Desventajas:*
+- Exige hardware propio (la configuración se dimensionó para una GPU de 4 GB)
+- Un modelo pequeño rinde menos que uno grande; por eso el plan de proyecto nuevo pide al menos 8 tareas, con cualquier proveedor
+- Los scripts que lo levantan están pensados para Linux
+
+**Groq (respaldo en la nube, modelo openai/gpt-oss-20b)**
+
+Groq queda como respaldo en la nube: es el valor por defecto de `LLM_PROVIDER` en el código, para que un checkout sin Ollama siga funcionando, y requiere `GROQ_API_KEY`. Solo si se usa (`LLM_PROVIDER=groq`), el servicio Python del chat llama a su API con el modelo `openai/gpt-oss-20b` (SDK `groq`, con esfuerzo de razonamiento bajo) para lo mismo que el modelo local: el chat, la clasificación de cada mensaje, la generación de planes de proyecto, las recomendaciones de asignación, el análisis del repositorio y la propuesta del pipeline. En el primer ciclo del proyecto se usó la API de Google Gemini; en marzo de 2026 se migró a Groq.
 
 *Ventajas:*
 - Modelos pre-entrenados de alta calidad sin necesidad de entrenamiento propio
@@ -248,21 +262,7 @@ Groq es el proveedor por defecto del servicio Python del chat (`LLM_PROVIDER=gro
 *Alternativas Consideradas:*
 - **Google Gemini**: usado en el primer ciclo
 - **API de OpenAI**: modelos similares con costo por uso
-- **Modelos locales**: sin dependencia externa pero con exigencias de hardware; se adoptaron como opción en la línea de Christian (ver el punto siguiente)
-
-**Modelo local (Gemma 4 en Ollama)**
-
-Con `LLM_PROVIDER=ollama`, todo lo generativo del servicio Python del chat pasa por Ollama (`127.0.0.1:11434`) con el modelo `gemma4:e2b-it-qat`: el chat, los planes, el análisis del repositorio, el pipeline y analytics. El razonamiento del modelo va desactivado, con un contexto de 8192 tokens, y el modelo queda cargado 30 minutos entre usos. Es el mismo modelo que usa el servidor de IA local, de modo que ambos comparten una sola copia en la GPU. El valor por defecto del código sigue siendo Groq; el script `scripts/local-up.sh` agrega `LLM_PROVIDER=ollama` al `.env` si la variable no existe.
-
-*Ventajas:*
-- Los datos del proyecto no salen de la máquina
-- Sin cuotas de tokens ni costo por uso
-- El chat funciona sin conexión a internet
-
-*Desventajas:*
-- Exige hardware propio (la configuración se dimensionó para una GPU de 4 GB)
-- Un modelo pequeño rinde menos que uno grande; por eso el plan de proyecto nuevo pide al menos 8 tareas, con cualquier proveedor
-- Los scripts que lo levantan están pensados para Linux
+- **Modelos locales**: sin dependencia externa pero con exigencias de hardware; se adoptaron en la línea de Christian y hoy son el modelo de TaskMate (ver el punto anterior)
 
 **Servicio Python del chat con agentes especializados**
 
@@ -380,7 +380,7 @@ La interfaz ofrece las vistas Home, Tasks (listas), Calendar, Milestones (diagra
 El servidor backend expone 110 rutas REST para las operaciones CRUD y mantiene tres canales WebSocket para el chat, las recomendaciones y los eventos de CI/CD. Incluye autenticación JWT en todas las rutas salvo el registro, el login, el retorno de la instalación de GitHub (autenticado con un `state` firmado) y los webhooks; autorización por grupo (miembro, admin o líder); límites de solicitudes; validación de datos; transacciones para las operaciones de varios pasos y manejo centralizado de errores con códigos estables. Recibe dos webhooks firmados, el de GitHub (HMAC SHA-256) y el de Vercel (HMAC SHA-1), y llama al servidor de IA local para auditar ramas, generar pruebas y revisar PRs.
 
 **Servicios de Inteligencia Artificial:**
-La IA se reparte en dos servicios. El servicio Python del chat coordina agentes especializados con un orquestador: el agente de recomendaciones genera planes de proyecto a partir de descripciones de alto nivel; el agente de análisis sugiere asignaciones con los datos reales del equipo; el agente de análisis del repositorio propone las siguientes tareas a partir del código del grupo; y el agente de pipeline elige la configuración del CI/CD entre las opciones que TaskMate detectó. Todos usan el mismo modelo, Groq o el modelo local según `LLM_PROVIDER`. El servidor de IA local, en un repositorio aparte, audita la rama de una tarea, propone pruebas unitarias, revisa pull requests y responde búsquedas sobre los documentos indexados.
+La IA se reparte en dos servicios. El servicio Python del chat coordina agentes especializados con un orquestador: el agente de recomendaciones genera planes de proyecto a partir de descripciones de alto nivel; el agente de análisis sugiere asignaciones con los datos reales del equipo; el agente de análisis del repositorio propone las siguientes tareas a partir del código del grupo; y el agente de pipeline elige la configuración del CI/CD entre las opciones que TaskMate detectó. Todos usan el mismo modelo: el local (Gemma 4 en Ollama), o Groq como respaldo en la nube, según `LLM_PROVIDER`. El servidor de IA local, en un repositorio aparte, audita la rama de una tarea, propone pruebas unitarias, revisa pull requests y responde búsquedas sobre los documentos indexados.
 
 **Integración con GitHub, CI/CD y Vercel:**
 La API actúa como una GitHub App: conecta el repositorio del grupo, lo explora, crea una rama por tarea y completa la tarea cuando su PR se fusiona. Muestra los archivos que cambió el PR de cada tarea activa y qué otras tareas tocan los mismos. Cuando se abre o se actualiza el PR de una tarea, y el grupo permitió el análisis con IA, lo revisa en segundo plano con el servidor de IA local y publica la revisión como comentario. Para el CI/CD, escribe en el repositorio un workflow generado desde una plantilla fija, consulta las ejecuciones y sus logs en GitHub y lanza los deploys a GitHub Pages. Además, registra los despliegues que Vercel le avisa por webhook para el proyecto vinculado al grupo.
@@ -482,7 +482,7 @@ El esquema relacional tiene 29 tablas: 11 del núcleo, 4 de analytics, 6 de GitH
 La implementación con Material-UI resultó en una interfaz consistente y responsiva, con un tema propio y componentes reutilizables (botón, tarjeta, campo de texto). Desde el 19 nov 2026 la interfaz está en inglés; quedan pocos textos en español (por ejemplo, el botón para vincular el proyecto de Vercel).
 
 **Sistema de Inteligencia Artificial:**
-El chat funciona con Groq (`openai/gpt-oss-20b`, el valor por defecto) o con el modelo local (Gemma 4 en Ollama), según `LLM_PROVIDER`. Desde la línea de Christian es un asistente del proyecto: conversa con normalidad, responde con los datos del grupo elegido en la barra de navegación, muestra la respuesta mientras se escribe y arma un plan solo cuando se le pide. Con un grupo seleccionado, el plan sale del análisis del repositorio (exige el repositorio conectado y «Allow AI analysis»), que también se lanza con el botón «Propose tasks». Sin grupo, la conversación puede apoyarse en los documentos del servidor de IA local, y el plan propone un proyecto nuevo (grupo, roles, al menos 8 tareas e hitos con fechas). En los dos casos el plan se guarda solo al confirmarlo. El servicio Python coordina a cuatro agentes especializados, y sus errores llegan al usuario como mensajes claros (por ejemplo, cuando el servicio está ocupado o tarda demasiado).
+El chat funciona con el modelo local (Gemma 4 en Ollama, `LLM_PROVIDER=ollama`, lo que pone `scripts/local-up.sh`); Groq (`openai/gpt-oss-20b`) queda como respaldo en la nube y es el valor por defecto del código. Desde la línea de Christian es un asistente del proyecto: conversa con normalidad, responde con los datos del grupo elegido en la barra de navegación, muestra la respuesta mientras se escribe y arma un plan solo cuando se le pide. Con un grupo seleccionado, el plan sale del análisis del repositorio (exige el repositorio conectado y «Allow AI analysis»), que también se lanza con el botón «Propose tasks». Sin grupo, la conversación puede apoyarse en los documentos del servidor de IA local, y el plan propone un proyecto nuevo (grupo, roles, al menos 8 tareas e hitos con fechas). En los dos casos el plan se guarda solo al confirmarlo. El servicio Python coordina a cuatro agentes especializados, y sus errores llegan al usuario como mensajes claros (por ejemplo, cuando el servicio está ocupado o tarda demasiado).
 
 **Análisis de Rendimiento:**
 El panel de analytics muestra, a los líderes del equipo, el resumen del grupo, la carga de trabajo por miembro y la experiencia por categoría de tarea. Las recomendaciones de asignación las genera el agente de IA con los datos reales del equipo (competencias históricas, carga actual y tasa de éxito); su precisión no se midió. Las métricas de experiencia por categoría se actualizan al completar tareas.
@@ -588,7 +588,7 @@ La integración de análisis de competencias individuales con recomendaciones de
 
 ### Limitaciones Identificadas
 
-La dependencia de servicios externos introduce puntos de falla y consideraciones de privacidad. GitHub y Vercel siempre son externos; el modelo de IA lo es con Groq, el valor por defecto. Con el modelo local, lo que se manda al modelo no sale de la máquina y el chat funciona sin internet, a cambio de exigir hardware propio y unos scripts pensados para Linux; la IA sobre el código igual necesita GitHub para leer los cambios de la rama. La API debe correr como una sola instancia porque guarda estado en memoria. El trabajo de la línea de Christian todavía no está en `master`. La lista completa de limitaciones conocidas está en el [cierre de la línea de Pablo y estado](cierre-del-proyecto.md#limitaciones-conocidas).
+La dependencia de servicios externos introduce puntos de falla y consideraciones de privacidad. GitHub y Vercel siempre son externos; el modelo de IA solo lo es si se usa el respaldo en la nube (Groq), que es el valor por defecto del código cuando falta `LLM_PROVIDER`. Con el modelo local, lo que se manda al modelo no sale de la máquina y el chat funciona sin internet, a cambio de exigir hardware propio y unos scripts pensados para Linux; la IA sobre el código igual necesita GitHub para leer los cambios de la rama. La API debe correr como una sola instancia porque guarda estado en memoria. El trabajo de la línea de Christian todavía no está en `master`. La lista completa de limitaciones conocidas está en el [cierre de la línea de Pablo y estado](cierre-del-proyecto.md#limitaciones-conocidas).
 
 La curva de aprendizaje para usuarios no familiarizados con herramientas de gestión de proyectos avanzadas puede ser pronunciada, requiriendo inversión en entrenamiento y documentación de usuario.
 
@@ -616,7 +616,7 @@ La línea de Christian Martínez siguió con sus fechas corridas. Al 25 nov 2026
 El trabajo futuro más directo es integrar en `master` lo que hoy vive en `test/e2e` y retomar lo que no se hizo: el ciclo de pruebas automáticas por tarea (Fase 5), que puede partir de las pruebas que hoy la IA solo propone; el análisis estático con SonarQube (Fase 6, con su plan sobre SonarQube Cloud ya definido); el algoritmo de colisión de archivos (Fase 7 de Pablo, punto 8 de Christian), que ya tiene la base en `TaskFiles` y en la consulta de solapes, pero necesita que la lista de archivos se conserve al completarse la tarea; y las pruebas finales (Fase 8 de Pablo, punto 9 de Christian). La lista de pendientes está en el [cierre de la línea de Pablo y estado](cierre-del-proyecto.md#pendientes-todo).
 
 **Expansión de Capacidades de IA:**
-Se recomienda medir primero la calidad de las recomendaciones, de los planes generados y de las auditorías y revisiones de PR, comparando Groq con el modelo local. Luego conviene expandir las capacidades para incluir predicción de riesgos de proyecto, optimización automática de cronogramas y detección temprana de cuellos de botella basándose en patrones históricos de rendimiento.
+Se recomienda medir primero la calidad de las recomendaciones, de los planes generados y de las auditorías y revisiones de PR, comparando el modelo local con el respaldo en la nube (Groq). Luego conviene expandir las capacidades para incluir predicción de riesgos de proyecto, optimización automática de cronogramas y detección temprana de cuellos de botella basándose en patrones históricos de rendimiento.
 
 **Implementación de Modo Offline:**
 Con el modelo local, el chat ya funciona sin internet; la IA sobre el código lee los cambios desde GitHub, y el resto de la aplicación depende de la API y de GitHub. Para mejorar la robustez del sistema, se sugiere desarrollar capacidades offline que permitan funcionalidad básica sin conectividad, con sincronización automática cuando la conexión se restablezca.

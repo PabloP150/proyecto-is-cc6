@@ -1,6 +1,6 @@
 # Capas del código
 
-**En una frase:** el frontend es un árbol de componentes React que cuelga de `App.js`; la API baja en capas de `app.js` a la base de datos y sale a GitHub, al servicio Python del chat y al servidor de IA local; y el servicio Python pasa de `server.py` al orquestador, a los agentes y al modelo (Groq u Ollama, según `LLM_PROVIDER`).
+**En una frase:** el frontend es un árbol de componentes React que cuelga de `App.js`; la API baja en capas de `app.js` a la base de datos y sale a GitHub, al servicio Python del chat y al servidor de IA local; y el servicio Python pasa de `server.py` al orquestador, a los agentes y al modelo local (Gemma 4 en Ollama; Groq queda como respaldo en la nube).
 
 ## Frontend: de `App.js` a los componentes
 
@@ -96,8 +96,8 @@ flowchart LR
     repo["RepoAnalysisAgent<br/>tareas desde el repo"]
     pipe["PipelineAgent<br/>propuesta de pipeline"]
     kn["knowledge.py<br/>httpx"]
-    llm["llm_service.py<br/>AsyncGroq o httpx"]
-    groq["Groq<br/>openai/gpt-oss-20b"]
+    llm["llm_service.py<br/>httpx o AsyncGroq"]
+    groq["Groq (respaldo en la nube)<br/>openai/gpt-oss-20b"]
     oll["Ollama local :11434<br/>gemma4:e2b-it-qat"]
     ai["Servidor de IA local :8000"]
 
@@ -113,15 +113,15 @@ flowchart LR
     ana --> llm
     repo --> llm
     pipe --> llm
-    llm -->|"LLM_PROVIDER=groq"| groq
-    llm -->|"LLM_PROVIDER=ollama"| oll
+    llm -->|"modelo del chat<br/>LLM_PROVIDER=ollama"| oll
+    llm -.->|"respaldo<br/>LLM_PROVIDER=groq"| groq
 ```
 
 - `server.py` acepta solo la conexión de Node: sin cabecera `Origin` y con `X-MCP-Secret` correcto.
 - `orchestrator.py` reparte cada mensaje por su `method`: `handle_user_message`, `save_plan_result`, `analyze_repository`, `propose_pipeline`, o `type: analytics`.
 - En `handle_user_message`, `_route` clasifica el mensaje en PLAN, CHAT o fuera de tema. CHAT responde en streaming (`response_chunk`). PLAN con proyecto devuelve `plan_request` a Node, que corre el análisis del repo. PLAN sin proyecto arma el plan con `RecommendationsAgent`.
 - Los agentes arman el prompt y validan la respuesta; `schemas.py` define con Pydantic lo que aceptan el análisis del repo, el pipeline y el contexto del proyecto del chat (`ProjectContext`).
-- `llm_service.py` elige el proveedor con `LLM_PROVIDER`: `groq` es el valor por defecto del código (`AsyncGroq`) y `ollama` es lo que pone `scripts/local-up.sh` (`httpx` a `POST /api/chat`, con un solo cliente reutilizado). Todos los agentes pasan por ahí.
+- `llm_service.py` elige el proveedor con `LLM_PROVIDER`. TaskMate corre con `ollama`, que pone `scripts/local-up.sh`: `httpx` a `POST /api/chat` con Gemma 4 (`gemma4:e2b-it-qat`) y un solo cliente reutilizado. `groq` (`AsyncGroq`) es el respaldo en la nube y el valor por defecto del código, para que un checkout sin Ollama siga funcionando. Todos los agentes pasan por ahí.
 - `knowledge.py` busca en los documentos del servidor de IA local (`POST /search`, 3 s de plazo) solo cuando el chat no tiene proyecto y `AI_SERVER_URL` está puesto. Si falla, el chat sigue sin ese contexto.
 - El servicio Python no toca la base de datos: todo lo que guarda lo guarda la API.
 - El servidor de IA local es un repo aparte (`taskmate-ai-server`, de Christian) con sus propias capas: ver [IA sobre el código](10-ia-sobre-el-codigo.md).

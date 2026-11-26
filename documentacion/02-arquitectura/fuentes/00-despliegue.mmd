@@ -23,7 +23,7 @@ architecture-beta
     service pg(logos:postgresql)[taskmate-ai-db Postgres y pgvector puerto 5432] in ctr
     group ial(logos:linux-tux)[IA local en Linux] in dev
     service aisrv(logos:fastapi-icon)[Servidor de IA local 127.0.0.1 puerto 8000] in ial
-    service ollama(logos:ollama)[Ollama 127.0.0.1 puerto 11434] in ial
+    service ollama(logos:ollama)[Ollama con Gemma 4 127.0.0.1 puerto 11434] in ial
 
     group github(logos:github-icon)[GitHub]
     service gh(logos:github-icon)[API de GitHub] in github
@@ -33,7 +33,7 @@ architecture-beta
     service smeeio(cloud)[smee.io]
     service vercel(logos:vercel-icon)[Vercel]
     service browser(mdi:web)[Navegador local o de otro equipo de la red]
-    service groq(logos:groq)[Groq]
+    service groq(logos:groq)[Groq respaldo en la nube]
 
     gh:L --> R:smeeio
     smeeio:L --> T:smeec

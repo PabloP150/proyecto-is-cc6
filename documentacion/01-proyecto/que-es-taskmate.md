@@ -23,7 +23,8 @@ mindmap
       Calendario mensual
     Chat con IA
       Asistente del proyecto del navbar
-      Groq o modelo local Gemma 4
+      Modelo local Gemma 4 en Ollama
+      Groq solo como respaldo en la nube
       Respuestas en streaming
       Plan o tareas solo si se piden
     Analytics
@@ -73,7 +74,7 @@ Detalle por acción: [permisos por rol](../04-casos-de-uso/00-permisos-por-rol.m
 | Capacidad | En la práctica |
 |---|---|
 | **Planificar en varias vistas** | Listas de tareas, calendario y diagrama de hitos sobre los mismos datos del grupo |
-| **Planificar y preguntar con IA** | El chat es un asistente del grupo elegido en el navbar: responde sobre su equipo, tareas, hitos, asignaciones y repositorio (si el admin lo permite) y propone tareas cuando se le piden. Sin grupo, convierte una idea en un plan (grupo, roles, tareas e hitos) que se guarda al confirmar. Usa Groq o un modelo local (Gemma 4 en Ollama), y la respuesta llega en streaming |
+| **Planificar y preguntar con IA** | El chat es un asistente del grupo elegido en el navbar: responde sobre su equipo, tareas, hitos, asignaciones y repositorio (si el admin lo permite) y propone tareas cuando se le piden. Sin grupo, convierte una idea en un plan (grupo, roles, tareas e hitos) que se guarda al confirmar. Usa el modelo local Gemma 4 en Ollama (Groq queda como respaldo en la nube), y la respuesta llega en streaming |
 | **Trabajar con GitHub** | Conectar el repositorio, explorarlo, crear la rama de cada tarea y ver qué archivos cambia (y si otra tarea toca los mismos); al fusionarse el PR la tarea se completa sola |
 | **Operar el CI/CD del grupo** | TaskMate (o la IA) propone el pipeline y lo sube; el grupo ve ejecuciones y logs en vivo y publica en staging y producción (GitHub Pages) con aprobación del admin. Si el grupo publica en Vercel, ve sus despliegues (solo monitoreo) |
 | **Revisar el código con IA local** | Si el admin permite el análisis con IA, el servidor de IA local audita la rama de la tarea, propone pruebas (no las ejecuta) y revisa su PR; cada PR de tarea se revisa solo y la revisión queda como comentario en GitHub, sin aprobar ni bloquear |
@@ -103,8 +104,8 @@ Qué conecta cada flecha: [arquitectura general](../02-arquitectura/00-general.m
 |---|---|---|
 | Frontend | React 18.3, MUI 6, React Router 6, React Flow (`@xyflow/react` 12), react-big-calendar; Create React App | `src/` · puerto 3000 |
 | API | Node.js con Express 4; `tedious` (SQL Server), `ws` (WebSockets), `jsonwebtoken`, `helmet`, `express-rate-limit` | `taskmate-api/` · puerto 9000 |
-| Servicio Python del chat | Python con FastAPI y uvicorn; WebSocket `/ws` con un protocolo JSON propio (**no** es el Model Context Protocol, aunque la carpeta se llame `mcp`); SDK `groq` y `httpx` para Ollama | `taskmate-api/mcp/` · `MCP_PORT` (8001 por defecto) |
-| Modelo de lenguaje | Lo elige `LLM_PROVIDER` para el chat y todos los agentes del servicio Python: Groq con `openai/gpt-oss-20b` (por defecto en el código) u Ollama con Gemma 4 (`gemma4:e2b-it-qat`), que es lo que `scripts/local-up.sh` añade al `.env` si falta | Groq: servicio externo · Ollama: `127.0.0.1:11434` |
+| Servicio Python del chat | Python con FastAPI y uvicorn; WebSocket `/ws` con un protocolo JSON propio (**no** es el Model Context Protocol, aunque la carpeta se llame `mcp`); `httpx` para Ollama y SDK `groq` para el respaldo en la nube | `taskmate-api/mcp/` · `MCP_PORT` (8001 por defecto) |
+| Modelo de lenguaje | Gemma 4 (`gemma4:e2b-it-qat`) en Ollama, el mismo que usa el servidor de IA local, para el chat y todos los agentes del servicio Python. Lo activa `LLM_PROVIDER=ollama`, que `scripts/local-up.sh` añade al `.env` si falta. Groq (`openai/gpt-oss-20b`, con `GROQ_API_KEY`) queda como respaldo en la nube y es el valor por defecto del código, para que funcione sin Ollama | Ollama: `127.0.0.1:11434` · Groq (respaldo): servicio externo |
 | Servidor de IA local | Repo aparte de Christian (`taskmate-ai-server`): FastAPI con Ollama (`gemma4:e2b-it-qat` y `embeddinggemma:300m`) y Postgres 17 + pgvector (7 tablas propias); se autentica con `X-AI-Server-Secret`. Hace la IA sobre el código y, sin grupo seleccionado, da documentos al chat | `127.0.0.1:8000` |
 | Base de datos | SQL Server 2019 en Docker: 29 tablas, migraciones 001–011 | Contenedor `taskmate-sql` · puerto 1433 |
 | GitHub | GitHub App (API y webhooks firmados; smee los reenvía en desarrollo); GitHub Actions y Pages para el CI/CD del grupo. Con «Pull requests: write», la App también publica la revisión de PR con IA | Servicio externo |

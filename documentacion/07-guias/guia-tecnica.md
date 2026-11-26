@@ -4,8 +4,9 @@
 
 ## Resumen
 - Tres procesos propios (React en `:3000`, API Express en `:9000` y el servicio Python del chat, FastAPI en `127.0.0.1:MCP_PORT`, 8001) más SQL Server 2019 en un contenedor (Docker o Podman).
-- Opcional: el **servidor de IA local** de Christian (`taskmate-ai-server`, repo aparte), FastAPI en `127.0.0.1:8000` con Ollama (`:11434`) y Postgres 17 + pgvector (`:5432`). Sirve para auditar la rama de una tarea, generar pruebas, revisar el PR y dar conocimiento al chat.
-- La API es la única que habla con la BD y con GitHub. El servicio Python usa Groq (`openai/gpt-oss-20b`, valor por defecto) u Ollama (`gemma4:e2b-it-qat`) según `LLM_PROVIDER`.
+- Opcional: el **servidor de IA local** de Christian (`taskmate-ai-server`, repo aparte), FastAPI en `127.0.0.1:8000` con Postgres 17 + pgvector (`:5432`), sobre el mismo Ollama (`:11434`) del modelo de TaskMate. Sirve para auditar la rama de una tarea, generar pruebas, revisar el PR y dar conocimiento al chat.
+- La API es la única que habla con la BD y con GitHub. Toda la IA de TaskMate (chat y plan, analytics y recomendaciones de asignación, análisis del repositorio y propuesta de pipeline) pasa por `llm_service.py` del servicio Python y usa el **modelo local**: Gemma 4 (`gemma4:e2b-it-qat`) en Ollama (`127.0.0.1:11434`), el mismo Ollama del servidor de IA local. `scripts/local-up.sh` lo activa con `LLM_PROVIDER=ollama`.
+- Groq (`openai/gpt-oss-20b`, necesita `GROQ_API_KEY`) queda solo como **respaldo en la nube**: es el valor por defecto de `LLM_PROVIDER` en el código, para que un checkout sin Ollama siga funcionando.
 - 110 rutas REST, 3 WebSockets (`/chat`, `/insights`, `/events`) y 29 tablas (migraciones 001–011).
 - La línea de Pablo cerró el 3 nov 2026 con las Fases 1–4 (`master` sigue en `ea25733`). La de Christian siguió: monitoreo de Vercel, archivos por tarea, IA sobre el código y chat con modelo local. Todo eso vive en `test/e2e` y todavía no está en `master`.
 - 2087 pruebas en verde (25 nov 2026). Esta guía se escribió desde el código: si algo no coincide, manda el código.
@@ -16,7 +17,7 @@
 
 ## 1. Qué es el proyecto
 
-**TaskMate** es una plataforma colaborativa de gestión de proyectos con IA integrada. Un equipo crea grupos con roles, gestiona listas de tareas, ve las fechas en un calendario, organiza hitos en un diagrama (React Flow) cuyo avance se propaga solo, consulta analytics del equipo y chatea con un asistente de IA. El asistente conversa sobre el proyecto del grupo elegido en la barra de navegación y arma un plan solo cuando se le pide. El modelo es Groq (`openai/gpt-oss-20b`) o, en local, Gemma 4 en Ollama.
+**TaskMate** es una plataforma colaborativa de gestión de proyectos con IA integrada. Un equipo crea grupos con roles, gestiona listas de tareas, ve las fechas en un calendario, organiza hitos en un diagrama (React Flow) cuyo avance se propaga solo, consulta analytics del equipo y chatea con un asistente de IA. El asistente conversa sobre el proyecto del grupo elegido en la barra de navegación y arma un plan solo cuando se le pide. El modelo es Gemma 4, local en Ollama; Groq (`openai/gpt-oss-20b`) queda como respaldo en la nube.
 
 Desde la Fase 3 el grupo conecta **su** repositorio de GitHub (GitHub App): explorador, rama por tarea, tarea completada al fusionar el PR y tareas propuestas por la IA a partir del repositorio. Desde la Fase 4 el grupo opera el **CI/CD de su repositorio** sin salir de TaskMate: pipeline propuesto por TaskMate o por la IA, ejecuciones y logs en vivo, ejecutar/re-ejecutar/cancelar, staging automático y producción con aprobación del admin en GitHub Pages, rollback y notificaciones.
 
@@ -32,7 +33,7 @@ Desde la Fase 3 el grupo conecta **su** repositorio de GitHub (GitHub App): expl
 | 8 · Pruebas finales | No se realizará en la línea de Pablo. Las de Christian (su punto 9) siguen pendientes | — |
 
 **Línea de Christian** (puntos 1–7 completos; en `test/e2e` del 18 al 25 nov 2026, sin fusionar en `master`):
-- **Chat:** modelo local opcional (`LLM_PROVIDER=ollama`), respuestas en streaming, asistente del proyecto con su contexto (equipo, tareas, hitos y asignaciones) y plan solo si se pide → [Chat con IA](../02-arquitectura/05-chat-ia.md).
+- **Chat:** modelo local, Gemma 4 en Ollama (`LLM_PROVIDER=ollama`), respuestas en streaming, asistente del proyecto con su contexto (equipo, tareas, hitos y asignaciones) y plan solo si se pide → [Chat con IA](../02-arquitectura/05-chat-ia.md).
 - **Archivos por tarea:** diálogo «Task files» con los archivos del PR y las otras tareas que tocan las mismas rutas → [GitHub](../02-arquitectura/07-github.md).
 - **Monitoreo de Vercel:** pestaña «Vercel (monitoring)» y webhook firmado → [CI/CD](../02-arquitectura/08-cicd.md).
 - **IA sobre el código:** auditar la rama, generar pruebas y revisar el PR con el servidor de IA local → [IA sobre el código](../02-arquitectura/10-ia-sobre-el-codigo.md).
@@ -47,7 +48,7 @@ Fechas planificadas y reales: [calendarización](../01-proyecto/calendarizacion.
 |---|---|
 | Frontend | React 18.3, MUI 6.1, React Flow 12.3 (`@xyflow/react`), react-big-calendar 1.15, react-router-dom 6.30, react-markdown 10 con rehype-sanitize 6; Create React App (react-scripts 5.0.1) |
 | API | Node.js (desarrollada con Node 24), Express 4.22, tedious 18.6 (SQL Server), ws 8.21, helmet 8.3, express-rate-limit 8.7, jsonwebtoken 9, bcryptjs 2.4, node-cron 3 |
-| Servicio Python del chat | Python 3.9+, FastAPI 0.128, uvicorn 0.39, websockets 15, groq 1.0 (Groq), httpx 0.28 (Ollama), pydantic 2.12 |
+| Servicio Python del chat | Python 3.9+, FastAPI 0.128, uvicorn 0.39, websockets 15, httpx 0.28 (Ollama, el modelo local), groq 1.0 (Groq, respaldo), pydantic 2.12 |
 | Servidor de IA local (repo aparte) | Python 3.12+, FastAPI, uvicorn, httpx, psycopg, pypdf; Ollama con `gemma4:e2b-it-qat` y `embeddinggemma:300m`; Postgres 17 + pgvector |
 | Base de datos | SQL Server 2019 en Docker o Podman (`mcr.microsoft.com/mssql/server:2019-latest`) |
 | Pruebas | Jest 30 + supertest 7 (API), Jest 27 de react-scripts + React Testing Library 13 (frontend), pytest 8.4 + pytest-asyncio 1.2 (servicio Python) |
@@ -56,7 +57,7 @@ Fechas planificadas y reales: [calendarización](../01-proyecto/calendarizacion.
 
 ## 2. Arquitectura
 
-Tres procesos propios más SQL Server en un contenedor, y el servidor de IA local como pieza opcional. La API es la única que habla con la BD y con GitHub. El servicio Python no tiene acceso a la BD. El servidor de IA local lo llaman la API (comandos) y el servicio Python (búsqueda).
+Tres procesos propios más SQL Server en un contenedor y Ollama con el modelo local (Gemma 4); el servidor de IA local es una pieza opcional. La API es la única que habla con la BD y con GitHub. El servicio Python no tiene acceso a la BD. El servidor de IA local lo llaman la API (comandos) y el servicio Python (búsqueda).
 
 ```mermaid
 flowchart LR
@@ -81,8 +82,8 @@ flowchart LR
         PG[("Postgres 17 + pgvector<br/>:5432")]
     end
     DB[("SQL Server 2019<br/>contenedor taskmate-sql :1433")]
-    GROQ["Groq API<br/>openai/gpt-oss-20b"]
-    OLL["Ollama :11434<br/>gemma4:e2b-it-qat"]
+    OLL["Ollama :11434<br/>Gemma 4 gemma4:e2b-it-qat<br/>modelo de TaskMate"]
+    GROQ["Groq API, respaldo en la nube<br/>openai/gpt-oss-20b"]
     GH["GitHub: REST, GraphQL,<br/>Actions y Pages"]
     SMEE["smee.io<br/>solo desarrollo"]
     VER["Vercel"]
@@ -93,8 +94,8 @@ flowchart LR
     REST --> LLMS
     LLMS -->|"WebSocket con X-MCP-Secret"| ORCH
     ORCH --> AG
-    ORCH -->|"LLM_PROVIDER=groq"| GROQ
     ORCH -->|"LLM_PROVIDER=ollama"| OLL
+    ORCH -.->|"solo con LLM_PROVIDER=groq"| GROQ
     ORCH --> KN
     KN -->|"POST /search, solo sin proyecto"| CMD
     REST --> AIC
@@ -195,7 +196,7 @@ proyecto-is-cc6/
     ├── tests/                    ← Jest: raíz, api/, github/, deploy/, aiServer/, middleware/, integration/, db/ (*.dbtest.js), README.md
     └── mcp/                      ← servicio Python del chat
         ├── server.py             ← FastAPI, WebSocket /ws, X-MCP-Secret
-        ├── llm_service.py        ← Groq (AsyncGroq) u Ollama (httpx) según LLM_PROVIDER; errores tipados (LLM_TIMEOUT, LLM_RATE_LIMIT, …)
+        ├── llm_service.py        ← Ollama (httpx, modelo local) o Groq (AsyncGroq, respaldo) según LLM_PROVIDER; errores tipados (LLM_TIMEOUT, LLM_RATE_LIMIT, …)
         ├── knowledge.py          ← POST /search al servidor de IA local (conocimiento del chat sin proyecto)
         ├── schemas.py            ← modelos pydantic (analyze_repository, propose_pipeline, ProjectContext del chat)
         ├── agents/               ← orchestrator, recommendations_agent, analytics_agent, repo_analysis_agent, pipeline_agent
@@ -260,7 +261,7 @@ No existen (las mencionaban versiones anteriores de esta guía): `helpers/getCon
 | `agents/repo_analysis_agent.py` | Propone tareas e hitos a partir de un snapshot del repositorio (Fase 3) y convierte el contexto del proyecto del chat en texto para el prompt |
 | `agents/pipeline_agent.py` | Elige valores del pipeline entre opciones detectadas; Node revalida y renderiza desde plantilla fija (Fase 4) |
 | `knowledge.py` | `POST {AI_SERVER_URL}/search` al servidor de IA local, solo en el chat sin proyecto; si falla, sigue sin conocimiento |
-| `llm_service.py` | Groq (`groq` 1.0, `openai/gpt-oss-20b`, `LLM_REASONING_EFFORT=low`) u Ollama (`/api/chat`, `gemma4:e2b-it-qat`, `think` apagado) según `LLM_PROVIDER`. Todos los agentes pasan por aquí |
+| `llm_service.py` | Ollama (`/api/chat`, `gemma4:e2b-it-qat`, `think` apagado), el modelo de TaskMate, o Groq como respaldo en la nube (`groq` 1.0, `openai/gpt-oss-20b`, `LLM_REASONING_EFFORT=low`) según `LLM_PROVIDER`. Todos los agentes pasan por aquí |
 
 ### Servicio Python del chat vs servidor de IA local
 | | Servicio Python del chat | Servidor de IA local |
@@ -270,7 +271,7 @@ No existen (las mencionaban versiones anteriores de esta guía): `helpers/getCon
 | Protocolo | Un WebSocket `/ws` con JSON propio | HTTP: `/health`, `/ingest`, `/search`, `/chat`, `/chat/stream`, `/commands`, `/commands/{name}`, `/commands/runs`, `/commands/runs/{run_id}` |
 | Secreto | `X-MCP-Secret` (`MCP_SHARED_SECRET`) | `X-AI-Server-Secret` (`AI_SERVER_SECRET`, 32+ caracteres; sin él solo responden `/health`, `/docs`, `/redoc` y `/openapi.json`) |
 | Quién lo llama | Solo la API (`LLMService`) | La API (`/commands/audit`, `/commands/generate-tests`, `/commands/review-pr`) y el servicio Python (`/search`) |
-| Modelo | Groq `openai/gpt-oss-20b` (por defecto) u Ollama `gemma4:e2b-it-qat` | Ollama: `gemma4:e2b-it-qat` para generar y `embeddinggemma:300m` para embeddings (768 dimensiones) |
+| Modelo | Ollama `gemma4:e2b-it-qat` (`LLM_PROVIDER=ollama`, como lo deja `local-up.sh`); Groq `openai/gpt-oss-20b` solo como respaldo (valor por defecto del código) | Ollama: `gemma4:e2b-it-qat` para generar y `embeddinggemma:300m` para embeddings (768 dimensiones) |
 | Datos | Sin BD; sesiones en memoria | Postgres 17 + pgvector (contenedor `taskmate-ai-db`, `127.0.0.1:5432`), 7 tablas propias |
 | Para qué | Chat, plan, análisis del repositorio, pipeline y analytics | Auditar la rama, generar pruebas, revisar el PR y búsqueda de conocimiento (RAG). Tiene 10 comandos; TaskMate usa 3 |
 | ¿Hace falta? | Sí, para el chat y la IA de las Fases 3–4 | No: sin `AI_SERVER_URL` la IA sobre el código responde 503 `AI_SERVER_DISABLED` y el chat sigue sin conocimiento |
@@ -495,7 +496,7 @@ Conteo: users 3 · tasks 8 · groups 8 · nodes 9 · edges 6 · completados 2 ·
 
 Rechazos del handshake: sin token o token inválido → 401; `Origin` no permitido → 403 (se permiten `FRONTEND_URL` y, con `ALLOW_LAN_ORIGINS=true`, los `http://` de IPv4 privada; solo desarrollo); ruta desconocida → 404. Mensajes de más de 64 KB cierran con 1009.
 
-**Contexto del proyecto en `/chat`.** El proyecto es el grupo de la barra de navegación (el cliente manda `set_context`). En el primer mensaje, Node arma el contexto y lo guarda en caché: tareas, hitos, nombres de los miembros y asignaciones siempre, y el snapshot del repositorio solo si el admin activó el análisis con IA. En cada mensaje vuelve a comprobar la membresía. Con `LLM_PROVIDER=groq` ese contexto va a Groq; con `ollama` se queda en la máquina.
+**Contexto del proyecto en `/chat`.** El proyecto es el grupo de la barra de navegación (el cliente manda `set_context`). En el primer mensaje, Node arma el contexto y lo guarda en caché: tareas, hitos, nombres de los miembros y asignaciones siempre, y el snapshot del repositorio solo si el admin activó el análisis con IA. En cada mensaje vuelve a comprobar la membresía. Con el modelo local (`ollama`) ese contexto se queda en la máquina; solo si se usa Groq (respaldo, `LLM_PROVIDER=groq`) sale a Groq.
 
 ### Protocolo API ↔ servicio Python (`ws://127.0.0.1:MCP_PORT/ws`, cabecera `X-MCP-Secret`)
 - **Node → Python:** `handle_user_message` (con `params.project`: el contexto del proyecto o `null`), `save_plan_result`, `analyze_repository`, `propose_pipeline` y `type: analytics` con las acciones del AnalyticsAgent.
@@ -584,16 +585,16 @@ Las 009–011 solo crean tablas e índices (sin triggers ni `ALTER`), y sus `.do
 ### Servicio Python del chat
 | Variable | Obligatoria | Por defecto / nota |
 |---|---|---|
-| `LLM_PROVIDER` | No | `groq` (valor del código y de `.env.example`) u `ollama` (`local-up.sh` lo pone si falta). Un valor desconocido avisa y usa `groq`. Cambia el modelo de todos los agentes |
-| `GROQ_API_KEY` (alias `LLM_API_KEY`) | Solo con `LLM_PROVIDER=groq` | Clave de Groq |
-| `MCP_SHARED_SECRET` | Sí | `MCP_ALLOW_NO_SECRET=1` solo en pruebas |
-| `MCP_HOST`, `MCP_PORT` | No | `127.0.0.1`, 8001 |
-| `LLM_MODEL`, `REPO_ANALYSIS_MODEL` | No | `openai/gpt-oss-20b` (el segundo hereda el primero; con Ollama se ignoran) |
-| `LLM_REASONING_EFFORT`, `LLM_TEMPERATURE`, `LLM_TIMEOUT_SEC`, `LLM_MAX_RETRIES` | No | `low`, 0.7 (`.env.example` pone 0.2), 60, 2 |
-| `LLM_MAX_TOKENS_CHAT`, `LLM_MAX_TOKENS_PLAN` | No | 1000, 8192 |
-| `LLM_STREAM_CHAT` | No | `1`: el chat responde en streaming (`response_chunk`); `0` manda la respuesta entera |
+| `LLM_PROVIDER` | No | `ollama`: el modelo local, el que usa TaskMate (`local-up.sh` lo pone si falta). `groq`: respaldo en la nube, valor por defecto del código y de `.env.example`. Un valor desconocido avisa y usa `groq`. Cambia el modelo de todos los agentes |
 | `OLLAMA_HOST`, `OLLAMA_MODEL` | No | `http://127.0.0.1:11434`, `gemma4:e2b-it-qat` |
 | `OLLAMA_NUM_CTX`, `OLLAMA_THINK`, `OLLAMA_KEEP_ALIVE` | No | 8192, `0` (sin razonamiento: con él, Gemma 4 gasta los tokens pensando), `30m` |
+| `GROQ_API_KEY` (alias `LLM_API_KEY`) | Solo si se usa Groq (respaldo, `LLM_PROVIDER=groq`) | Clave de Groq |
+| `MCP_SHARED_SECRET` | Sí | `MCP_ALLOW_NO_SECRET=1` solo en pruebas |
+| `MCP_HOST`, `MCP_PORT` | No | `127.0.0.1`, 8001 |
+| `LLM_MODEL`, `REPO_ANALYSIS_MODEL` | No | Solo si se usa Groq (respaldo): `openai/gpt-oss-20b` (el segundo hereda el primero; con Ollama se ignoran) |
+| `LLM_REASONING_EFFORT`, `LLM_TEMPERATURE`, `LLM_TIMEOUT_SEC`, `LLM_MAX_RETRIES` | No | `low` (solo si se usa Groq), 0.7 (`.env.example` pone 0.2), 60, 2 (reintentos del cliente de Groq) |
+| `LLM_MAX_TOKENS_CHAT`, `LLM_MAX_TOKENS_PLAN` | No | 1000, 8192 |
+| `LLM_STREAM_CHAT` | No | `1`: el chat responde en streaming (`response_chunk`); `0` manda la respuesta entera |
 | `AI_SERVER_URL`, `AI_SERVER_SECRET`, `AI_SERVER_PROJECT` | No | Las mismas de Node (misma `.env`). Sin `AI_SERVER_URL` no hay búsqueda de conocimiento; el secreto solo se manda si está definido |
 | `AI_SERVER_TOP_K`, `AI_SERVER_MIN_SIMILARITY`, `AI_SERVER_TIMEOUT_SEC` | No | 4, 0.3, 3 s. `TOP_K` y `TIMEOUT_SEC` no están en `.env.example` |
 | `MCP_LOG_LEVEL`, `MCP_SESSION_TTL_SEC`, `MCP_MAX_SESSIONS`, `MCP_PENDING_SAVE_TTL_SEC`, `MCP_MAX_MESSAGE_CHARS` | No | `INFO`, 7200, 1000, 60, 1 MiB |
@@ -620,7 +621,7 @@ Las 009–011 solo crean tablas e índices (sin triggers ni `ALTER`), y sus `.do
 | 9000 | API REST + WebSockets `/chat`, `/insights`, `/events` (`API_PORT`) | Escucha en todas las interfaces. El webhook de GitHub llega a `:9000/api/github/webhook` vía smee en desarrollo; el de Vercel necesita un túnel público hasta `:9000/api/deploy/webhook/vercel` |
 | `MCP_PORT` (8001 por defecto) | Servicio Python del chat, solo `127.0.0.1`, ruta `/ws` | `local-up.sh` agrega `MCP_PORT=8001` si falta y se detiene si el puerto lo ocupa otro programa. Se puede usar otro (la máquina de Pablo usaba 8011), y `LLM_WEBSOCKET_URL` debe usar el mismo. Exige `X-MCP-Secret` y rechaza toda conexión con cabecera `Origin` (navegadores) |
 | 8000 | Servidor de IA local (`taskmate-ai-server`), solo `127.0.0.1` | Exige `X-AI-Server-Secret`. Opcional |
-| 11434 | Ollama, solo `127.0.0.1` | Lo comparten el servicio Python (con `LLM_PROVIDER=ollama`) y el servidor de IA local |
+| 11434 | Ollama, solo `127.0.0.1` | El modelo de IA de TaskMate (Gemma 4). Lo comparten el servicio Python (`LLM_PROVIDER=ollama`) y el servidor de IA local |
 | 5432 | Postgres 17 + pgvector (`taskmate-ai-db`), solo `127.0.0.1` | Base del servidor de IA local, no de TaskMate |
 | 1433 | SQL Server (`taskmate-sql`) | El `docker run` de las guías y `local-up.sh` lo publican solo en `127.0.0.1` |
 | 14333 (sugerido) | BD de prueba desechable (`taskmate-sql-test`) | Solo para `npm run test:db` ([SQL Server en Docker, §6](base-de-datos-docker.md#6-bd-desechable-para-pruebas)) |
@@ -639,9 +640,10 @@ npm install                                   # instala también el workspace ta
 cd taskmate-api/mcp && python3 -m venv venv \
   && ./venv/bin/pip install -r requirements-dev.txt && cd ../..   # incluye requirements.txt
 cp taskmate-api/.env.example .env             # y completar los marcadores (secretos con openssl rand)
+# modelo local: LLM_PROVIDER=ollama en la .env (la plantilla trae groq, el respaldo) y Ollama con gemma4:e2b-it-qat
 # SQL Server: construir la imagen y crear el contenedor taskmate-sql → base-de-datos-docker.md §1–2
 ```
-En Linux con Podman, `./scripts/local-up.sh` hace todo eso solo: genera la `.env`, construye la imagen, crea el contenedor, instala dependencias y crea el venv. Pide `podman`, `node`, `npm`, `python3`, `curl`, `ss`, `openssl` y Ollama (`~/.local/ollama/bin/ollama`), y el servidor de IA local clonado en `../ai-server` (sin él solo arranca Ollama). Detalle: [entorno local](../09-linea-christian/ENTORNO-LOCAL.md).
+En Linux con Podman, `./scripts/local-up.sh` hace todo eso solo: genera la `.env`, construye la imagen, crea el contenedor, instala dependencias y crea el venv. Pide `podman`, `node`, `npm`, `python3`, `curl`, `ss`, `openssl` y Ollama (`~/.local/ollama/bin/ollama`), y el servidor de IA local clonado en `../ai-server` (sin él solo arranca Ollama). Si la `.env` ya trae `LLM_PROVIDER=groq`, no la cambia y avisa «the chatbot is NOT on the local model». Detalle: [entorno local](../09-linea-christian/ENTORNO-LOCAL.md).
 
 Una imagen construida antes de una migración no trae sus tablas: antes de la 007 faltan las de CI/CD, antes de la 008 falta `Tasks.created_at` (`/api/tasks` responde 500) y antes de las 009–011 (18 nov 2026) faltan las de despliegues, archivos y revisiones. Hay que reconstruirla o correr `cd taskmate-api && npm run db:migrate` (con `MIGRATION_DB_*`); `node migrations/runner.js status` debe listar 001–011. `local-up.sh` corre `db:migrate` en cada arranque; `start.sh` no.
 
@@ -657,7 +659,7 @@ npm start        # frontend en :3000 (otra terminal)
 
 npx smee-client --url https://smee.io/<canal> --target http://localhost:9000/api/github/webhook   # solo con GitHub
 ```
-`start.sh` está pensado para macOS (usa `lsof` y `nc`; sin Podman ni Docker activos abre Docker Desktop con `open`, y si `open` no existe termina con error). Solo inicia el contenedor existente, no aplica migraciones, y siempre imprime «Todo listo»: si algo no responde, revisar `/tmp/taskmate-mcp.log` y `/tmp/taskmate-backend.log`. `local-up.sh` es idempotente, se detiene si otro programa ocupa un puerto y deja los logs en `.local/logs/` (`mcp`, `api`, `web`, `ai-server-up`, `migrate`…). `taskmate-api/start-mcp-server.sh` fija el puerto 8001 y no sirve si `MCP_PORT` es otro. Para el webhook de Vercel con una cuenta real hace falta un túnel público hasta `:9000` ([entorno local](../09-linea-christian/ENTORNO-LOCAL.md)).
+`start.sh` está pensado para macOS (usa `lsof` y `nc`; sin Podman ni Docker activos abre Docker Desktop con `open`, y si `open` no existe termina con error). Solo inicia el contenedor existente, no levanta Ollama (con `LLM_PROVIDER=ollama` debe estar corriendo aparte), no aplica migraciones, y siempre imprime «Todo listo»: si algo no responde, revisar `/tmp/taskmate-mcp.log` y `/tmp/taskmate-backend.log`. `local-up.sh` es idempotente, se detiene si otro programa ocupa un puerto y deja los logs en `.local/logs/` (`mcp`, `api`, `web`, `ai-server-up`, `migrate`…). `taskmate-api/start-mcp-server.sh` fija el puerto 8001 y no sirve si `MCP_PORT` es otro. Para el webhook de Vercel con una cuenta real hace falta un túnel público hasta `:9000` ([entorno local](../09-linea-christian/ENTORNO-LOCAL.md)).
 
 ### Pruebas (estado verificado el 25 nov 2026, en `test/e2e`)
 Cómo correr cada suite y dónde vive cada prueba: [pruebas](pruebas.md).

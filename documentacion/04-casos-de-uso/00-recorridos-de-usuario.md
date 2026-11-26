@@ -135,7 +135,7 @@ journey
 ```
 
 - Un miembro sin ese rol ve «Team leaders only».
-- Las recomendaciones van por el WebSocket `/insights` (canal en vivo) al servicio Python del chat. El modelo lo elige `LLM_PROVIDER`: Groq por defecto u Ollama (el modelo local), que es lo que pone `scripts/local-up.sh`.
+- Las recomendaciones van por el WebSocket `/insights` (canal en vivo) al servicio Python del chat. Las responde el modelo local (Gemma 4 en Ollama), que es lo que pone `scripts/local-up.sh` con `LLM_PROVIDER=ollama`; sin esa variable se usa Groq, el respaldo en la nube.
 
 ## Para saber más
 - [Casos de uso: visión general](00-general.md) y [permisos por rol](00-permisos-por-rol.md).

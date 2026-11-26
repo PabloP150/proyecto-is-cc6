@@ -1,6 +1,6 @@
 # Primer arranque sin `.env`
 
-**En una frase:** cómo pasar de un `git clone` a TaskMate corriendo en tu máquina, con **tus propios** secretos, cuando nadie te pasó una `.env`: en macOS con `./start.sh` o en Linux con `./scripts/local-up.sh`, que además levanta la IA local.
+**En una frase:** cómo pasar de un `git clone` a TaskMate corriendo en tu máquina, con **tus propios** secretos, cuando nadie te pasó una `.env`: en macOS con `./start.sh` o en Linux con `./scripts/local-up.sh`, que además levanta la IA local. La IA de TaskMate es el modelo local (Gemma 4 en Ollama); Groq queda como respaldo en la nube si no tienes Ollama.
 
 ```mermaid
 flowchart TD
@@ -30,7 +30,7 @@ flowchart TD
 | `.env` | La creas tú (pasos 4–5) | La genera o completa el script |
 | SQL Server | Creas tú el contenedor (paso 6) | Construye la imagen y crea el contenedor |
 | Migraciones | Las trae la imagen; las nuevas, a mano | Aplica las pendientes (`npm run db:migrate`) |
-| Chat | Groq (`LLM_PROVIDER=groq`, el valor por defecto) | Modelo local: Gemma 4 en Ollama (`LLM_PROVIDER=ollama`) |
+| Chat | El de tu `.env`: modelo local (`LLM_PROVIDER=ollama`) con Ollama corriendo aparte, o Groq como respaldo (`groq`, el valor de la plantilla) | Modelo local: Gemma 4 en Ollama (`LLM_PROVIDER=ollama`) |
 | Servidor de IA local (`:8000`) | No | Sí, si está clonado en `../ai-server` |
 | Frontend | `npm start` en otra terminal | Lo arranca el script (`--no-web` lo omite) |
 | Detener | `Ctrl+C` / cerrar las terminales | `./scripts/local-down.sh` |
@@ -40,6 +40,7 @@ flowchart TD
 ### Camino A · macOS con `./start.sh`
 
 **1. Prerrequisitos.** Node.js 18+ con npm, Python 3.9+, Docker Desktop o Podman, `git`, `openssl`, `lsof` y `nc`.
+- Para el modelo de IA de TaskMate: Ollama en `127.0.0.1:11434` con `gemma4:e2b-it-qat` (`ollama pull gemma4:e2b-it-qat`). Sin Ollama, una llave de Groq para el respaldo en la nube (paso 5).
 - El venv probado usa Python 3.9.6, que ya no tiene soporte ([limitaciones](../01-proyecto/cierre-del-proyecto.md#dependencias-y-entorno)).
 - `./start.sh` usa Podman si está instalado y responde; si no, Docker. Si Docker no responde, abre Docker Desktop con `open`; donde no existe `open` (Linux) termina con error. En Linux usa el camino B.
 
@@ -67,9 +68,9 @@ cd ../..
 | `MCP_SHARED_SECRET` | Sí | `openssl rand -base64 48` (la API y el servicio Python leen el mismo valor) | El servicio Python no arranca y el chat dice «The AI service is not available right now.» |
 | `DB_PASSWORD` | Sí | Una contraseña fuerte que **tú** eliges; va igual en el `docker run` del paso 6 | La API no conecta a la BD |
 | `MIGRATION_DB_PASSWORD` | Con `start.sh`, opcional; con `local-up.sh`, obligatoria | La contraseña de `SA` que eliges en el paso 6 (`local-up.sh` la usa como `SA_PASSWORD` al crear el contenedor) | Falla `npm run db:migrate`; `local-up.sh` no arranca |
-| `LLM_PROVIDER` | No | `groq` (por defecto) u `ollama` (modelo local; lo pone `local-up.sh`) | Con un valor desconocido avisa y usa `groq` |
-| `GROQ_API_KEY` | Solo con `LLM_PROVIDER=groq` | Tu propia llave, gratis en [console.groq.com/keys](https://console.groq.com/keys) | El chat «AI Bot» y «Analyze with AI» fallan; «Propose with AI» usa la propuesta detectada. El resto funciona |
+| `LLM_PROVIDER` | No | `ollama` para el modelo local (lo pone `local-up.sh`); la plantilla trae `groq`, el respaldo en la nube, que es también el valor por defecto del código | Con un valor desconocido avisa y usa `groq` |
 | `OLLAMA_MODEL` y demás `OLLAMA_*` | Solo con `LLM_PROVIDER=ollama` | Por defecto `gemma4:e2b-it-qat` en `http://127.0.0.1:11434` | El chat responde «The AI assistant is temporarily unavailable…»; el log del servicio Python dice que falta el modelo (`ollama pull …`) |
+| `GROQ_API_KEY` | Solo si se usa Groq (respaldo, `LLM_PROVIDER=groq`) | Tu propia llave, gratis en [console.groq.com/keys](https://console.groq.com/keys) | El chat «AI Bot» y «Analyze with AI» fallan; «Propose with AI» usa la propuesta detectada. El resto funciona |
 | `AI_SERVER_URL`, `AI_SERVER_SECRET` | Opcionales | `http://127.0.0.1:8000` y el mismo `AI_SERVER_SECRET` del `.env` de `../ai-server` (`local-up.sh` los pone y copia el secreto) | «Audit», «Generate tests» y «Review PR» responden 503 `AI_SERVER_DISABLED`; el chat funciona sin el conocimiento del proyecto |
 | `VERCEL_WEBHOOK_SECRET` | Solo para el monitoreo de Vercel | `openssl rand -hex 20` (lo genera `local-up.sh`); el mismo valor va en el webhook de Vercel | Todo webhook de Vercel responde 401 |
 | `ALLOW_LAN_ORIGINS` | No (solo desarrollo) | `true` para abrir la app desde otro equipo de tu red (`http://<IP privada>:3000`) | Solo se acepta el origen de `FRONTEND_URL`. Nunca en producción |
@@ -119,7 +120,7 @@ npm start       # frontend en http://localhost:3000
 ```
 - `start.sh` siempre imprime «✓ Todo listo». Confirma en `/tmp/taskmate-backend.log`: `API running on PORT 9000` y `[LLMService] WebSocket connection established.`
 - `start.sh` solo hace `start` del contenedor: **no aplica migraciones**. Tras un `git pull` que traiga migraciones nuevas (o con un contenedor de una imagen anterior al 18 nov 2026, que no trae 009–011), corre `npm run db:migrate` ([SQL Server en Docker, §5](base-de-datos-docker.md#5-migrar-una-bd-que-ya-existía)).
-- `start.sh` no levanta Ollama ni el servidor de IA local: el chat usa Groq y, con `AI_SERVER_URL` vacío, «Audit», «Generate tests» y «Review PR» responden 503 `AI_SERVER_DISABLED`. El arranque automático de la IA local solo existe en Linux (camino B).
+- `start.sh` no levanta Ollama ni el servidor de IA local. Para el modelo local, deja Ollama corriendo en `127.0.0.1:11434` con `gemma4:e2b-it-qat` y pon `LLM_PROVIDER=ollama`; sin Ollama, usa Groq como respaldo (`LLM_PROVIDER=groq` y `GROQ_API_KEY`). Con `AI_SERVER_URL` vacío, «Audit», «Generate tests» y «Review PR» responden 503 `AI_SERVER_DISABLED`. El arranque automático de la IA local solo existe en Linux (camino B).
 - Solo con GitHub, en una tercera terminal: `npx smee-client --url https://smee.io/<canal> --target http://localhost:9000/api/github/webhook`.
 
 Sigue en el [paso 9](#al-final-los-dos-caminos).
@@ -156,7 +157,7 @@ cd -
 ./scripts/local-down.sh --all    # también la IA local (API del servidor de IA, Postgres y Ollama)
 ```
 En orden, `local-up.sh`:
-1. **`.env`:** si no existe, la genera (con `chmod 600`) con valores de desarrollo y contraseñas aleatorias de la BD. Si existe, **nunca la sobrescribe**: solo agrega las claves que falten (`JWT_SECRET`, `MCP_SHARED_SECRET`, `LLM_PROVIDER=ollama`, `OLLAMA_MODEL`, `AI_SERVER_URL`, `AI_SERVER_PROJECT`, `VERCEL_WEBHOOK_SECRET`…). La única que reemplaza es `AI_SERVER_SECRET`, para igualarla con la de `../ai-server`. No agrega `GROQ_API_KEY`, `GITHUB_*` ni `ALLOW_LAN_ORIGINS`: para GitHub, llénalas como en el paso 5.
+1. **`.env`:** si no existe, la genera (con `chmod 600`) con valores de desarrollo y contraseñas aleatorias de la BD. Si existe, **nunca la sobrescribe**: solo agrega las claves que falten (`JWT_SECRET`, `MCP_SHARED_SECRET`, `LLM_PROVIDER=ollama`, `OLLAMA_MODEL`, `AI_SERVER_URL`, `AI_SERVER_PROJECT`, `VERCEL_WEBHOOK_SECRET`…). La única que reemplaza es `AI_SERVER_SECRET`, para igualarla con la de `../ai-server`. Si tu `.env` ya trae `LLM_PROVIDER=groq` (por ejemplo, copiada de la plantilla), la respeta y avisa «the chatbot is NOT on the local model»: cámbiala a `ollama`. No agrega `GROQ_API_KEY`, `GITHUB_*` ni `ALLOW_LAN_ORIGINS`: para GitHub, llénalas como en el paso 5.
 2. **IA local (1/5):** corre `../ai-server/scripts/up.sh`, descarga el modelo de chat si falta y lo precalienta.
 3. **SQL Server (2/5):** construye la imagen `taskmate-sql` si no existe, crea el contenedor en `127.0.0.1:1433` (con `MIGRATION_DB_PASSWORD` como contraseña de `SA`) o lo inicia, y aplica las migraciones pendientes con `npm run db:migrate`. Un `git pull` nunca obliga a reconstruir la imagen.
 4. **Dependencias:** `npm install` y el venv de `taskmate-api/mcp` (con `requirements.txt`) solo si faltan o cambiaron.
@@ -208,7 +209,7 @@ Más casos: [guía de la GitHub App, §10](guia-github-app.md#10-solución-de-pr
 | `scripts/local-up.sh` · `scripts/local-down.sh` | Camino B: genera o completa la `.env`, levanta la IA local, SQL Server (con migraciones), el chat, la API y la web; y lo detiene |
 | `taskmate-api/Dockerfile` · `taskmate-api/setup-db.sh` | Imagen de SQL Server 2019 y arranque idempotente (BD, login, esquema, migraciones) |
 | `taskmate-api/server.js` | Rechaza un `JWT_SECRET` débil y abre el pool de la BD |
-| `taskmate-api/mcp/server.py` · `taskmate-api/mcp/llm_service.py` | El primero rechaza un `MCP_SHARED_SECRET` débil; el segundo elige Groq u Ollama según `LLM_PROVIDER` |
+| `taskmate-api/mcp/server.py` · `taskmate-api/mcp/llm_service.py` | El primero rechaza un `MCP_SHARED_SECRET` débil; el segundo elige Ollama (modelo local) o Groq (respaldo) según `LLM_PROVIDER` |
 | `taskmate-api/mcp/knowledge.py` · `taskmate-api/services/aiServer/client.js` | Llamadas al servidor de IA local: búsqueda de conocimiento del chat y comandos `audit`, `generate-tests` y `review-pr` |
 | `taskmate-api/middleware/cors.js` | Orígenes permitidos: `FRONTEND_URL` y, con `ALLOW_LAN_ORIGINS=true`, los de IPv4 privada |
 | `taskmate-api/services/github/githubApp.js` | Responde `GITHUB_NOT_CONFIGURED` sin las variables de la App |

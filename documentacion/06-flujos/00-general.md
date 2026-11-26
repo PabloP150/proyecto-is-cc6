@@ -29,7 +29,7 @@ sequenceDiagram
     actor AD as Admin
     actor MI as Miembro
     participant TM as TaskMate (web y API)
-    participant PY as Servicio Python y modelo (Groq u Ollama)
+    participant PY as Servicio Python y modelo local (Gemma 4 en Ollama)
     participant AI as Servidor de IA local
     participant GH as GitHub (repositorio)
     participant GA as GitHub Actions y Pages
@@ -149,7 +149,7 @@ sequenceDiagram
 
 | Paso | Qué pasa | Qué ve el usuario |
 |---|---|---|
-| 1 y 4 · Chat | El modelo falla (Ollama apagado, modelo sin instalar o error de Groq) | Una respuesta normal del asistente: «The AI assistant is temporarily unavailable. Please try again in a moment.». Con el límite de Groq: «The AI assistant is receiving too many requests right now. Please try again in <tiempo>.» |
+| 1 y 4 · Chat | El modelo falla (Ollama apagado o modelo sin instalar; si se usa Groq de respaldo, un error de Groq) | Una respuesta normal del asistente: «The AI assistant is temporarily unavailable. Please try again in a moment.». Solo con Groq (respaldo), al pasar su límite: «The AI assistant is receiving too many requests right now. Please try again in <tiempo>.» |
 | 1 y 4 · Chat | El servicio Python no responde en 90 s | «The AI took too long to answer. Please try again.» |
 | 4 · Asistente | Se piden tareas con un grupo sin repositorio | «The project has no GitHub repository connected.» |
 | 4 y 7 · IA | El admin no activó «Allow AI analysis» | En el chat: «AI analysis is turned off for this project. A group admin can turn it on from the GitHub page (“Allow AI analysis”).». En «Task files»: «AI analysis is turned off for this project; an admin can turn it on from the GitHub page.». La revisión automática no corre y no avisa |
@@ -186,7 +186,7 @@ Todos los casos, con su código: en la sección «Qué ve el usuario si algo fal
 | Archivo | Qué hace en este recorrido |
 |---|---|
 | `taskmate-api/services/UserSession.js` y `ProjectService.js` | Chat, contexto del proyecto, streaming, confirmación del plan y creación del proyecto |
-| `taskmate-api/mcp/agents/orchestrator.py`, `mcp/llm_service.py` y `mcp/knowledge.py` | Clasifica cada mensaje, responde con Groq u Ollama y consulta los documentos del servidor de IA local |
+| `taskmate-api/mcp/agents/orchestrator.py`, `mcp/llm_service.py` y `mcp/knowledge.py` | Clasifica cada mensaje, responde con el modelo local (Ollama; Groq si se usa el respaldo) y consulta los documentos del servidor de IA local |
 | `taskmate-api/services/github/installFlow.js` | Conexión del repositorio (instalación y callback) |
 | `taskmate-api/services/github/pipelineService.js` y `pipelineSpec.js` | Propuesta, YAML y commit del workflow |
 | `taskmate-api/services/github/branchService.js` | Crear y limpiar la rama de una tarea |

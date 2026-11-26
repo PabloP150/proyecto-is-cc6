@@ -18,7 +18,7 @@ flowchart LR
 |---|---|
 | [Arquitectura general](00-general.md) | Las capas (React, API Express, servicio Python del chat, servidor de IA local, SQL Server, GitHub, Vercel) y qué conecta cada flecha |
 | [Despliegue y puertos](00-despliegue.md) | Qué corre en la máquina de desarrollo y en qué puerto, qué servicios externos usa, y qué hacen `start.sh` (macOS) y `scripts/local-up.sh` / `local-down.sh` (Linux con Podman) |
-| [Capas del código](00-capas-del-codigo.md) | De `App.js` a los componentes, de `app.js` a la BD y de `server.py` a los agentes y al modelo (Groq u Ollama) |
+| [Capas del código](00-capas-del-codigo.md) | De `App.js` a los componentes, de `app.js` a la BD y de `server.py` a los agentes y al modelo (Gemma 4 en Ollama; Groq de respaldo) |
 | [Seguridad](00-seguridad.md) | El control de cada entrada (JWT, `Origin`, HMAC de GitHub y de Vercel, `X-MCP-Secret`, `X-AI-Server-Secret`, tokens de GitHub), límites y roles |
 
 ## Páginas por módulo
@@ -29,7 +29,7 @@ flowchart LR
 | [2 · Grupos y roles](02-grupos-y-roles.md) | `/groups` → API, que revisa si eres miembro o admin antes de tocar las 4 tablas del módulo |
 | [3 · Tareas](03-tareas.md) | `/tasks` → API → SQL Server en transacción; después, analytics y limpieza de la rama |
 | [4 · Hitos y calendario](04-hitos-y-calendario.md) | Hitos (`Nodes`) y flechas (`Edges`) por REST, y los dos triggers que propagan el avance |
-| [5 · Chat con IA](05-chat-ia.md) | WebSocket `/chat` → API → servicio Python → Groq u Ollama, con respuestas en streaming; el plan confirmado se guarda en SQL Server |
+| [5 · Chat con IA](05-chat-ia.md) | WebSocket `/chat` → API → servicio Python → Ollama (Gemma 4; Groq de respaldo), con respuestas en streaming; el plan confirmado se guarda en SQL Server |
 | [6 · Analytics](06-analytics.md) | Métricas del equipo por REST y recomendaciones de la IA por el WebSocket `/insights` |
 | [7 · GitHub](07-github.md) | La GitHub App: conectar el repositorio, rama por tarea, archivos de la tarea, webhooks y PR fusionado → tarea completa |
 | [8 · CI/CD](08-cicd.md) | El workflow en el repositorio del grupo, GitHub Actions, deploy a GitHub Pages, sus webhooks y el monitoreo de despliegues de Vercel |
@@ -42,7 +42,8 @@ flowchart LR
 |---|---|
 | **Servicio Python** (o servicio Python del chat) | `taskmate-api/mcp/`, FastAPI en `127.0.0.1:8001` (`MCP_PORT`). Hasta el 5 nov estas páginas lo llamaban «servidor de IA» |
 | **Servidor de IA local** | El repo aparte de Christian, `taskmate-ai-server`: FastAPI en `127.0.0.1:8000` con Ollama y Postgres + pgvector. Se autentica con `X-AI-Server-Secret` |
-| **Modelo local** | Gemma 4 en Ollama (`127.0.0.1:11434`). El chat lo usa con `LLM_PROVIDER=ollama`; por defecto usa Groq |
+| **Modelo local** | Gemma 4 en Ollama (`127.0.0.1:11434`): el modelo del chat, los planes, analytics, el análisis del repo y el pipeline (`LLM_PROVIDER=ollama`, lo que pone `scripts/local-up.sh`) |
+| **Groq (respaldo en la nube)** | `openai/gpt-oss-20b` con `GROQ_API_KEY`. Es el valor por defecto de `LLM_PROVIDER` en el código, para que un checkout sin Ollama siga funcionando |
 
 ## Diagramas e imágenes
 

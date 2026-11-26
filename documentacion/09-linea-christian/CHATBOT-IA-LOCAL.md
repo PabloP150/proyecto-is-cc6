@@ -1,8 +1,9 @@
 # Chatbot sobre la IA local, con streaming
 
-El chatbot de TaskMate llamaba a **Groq** (un servicio en la nube). Ahora puede funcionar sobre el
-**mismo modelo local** que el servidor de IA de `../ai-server` (Gemma 4 en Ollama), consultar el
-conocimiento indexado de ese servidor y responder **token a token**.
+El chatbot de TaskMate llamaba a **Groq** (un servicio en la nube). Ahora funciona sobre el
+**mismo modelo local** que el servidor de IA de `../ai-server` (Gemma 4, `gemma4:e2b-it-qat`, en
+Ollama), consulta el conocimiento indexado de ese servidor y responde **token a token**. Groq queda
+solo como respaldo en la nube.
 
 > **Actualizado el 25 nov 2026** contra `test/e2e` (`50f77da`). Desde el 19 nov el chat es un
 > asistente del proyecto, sigue el grupo elegido en la barra de navegación y la interfaz está en
@@ -15,7 +16,7 @@ conocimiento indexado de ese servidor y responder **token a token**.
 
 ```
 navegador ──ws──▶ API Node (/chat) ──ws──▶ servicio Python (:8001) ──▶ Ollama (:11434)
-                                                       │                  (o Groq, según LLM_PROVIDER)
+                                                       │                  (Groq solo como respaldo en la nube)
                                                        └──▶ servidor de IA (:8000) /search
                                                             (solo sin proyecto, con X-AI-Server-Secret)
 ```
@@ -24,17 +25,20 @@ Un mismo modelo en la GPU de 4 GB para los dos servicios, en lugar de dos compit
 
 ## 1. Modelo local
 
-`mcp/llm_service.py` tiene ahora dos proveedores, elegidos con `LLM_PROVIDER`:
+`mcp/llm_service.py` tiene ahora dos proveedores, elegidos con `LLM_PROVIDER`. Todo el texto que
+genera la IA dentro de TaskMate pasa por ahí: chat y plan del proyecto, analytics y recomendaciones
+de asignación, análisis del repositorio y propuesta de pipeline.
 
-| | `groq` | `ollama` |
+| | `ollama` (el que usa TaskMate) | `groq` (respaldo en la nube) |
 |---|---|---|
-| Dónde corre | nube | esta máquina |
-| Necesita | `GROQ_API_KEY` | Ollama con el modelo descargado |
-| Por defecto en el código | ✅ | |
-| Lo que pone `local-up.sh` | | ✅ |
+| Dónde corre | esta máquina (`127.0.0.1:11434`) | nube |
+| Modelo | Gemma 4 (`gemma4:e2b-it-qat`) | `openai/gpt-oss-20b` |
+| Necesita | Ollama con el modelo descargado | `GROQ_API_KEY` |
+| Lo que pone `local-up.sh` | ✅ | |
+| Por defecto en el código | | ✅ |
 
-Groq sigue siendo el valor por defecto del código para no romper el entorno de quien no tenga
-Ollama; el script de despliegue local elige `ollama`.
+`local-up.sh` pone `LLM_PROVIDER=ollama`. Groq sigue siendo el valor por defecto del código solo
+para no romper el entorno de quien no tenga Ollama.
 
 Las tres funciones (`generate`, `generate_json`, `generate_stream`) tienen ruta local. Los errores
 se traducen a los mismos tipos que con Groq (`LLMTimeoutError`, etc.), así que el resto del

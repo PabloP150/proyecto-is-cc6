@@ -20,8 +20,8 @@ architecture-beta
     junction jl
     junction jg
     junction jol
-    service groq(logos:groq)[Groq gpt-oss-20b]
-    service ollama(logos:ollama)[Ollama gemma4 local]
+    service groq(logos:groq)[Groq respaldo en la nube]
+    service ollama(logos:ollama)[Ollama con Gemma 4 local]
 
     group docker(logos:docker-icon)[Docker]
     service db(mdi:database)[SQL Server 2019] in docker
@@ -36,9 +36,9 @@ architecture-beta
     agent:R --> L:llmpy
     llmpy:R -- L:jl
     jl:T -- B:jg
-    jg:R --> L:groq
+    jg:R --> L:ollama
     jl:B -- T:jol
-    jol:R --> L:ollama
+    jol:R --> L:groq
     rest:R -- L:jw
     jw:R --> L:svc
     hooks:T -- B:jw
