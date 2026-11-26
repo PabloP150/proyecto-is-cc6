@@ -55,9 +55,9 @@ Origen: migración `011_ai_reviews.sql` (la reversa, `011_ai_reviews.down.sql`, 
 - Borrar la fila de `Tasks` borra sus revisiones (`FK_AiReviews_Tasks`). Completar una tarea, mandarla a la papelera, borrar su lista o borrar el grupo borran esa fila, así que al fusionar el PR, que completa la tarea, sus revisiones desaparecen de TaskMate. En GitHub se quedan los comentarios publicados ([limitaciones conocidas](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)).
 
 **Reglas que aplica la API**
-- **Reservar antes de revisar.** `claim` inserta la fila como `pending` antes de llamar al servidor de IA. Si el par (`tid`, `head_sha`) ya existe, la API no hace nada: un webhook repetido o un `synchronize` seguido de `ready_for_review` sobre el mismo commit no revisan dos veces.
+- **Reservar antes de revisar.** `claim` inserta la fila como `pending` antes de llamar al servidor de IA. Si el par (`tid`, `head_sha`) ya existe y está `done`, o `pending` desde hace menos de 15 minutos, `claim` devuelve `null` y la API no hace nada: un webhook repetido o un `synchronize` seguido de `ready_for_review` sobre el mismo commit no revisan dos veces.
 - **Cerrar.** `finish` pone `done` con `verdict`, `posted`, `review_url` y `result_json`, o `failed` con `error_code` (por ejemplo `AI_SERVER_UNAVAILABLE`).
-- **Sin reintento.** Ningún código borra ni reintenta una fila `failed` o una que quedó `pending` porque el proceso se cayó: ese commit ya no se revisa, ni pidiéndolo a mano. Hace falta un commit nuevo ([limitaciones conocidas](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)).
+- **Reintento (desde el 26 nov 2026).** Si el par ya existe, `claim` llama a `reclaim`: un solo `UPDATE` condicional que vuelve a `pending` una fila `failed` o una `pending` de más de 15 minutos (`STALE_PENDING_MINUTES`, la de un proceso que se cayó), limpia `verdict`, `posted`, `review_url`, `result_json` y `error_code`, renueva `created_at` y devuelve su `id`. Como es una sola sentencia, dos llamadas a la vez no ganan las dos. Se reintenta con «Review PR» o con el siguiente webhook del mismo commit; antes hacía falta un commit nuevo ([correcciones del 26 nov](../01-proyecto/cierre-del-proyecto.md#correcciones-del-26-nov-2026)).
 - **Leer la última.** `getLatest` devuelve la más nueva de la tarea (`ORDER BY created_at DESC, id DESC`), con `result_json` ya convertido a objeto.
 - **Permiso de IA.** Revisar exige `GroupRepositories.ai_analysis_enabled = 1` (tabla del [módulo GitHub](07-github.md)). Leer la última revisión no lo exige.
 
@@ -157,7 +157,7 @@ erDiagram
 
 | Archivo | Qué hace con estas tablas |
 |---|---|
-| `taskmate-api/models/aiReview.model.js` | `claim` (INSERT `pending`; `null` si el par ya existe), `finish` (cierra con `done` o `failed`) y `getLatest` (la más nueva de la tarea) |
+| `taskmate-api/models/aiReview.model.js` | `claim` (INSERT `pending`; si el par ya existe, `reclaim` recupera una `failed` o una `pending` de más de 15 min, y si no, `null`), `finish` (cierra con `done` o `failed`) y `getLatest` (la más nueva de la tarea) |
 | `taskmate-api/services/aiServer/prReview.js` | Reserva y cierra cada revisión, sea del webhook o manual |
 | `taskmate-api/services/aiServer/taskAi.js` | Lee la última revisión para `GET` y `POST /api/github/tasks/:tid/review` |
 | `taskmate-api/models/github.model.js` y `services/github/repoService.js` | Leen la rama y el PR de la tarea (`getTaskLinksByGroup`, `findTaskByBranch`) y el permiso `ai_analysis_enabled` (`getConnectedRepo`) |

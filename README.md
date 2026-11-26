@@ -2,11 +2,11 @@
 
 **En una frase:** una aplicación web donde un equipo planifica su proyecto (tareas, hitos y calendario), lo arma con ayuda de una IA y trabaja con su repositorio de GitHub y su CI/CD sin salir de la app.
 
-> **Estado al 25 nov 2026**
+> **Estado al 26 nov 2026**
 > - **Línea de Pablo: cerró el 3 nov 2026 con las Fases 1–4**, en `master`: PR #2 (`7e1610f`) y PR #4 (`183f1cb`) el 6 oct 2026; PR #5 (`56f7136`) el 22 oct 2026. Las Fases 5 y 8 no se realizarán; la 6 (SonarQube) se canceló en la etapa de plan, sin código; la 7 (colisión de archivos) quedó pospuesta en la línea de Christian.
-> - **La línea de Christian siguió** con sus fechas corridas: puntos 1–7 completos (servidor de IA local, comandos, monitoreo de Vercel, archivos por tarea, `audit`, generar pruebas y revisión de PR con IA), además del chat sobre el modelo local. La 8 (colisión de archivos) está pospuesta con la base hecha y la 9 (pruebas finales), pendiente. Todo vive en la rama `test/e2e`, todavía sin fusionar en `master` → [línea de Christian](documentacion/09-linea-christian/README.md).
+> - **La línea de Christian siguió** con sus fechas corridas: puntos 1–7 completos (servidor de IA local, comandos, monitoreo de Vercel, archivos por tarea, `audit`, generar pruebas y revisión de PR con IA), además del chat sobre el modelo local. La 8 (colisión de archivos) está pospuesta con la base hecha y la 9 (pruebas finales), pendiente. Entró por la rama `test/e2e`, que se fusionó en `master` el 26 nov 2026 → [línea de Christian](documentacion/09-linea-christian/README.md).
 > - La interfaz de la app está en inglés desde el 19 nov 2026 (`d148763`).
-> - 2087 pruebas en verde y 0 fallando (25 nov 2026, en `test/e2e`). Las fechas planificadas de la [calendarización](documentacion/01-proyecto/calendarizacion.md) no cambian.
+> - 2091 pruebas en verde y 0 fallando, y ESLint en 0 (26 nov 2026, con los [arreglos del 26 nov](documentacion/01-proyecto/cierre-del-proyecto.md#correcciones-del-26-nov-2026)). Las fechas planificadas de la [calendarización](documentacion/01-proyecto/calendarizacion.md) no cambian.
 > - Qué quedó, limitaciones y pendientes: [cierre de la línea de Pablo y estado](documentacion/01-proyecto/cierre-del-proyecto.md).
 
 ## Qué hace
@@ -79,16 +79,16 @@ Detalle del entorno local: [levantar TaskMate en local](documentacion/09-linea-c
 
 ## Pruebas
 
-**2087 pruebas en verde y 0 fallando (25 nov 2026, en `test/e2e`):**
+**2091 pruebas en verde y 0 fallando (26 nov 2026, en `master`):**
 
 | Capa | Pruebas |
 |---|---|
-| API (Jest) | 1322 en 54 suites |
+| API (Jest) | 1324 en 54 suites |
 | Frontend (React Testing Library) | 438 en 36 suites |
 | Servicio Python del chat (pytest) | 210 |
-| Base de datos (SQL Server desechable) | 117 en 10 suites |
+| Base de datos (SQL Server desechable) | 119 en 10 suites |
 
-- El build de producción compila. ESLint marca 1 error en una prueba nueva (`src/components/__tests__/NavGroupSelector.test.jsx`, regla `testing-library/render-result-naming-convention`).
+- ESLint: 0 problemas. El build de producción compilaba el 5 nov 2026 (sobre `master`); no se volvió a correr.
 - El repositorio de TaskMate no tiene CI propio: las pruebas se corren a mano. El CI/CD es una funcionalidad para el repositorio de cada grupo.
 - Cómo correr cada suite: [pruebas](documentacion/07-guias/pruebas.md).
 

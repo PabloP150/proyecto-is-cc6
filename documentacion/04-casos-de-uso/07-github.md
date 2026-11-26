@@ -113,7 +113,7 @@ Notas:
 - Los límites son por usuario, salvo el del callback.
 - La interfaz esconde los botones de admin a los miembros, pero quien decide es la API.
 - Publicar la revisión de IA en GitHub necesita que la App tenga *Pull requests: Read and write* ([guía de la App](../07-guias/guia-github-app.md#4-registrar-la-github-app)). Sin ese permiso la revisión se guarda en TaskMate como `no_permission` y no se publica.
-- Una revisión fallida o que quedó a medias no se repite sobre el mismo commit, ni pidiéndola a mano: hace falta un commit nuevo ([limitaciones](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)).
+- Una revisión fallida se puede repetir sobre el mismo commit, con «Review PR» o con el siguiente webhook de ese commit; una que quedó a medias (`pending`), pasados 15 minutos. Una revisión terminada no se repite. Así desde el 26 nov 2026; antes hacía falta un commit nuevo.
 
 ## Para saber más
 

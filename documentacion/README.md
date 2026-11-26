@@ -10,11 +10,11 @@ flowchart LR
     MOD(["👤 Estudiar un módulo"]) --> M1["04 Casos de uso"] --> M2["05 Interfaz"] --> M3["02 Arquitectura"] --> M4["03 Base de datos"] --> M5["06 Flujos"]
 ```
 
-**Estado al 25 nov 2026:**
+**Estado al 26 nov 2026:**
 
 - **Línea de Pablo:** cerró el 3 nov 2026 con las Fases 1–4, en `master` → [cierre de la línea de Pablo y estado](01-proyecto/cierre-del-proyecto.md).
 - **Línea de Christian:** siguió con sus fechas corridas. Puntos 1–7 completos; la 8 (colisión de archivos) está pospuesta con la base hecha y la 9 (pruebas finales), pendiente → [línea de Christian](09-linea-christian/README.md).
-- Lo nuevo vive en la rama `test/e2e`, todavía sin fusionar en `master`. Ahí hay 2087 pruebas en verde (25 nov 2026), 29 tablas y las migraciones 001–011.
+- Lo nuevo entró por la rama `test/e2e`, que se fusionó en `master` el 26 nov 2026 con tres arreglos (webhook de Vercel, revisión de PR fallida y ESLint). Hay 2091 pruebas en verde (26 nov 2026), 29 tablas y las migraciones 001–011.
 
 ## Qué hay en cada carpeta
 

@@ -1,6 +1,6 @@
 # Cierre de la línea de Pablo y estado de TaskMate
 
-**En una frase:** la línea de Pablo cerró el 3 nov 2026 con las Fases 1–4 entregadas (1960 pruebas en verde el 5 nov, con las correcciones del cierre); la de Christian siguió y al 25 nov 2026 suma en `test/e2e` el monitoreo de Vercel, los archivos por tarea, la IA sobre el código y el chat con modelo local (2087 pruebas, 29 tablas, migraciones 001–011). Esta página dice qué quedó, qué no se hizo, qué limitaciones tiene y cómo retomarlo.
+**En una frase:** la línea de Pablo cerró el 3 nov 2026 con las Fases 1–4 entregadas (1960 pruebas en verde el 5 nov, con las correcciones del cierre); la de Christian siguió y sumó el monitoreo de Vercel, los archivos por tarea, la IA sobre el código y el chat con modelo local, que entraron por `test/e2e` y están en `master` desde el 26 nov 2026 (2091 pruebas, 29 tablas, migraciones 001–011). Esta página dice qué quedó, qué no se hizo, qué limitaciones tiene y cómo retomarlo.
 
 ```mermaid
 flowchart LR
@@ -10,7 +10,7 @@ flowchart LR
     C -.-> F6["🚫 Fase 6<br/>SonarQube"]
     C -.-> F7["❌ Fase 7<br/>Colisión de archivos"]
     C -.-> F8["❌ Fase 8<br/>Pruebas finales"]
-    C ==>|después del cierre| X(["Línea de Christian<br/>test/e2e, 18–25 nov"])
+    C ==>|después del cierre| X(["Línea de Christian<br/>test/e2e, 18–25 nov<br/>en master el 26 nov"])
     X --> X1["✅ Puntos 1–7<br/>IA local, Vercel, archivos por tarea,<br/>audit, pruebas y revisión de PR"]
     X --> X8["⏸️ Punto 8<br/>Colisión, base hecha"]
     X --> X9["⏳ Punto 9<br/>Pruebas finales"]
@@ -23,12 +23,12 @@ flowchart LR
     class X8,X9 pend
 ```
 
-**Última actualización:** 25 nov 2026 — después del cierre (línea de Christian en `test/e2e`)  
-**Responsables:** Pablo Pineda (Fases 1–4) · Christian Martínez (su línea) · **Base:** el cierre describe `master` en `56f7136` (merge del PR #5, 22 oct 2026) más las [correcciones del cierre](#correcciones-del-cierre-3-nov-2026) (PR #6, `ea25733`, 5 nov); lo de [después del cierre](#después-del-cierre-línea-de-christian-hasta-el-25-nov-2026) describe `test/e2e` en `50f77da`
+**Última actualización:** 26 nov 2026 — después del cierre (línea de Christian fusionada en `master`)  
+**Responsables:** Pablo Pineda (Fases 1–4) · Christian Martínez (su línea) · **Base:** el cierre describe `master` en `56f7136` (merge del PR #5, 22 oct 2026) más las [correcciones del cierre](#correcciones-del-cierre-3-nov-2026) (PR #6, `ea25733`, 5 nov); lo de [después del cierre](#después-del-cierre-línea-de-christian-hasta-el-25-nov-2026) describe `test/e2e` en `50f77da` más las [correcciones del 26 nov](#correcciones-del-26-nov-2026), fusionado en `master` el 26 nov 2026
 
 Este es el reporte único de cierre. Las **limitaciones conocidas** y los **pendientes** del proyecto, también los de la línea de Christian, viven solo aquí: los capítulos de cada fase, el [índice de la documentación](../README.md) y la [calendarización](calendarizacion.md) enlazan a esta página en lugar de repetir las listas.
 
-**Contenido:** [Decisión y fecha](#decisión-y-fecha) · [Qué se entregó por fase](#qué-se-entregó-por-fase) · [Inventario funcional](#inventario-funcional) · [Correcciones del cierre](#correcciones-del-cierre-3-nov-2026) · [Estado verificado al 3 nov 2026](#estado-verificado-al-3-nov-2026) · [Qué no se hizo](#qué-no-se-hizo) · [Después del cierre](#después-del-cierre-línea-de-christian-hasta-el-25-nov-2026) · [Limitaciones conocidas](#limitaciones-conocidas) · [Pendientes (TODO)](#pendientes-todo) · [Recursos de la demostración](#recursos-de-la-demostración) · [Cómo retomar el proyecto](#cómo-retomar-el-proyecto)
+**Contenido:** [Decisión y fecha](#decisión-y-fecha) · [Qué se entregó por fase](#qué-se-entregó-por-fase) · [Inventario funcional](#inventario-funcional) · [Correcciones del cierre](#correcciones-del-cierre-3-nov-2026) · [Estado verificado al 3 nov 2026](#estado-verificado-al-3-nov-2026) · [Qué no se hizo](#qué-no-se-hizo) · [Después del cierre](#después-del-cierre-línea-de-christian-hasta-el-25-nov-2026) · [Correcciones del 26 nov 2026](#correcciones-del-26-nov-2026) · [Limitaciones conocidas](#limitaciones-conocidas) · [Pendientes (TODO)](#pendientes-todo) · [Recursos de la demostración](#recursos-de-la-demostración) · [Cómo retomar el proyecto](#cómo-retomar-el-proyecto)
 
 ---
 
@@ -69,14 +69,14 @@ Commits de cada PR y de lo que vino después (los rangos siguen funcionando aunq
 git log --oneline 7e1610f^1..7e1610f^2   # PR #2, Fases 1 y 2 (45 commits de refactor/cleanup)
 git log --oneline 183f1cb^1..183f1cb^2   # PR #4, Fase 3 (24 commits)
 git log --oneline 56f7136^1..56f7136^2   # PR #5, Fase 4 (18 commits)
-git log --oneline ea25733..origin/test/e2e   # después del cierre: línea de Christian (21 commits)
+git log --oneline --author=Sirk02 ea25733..origin/test/e2e   # después del cierre: línea de Christian (21 commits)
 ```
 
 ---
 
 ## Inventario funcional
 
-Lo que puede hacer un usuario hoy, sacado del código el 25 nov 2026 (`test/e2e`, `50f77da`), con la prueba que cubre cada cosa. Las filas «(línea de Christian)» llegaron después del cierre y todavía no están en `master`. La lista por módulo, con quién puede hacer qué y en qué pantalla, está en [funcionalidades](funcionalidades.md). «FE» son las pruebas del frontend (`src/**/__tests__`), «API» las de Jest (`taskmate-api/tests`), «BD» las de SQL Server (`taskmate-api/tests/db`) y «Python» las de pytest (`taskmate-api/mcp/tests`). La interfaz está en inglés desde el 19 nov (`d148763`): los textos se citan como se ven ahora.
+Lo que puede hacer un usuario hoy, sacado del código el 25 nov 2026 (`test/e2e`, `50f77da`), con la prueba que cubre cada cosa. Las filas «(línea de Christian)» llegaron después del cierre y están en `master` desde el 26 nov 2026. La lista por módulo, con quién puede hacer qué y en qué pantalla, está en [funcionalidades](funcionalidades.md). «FE» son las pruebas del frontend (`src/**/__tests__`), «API» las de Jest (`taskmate-api/tests`), «BD» las de SQL Server (`taskmate-api/tests/db`) y «Python» las de pytest (`taskmate-api/mcp/tests`). La interfaz está en inglés desde el 19 nov (`d148763`): los textos se citan como se ven ahora.
 
 | Funcionalidad | Qué hace | Dónde | Cómo se prueba |
 |---------------|----------|-------|----------------|
@@ -95,7 +95,7 @@ Lo que puede hacer un usuario hoy, sacado del código el 25 nov 2026 (`test/e2e`
 | Rama por tarea y progreso por PR | Crear la rama de una tarea («Create branch on GitHub»), ver el estado de su PR; la tarea se completa al fusionar el PR y la rama se limpia de forma segura | `/tasks` · `TaskGitHubActions.jsx`, `useTaskLinks.js`; webhook `POST /api/github/webhook` | FE `TaskGitHubActions`, `useTaskLinks`, `BranchToastMessage`, `RecordatoriosGitHub`; API `github/branchService`, `github/branchName`, `github/syncService`, `github/webhookHandler`, `github/webhookSignature`; BD `github`, `tasks` |
 | Archivos de la tarea (línea de Christian) | En una tarea con rama, el icono «View task files» abre «Task files»: los archivos del PR con su estado, +/− y «Open on GitHub», y en ámbar las rutas que otra tarea activa también toca («Also changed by») | `/tasks` · `github/TaskFilesDialog.jsx`; `GET /api/github/tasks/:tid/files` y `/overlaps`; `taskFileService.js`; tabla `TaskFiles` (migración 010) | API `github/taskFileService`, `github/repoService`; `TaskFilesDialog` sin prueba de FE; rutas sin prueba HTTP |
 | IA sobre la rama de la tarea (línea de Christian) | En «Task files», el panel «AI on the branch»: «Audit» (veredicto «No issues», «Needs review» o «Serious issues», con hallazgos), «Generate tests» (propone pruebas, no las ejecuta ni las sube) y «Review PR» (con el PR abierto). Lo hace el servidor de IA local y requiere el permiso «Allow AI analysis» del grupo | `github/TaskAiPanel.jsx`; `POST /api/github/tasks/:tid/audit`, `/generate-tests` y `/review`, `GET …/review`; `services/aiServer/*` | FE `TaskAiPanel`; API `aiServer/client`, `aiServer/taskAi`, `aiServer/prReview`; BD `aiReview` |
-| Revisión automática del PR (línea de Christian) | Al abrir o actualizar el PR de una rama de tarea (no borrador, con «Allow AI analysis» en el grupo), la IA lo revisa en segundo plano y lo publica en GitHub como comentario (COMMENT, nunca aprueba ni bloquea); una revisión por commit en `AiReviews` (migración 011) | webhook `pull_request` → `services/aiServer/prReview.js` | API `aiServer/prReview`; BD `aiReview` (la llamada desde `webhookHandler` no tiene prueba) |
+| Revisión automática del PR (línea de Christian) | Al abrir o actualizar el PR de una rama de tarea (no borrador, con «Allow AI analysis» en el grupo), la IA lo revisa en segundo plano y lo publica en GitHub como comentario (COMMENT, nunca aprueba ni bloquea); una revisión por commit en `AiReviews` (migración 011), que se puede reintentar si falló ([26 nov](#correcciones-del-26-nov-2026)) | webhook `pull_request` → `services/aiServer/prReview.js` | API `aiServer/prReview`; BD `aiReview` (la llamada desde `webhookHandler` no tiene prueba) |
 | CI/CD › Pipeline | Propuesta del pipeline (detectada del repositorio o con IA), vista previa del YAML y subirlo al repositorio; Node.js (npm), Python y sitios estáticos; deploy a GitHub Pages | `/github?tab=cicd` · `cicd/PipelineCard.jsx`, `cicd/PipelineSetup.jsx`; `pipelineService`, `pipelineSpec`, `pipelineAi` | FE `PipelineSetup`, `CicdPanel`; API `github/pipelineService`, `github/pipelineSpec`, `github/pipelineSpec.scripts`, `github/pipelineAi`, `github/cicd.controller`; BD `cicd`; Python `test_pipeline_agent` |
 | CI/CD › Ejecuciones y logs | Lista de ejecuciones con filtros, ejecutar el CI en una rama, re-ejecutar fallidos, cancelar y ver cada job con su log y sus anotaciones (archivo y línea) | `cicd/RunList.jsx`, `cicd/RunDetail.jsx`, `cicd/JobLog.jsx`; `actionsService` | FE `RunList`, `RunControls`; API `github/actionsService`, `github/cicd.controller` |
 | CI/CD › Despliegues | Staging automático; en producción el admin publica o hace rollback, un miembro solicita, el admin aprueba o rechaza y el solicitante cancela | `cicd/DeployPanel.jsx`; `deployService`; tabla `DeployRequests` | FE `DeployPanel`; API `github/deployService`, `github/cicd.controller`; BD `cicd` |
@@ -162,7 +162,7 @@ Se corrigió la limitación «Tareas: al entrar, el orden dice “Priority” si
 
 ## Estado verificado al 3 nov 2026
 
-Foto del cierre de la línea de Pablo (`master`). El estado de `test/e2e` está en [Estado verificado al 25 nov 2026](#estado-verificado-al-25-nov-2026).
+Foto del cierre de la línea de Pablo (`master`). El estado actual, con la línea de Christian ya en `master`, está en [Estado verificado al 26 nov 2026](#estado-verificado-al-26-nov-2026).
 
 | Verificación | Resultado | Cómo reproducirlo |
 |--------------|-----------|-------------------|
@@ -178,7 +178,7 @@ Foto del cierre de la línea de Pablo (`master`). El estado de `test/e2e` está 
 
 Notas:
 - **Fechas:** las cuatro suites, ESLint y el build se volvieron a correr el 5 nov 2026, con las correcciones del 4 nov. La app en marcha y el smoke de UI son del 3 nov.
-- **Comparación:** antes de la Fase 3 había 155 pruebas en dos capas (API y frontend) y 52 fallaban; al cerrar la Fase 3 (6 oct 2026) pasaban 1353; al cerrar la Fase 4 (22 oct 2026), 1914; al cierre de la línea, con las 5 pruebas nuevas de rutas, 1919; con las correcciones del 4 nov, 1960 (5 nov 2026). El 25 nov, en `test/e2e`, 2087.
+- **Comparación:** antes de la Fase 3 había 155 pruebas en dos capas (API y frontend) y 52 fallaban; al cerrar la Fase 3 (6 oct 2026) pasaban 1353; al cerrar la Fase 4 (22 oct 2026), 1914; al cierre de la línea, con las 5 pruebas nuevas de rutas, 1919; con las correcciones del 4 nov, 1960 (5 nov 2026). El 25 nov, en `test/e2e`, se contaron 2087; el 26 nov, con los arreglos y ya en `master`, 2091.
 - **Pruebas de BD:** el archivo de `TEST_DB_ENV_FILE` define `TEST_DB_SERVER`, `TEST_DB_PORT`, `TEST_DB_NAME`, `TEST_DB_USERNAME`, `TEST_DB_PASSWORD` y `TEST_DB_SA_PASSWORD` (o `TEST_DB_MIGRATION_*`). Corren migraciones arriba y abajo y escriben datos: **nunca** contra el contenedor de desarrollo `taskmate-sql`. Cómo levantar el contenedor desechable: [guía de la BD en Docker, sección 6](../07-guias/base-de-datos-docker.md#6-bd-desechable-para-pruebas) (también en el [capítulo de la Fase 3](../08-fases/fase-03-integracion-github/README.md#cómo-reproducir--verificar)).
 - **De las 1246 pruebas de la API, 10 no comprueban nada** si no se corren con `NODE_ENV=integration-test` y una BD: las 5 de `performance.test.js` y las 5 de `integration/analytics-integration.test.js` terminan con `return` antes de su primera aserción.
 - Los scripts del smoke de UI y de las llamadas de solo lectura no forman parte del repositorio. Los defectos que encontraron están en [Limitaciones conocidas](#limitaciones-conocidas).
@@ -194,7 +194,7 @@ En la línea de Pablo:
 | 5 — Testing automático (ciclo de pruebas por tarea) | 9 oct – 23 oct | No se realizará; no se empezó. Tampoco se hará la idea 8 de la Fase 4 (estado del CI en el chip de cada tarea), que dependía de esta fase. El «Generate tests» de la línea de Christian propone pruebas pero no las corre: no es este ciclo |
 | 6 — Integración con SonarQube | 23 oct – 6 nov | **Cancelada en la etapa de plan (SonarQube Cloud), sin código.** El 23 oct se definió el alcance y se escribió y revisó el plan de la Parte 1; Pablo decidió dejarlo en plan y el 3 nov canceló la fase. El plan quedó **fuera del repositorio** ([dónde](#cómo-retomar-el-proyecto)) |
 | 7 — Algoritmo de colisión de archivos (junto con Christian Martínez) | 6 nov – 20 nov | No se realizará en la línea de Pablo. En la de Christian (punto 8) está ⏸️ pospuesta con la base hecha: la tabla `TaskFiles` (migración 010), `findTasksTouchingPaths` y `GET /api/github/tasks/:tid/overlaps` |
-| 8 — Pruebas finales | 20 nov – 27 nov | No se realizará como fase de Pablo. Las pruebas finales de la línea de Christian (punto 9, 20–27 nov) están ⏳ pendientes; la última medición es la del [25 nov](#estado-verificado-al-25-nov-2026) |
+| 8 — Pruebas finales | 20 nov – 27 nov | No se realizará como fase de Pablo. Las pruebas finales de la línea de Christian (punto 9, 20–27 nov) están ⏳ pendientes; la última medición es la del [26 nov](#estado-verificado-al-26-nov-2026) |
 
 La línea de Pablo tampoco implementará las funcionalidades que las fases terminadas dejaron para después: de la Fase 3, sincronizar tareas e issues (4), analytics con datos de GitHub (9), feed de actividad (10) y que la IA abra PRs (11); de la Fase 4, que la IA explique fallos del CI (7), el CI en el chip de la tarea (8), métricas DORA (11) y Dependabot (12). Dos de la Fase 3 llegaron después por la línea de Christian: la **revisión de PR con IA (8)**, con el comando `review-pr`, el webhook de PR y el botón «Review PR» (`c2a6833`), y en parte el **chat con el repositorio (7)**: el chat responde sobre el grupo con un resumen de su repositorio si hay permiso, sin leer el código fuente (`f152a9e`).
 
@@ -208,7 +208,7 @@ El cierre del 3 nov aplica solo a la línea de Pablo. La línea de Christian Mar
 
 ### Qué entró
 
-Los 21 commits de `ea25733..origin/test/e2e` son de Christian (usuario `Sirk02`):
+En `ea25733..origin/test/e2e` hay 21 commits de Christian (usuario `Sirk02`); el resto son la documentación de Pablo del 26 nov y su merge (PR #13):
 
 | Fecha | Qué | Commits |
 |-------|-----|---------|
@@ -225,44 +225,49 @@ Los 21 commits de `ea25733..origin/test/e2e` son de Christian (usuario `Sirk02`)
 
 ### Dónde vive
 
-- **TaskMate:** en `origin/test/e2e` (`50f77da`), la rama con lo más actualizado. **Todavía no está en `master`:** `origin/master` sigue en `ea25733` (PR #6, 5 nov) aunque el merge `fea7541` diga «into master», y el `master` local está en `56f7136`. Falta fusionarla.
+- **TaskMate:** en `master` desde el 26 nov 2026. Entró por `test/e2e` (`50f77da`, más la documentación y las [correcciones del 26 nov](#correcciones-del-26-nov-2026)); hasta entonces `origin/master` seguía en `ea25733` (PR #6, 5 nov), aunque el merge `fea7541` dijera «into master».
 - **Ramas de Christian en `origin`** (su contenido está en `test/e2e`): `feature/linea-christian`, `perf/app`, `feature/ai-server-link`, `feature/generate-tests`, `feature/ai-pr-review` y `feature/chat-assistant`. Los 3 últimos commits de `feature/chat-assistant` no son los mismos: entraron en `test/e2e` como `1074adc`, `ce49a94` y `d148763`.
 - **Servidor de IA local:** repo privado `taskmate-ai-server` (usuario `Sirk02`), `main` en `19ea7ef`.
 
-### Cifras al 25 nov 2026
+### Cifras al 26 nov 2026
 
-| Qué | Al cierre (3–5 nov, `master`) | Al 25 nov (`test/e2e`) |
-|-----|-------------------------------|------------------------|
-| Pruebas en verde | 1960 | **2087** |
+| Qué | Al cierre (3–5 nov, `master`) | Al 26 nov (`master`) |
+|-----|-------------------------------|----------------------|
+| Pruebas en verde | 1960 | **2091** |
 | Rutas REST | 99 | **110**: 6 nuevas por tarea en `/api/github/tasks/:tid`, 4 en `/api/deploy` y el webhook de Vercel |
 | WebSockets | 3 | 3 (`/chat`, `/insights` y `/events`) |
 | Tablas de SQL Server | 24 | **29**: `Deployments`, `DeploymentWebhookDeliveries` y `GroupDeployTargets` (009), `TaskFiles` (010) y `AiReviews` (011) |
 | Migraciones | 001–008 | **001–011**, todas con `.down.sql`; siguen los 2 triggers de la 006 |
 | BD del servidor de IA local | — | Postgres 17 + pgvector con 7 tablas propias (no cuentan en las 29) |
 
-### Estado verificado al 25 nov 2026
+<a id="estado-verificado-al-25-nov-2026"></a>
+
+### Estado verificado al 26 nov 2026
+
+Medido el 26 nov 2026 sobre lo que se fusionó en `master`: `test/e2e` con las [correcciones del 26 nov](#correcciones-del-26-nov-2026).
 
 | Verificación | Resultado | Cómo reproducirlo |
 |--------------|-----------|-------------------|
-| Pruebas de la API (Jest, GitHub simulado) | **1322/1322**, 54 suites (nuevas: `deploy/*`, `aiServer/*`, `middleware/cors` y `github/taskFileService`) | `cd taskmate-api && npm test` |
+| Pruebas de la API (Jest, GitHub simulado) | **1324/1324**, 54 suites (nuevas: `deploy/*`, `aiServer/*`, `middleware/cors` y `github/taskFileService`; el 26 nov, +1 en `deploy/deployWebhookHandler` y +1 en `aiServer/prReview`) | `cd taskmate-api && npm test` |
 | Pruebas del frontend | **438/438**, 36 suites (nuevas: `ChatPageStreaming`, `TaskAiPanel`, `ChatProjectInfo` y `NavGroupSelector`; se borró `ChatProjectSelector`) | `CI=true npm test -- --watchAll=false` (desde la raíz) |
 | Pruebas del servicio Python del chat (pytest, sin red) | **210/210**, 8 archivos (nuevos: `test_local_provider` y `test_knowledge`) | `cd taskmate-api/mcp && source venv/bin/activate && python -m pytest` |
-| Pruebas de BD | **117/117**, 10 suites (nueva: `aiReview.dbtest.js`, migración 011) | `cd taskmate-api && TEST_DB_ENV_FILE=<archivo con TEST_DB_*> npm run test:db` |
-| **Total de pruebas** | **2087 pasando, 0 fallando** | |
-| ESLint | **1 problema**: `testing-library/render-result-naming-convention` en `src/components/__tests__/NavGroupSelector.test.jsx:30` (al cierre, 0) | `npx eslint src --ext .js,.jsx` (desde la raíz) |
-| Build, app en marcha y smoke de UI | No se volvieron a correr el 25 nov | |
+| Pruebas de BD | **119/119**, 10 suites (nueva: `aiReview.dbtest.js`, migración 011, con +2 el 26 nov), en un SQL Server desechable | `cd taskmate-api && TEST_DB_ENV_FILE=<archivo con TEST_DB_*> npm run test:db` |
+| **Total de pruebas** | **2091 pasando, 0 fallando** | |
+| ESLint | **0 problemas** (el 25 nov había 1, en `NavGroupSelector.test.jsx`; [corregido el 26 nov](#correcciones-del-26-nov-2026)) | `npx eslint src --ext .js,.jsx` (desde la raíz) |
+| Build, app en marcha y smoke de UI | No se volvieron a correr después del cierre | |
 | Pruebas del servidor de IA local | 87 funciones `test_` en su repo; no se corrieron (el clon no tiene venv) | En el repo `taskmate-ai-server` |
 | Con servicios reales | No probado: el webhook con una cuenta real de Vercel ni la publicación de la revisión con una App que tenga «Pull requests: Read and write» | |
 
 Notas:
-- **Frente a `ea25733`:** API +76 pruebas, frontend +15, Python +33 y BD +3.
+- **Frente a `ea25733`:** API +78 pruebas, frontend +15, Python +33 y BD +5.
+- **Las 2087 del 25 nov:** las 117 de BD eran el conteo de las pruebas del código, no una corrida. La suite de BD de esta línea se corrió por primera vez el 26 nov, contra un SQL Server desechable: 117 + las 2 nuevas = 119, todas en verde.
 - **Sin red:** `mcp/tests/conftest.py` fija `LLM_PROVIDER=groq`, `AI_SERVER_URL` vacío y `LLM_STREAM_CHAT=1` para que un `.env` local no se meta en las pruebas. Ninguna prueba llama de verdad a Groq, Ollama, GitHub ni al servidor de IA local; dos de Python conectan a `127.0.0.1:9` para simular un servicio caído.
-- **Como en el cierre, 10 de las 1322 pruebas de la API no comprueban nada** fuera de integración.
+- **Como en el cierre, 10 de las 1324 pruebas de la API no comprueban nada** fuera de integración.
 - Lo nuevo que no tiene prueba está en [Limitaciones › Pruebas](#pruebas).
 
 ### Estado de la línea de Christian
 
-| Punto | Qué | Estado al 25 nov |
+| Punto | Qué | Estado al 26 nov |
 |-------|-----|------------------|
 | 1–2 | Servidor de IA local, modelo de datos y comandos | ✅ Completo |
 | 3 | Integración con Vercel / AWS | ✅ Solo monitoreo de Vercel; AWS sin implementar |
@@ -275,11 +280,27 @@ Los fallos y límites de lo nuevo están en [Limitaciones conocidas](#limitacion
 
 ---
 
+## Correcciones del 26 nov 2026
+
+Antes de fusionar `test/e2e` en `master` se corrigieron tres limitaciones de la línea de Christian (rama `fix/christian-bugs`). Ya no son limitaciones:
+
+| Qué | Antes | Ahora |
+|-----|-------|-------|
+| El webhook de Vercel podía tumbar la API | El handler no atrapaba los errores de `beginDelivery`: un error de BD al reclamar la entrega dejaba la petición sin respuesta y, con Node 24, terminaba el proceso | `createVercelWebhookHandler` envuelve todo (`handleVercelWebhook`) en un try/catch, como `createWebhookHandler` de GitHub: ese error responde 500 `INTERNAL_ERROR`. Se corrigieron también sus dos comentarios desactualizados (la clave es primero `body.id`; tras reclamar siempre responde 200, así que Vercel no reintenta) |
+| Una revisión con IA fallida bloqueaba ese commit | `UNIQUE (tid, head_sha)` sin reintento: una revisión `failed`, o `pending` porque el proceso se cayó, no se repetía ni con «Review PR». La ruta manual, con `AI_SERVER_URL` vacío, dejaba una fila `failed` | `claim()` intenta `reclaim()` si el commit ya tiene fila: un `UPDATE` condicional vuelve a `pending` una fila `failed` o una `pending` de más de 15 minutos (`STALE_PENDING_MINUTES`). Una `done` o una `pending` reciente siguen sin repetirse. Se reintenta con «Review PR» o con el siguiente webhook del mismo commit. Además, `reviewPullRequest` comprueba que haya `AI_SERVER_URL` antes de reclamar y, si falta, responde 503 `AI_SERVER_DISABLED` sin dejar fila |
+| ESLint ya no daba 0 | 1 error en `NavGroupSelector.test.jsx:30` (`testing-library/render-result-naming-convention`) | La prueba desestructura el resultado de `renderSelector`. ESLint: 0 problemas |
+
+- **Sigue igual:** una entrega de Vercel que falla después de reclamarla no se reintenta ([Monitoreo de Vercel](#monitoreo-de-vercel)), y la lista de archivos no se guarda al fusionar el PR ([Archivos por tarea](#archivos-por-tarea)).
+- **Código:** `taskmate-api/services/deploy/deployWebhookHandler.js`, `taskmate-api/models/aiReview.model.js`, `taskmate-api/services/aiServer/prReview.js` y `src/components/__tests__/NavGroupSelector.test.jsx`.
+- **Pruebas:** 1 nueva en `tests/deploy/deployWebhookHandler.test.js` (error de BD al reclamar → 500), 1 en `tests/aiServer/prReview.test.js` (sin `AI_SERVER_URL` no reclama) y 2 de BD en `tests/db/aiReview.dbtest.js` (reclamar de nuevo una `failed` y una `pending` vieja). Todas pasan (26 nov 2026): 2091 en total.
+
+---
+
 ## Limitaciones conocidas
 
-Las del cierre se verificaron contra el código el 3 nov 2026 (archivo y línea de `master`, `56f7136`) y se revisaron otra vez el 25 nov 2026 contra `test/e2e` (`50f77da`), con las líneas actualizadas. Las filas 🆕 son de lo que entró después del cierre (línea de Christian). «Según el código» marca lo que se dedujo leyendo el código y no se reprodujo. La línea de Pablo no las corregirá; cada una tiene su entrada en [Pendientes (TODO)](#pendientes-todo).
+Las del cierre se verificaron contra el código el 3 nov 2026 (archivo y línea de `master`, `56f7136`) y se revisaron otra vez el 25 nov 2026 contra `test/e2e` (`50f77da`), con las líneas actualizadas; el 26 nov se quitaron las tres que se corrigieron. Las filas 🆕 son de lo que entró después del cierre (línea de Christian). «Según el código» marca lo que se dedujo leyendo el código y no se reprodujo. La línea de Pablo no las corregirá; cada una tiene su entrada en [Pendientes (TODO)](#pendientes-todo).
 
-Ya no están aquí las que se arreglaron: las tres rutas del cierre, el panel de analytics y el orden de las tareas (4 nov), en [Correcciones del cierre](#correcciones-del-cierre-3-nov-2026). Con la línea de Christian (`d148763`, `f152a9e`) también se resolvieron «Grupos: el grupo seleccionado no muestra sus datos» (ya no hay botón «Use»: el grupo guardado carga sus miembros y roles) y el `generate_stream` sin uso (el chat ahora responde en streaming).
+Ya no están aquí las que se arreglaron: las tres rutas del cierre, el panel de analytics y el orden de las tareas (4 nov), en [Correcciones del cierre](#correcciones-del-cierre-3-nov-2026). Con la línea de Christian (`d148763`, `f152a9e`) también se resolvieron «Grupos: el grupo seleccionado no muestra sus datos» (ya no hay botón «Use»: el grupo guardado carga sus miembros y roles) y el `generate_stream` sin uso (el chat ahora responde en streaming). Las tres del 26 nov (el webhook de Vercel que podía tumbar la API, la revisión fallida que bloqueaba el commit y ESLint) están en [Correcciones del 26 nov 2026](#correcciones-del-26-nov-2026).
 
 ### Interfaz
 
@@ -321,7 +342,7 @@ Ya no están aquí las que se arreglaron: las tres rutas del cierre, el panel de
 | 20 rutas REST sin llamada desde la interfaz | `GET /api/tasks/:id`, `GET /api/nodes/:id`, `GET /api/edges/:eid`, `GET /api/groups/:gid/roles` (duplica `GET /api/grouproles/groups/:gid/roles`), 5 de `/api/usergrouproles`, 10 de `/api/analytics` (todas salvo `dashboard`) y `POST /api/utils/populate-assignments/:groupId` (siembra asignaciones aleatorias de demo). La mayoría tiene pruebas de API. Las 10 rutas autenticadas nuevas sí tienen llamada | Marcarlas como «solo API» en una referencia de la API, o quitarlas; quitar la duplicada |
 | Cualquier miembro vacía completadas y papelera | `DELETE /api/completados/:gid` y `DELETE /api/delete/:gid` solo exigen ser miembro (`complete.controller.js:17`, `delete.controller.js:17`) | Restringirlo al admin |
 | Código muerto | `publishToRepo` (`services/realtime.js:172`) solo lo usa su prueba; la UI manda `?uid=` a `/api/groups/user-groups` (`GroupContext.jsx:54`) y el servidor lo ignora; 🆕 `LIMITS.analysisInstructions` (500, `src/constants/limits.js:9`) ya no lo usa el chat | Quitarlo |
-| Comentarios del código que ya no son ciertos 🆕 | `deployWebhookHandler.js:81-82` (la clave es primero `body.id`, no el hash) y `:94-95` («Vercel retries on a non-2xx», pero tras reclamar siempre responde 200); `pullRequestProcessor.js:66-67` (los archivos se registran después de limpiar la rama); `github.controller.js:161-162`, `taskFileService.js:7-8` y `TaskFilesDialog.jsx:204-205` prometen el registro automático al fusionar | Corregirlos |
+| Comentarios del código que ya no son ciertos 🆕 | `pullRequestProcessor.js:66-67` (los archivos se registran después de limpiar la rama); `github.controller.js:161-162`, `taskFileService.js:7-8` y `TaskFilesDialog.jsx:204-205` prometen el registro automático al fusionar | Corregirlos |
 | Dos `getDeployments` distintos 🆕 | `src/api/deploy.js` (Vercel) y `src/api/github.js` (GitHub Pages, Fase 4) exportan el mismo nombre para cosas distintas | Renombrar uno |
 
 ### Base de datos
@@ -373,11 +394,10 @@ Ya no están aquí las que se arreglaron: las tres rutas del cierre, el panel de
 
 | Limitación | Qué pasa | Cómo se resolvería |
 |------------|----------|--------------------|
-| Una revisión fallida bloquea ese commit 🆕 | `AiReviews` tiene `UNIQUE (tid, head_sha)` y no hay reintento ni caducidad (`aiReview.model.js:9-26`): una revisión `failed`, o `pending` porque el proceso se cayó, no se repite ni con «Review PR». La ruta manual no comprueba `AI_SERVER_URL` antes de reclamar, así que con el servidor apagado o caído deja una fila `failed` (según el código). Solo un commit nuevo vuelve a revisar | Permitir reintentar las `failed` y vencer las `pending`; comprobar el servidor antes de reclamar |
 | Códigos de error sin traducir 🆕 | `githubUtils.js` no tiene `AI_SERVER_*`, `TASK_NO_BRANCH`, `NOTHING_TO_REVIEW` ni `NO_OPEN_PR`: el panel solo dice «Could not audit the branch.», «Could not generate the tests.» o «Could not review the pull request.», y una revisión guardada que falló muestra el código crudo («The last review failed (AI_SERVER_UNAVAILABLE).») | Agregar esos mensajes a `ERROR_MESSAGES` |
 | Un solo límite para las tres acciones 🆕 | «Audit», «Generate tests» y «Review PR» comparten 5 peticiones por minuto por usuario (`github.controller.js:92`) | Límites separados, si hace falta |
 | Diffs grandes dan un error genérico 🆕 | Según el código: Node no recorta los parches y el servidor de IA local rechaza (422) más de 200 000 caracteres o 300 archivos; la API responde `AI_SERVER_BAD_REQUEST` con «The AI server rejected the request.» | Recortar o avisar antes de mandar |
-| El texto del permiso no menciona el código 🆕 | El texto de «Allow AI analysis» dice «The source code is NEVER read» (`RepositoryPanel.jsx:39-40`), pero ese mismo permiso habilita «Audit», «Generate tests» y «Review PR» (`taskAi.js:26`, `:57`; `prReview.js:87`), que mandan el diff (el código) al servidor de IA local | Cambiar el texto o pedir un permiso aparte para estas acciones |
+| El texto del permiso no menciona el código 🆕 | El texto de «Allow AI analysis» dice «The source code is NEVER read» (`RepositoryPanel.jsx:39-40`), pero ese mismo permiso habilita «Audit», «Generate tests» y «Review PR» (`taskAi.js:26`, `:57`; `prReview.js:96`), que mandan el diff (el código) al servidor de IA local | Cambiar el texto o pedir un permiso aparte para estas acciones |
 | Solo la revisión de PR tapa secretos 🆕 | La API manda los parches sin redactar al servidor de IA local. La revisión publicada tapa con `***` los secretos que encuentran las reglas, pero la salida de «Audit» (hallazgos «other» del modelo) y de «Generate tests» no pasa por ese filtro y la ven los miembros del grupo | Aplicar el mismo filtro a esas salidas |
 | Comentarios en línea que se pierden 🆕 | Si GitHub rechaza (422) un comentario en línea, la revisión se publica sin ellos y esos hallazgos quedan solo en `result_json` | Pasarlos al cuerpo de la revisión |
 | Publicar exige «Pull requests: Read and write» 🆕 | Es opcional en la GitHub App; sin él la revisión se guarda como `no_permission`. No se confirmó si la App de desarrollo (`taskmate-dev-pablop150`) lo tiene, ni se probó la publicación de punta a punta | Aceptar el permiso en la instalación y probarlo |
@@ -389,7 +409,6 @@ Ya no están aquí las que se arreglaron: las tres rutas del cierre, el panel de
 
 | Limitación | Qué pasa | Cómo se resolvería |
 |------------|----------|--------------------|
-| El webhook puede tumbar la API 🆕 | El handler de Vercel no envuelve `beginDelivery` en try/catch (`deployWebhookHandler.js:87-91`), a diferencia del de GitHub. Express 4 no atrapa la promesa rechazada y no hay `unhandledRejection`: un error de BD al reclamar la entrega deja la petición sin respuesta y, con Node 24, termina el proceso (reproducido en una prueba aislada con el modelo simulado, no contra la API real) | Un try/catch como el de `createWebhookHandler` |
 | Una entrega fallida no se reintenta 🆕 | Tras reclamar la entrega siempre responde 200 (también `failed` y `timeout`), así que Vercel no reintenta, y un reenvío con el mismo id responde `duplicate` aunque haya fallado. El fallo solo queda en `DeploymentWebhookDeliveries` | Responder 5xx al fallar y dejar reclamar de nuevo las `failed`, como en GitHub |
 | No probado con una cuenta real de Vercel 🆕 | El código supone la forma del payload (`body.id`, `createdAt`, `project.id`, `meta.githubCommitRef`…) y los eventos `deployment.building` y `deployment.ready`; solo hay pruebas con payloads simulados | E2E con un proyecto real (túnel público a `:9000`) |
 | No se comprueba que el proyecto sea del grupo 🆕 | Vincular no consulta a Vercel: cualquier admin puede vincular un Project ID libre con formato válido y desde entonces recibe sus despliegues (el secreto del webhook es uno global). Solo se impide que un proyecto esté en dos grupos | Validar el proyecto con un token de Vercel del grupo |
@@ -414,7 +433,6 @@ Ya no están aquí las que se arreglaron: las tres rutas del cierre, el panel de
 | Componentes sin pruebas de frontend | `CalendarView.jsx`, `BlockDiagram.jsx`, `flow/CustomNode.jsx`, `flow/FloatingEdge.jsx`, `Register.jsx`, `Navbar.jsx` (su `NavGroupSelector` sí tiene), `AssignRolesDialog.jsx`, `hooks/useGroupRoles.js` y 🆕 `deploy/DeploymentPanel.jsx` y `github/TaskFilesDialog.jsx` no tienen una prueba que los renderice (`staticGuards.test.js` solo revisa el texto de `BlockDiagram.jsx`; `AppLegacyRoutes.test.jsx` prueba las rutas de registro e hitos con esas pantallas simuladas). El calendario y las interacciones de los hitos solo se prueban a nivel de acceso en la API, y las pruebas de `AnalyticsDashboard` cubren el aviso, el filtro de rol y el respaldo local, pero no las recomendaciones que llegan de la IA | Pruebas con Testing Library para cada uno |
 | Lo nuevo sin pruebas de rutas ni de BD 🆕 | No hay pruebas HTTP ni de autorización de `/api/deploy` ni de las 6 rutas nuevas de `/api/github/tasks/:tid` (`github.controller.test.js` solo prueba `/branch`); `webhookHandler.test.js` no prueba la llamada a la revisión de PR; ninguna prueba de BD ejecuta el SQL de `deployment.model.js` ni el de `TaskFiles`, y `migrations.dbtest.js` recorre 001–011 sin comprobar las tablas nuevas | Pruebas con supertest y de BD para cada una |
 | Pruebas del servidor de IA local sin correr 🆕 | Su repo tiene 87 funciones de prueba; el 25 nov no se corrieron | Correrlas en su venv |
-| ESLint ya no da 0 🆕 | 1 error en `NavGroupSelector.test.jsx:30` (`testing-library/render-result-naming-convention`) | Desestructurar el resultado de `render` |
 | 10 pruebas de API que no comprueban nada fuera de integración | Ver [Estado verificado](#estado-verificado-al-3-nov-2026) | Convertirlas en `describe.skip` / `it.skip` condicionales y documentar cómo correrlas |
 | Rendimiento sin medir | Las mejoras de la Fase 2 son estimaciones; no hay medición «antes», ni Lighthouse del bundle, ni pruebas de carga (por ejemplo, del *heartbeat* del WebSocket con clientes colgados) | Medir antes y después con la misma carga |
 
@@ -422,7 +440,7 @@ Ya no están aquí las que se arreglaron: las tres rutas del cierre, el panel de
 
 ## Pendientes (TODO)
 
-Lista única y priorizada, que junta los pendientes de los capítulos de las Fases 1–4, lo que encontró la verificación del cierre y, con 🆕, lo que vino después del cierre (revisado el 25 nov 2026). **La línea de Pablo no hará ninguno.** «(opcional)» marca lo que no corrige un defecto.
+Lista única y priorizada, que junta los pendientes de los capítulos de las Fases 1–4, lo que encontró la verificación del cierre y, con 🆕, lo que vino después del cierre (revisado el 25 nov 2026; el 26 nov se cerraron los tres de las [correcciones del 26 nov](#correcciones-del-26-nov-2026) y la fusión en `master`). **La línea de Pablo no hará ninguno.** «(opcional)» marca lo que no corrige un defecto.
 
 ### Prioridad alta: seguridad y operación
 - [x] Aplicar la migración 008 en `taskmate-sql` antes de arrancar la API con el orden de tareas del 4 nov: `npm run db:migrate` como SA ([cómo](#orden-de-las-tareas-4-nov-2026)). Aplicada el 5 nov 2026, con respaldo previo.
@@ -433,7 +451,7 @@ Lista única y priorizada, que junta los pendientes de los capítulos de las Fas
 - [ ] Protección de producción para quien tiene escritura directa en GitHub (reglas del entorno `github-pages` o de la rama; configuración de cada grupo).
 - [ ] Contenedor de desarrollo `taskmate-sql`: aplicar el login de mínimo privilegio y el `DENY` sobre `dbo.SchemaMigrations`, que solo tienen los contenedores creados con el `setup-db.sh` actual (pendiente de la Fase 3; no se reverificó al cierre).
 - [ ] 🆕 Confirmar que `taskmate-sql` tiene las migraciones 009–011, o aplicarlas con `npm run db:migrate`.
-- [ ] 🆕 Webhook de Vercel: atrapar los errores de `beginDelivery` para que un fallo de BD no tumbe la API.
+- [x] 🆕 Webhook de Vercel: atrapar los errores de `beginDelivery` para que un fallo de BD no tumbe la API ([corregido el 26 nov 2026](#correcciones-del-26-nov-2026)).
 - [ ] 🆕 `Deployments.repo_id`: `ON DELETE SET NULL` (o vaciarlo antes de borrar) para que desinstalar la App o quitar un repositorio no quede `ignored`.
 - [ ] 🆕 Vercel: comprobar que el proyecto es del grupo al vincularlo.
 - [ ] 🆕 Tapar secretos también en la salida de «Audit» y «Generate tests».
@@ -451,7 +469,7 @@ Lista única y priorizada, que junta los pendientes de los capítulos de las Fas
 - [ ] Restringir al admin el vaciado de completadas y papelera.
 - [ ] Volver a subir el pipeline en `taskmate-fase3-demo` (plantilla v1) y en cualquier repositorio con v1.
 - [ ] 🆕 Guardar la lista de archivos al fusionar el PR y refrescarla con commits nuevos ([Archivos por tarea](#archivos-por-tarea)).
-- [ ] 🆕 Poder volver a revisar un commit cuya revisión falló o quedó `pending`.
+- [x] 🆕 Poder volver a revisar un commit cuya revisión falló o quedó `pending` ([corregido el 26 nov 2026](#correcciones-del-26-nov-2026)).
 - [ ] 🆕 Mensajes para `AI_SERVER_*`, `TASK_NO_BRANCH`, `NOTHING_TO_REVIEW`, `NO_OPEN_PR` y el `CONFLICT` de Vercel.
 - [ ] Chat: reabrir la compuerta (o responder con un error) al reintentar tras `SAVE_FAILED`.
 - [ ] 🆕 Chat: refrescar el contexto del proyecto, opción «sin grupo», responder al `plan_request` sin grupo y seleccionar el grupo creado.
@@ -466,7 +484,7 @@ Lista única y priorizada, que junta los pendientes de los capítulos de las Fas
 - [ ] Pruebas de carga en un entorno de staging de TaskMate (Fase 1) (opcional).
 - [ ] 🆕 Pruebas HTTP y de autorización de `/api/deploy` y de las 6 rutas nuevas de tareas; de BD para `deployment.model` y `TaskFiles`; de `webhookHandler` → revisión de PR; y que `migrations.dbtest.js` compruebe las tablas de 009–011.
 - [ ] 🆕 Correr las 87 pruebas del servidor de IA local.
-- [ ] 🆕 Dejar ESLint en 0 (`NavGroupSelector.test.jsx:30`).
+- [x] 🆕 Dejar ESLint en 0 (`NavGroupSelector.test.jsx:30`) ([corregido el 26 nov 2026](#correcciones-del-26-nov-2026)).
 - [ ] 🆕 Pruebas finales de la línea de Christian (punto 9, 20–27 nov).
 
 ### Prioridad baja: limpieza
@@ -499,7 +517,7 @@ Lista única y priorizada, que junta los pendientes de los capítulos de las Fas
 - [ ] Otros destinos de deploy (APIs, contenedores) y `yarn`/`pnpm` nativos (Fase 4).
 - [ ] Revisar el workflow con actionlint cuando conozca `concurrency.queue` (hoy lo marca como falso positivo) (Fase 4).
 - [ ] CI propio para el repositorio de TaskMate (Fase 1: se había pensado como parte de la Fase 4, que terminó siendo CI/CD para los repositorios de los grupos).
-- [ ] 🆕 Fusionar `test/e2e` en `master`.
+- [x] 🆕 Fusionar `test/e2e` en `master` (26 nov 2026).
 - [ ] 🆕 AWS (hoy solo se acepta el proveedor) y desplegar desde la app.
 - [ ] 🆕 Indexar el repositorio de cada grupo en el servidor de IA local desde TaskMate.
 - [ ] 🆕 Chat: un mínimo de tareas por proveedor y menos llamadas al modelo por mensaje.
@@ -546,14 +564,14 @@ El admin de «Demo CI/CD» y de «CI/CD en vivo» es el usuario **Admin** de Pab
 
 ## Cómo retomar el proyecto
 
-1. **Leer el estado:** esta página (sobre todo [después del cierre](#después-del-cierre-línea-de-christian-hasta-el-25-nov-2026)), el [índice de la documentación](../README.md), la [calendarización](calendarizacion.md), [09-linea-christian](../09-linea-christian/README.md) y el [README de la raíz](../../README.md) (instalación y puertos). Para GitHub y CI/CD, las guías de la [GitHub App](../07-guias/guia-github-app.md) y de [CI/CD](../07-guias/guia-cicd.md).
-2. **Levantar el entorno:** partir de `test/e2e` (lo más actualizado; `master` no tiene la línea de Christian). `npm install` en la raíz (instala también `taskmate-api`); crear el venv del servicio Python del chat en `taskmate-api/mcp` e instalar `requirements.txt` (con un Python con soporte, ver [limitaciones](#dependencias-y-entorno)); copiar `taskmate-api/.env.example` al `.env` de la **raíz**, llenarlo (trae `LLM_PROVIDER=groq`, el respaldo; para el modelo local, `LLM_PROVIDER=ollama` con Ollama en marcha) y agregar `VERCEL_WEBHOOK_SECRET` si se usa Vercel; crear el contenedor `taskmate-sql` con la [guía de la BD en Docker](../07-guias/base-de-datos-docker.md) y aplicar las migraciones que falten con `npm run db:migrate` (una imagen anterior al 18 nov no trae 009–011; [§5 de la guía](../07-guias/base-de-datos-docker.md#5-migrar-una-bd-que-ya-existía)). En macOS, `./start.sh` levanta SQL Server (Docker o Podman), el servicio Python del chat y la API; el frontend se levanta con `npm start` y los webhooks de GitHub llegan con smee. En Linux con Podman, `scripts/local-up.sh` levanta todo, también Ollama, el servidor de IA local (si está en `../ai-server`) y las migraciones; `scripts/local-down.sh` lo detiene. Sin `AI_SERVER_URL` la IA sobre el código queda apagada.
-3. **Confirmar la línea base:** correr las cuatro suites y ESLint ([Estado verificado al 25 nov](#estado-verificado-al-25-nov-2026)); en `test/e2e` deben dar 2087 pruebas en verde (en `master`, 1960).
-4. **Elegir el trabajo:** empezar por la prioridad alta de [Pendientes (TODO)](#pendientes-todo). Para cada fase nueva, seguir el flujo de siempre (ideas → plan → código), la [plantilla de capítulo](../08-fases/_plantilla-fase.md) y una rama nueva desde `test/e2e` (o desde `master` cuando se fusione); las ramas vacías de las fases ya se borraron. Las fechas planificadas de la tabla oficial no se modifican: las nuevas fechas se registran como fechas reales.
+1. **Leer el estado:** esta página (sobre todo [después del cierre](#después-del-cierre-línea-de-christian-hasta-el-25-nov-2026) y las [correcciones del 26 nov](#correcciones-del-26-nov-2026)), el [índice de la documentación](../README.md), la [calendarización](calendarizacion.md), [09-linea-christian](../09-linea-christian/README.md) y el [README de la raíz](../../README.md) (instalación y puertos). Para GitHub y CI/CD, las guías de la [GitHub App](../07-guias/guia-github-app.md) y de [CI/CD](../07-guias/guia-cicd.md).
+2. **Levantar el entorno:** partir de `master` (desde el 26 nov 2026 tiene la línea de Christian y las correcciones del 26 nov). `npm install` en la raíz (instala también `taskmate-api`); crear el venv del servicio Python del chat en `taskmate-api/mcp` e instalar `requirements.txt` (con un Python con soporte, ver [limitaciones](#dependencias-y-entorno)); copiar `taskmate-api/.env.example` al `.env` de la **raíz**, llenarlo (trae `LLM_PROVIDER=groq`, el respaldo; para el modelo local, `LLM_PROVIDER=ollama` con Ollama en marcha) y agregar `VERCEL_WEBHOOK_SECRET` si se usa Vercel; crear el contenedor `taskmate-sql` con la [guía de la BD en Docker](../07-guias/base-de-datos-docker.md) y aplicar las migraciones que falten con `npm run db:migrate` (una imagen anterior al 18 nov no trae 009–011; [§5 de la guía](../07-guias/base-de-datos-docker.md#5-migrar-una-bd-que-ya-existía)). En macOS, `./start.sh` levanta SQL Server (Docker o Podman), el servicio Python del chat y la API; el frontend se levanta con `npm start` y los webhooks de GitHub llegan con smee. En Linux con Podman, `scripts/local-up.sh` levanta todo, también Ollama, el servidor de IA local (si está en `../ai-server`) y las migraciones; `scripts/local-down.sh` lo detiene. Sin `AI_SERVER_URL` la IA sobre el código queda apagada.
+3. **Confirmar la línea base:** correr las cuatro suites y ESLint ([Estado verificado al 26 nov](#estado-verificado-al-26-nov-2026)); en `master` deben dar 2091 pruebas en verde y ESLint en 0 (al cierre de la línea de Pablo eran 1960).
+4. **Elegir el trabajo:** empezar por la prioridad alta de [Pendientes (TODO)](#pendientes-todo). Para cada fase nueva, seguir el flujo de siempre (ideas → plan → código), la [plantilla de capítulo](../08-fases/_plantilla-fase.md) y una rama nueva desde `master`; las ramas vacías de las fases ya se borraron. Las fechas planificadas de la tabla oficial no se modifican: las nuevas fechas se registran como fechas reales.
 5. **Fase 6 (SonarQube):** el plan cancelado está **fuera del repositorio**, en la máquina del responsable: `~/taskmate-planes/fase-6/` (`LEEME.md`, el plan de la Parte 1 con sus pasos y su E2E, y la investigación de SonarQube Cloud). Es del 23 oct 2026: hay que volver a verificar los planes y la API de SonarQube Cloud antes de usarlo. Ese plan también incluía corregir la carga de todo el `.env` en el servicio Python del chat.
 6. **Fase 7 (colisión de archivos):** la base ya está en la línea de Christian: `TaskFiles` (migración 010), `findTasksTouchingPaths` y `GET /api/github/tasks/:tid/overlaps`, con «Also changed by» en «Task files». La idea anterior de no guardar los archivos (se descartó `PullRequestFiles`) quedó reemplazada por `TaskFiles`. Antes hay que arreglar que la lista no se guarda al fusionar el PR ([limitación](#archivos-por-tarea)).
 7. **Fase 5 (testing por tarea):** puede partir de las ejecuciones y eventos de la Fase 4 (`/events`, `RepoPipelines`) para mostrar el CI en el chip de cada tarea (idea 8 de la Fase 4), y del «Generate tests» de la línea de Christian, que hoy solo propone las pruebas.
 
 ---
 
-**Documento generado:** 3 nov 2026 · **Actualizado:** 25 nov 2026 (después del cierre) · **Autor:** Pablo Pineda
+**Documento generado:** 3 nov 2026 · **Actualizado:** 26 nov 2026 (después del cierre, con `test/e2e` fusionada en `master`) · **Autor:** Pablo Pineda

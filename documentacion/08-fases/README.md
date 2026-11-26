@@ -44,7 +44,7 @@ Verde: hecha y en `master` · gris: no se realizará · rojo: cancelada en la et
 
 Todas las fechas son de 2026. Detalle de fechas y ramas: [calendarización](../01-proyecto/calendarizacion.md).
 
-> **Línea de Christian.** Estos capítulos cubren solo la línea de Pablo, que cerró el 3 nov 2026. Christian Martínez siguió con su propia línea (9 puntos, fechas corridas): servidor de IA local, monitoreo de Vercel, archivos por tarea, `audit`, generar pruebas, revisión de PR con IA y el chat sobre el modelo local. Está en la rama `test/e2e`, todavía sin fusionar en `master`. Su registro: [09-linea-christian](../09-linea-christian/README.md).
+> **Línea de Christian.** Estos capítulos cubren solo la línea de Pablo, que cerró el 3 nov 2026. Christian Martínez siguió con su propia línea (9 puntos, fechas corridas): servidor de IA local, monitoreo de Vercel, archivos por tarea, `audit`, generar pruebas, revisión de PR con IA y el chat sobre el modelo local. Entró por la rama `test/e2e` y está en `master` desde el 26 nov 2026. Su registro: [09-linea-christian](../09-linea-christian/README.md).
 
 ## Capítulos y anexos
 
@@ -78,7 +78,7 @@ Cada capítulo abre con «En una frase» y un «Resumen en 1 minuto»; lo demás
 
 - `master` tiene las Fases 1–4 y el cierre de la línea de Pablo (PR #6, `ea25733`, 5 nov 2026). `feature/fase-4-cicd-github-actions`, ya fusionada con el PR #5, se borró.
 - Las ramas vacías `feature/fase-5-testing-automatico`, `feature/fase-6-sonarqube` y `feature/fase-7-colision-archivos` (creadas desde `master` el 6 oct 2026, `fe9d87d`) también se borraron. La Fase 8 nunca tuvo rama.
-- La línea de Christian está en `test/e2e` y en sus ramas de trabajo (`feature/linea-christian` y las que salen de ella), todavía sin fusionar en `master`.
+- La línea de Christian se hizo en `test/e2e` y en sus ramas de trabajo (`feature/linea-christian` y las que salen de ella); `test/e2e` se fusionó en `master` el 26 nov 2026.
 
 ## Diagramas e imágenes
 

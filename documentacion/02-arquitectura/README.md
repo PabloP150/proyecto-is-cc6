@@ -2,7 +2,7 @@
 
 **En una frase:** cómo se conectan las piezas de TaskMate (navegador, API, servicio Python del chat, servidor de IA local, SQL Server, GitHub y Vercel), primero en conjunto y después módulo por módulo.
 
-Actualizada el 25 nov 2026 con el código de la rama `test/e2e`, que trae la línea de Christian y todavía no está en `master`.
+Actualizada el 25 nov 2026 con el código de la rama `test/e2e`, que trae la línea de Christian y está en `master` desde el 26 nov 2026, con los [arreglos de ese día](../01-proyecto/cierre-del-proyecto.md#correcciones-del-26-nov-2026).
 
 ```mermaid
 flowchart LR

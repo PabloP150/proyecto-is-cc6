@@ -25,7 +25,7 @@ flowchart LR
     API -.->|"revisión COMMENT<br/>(Pull requests: write)"| GH
 ```
 
-> Complemento del [capítulo de la Fase 3](../08-fases/fase-03-integracion-github/README.md). Código de las Fases 3 y 4 en `master`: Fase 3 en el PR #4 (`183f1cb`) y Fase 4 en el PR #5 (`56f7136`). Desde la Fase 4 (22 oct 2026) la App pide permisos y eventos nuevos ([paso 4](#4-registrar-la-github-app)), las instalaciones existentes deben aceptarlos ([cómo](#aceptar-permisos-nuevos-en-una-instalación-existente)) y «Redirect on update» va **marcado**. La revisión de PR con IA y la lista de archivos por tarea son de la línea de Christian: están en la rama `test/e2e` (todavía no en `master`) y no piden eventos nuevos. Limitaciones conocidas: [cierre de la línea de Pablo y estado](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas).
+> Complemento del [capítulo de la Fase 3](../08-fases/fase-03-integracion-github/README.md). Código de las Fases 3 y 4 en `master`: Fase 3 en el PR #4 (`183f1cb`) y Fase 4 en el PR #5 (`56f7136`). Desde la Fase 4 (22 oct 2026) la App pide permisos y eventos nuevos ([paso 4](#4-registrar-la-github-app)), las instalaciones existentes deben aceptarlos ([cómo](#aceptar-permisos-nuevos-en-una-instalación-existente)) y «Redirect on update» va **marcado**. La revisión de PR con IA y la lista de archivos por tarea son de la línea de Christian: están en `master` desde el 26 nov 2026 y no piden eventos nuevos. Limitaciones conocidas: [cierre de la línea de Pablo y estado](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas).
 
 ---
 
@@ -47,7 +47,7 @@ flowchart LR
 
 ## 1. Antes de empezar
 
-- TaskMate instalado: `npm install`, el venv de Python en `taskmate-api/mcp/venv` y el contenedor `taskmate-sql` ([primer arranque](primer-arranque.md)). La rama con lo más actualizado es `test/e2e`; `master` todavía no trae la línea de Christian.
+- TaskMate instalado: `npm install`, el venv de Python en `taskmate-api/mcp/venv` y el contenedor `taskmate-sql` ([primer arranque](primer-arranque.md)). Desde el 26 nov 2026 `master` ya trae la línea de Christian.
 - Node.js 18+ (la API usa `fetch` nativo), Python 3.9+ y Docker Desktop o Podman (`start.sh` usa Podman si está instalado y responde).
 - Una cuenta de GitHub y un **repositorio de prueba con al menos un commit** (en un repositorio vacío no se pueden crear ramas: `REPO_EMPTY`).
 - El modelo de IA de TaskMate: Gemma 4 en Ollama (`LLM_PROVIDER=ollama`; `scripts/local-up.sh` lo levanta). Solo si usas Groq como respaldo en la nube (`LLM_PROVIDER=groq`), una API key de Groq.
@@ -148,7 +148,7 @@ Aun así, la App debe tener al menos los permisos de la tabla. Si una instalaci�
 
 ### Revisión de PR con IA (opcional)
 
-Es de la línea de Christian (rama `test/e2e`). TaskMate le pide al servidor de IA local una revisión del PR de una tarea, la guarda (una por commit, en `dbo.AiReviews`) y, si la App puede, la publica en GitHub como revisión de tipo **COMMENT**: nunca aprueba ni pide cambios. Detalle: [IA sobre el código](../02-arquitectura/10-ia-sobre-el-codigo.md).
+Es de la línea de Christian (en `master` desde el 26 nov 2026). TaskMate le pide al servidor de IA local una revisión del PR de una tarea, la guarda (una por commit, en `dbo.AiReviews`) y, si la App puede, la publica en GitHub como revisión de tipo **COMMENT**: nunca aprueba ni pide cambios. Detalle: [IA sobre el código](../02-arquitectura/10-ia-sobre-el-codigo.md).
 
 **Cuándo se revisa un PR:**
 - **Sola, por webhook:** con el evento **Pull request** (`opened`, `synchronize`, `ready_for_review` o `reopened`), en segundo plano, sin retrasar la respuesta del webhook.
@@ -158,7 +158,7 @@ Es de la línea de Christian (rama `test/e2e`). TaskMate le pide al servidor de 
 
 | Requisito | Si falta |
 |---|---|
-| `AI_SERVER_URL` y `AI_SERVER_SECRET` en la `.env` ([paso 6](#6-configurar-env)) y el servidor de IA local corriendo | Sin URL, el webhook no revisa nada; con el servidor apagado o el secreto distinto, la revisión de ese commit queda `failed`. El botón falla (`AI_SERVER_DISABLED`, 503, o un error de conexión) y el panel solo dice «Could not review the pull request.» |
+| `AI_SERVER_URL` y `AI_SERVER_SECRET` en la `.env` ([paso 6](#6-configurar-env)) y el servidor de IA local corriendo | Sin URL, el webhook no revisa nada y el botón responde `AI_SERVER_DISABLED` (503) sin reservar el commit. Con el servidor apagado o el secreto distinto, la revisión de ese commit queda `failed` y el panel solo dice «Could not review the pull request.»; con el servidor ya bien, «Review PR» (o el siguiente webhook de ese commit) la vuelve a intentar |
 | «Allow AI analysis» activado por el admin del grupo (pestaña **Repository**) | No hay revisión por webhook y el panel dice «AI analysis is turned off for this project; an admin can turn it on from the GitHub page.» |
 | PR **abierto**, que no sea borrador ni venga de un fork, desde la rama de una tarea (`tm/…`) | No se revisa. Los PR que no son de tarea nunca se revisan |
 | *Pull requests* en **Read and write**, aceptado en la instalación | Ver abajo: se guarda, pero no se publica |
@@ -301,7 +301,7 @@ Otras variables de la línea de Christian, sin relación con la App: `VERCEL_WEB
 
 ## 7. Migrar la BD de desarrollo
 
-El código de `test/e2e` necesita **001–011** (`master` llega a la 008). Vincular y desvincular un repositorio también borran en `dbo.DeployRequests` (007), la lista de tareas lee `created_at` (008), y la línea de Christian agrega los despliegues de Vercel (009), los archivos por tarea (`TaskFiles`, 010) y las revisiones con IA (`AiReviews`, 011). Un contenedor **nuevo** las aplica solo al arrancar (`setup-db.sh`), y `./scripts/local-up.sh` corre `npm run db:migrate` en cada arranque. `./start.sh` no migra: este paso es para un contenedor creado con una imagen anterior. La BD de desarrollo de Pablo tenía 001–008 al 5 nov 2026, con respaldo previo (001–006 el 11 sep, la 007 el 9 oct y la 008 el 5 nov).
+El código de `master` necesita **001–011** desde el 26 nov 2026 (antes de fusionar la línea de Christian llegaba a la 008). Vincular y desvincular un repositorio también borran en `dbo.DeployRequests` (007), la lista de tareas lee `created_at` (008), y la línea de Christian agrega los despliegues de Vercel (009), los archivos por tarea (`TaskFiles`, 010) y las revisiones con IA (`AiReviews`, 011). Un contenedor **nuevo** las aplica solo al arrancar (`setup-db.sh`), y `./scripts/local-up.sh` corre `npm run db:migrate` en cada arranque. `./start.sh` no migra: este paso es para un contenedor creado con una imagen anterior. La BD de desarrollo de Pablo tenía 001–008 al 5 nov 2026, con respaldo previo (001–006 el 11 sep, la 007 el 9 oct y la 008 el 5 nov).
 
 **0. Respaldo recomendado de los triggers.** La migración 006 instala la versión BFS de los triggers de porcentaje, la misma que la BD de desarrollo tenía instalada a mano. Aun así, guarda su definición antes de migrar por si tu BD tiene otra variante:
 
@@ -459,7 +459,7 @@ Este checklist cubre la Fase 3. El recorrido del CI/CD (Fase 4) está en la [gu�
 | `db:migrate` falla con permisos (`CREATE TABLE permission denied`…) | Se ejecutó con el login de la app | Pasar `MIGRATION_DB_USERNAME=sa` y su contraseña (paso 7) |
 | Panel «AI on the branch»: «Not posted on GitHub: the GitHub App needs the “Pull requests: write” permission.» | La App tiene *Pull requests* en *Read-only*, o la instalación no aceptó el cambio | Subir el permiso y aceptarlo ([cómo](#revisión-de-pr-con-ia-opcional)); se publica la revisión del siguiente commit |
 | «Could not review the pull request.» / «Could not audit the branch.» / «Could not generate the tests.» | El panel no traduce los códigos `AI_SERVER_*`, `TASK_NO_BRANCH`, `NOTHING_TO_REVIEW` ni `NO_OPEN_PR`: falta `AI_SERVER_URL`, el servidor de IA local está apagado o el secreto no coincide, la tarea no tiene rama o cambios, o el PR no está abierto | Revisar el log de la API y la `.env` (paso 6); levantar el servidor de IA local |
-| «The last review failed (AI_SERVER_…).» y pedirla otra vez no cambia nada | La revisión de ese commit quedó `failed`: hay una sola por commit | Subir un commit nuevo al PR ([limitaciones](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)) |
+| «The last review failed (AI_SERVER_…).» | La revisión de ese commit quedó `failed`: el servidor de IA local estaba apagado, el secreto no coincidía o el servidor dio error | Corregir la causa y pulsar «Review PR»: desde el 26 nov 2026 se repite sobre el mismo commit, sin subir otro. Una revisión que quedó a medias (`pending`) se puede repetir pasados 15 minutos |
 
 ---
 
@@ -482,4 +482,4 @@ Este checklist cubre la Fase 3. El recorrido del CI/CD (Fase 4) está en la [gu�
 - Seguridad y diseño de la BD: [seguridad y BD de la Fase 3](../08-fases/fase-03-integracion-github/SEGURIDAD-Y-BASE-DE-DATOS.md).
 - Revisión de PR, auditoría y pruebas con IA: [IA sobre el código](../02-arquitectura/10-ia-sobre-el-codigo.md). Levantar el servidor de IA local y el webhook de Vercel: [entorno local](../09-linea-christian/ENTORNO-LOCAL.md).
 
-**Creada:** 11 sep 2026 · **Última actualización:** 25 nov 2026 (línea de Christian en `test/e2e`) · **Autor:** Pablo Pineda
+**Creada:** 11 sep 2026 · **Última actualización:** 26 nov 2026 (línea de Christian fusionada en `master`; la revisión fallida se puede repetir) · **Autor:** Pablo Pineda

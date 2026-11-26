@@ -194,4 +194,4 @@ Un miembro sin rol de líder ve «Team leaders only» en `/analytics`.
 - [Casos de uso: visión general](00-general.md) y [recorridos de usuario](00-recorridos-de-usuario.md).
 - Permisos de CI/CD explicados para el usuario: [guía de CI/CD, «Quién puede hacer qué»](../07-guias/guia-cicd.md#10-quién-puede-hacer-qué).
 - Seguridad de los webhooks y de los secretos compartidos: [seguridad](../02-arquitectura/00-seguridad.md).
-- Limitaciones de permisos (por ejemplo, vaciar la papelera, o una revisión de IA fallida que ya no se repite en ese commit): [cierre de la línea de Pablo y estado](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas).
+- Limitaciones de permisos (por ejemplo, vaciar la papelera): [cierre de la línea de Pablo y estado](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas).

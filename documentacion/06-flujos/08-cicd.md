@@ -188,13 +188,14 @@ sequenceDiagram
 |-----------|--------|
 | 401 `UNAUTHENTICATED` («Invalid webhook signature») | La firma no es válida, falta la cabecera o falta `VERCEL_WEBHOOK_SECRET` |
 | 400 `VALIDATION_ERROR` («Invalid JSON payload») | El cuerpo firmado no es un objeto JSON con `type` de texto |
+| 500 `INTERNAL_ERROR` | La base de datos falló al reclamar la entrega (desde el 26 nov 2026 se atrapa; antes la petición se quedaba sin respuesta) |
 | 200 `duplicate` | Ese id ya se recibió, aunque haya terminado en `failed`: no se reprocesa |
 | 200 `ignored` | No es un evento de despliegue o el proyecto no está vinculado |
 | 200 `processed` | Se guardó, o se descartó por ser más viejo que lo guardado |
 | 200 `failed` | Falló al guardar. El error queda en la bitácora; como la respuesta es 200, Vercel no reintenta |
 | 200 `timeout` | Pasaron 8 s; el procesamiento sigue |
 
-Si la base de datos falla justo al reclamar la entrega, el handler no atrapa el error ([limitaciones conocidas](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)).
+Si la base de datos falla justo al reclamar la entrega, el handler atrapa el error y responde 500 `INTERNAL_ERROR`, como el webhook de GitHub ([correcciones del 26 nov](../01-proyecto/cierre-del-proyecto.md#correcciones-del-26-nov-2026)). Una entrega que falla después de reclamarla sigue sin reintentarse ([limitaciones conocidas](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)).
 
 **Qué ve el usuario en la pestaña si algo falla:**
 

@@ -1,6 +1,6 @@
 # Funcionalidades
 
-**En una frase:** todo lo que un usuario puede hacer en TaskMate con el código actual (rama `test/e2e`, 25 nov 2026), por módulo, con quién puede hacerlo, en qué pantalla y dónde leer más.
+**En una frase:** todo lo que un usuario puede hacer en TaskMate con el código actual (`master`, 26 nov 2026), por módulo, con quién puede hacerlo, en qué pantalla y dónde leer más.
 
 ```mermaid
 flowchart LR
@@ -22,7 +22,7 @@ Cada rol suma lo del anterior: el líder hace todo lo del miembro y el admin, to
 - Lo que puede un miembro también lo pueden el líder y el admin. Detalle por acción: [permisos por rol](../04-casos-de-uso/00-permisos-por-rol.md).
 - **Sistema:** pasa solo, sin que nadie pulse nada.
 - **Textos entre comillas:** son los de la interfaz, que está en inglés desde el 19 nov 2026.
-- **Dónde vive:** lo de la línea de Christian (asistente del chat, archivos por tarea, Vercel, IA sobre el código, selector de grupo del navbar e interfaz en inglés) está en `test/e2e`, todavía no en `master`.
+- **Dónde vive:** lo de la línea de Christian (asistente del chat, archivos por tarea, Vercel, IA sobre el código, selector de grupo del navbar e interfaz en inglés) entró por la rama `test/e2e` y está en `master` desde el 26 nov 2026.
 
 ## Tabla de funcionalidades
 

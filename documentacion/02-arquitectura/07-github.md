@@ -53,7 +53,7 @@ Términos:
 | Purga diaria de entregas de webhooks | `setInterval` | `taskmate-api/server.js` |
 | Base de datos | SQL Server 2019 en Docker | 6 tablas de la migración 002 y `TaskFiles` de la 010 ([detalle](../03-base-de-datos/07-github.md)); `AiReviews` (011) es del [módulo 10](../03-base-de-datos/10-ia-sobre-el-codigo.md) |
 
-Los archivos por tarea y la IA sobre el código son de la línea de Christian y están en la rama `test/e2e` (todavía no en `master`).
+Los archivos por tarea y la IA sobre el código son de la línea de Christian: entraron por la rama `test/e2e` y están en `master` desde el 26 nov 2026.
 
 ## Cómo se conectan
 

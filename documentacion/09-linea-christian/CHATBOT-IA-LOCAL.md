@@ -127,7 +127,7 @@ Cifras de la rama al hacer este cambio (9 oct, sobre `fe9d87d`), no las actuales
 
 Lo que aportó este cambio (`921f8ed`): `test_local_provider.py` (8; hoy 9), `test_knowledge.py`
 (6; hoy 7), `test_server.py` (+2), el streaming en las pruebas de `UserSession` (+4) y
-`ChatPageStreaming.test.jsx` (6). Medido el 25 nov 2026 en `test/e2e`: Python 210, API 1322 y
+`ChatPageStreaming.test.jsx` (6). Medido el 26 nov 2026, con los arreglos de ese día (todo en `master` desde el 26 nov): Python 210, API 1324 y
 frontend 438, todas en verde.
 
 Las pruebas de Python usan un transporte HTTP simulado: no necesitan Ollama. `tests/conftest.py`

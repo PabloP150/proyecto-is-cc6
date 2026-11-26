@@ -8,7 +8,7 @@
 - **Producción** la publica el admin: directo, aprobando la solicitud de un miembro o con un rollback.
 - Los miembros ven ejecuciones y logs, ejecutan el CI y piden producción; los avisos llegan en vivo en cualquier pantalla.
 - Aparte, si el grupo despliega en **Vercel**, el admin vincula el proyecto y la pestaña **Vercel (monitoring)** lista sus despliegues. Es solo lectura: TaskMate no despliega en Vercel ([sección 13](#13-monitoreo-de-despliegues-de-vercel)).
-- Estado: las secciones 1–12 (GitHub Pages) están implementadas y verificadas al cierre de la línea de Pablo (3 nov 2026). La interfaz pasó al inglés el 19 nov 2026 y esta guía cita los textos tal como se ven ahora. La sección 13 es de la línea de Christian, vive en la rama `test/e2e` y no se ha probado con una cuenta real de Vercel.
+- Estado: las secciones 1–12 (GitHub Pages) están implementadas y verificadas al cierre de la línea de Pablo (3 nov 2026). La interfaz pasó al inglés el 19 nov 2026 y esta guía cita los textos tal como se ven ahora. La sección 13 es de la línea de Christian, está en `master` desde el 26 nov 2026 y no se ha probado con una cuenta real de Vercel.
 
 ```mermaid
 flowchart LR
@@ -382,4 +382,4 @@ Para grupos cuyo proyecto se despliega en **Vercel** (con la integración de Ver
 - Qué ve cada rol en la pestaña: [interfaz de CI/CD](../05-interfaz/08-cicd.md), [interfaz de GitHub](../05-interfaz/07-github.md) (pestaña Vercel) y [guía de uso](guia-de-uso.md).
 - Cómo funciona por dentro: [arquitectura](../02-arquitectura/08-cicd.md), [flujos](../06-flujos/08-cicd.md) y [capítulo de la Fase 4](../08-fases/fase-04-pipeline-cicd/README.md).
 
-**Creada:** 22 oct 2026 · **Última actualización:** 25 nov 2026 (textos de la interfaz en inglés y monitoreo de Vercel) · **Autor:** Pablo Pineda
+**Creada:** 22 oct 2026 · **Última actualización:** 26 nov 2026 (monitoreo de Vercel ya en `master`) · **Autor:** Pablo Pineda

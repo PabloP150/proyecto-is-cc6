@@ -18,7 +18,7 @@ flowchart TB
         m8["008 created_at<br/>de las tareas"]
         base --> ctl --> m1 --> m2 --> m3 --> m4 --> m5 --> m6 --> m7 --> m8
     end
-    subgraph christian["Línea de Christian: 18 nov 2026 (en test/e2e)"]
+    subgraph christian["Línea de Christian: 18 nov 2026 (en master desde el 26 nov)"]
         direction LR
         m9["009 despliegues de Vercel<br/>3 tablas"]
         m10["010 archivos<br/>por tarea"]
