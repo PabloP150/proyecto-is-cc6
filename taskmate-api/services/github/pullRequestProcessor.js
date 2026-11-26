@@ -2,6 +2,7 @@ const githubModel = require('../../models/github.model');
 const tasksModel = require('../../models/tasks.model');
 const AnalyticsIntegration = require('../AnalyticsIntegration');
 const branchService = require('./branchService');
+const taskFileService = require('./taskFileService');
 
 const MAX_TITLE = 256;
 
@@ -42,6 +43,9 @@ const applyPullRequestInTx = async (pr, { repoId, defaultBranch }, { tx }) => {
                 status: result && result.status,
                 branch,
                 mergedHeadSha: branch && branch.branchName === record.headBranch ? pr.head.sha || null : null,
+                // Carried out of the transaction so the file list can be fetched afterwards.
+                prNumber: record.number,
+                headSha: pr.head && pr.head.sha ? pr.head.sha : null,
             };
         }
     }
@@ -51,13 +55,23 @@ const applyPullRequestInTx = async (pr, { repoId, defaultBranch }, { tx }) => {
 // Call only after the transaction committed. Same analytics hook as POST /api/tasks/:tid/complete,
 // then the task's branch cleanup in the background: the webhook answer and the sync result never
 // wait for GitHub (branchService logs the outcome).
-const notifyCompletion = (completion) => {
+const notifyCompletion = (completion, repo = null) => {
     if (!completion || completion.status !== 'completed') return;
     Promise.resolve()
         .then(() => AnalyticsIntegration.onTaskCompletion(completion.tid, true, { percentage: 100 }))
         .catch((error) => console.error('Analytics tracking failed for task completion:', error && error.message));
     if (completion.branch) {
         branchService.cleanupTaskBranchInBackground(completion.branch, { mergedHeadSha: completion.mergedHeadSha });
+    }
+    // Record the files before the branch cleanup above removes the branch: the PR file list
+    // survives branch deletion, so this is ordering for clarity rather than a dependency.
+    if (repo && completion.prNumber) {
+        taskFileService.recordFilesInBackground({
+            tid: completion.tid,
+            repo,
+            prNumber: completion.prNumber,
+            headSha: completion.headSha,
+        });
     }
 };
 

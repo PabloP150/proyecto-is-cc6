@@ -13,10 +13,15 @@ architecture-beta
     service hooks(mdi:checkbox-marked-outline)[Hooks de tareas] in api
     service batch(mdi:calendar)[Job de métricas opcional] in api
 
-    group ia(logos:fastapi-icon)[Servidor de IA FastAPI]
+    group ia(logos:fastapi-icon)[Servicio Python FastAPI]
     service agent(mdi:robot)[AnalyticsAgent] in ia
+    service llmpy(logos:python)[llm_service.py] in ia
 
-    service groq(logos:groq)[Groq gpt-oss-20b]
+    junction jl
+    junction jg
+    junction jol
+    service groq(logos:groq)[Groq respaldo en la nube]
+    service ollama(logos:ollama)[Ollama con Gemma 4 local]
 
     group docker(logos:docker-icon)[Docker]
     service db(mdi:database)[SQL Server 2019] in docker
@@ -28,7 +33,12 @@ architecture-beta
     jx:R --> L:llms
     jx:B --> T:svc
     llms:R --> L:agent
-    agent:R --> L:groq
+    agent:R --> L:llmpy
+    llmpy:R -- L:jl
+    jl:T -- B:jg
+    jg:R --> L:ollama
+    jl:B -- T:jol
+    jol:R --> L:groq
     rest:R -- L:jw
     jw:R --> L:svc
     hooks:T -- B:jw

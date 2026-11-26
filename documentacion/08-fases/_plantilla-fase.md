@@ -2,7 +2,7 @@
 
 **Plantilla reutilizable para cada capítulo de fase**
 
-> Plantilla usada en las Fases 1–4. El proyecto cerró en la Fase 4 (3 nov 2026); se conserva solo como referencia por si se retoma (ver [cierre del proyecto](../01-proyecto/cierre-del-proyecto.md#cómo-retomar-el-proyecto)).
+> Plantilla usada en las Fases 1–4. La línea de Pablo cerró en la Fase 4 (3 nov 2026); la de Christian siguió (lo nuevo vive en `test/e2e`). Se conserva como referencia por si se retoma (ver [cierre de la línea de Pablo y estado](../01-proyecto/cierre-del-proyecto.md#cómo-retomar-el-proyecto)).
 
 ---
 
@@ -153,7 +153,7 @@ git log --oneline <merge>^1..<merge>^2
 
 **Notas:**
 - Las tareas marcadas como no-bloqueador fueron documentadas explícitamente y no afectan el go-live de esta fase.
-- Al cierre del proyecto (3 nov 2026) los pendientes de las Fases 1–4 se consolidaron en una sola lista: [cierre del proyecto](../01-proyecto/cierre-del-proyecto.md#pendientes-todo). Si el proyecto se retoma, cada fase nueva agrega allí los suyos.
+- Al cierre de la línea de Pablo (3 nov 2026) los pendientes de las Fases 1–4 se consolidaron en una sola lista: [pendientes (TODO)](../01-proyecto/cierre-del-proyecto.md#pendientes-todo). Si el proyecto se retoma, cada fase nueva agrega allí los suyos.
 
 ---
 

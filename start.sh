@@ -19,11 +19,18 @@ echo "==> Iniciando TaskMate..."
 
 # 1. Docker
 echo "[1/4] Verificando Docker..."
-if ! "$DOCKER" info > /dev/null 2>&1; then
+if command -v podman > /dev/null 2>&1 && podman info > /dev/null 2>&1; then
+  DOCKER="podman"
+elif ! "$DOCKER" info > /dev/null 2>&1; then
   echo "     Docker no está corriendo. Abriendo Docker Desktop..."
-  open -a Docker
-  for _ in $(seq 1 45); do "$DOCKER" info > /dev/null 2>&1 && break; sleep 2; done
-  "$DOCKER" info > /dev/null 2>&1 || { echo "     ERROR: Docker no respondió en 90 s."; exit 1; }
+  if command -v open > /dev/null 2>&1; then
+    open -a Docker
+    for _ in $(seq 1 45); do "$DOCKER" info > /dev/null 2>&1 && break; sleep 2; done
+    "$DOCKER" info > /dev/null 2>&1 || { echo "     ERROR: Docker no respondió en 90 s."; exit 1; }
+  else
+    echo "     ERROR: 'open' no está disponible. Inicie Docker/Podman manualmente y vuelva a intentar."
+    exit 1
+  fi
 fi
 
 # 2. SQL Server

@@ -65,13 +65,13 @@ describe('Recordatorios — GitHub actions', () => {
   it('shows "Crear rama" only when the group has a repository', async () => {
     mockLinks({ repoConnected: false });
     await renderTasks();
-    expect(screen.queryByRole('button', { name: 'Crear rama en GitHub' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Create branch on GitHub' })).not.toBeInTheDocument();
   });
 
   it('renders the branch actions when the repository is connected', async () => {
     mockLinks({ repoConnected: true });
     await renderTasks();
-    expect(screen.getByRole('button', { name: 'Crear rama en GitHub' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Create branch on GitHub' })).toBeInTheDocument();
   });
 
   it('shows the linked branch and PR of a task', async () => {
@@ -80,7 +80,7 @@ describe('Recordatorios — GitHub actions', () => {
     });
     await renderTasks();
     expect(screen.getByText('tm/escribir-informe-t1')).toBeInTheDocument();
-    expect(screen.getByText('PR #3 abierto')).toBeInTheDocument();
+    expect(screen.getByText('PR #3 open')).toBeInTheDocument();
   });
 
   it('refreshes the task links after completing a task', async () => {
@@ -125,12 +125,12 @@ describe('ListaRecordatorios — GitHub actions per filter', () => {
 
   it.each(['completed', 'deleted'])('hides the GitHub actions in the %s filter', (filtro) => {
     renderList(filtro);
-    expect(screen.queryByRole('button', { name: 'Crear rama en GitHub' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Create branch on GitHub' })).not.toBeInTheDocument();
   });
 
   it('shows them for active tasks', () => {
     renderList('todos');
-    expect(screen.getByRole('button', { name: 'Crear rama en GitHub' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Create branch on GitHub' })).toBeInTheDocument();
   });
 });
 
@@ -171,12 +171,12 @@ describe('ListaRecordatorios — one toast for every task card', () => {
 
   it('a message from another card, or about a task, replaces the open one instead of stacking on it', async () => {
     renderTwoTasks();
-    const [createFirst, createSecond] = screen.getAllByRole('button', { name: 'Crear rama en GitHub' });
+    const [createFirst, createSecond] = screen.getAllByRole('button', { name: 'Create branch on GitHub' });
 
     fireEvent.click(createFirst);
-    expect(await screen.findByText('Rama tm/t1 lista en GitHub.')).toBeInTheDocument();
+    expect(await screen.findByText('Branch tm/t1 is ready on GitHub.')).toBeInTheDocument();
     fireEvent.click(createSecond);
-    expect(await screen.findByText('Rama tm/t2 lista en GitHub.')).toBeInTheDocument();
+    expect(await screen.findByText('Branch tm/t2 is ready on GitHub.')).toBeInTheDocument();
     expect(screen.getAllByRole('alert')).toHaveLength(1);
 
     fireEvent.click(screen.getAllByRole('button', { name: 'complete' })[0]);
@@ -187,21 +187,21 @@ describe('ListaRecordatorios — one toast for every task card', () => {
   it('gives a message that replaces an open one its full display time', async () => {
     jest.useFakeTimers();
     renderTwoTasks();
-    const [createFirst, createSecond] = screen.getAllByRole('button', { name: 'Crear rama en GitHub' });
+    const [createFirst, createSecond] = screen.getAllByRole('button', { name: 'Create branch on GitHub' });
     fireEvent.click(createFirst);
-    expect(await screen.findByText('Rama tm/t1 lista en GitHub.')).toBeInTheDocument();
+    expect(await screen.findByText('Branch tm/t1 is ready on GitHub.')).toBeInTheDocument();
 
     act(() => jest.advanceTimersByTime(3000));
     fireEvent.click(createSecond);
-    expect(await screen.findByText('Rama tm/t2 lista en GitHub.')).toBeInTheDocument();
+    expect(await screen.findByText('Branch tm/t2 is ready on GitHub.')).toBeInTheDocument();
 
     // Past the first message's 3.5 s (plus its exit transition), within the second one's.
     act(() => jest.advanceTimersByTime(1500));
     act(() => jest.advanceTimersByTime(300));
-    expect(screen.getByText('Rama tm/t2 lista en GitHub.')).toBeVisible();
+    expect(screen.getByText('Branch tm/t2 is ready on GitHub.')).toBeVisible();
 
     act(() => jest.advanceTimersByTime(2000));
-    await waitFor(() => expect(screen.queryByText('Rama tm/t2 lista en GitHub.')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText('Branch tm/t2 is ready on GitHub.')).not.toBeInTheDocument());
   });
 });
 
@@ -214,7 +214,7 @@ describe('Recordatorios — what happened to the GitHub branch of a task that le
 
   const expectBranchLink = (container, url) => {
     if (url) {
-      const link = within(container).getByRole('link', { name: 'Ver rama' });
+      const link = within(container).getByRole('link', { name: 'View branch' });
       expect(link).toHaveAttribute('href', url);
       expect(link).toHaveAttribute('target', '_blank');
       expect(link).toHaveAttribute('rel', 'noopener noreferrer');
@@ -234,10 +234,10 @@ describe('Recordatorios — what happened to the GitHub branch of a task that le
 
   describe('completing a task', () => {
     it.each([
-      ['deleted', 'success', `Task completed. Rama ${BRANCH} eliminada en GitHub.`],
-      ['kept_unmerged', 'info', `Task completed. La rama ${BRANCH} sigue en GitHub: tiene commits sin fusionar.`],
-      ['kept_open_pr', 'info', `Task completed. La rama ${BRANCH} sigue en GitHub: tiene un PR abierto.`],
-      ['error', 'warning', `Task completed. No se pudo confirmar qué pasó con la rama ${BRANCH} en GitHub; puede que siga ahí.`],
+      ['deleted', 'success', `Task completed. Branch ${BRANCH} deleted on GitHub.`],
+      ['kept_unmerged', 'info', `Task completed. Branch ${BRANCH} is still on GitHub: it has unmerged commits.`],
+      ['kept_open_pr', 'info', `Task completed. Branch ${BRANCH} is still on GitHub: it has an open PR.`],
+      ['error', 'warning', `Task completed. Could not confirm what happened to branch ${BRANCH} on GitHub; it may still be there.`],
     ])('%s: %s toast "%s"', async (outcome, severity, text) => {
       mockLinks();
       api.post.mockResolvedValue(withBranch('completed', outcome));
@@ -284,7 +284,7 @@ describe('Recordatorios — what happened to the GitHub branch of a task that le
       await renderTasks();
 
       fireEvent.click(screen.getByRole('button', { name: 'complete' }));
-      expect(await screen.findByRole('alert')).toHaveTextContent('commits sin fusionar');
+      expect(await screen.findByRole('alert')).toHaveTextContent('unmerged commits');
 
       // The plain toast is gone after 2.2 s; this one is still there at 5 s.
       act(() => jest.advanceTimersByTime(5000));
@@ -306,7 +306,7 @@ describe('Recordatorios — what happened to the GitHub branch of a task that le
       fireEvent.click(within(dialog).getByRole('button', { name: 'UPDATE' }));
 
       const alert = await screen.findByRole('alert');
-      expect(alert).toHaveTextContent(`Task completed. La rama ${BRANCH} sigue en GitHub: tiene un PR abierto.`);
+      expect(alert).toHaveTextContent(`Task completed. Branch ${BRANCH} is still on GitHub: it has an open PR.`);
       expect(alert).toHaveClass(severityClass('info'));
       expectBranchLink(alert, BRANCH_URL);
     });
@@ -331,10 +331,10 @@ describe('Recordatorios — what happened to the GitHub branch of a task that le
 
   describe('deleting a task', () => {
     it.each([
-      ['deleted', 'success', `Task deleted. Rama ${BRANCH} eliminada en GitHub.`],
-      ['kept_unmerged', 'info', `Task deleted. La rama ${BRANCH} sigue en GitHub: tiene commits sin fusionar.`],
-      ['kept_open_pr', 'info', `Task deleted. La rama ${BRANCH} sigue en GitHub: tiene un PR abierto.`],
-      ['error', 'warning', `Task deleted. No se pudo confirmar qué pasó con la rama ${BRANCH} en GitHub; puede que siga ahí.`],
+      ['deleted', 'success', `Task deleted. Branch ${BRANCH} deleted on GitHub.`],
+      ['kept_unmerged', 'info', `Task deleted. Branch ${BRANCH} is still on GitHub: it has unmerged commits.`],
+      ['kept_open_pr', 'info', `Task deleted. Branch ${BRANCH} is still on GitHub: it has an open PR.`],
+      ['error', 'warning', `Task deleted. Could not confirm what happened to branch ${BRANCH} on GitHub; it may still be there.`],
     ])('%s: %s toast "%s"', async (outcome, severity, text) => {
       mockLinks();
       api.post.mockResolvedValue(withBranch('deleted', outcome));
@@ -380,7 +380,7 @@ describe('Recordatorios — what happened to the GitHub branch of a task that le
       fireEvent.click(screen.getByRole('button', { name: 'Delete list Trabajo' }));
 
       const pill = await screen.findByRole('status');
-      expect(pill).toHaveTextContent('List deleted. 2 ramas eliminadas en GitHub; 1 sigue (commits sin fusionar).');
+      expect(pill).toHaveTextContent('List deleted. 2 branches deleted on GitHub; 1 remains (unmerged commits).');
       expect(pill).toHaveAttribute('data-severity', 'info');
       expectBranchLink(pill, 'https://github.com/acme/app/tree/tm/c-3');
       expect(api.del).toHaveBeenCalledWith('/api/tasks/list/g1/Trabajo');
@@ -398,7 +398,7 @@ describe('Recordatorios — what happened to the GitHub branch of a task that le
       fireEvent.click(screen.getByRole('button', { name: 'Delete list Trabajo' }));
 
       const pill = await screen.findByRole('status');
-      expect(pill).toHaveTextContent('List deleted. 1 rama eliminada en GitHub; 1 sin confirmar.');
+      expect(pill).toHaveTextContent('List deleted. 1 branch deleted on GitHub; 1 unconfirmed.');
       expect(pill).toHaveAttribute('data-severity', 'warning');
     });
 
@@ -425,7 +425,7 @@ describe('Recordatorios — what happened to the GitHub branch of a task that le
       api.get.mockImplementation((path) => Promise.resolve(path.startsWith('/api/groups/') ? { members: [] } : { data: [] }));
       await act(async () => answer({ message: 'Lista eliminada exitosamente', branches: [named('tm/a-1', 'deleted')] }));
 
-      expect(await screen.findByRole('status')).toHaveTextContent('List deleted. Rama tm/a-1 eliminada en GitHub.');
+      expect(await screen.findByRole('status')).toHaveTextContent('List deleted. Branch tm/a-1 deleted on GitHub.');
       await waitFor(() => expect(screen.queryByText('Escribir informe')).not.toBeInTheDocument());
     });
 
@@ -463,8 +463,8 @@ describe('Recordatorios — what happened to the GitHub branch of a task that le
       act(() => jest.advanceTimersByTime(2900));
       expect(screen.getByRole('status')).toBeInTheDocument();
 
-      // Focus on «Ver rama» holds it again, even after the pointer has left.
-      const link = within(pill).getByRole('link', { name: 'Ver rama' });
+      // Focus on «View branch» holds it again, even after the pointer has left.
+      const link = within(pill).getByRole('link', { name: 'View branch' });
       fireEvent.focus(link);
       act(() => jest.advanceTimersByTime(20000));
       expect(screen.getByRole('status')).toBeInTheDocument();

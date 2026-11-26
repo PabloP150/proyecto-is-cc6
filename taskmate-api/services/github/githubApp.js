@@ -18,6 +18,8 @@ const PERMISSIONS = Object.freeze({
     read: Object.freeze({ contents: 'read' }),
     snapshot: Object.freeze({ contents: 'read', issues: 'read' }),
     pulls: Object.freeze({ pull_requests: 'read' }),
+    // AI PR review (Christian's line): posting a review needs write on pull requests.
+    pullsWrite: Object.freeze({ pull_requests: 'write' }),
     writeRefs: Object.freeze({ contents: 'write' }),
     // Phase 4 (CI/CD). Writing a file under .github/workflows/ needs `workflows` on top of `contents`.
     actionsRead: Object.freeze({ actions: 'read' }),

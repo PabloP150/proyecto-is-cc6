@@ -19,6 +19,7 @@ const groupRolesController = require('./controllers/groupRoles.controller');
 const analyticsController = require('./controllers/analytics.controller');
 const utilsController = require('./controllers/utils.controller');
 const { githubRouter, githubCallbackRouter, githubWebhookHandler } = require('./controllers/github.controller');
+const { deployRouter, vercelWebhookHandler } = require('./controllers/deploy.controller');
 
 // TRUST_PROXY (default off): a hop count ("1"), "true", or an Express trust list ("loopback, 10.0.0.0/8").
 // Only enable it behind a real reverse proxy; otherwise clients could spoof X-Forwarded-For and dodge IP rate limits.
@@ -41,6 +42,8 @@ function createApp() {
     // The webhook verifies an HMAC over the exact request bytes, so it must be mounted
     // before express.json() consumes the body.
     app.post('/api/github/webhook', express.raw({ type: '*/*', limit: '1mb' }), githubWebhookHandler);
+    // Same reason: Vercel's signature covers the exact bytes it sent.
+    app.post('/api/deploy/webhook/vercel', express.raw({ type: '*/*', limit: '1mb' }), vercelWebhookHandler);
 
     app.use(express.json());
 
@@ -63,6 +66,7 @@ function createApp() {
     // authenticates it), so it has to be matched before the authenticated GitHub router.
     app.use('/api/github', githubCallbackRouter);
     app.use('/api/github', authenticated, githubRouter);
+    app.use('/api/deploy', authenticated, deployRouter);
 
     app.use(notFoundHandler);
     app.use(errorHandler);

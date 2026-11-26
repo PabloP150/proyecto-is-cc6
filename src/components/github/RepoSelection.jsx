@@ -18,7 +18,7 @@ import Card from '../ui/Card';
 import { errorMessage, isAbortError, sameId, staticCardSx } from './githubUtils';
 
 const EXPIRED_MESSAGE =
-  'La selección de repositorios expiró (dura 10 minutos) o ya se usó. Vuelve a pulsar «Conectar repositorio».';
+  'The repository selection expired (it lasts 10 minutes) or was already used. Click “Connect repository” again.';
 
 /**
  * Lets the admin pick one repository after installing the GitHub App on several.
@@ -48,7 +48,7 @@ export default function RepoSelection({ selectionId, groups, onLinked, onCancel 
         setState({
           loading: false,
           expired,
-          error: expired ? EXPIRED_MESSAGE : errorMessage(err, 'No se pudo cargar la lista de repositorios.'),
+          error: expired ? EXPIRED_MESSAGE : errorMessage(err, 'Could not load the repository list.'),
           selection: null,
         });
       });
@@ -76,7 +76,7 @@ export default function RepoSelection({ selectionId, groups, onLinked, onCancel 
       if (err && err.code === 'SELECTION_NOT_FOUND') {
         setState({ loading: false, expired: true, error: EXPIRED_MESSAGE, selection: null });
       } else {
-        setLinkError(errorMessage(err, 'No se pudo vincular el repositorio.'));
+        setLinkError(errorMessage(err, 'Could not link the repository.'));
       }
       setLinking(false);
     }
@@ -85,16 +85,16 @@ export default function RepoSelection({ selectionId, groups, onLinked, onCancel 
   return (
     <Card variant="default" component="section" aria-labelledby={headingId} sx={staticCardSx}>
       <Typography id={headingId} variant="h6" component="h2" sx={{ mb: 0.5 }}>
-        Elige el repositorio
+        Choose the repository
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Elige el repositorio que quieres vincular{groupName ? ` al grupo «${groupName}»` : ' a este grupo'}.
+        Choose the repository you want to link{groupName ? ` to the group “${groupName}”` : ' to this group'}.
       </Typography>
       {githubLogin && (
         <Chip
           size="small"
           icon={<GitHubIcon />}
-          label={`Conectando como @${githubLogin}`}
+          label={`Connecting as @${githubLogin}`}
           sx={{ mb: 2, background: 'rgba(59, 130, 246, 0.15)', border: '1px solid rgba(59, 130, 246, 0.35)' }}
         />
       )}
@@ -102,7 +102,7 @@ export default function RepoSelection({ selectionId, groups, onLinked, onCancel 
       {loading && (
         <Box role="status" sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 2 }}>
           <CircularProgress size={22} />
-          <Typography color="text.secondary">Cargando repositorios…</Typography>
+          <Typography color="text.secondary">Loading repositories…</Typography>
         </Box>
       )}
 
@@ -114,7 +114,7 @@ export default function RepoSelection({ selectionId, groups, onLinked, onCancel 
 
       {!loading && !error && repos.length === 0 && (
         <Alert severity="info" sx={{ mb: 2 }}>
-          La instalación no tiene acceso a ningún repositorio. Agrega uno desde la configuración de la App en GitHub.
+          The installation has no access to any repository. Add one from the App settings on GitHub.
         </Alert>
       )}
 
@@ -137,7 +137,7 @@ export default function RepoSelection({ selectionId, groups, onLinked, onCancel 
                   <Chip
                     size="small"
                     icon={repo.isPrivate ? <LockIcon /> : <PublicIcon />}
-                    label={repo.isPrivate ? 'Privado' : 'Público'}
+                    label={repo.isPrivate ? 'Private' : 'Public'}
                     variant="outlined"
                   />
                 </Box>
@@ -156,13 +156,13 @@ export default function RepoSelection({ selectionId, groups, onLinked, onCancel 
       <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
         {onCancel && (
           <Button variant="ghost" size="small" onClick={onCancel} disabled={linking}>
-            {expired || error ? 'Cerrar' : 'Cancelar'}
+            {expired || error ? 'Close' : 'Cancel'}
           </Button>
         )}
         {!expired && !error && (
           <Button variant="primary" size="small" onClick={handleLink} disabled={!repoId || linking || loading}>
             {linking ? <CircularProgress size={16} sx={{ mr: 1, color: 'inherit' }} /> : null}
-            Vincular repositorio
+            Link repository
           </Button>
         )}
       </Box>

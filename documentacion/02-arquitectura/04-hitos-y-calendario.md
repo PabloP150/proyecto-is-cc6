@@ -30,7 +30,7 @@ Términos:
 | Tarjeta de hito | Nodo propio de React Flow | `src/components/flow/CustomNode.jsx` |
 | Flecha entre hitos | Arista propia de React Flow | `src/components/flow/FloatingEdge.jsx`, `flow/utils.js`, `flow/CustomConnectionLine.jsx` |
 | Calendario | react-big-calendar 1.15 + moment | `src/components/CalendarView.jsx` |
-| Grupo activo | React Context | `src/components/GroupContext.jsx` |
+| Grupo activo | React Context; se cambia con el selector de la barra de navegación | `src/components/GroupContext.jsx`, `src/components/NavGroupSelector.jsx` |
 | Cliente HTTP | `fetch` con el JWT | `src/api/client.js` |
 | Guardias | Middleware de Express | `taskmate-api/middleware/auth.middleware.js`, `middleware/groupAccess.js` |
 | Rutas de hitos | Express | `taskmate-api/controllers/nodes.controller.js` |
@@ -45,7 +45,9 @@ Términos:
 - Cada ruta busca el grupo del hito o de la conexión y exige que el usuario sea miembro. No hay acciones solo para el admin.
 - La API no calcula el avance. Guarda el porcentaje y SQL Server corre el trigger dentro de la misma sentencia. Después el frontend vuelve a pedir los hitos para mostrar el resultado.
 - El calendario solo lee: una consulta une los hitos (`Nodes`) y las tareas activas (`Tasks`) del grupo.
-- La IA también crea hitos: el plan del chat y el análisis del repositorio insertan filas en `Nodes` con `ProjectService`, sin conexiones. Ver [el flujo del chat](../06-flujos/05-chat-ia.md).
+- El lienzo y el calendario usan el grupo activo de `GroupContext`. Si se cambia en el selector de la barra, los dos vuelven a pedir los datos del grupo nuevo.
+- La IA también crea hitos: el plan del chat (sin grupo elegido) y el análisis del repositorio («Analyze with AI», «Propose tasks» o un plan pedido en el chat) insertan filas en `Nodes` con `ProjectService`, sin conexiones.
+- La IA también los lee: con un grupo elegido, el contexto del chat lleva hasta 15 hitos (nombre, fecha y si están completos), aunque el grupo no haya dado el permiso «Allow AI analysis». Ese permiso solo decide si el chat ve los datos del repositorio. Ver [el flujo del chat](../06-flujos/05-chat-ia.md).
 - No hay tiempo real en este módulo: otro miembro ve los cambios cuando vuelve a cargar la página.
 
 ## Para saber más
@@ -54,4 +56,4 @@ Términos:
 - Pantallas: [05-interfaz/04-hitos-y-calendario.md](../05-interfaz/04-hitos-y-calendario.md)
 - Paso a paso y errores: [06-flujos/04-hitos-y-calendario.md](../06-flujos/04-hitos-y-calendario.md)
 - Arquitectura de todo el sistema: [00-general.md](00-general.md)
-- Limitaciones conocidas: [cierre del proyecto](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)
+- Limitaciones conocidas: [cierre de la línea de Pablo y estado](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)

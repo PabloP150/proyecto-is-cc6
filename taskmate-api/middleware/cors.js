@@ -8,13 +8,15 @@ const allowedOrigins = () => (process.env.FRONTEND_URL || DEFAULT_FRONTEND_URL)
     .map((origin) => origin.trim().replace(/\/+$/, ''))
     .filter(Boolean);
 
-// Requests without an Origin header (curl, server-to-server, same-origin) are not CORS requests.
-const isAllowedOrigin = (origin) => !origin || allowedOrigins().includes(origin);
+// Local development only (ALLOW_LAN_ORIGINS=true): the app opened from another device on the same
+// network, whatever its address (http, a private IPv4 address, any port).
+const PRIVATE_IPV4_ORIGIN = /^http:\/\/(10\.\d{1,3}|172\.(1[6-9]|2\d|3[01])|192\.168)\.\d{1,3}\.\d{1,3}(:\d{1,5})?$/;
+const isLanOrigin = (origin) => process.env.ALLOW_LAN_ORIGINS === 'true' && PRIVATE_IPV4_ORIGIN.test(origin);
 
-const corsMiddleware = () => {
-    const origins = allowedOrigins();
-    return cors({ origin: (origin, callback) => callback(null, origins) });
-};
+// Requests without an Origin header (curl, server-to-server, same-origin) are not CORS requests.
+const isAllowedOrigin = (origin) => !origin || allowedOrigins().includes(origin) || isLanOrigin(origin);
+
+const corsMiddleware = () => cors({ origin: (origin, callback) => callback(null, isAllowedOrigin(origin)) });
 
 module.exports = {
     corsMiddleware,

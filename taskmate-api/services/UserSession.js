@@ -7,6 +7,8 @@ const groupModel = require('../models/group.model');
 const githubModel = require('../models/github.model');
 const tasksModel = require('../models/tasks.model');
 const nodesModel = require('../models/nodes.model');
+const userGroupModel = require('../models/userGroup.model');
+const usertaskModel = require('../models/usertask.model');
 const { AppError, isAppError } = require('../helpers/errors');
 const { buildRepoSnapshot, buildExisting } = require('./github/repoSnapshot');
 const { sanitizePlan, planToText, localToday, PLAN_LIMITS } = require('./github/repoPlan');
@@ -26,7 +28,9 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const CLIENT_ID_RE = /^[A-Za-z0-9_.:-]{1,100}$/;
 const DEMO_GROUP_RE = /^test-group-[A-Za-z0-9_-]+$/;
 // Not stored in chatHistory (history_restore would replay them).
-const TRANSIENT_TYPES = new Set(['pong', 'context', 'repo_analysis_status']);
+// assistant_chunk is the streamed text of a reply that is about to arrive whole as 'assistant': storing
+// the chunks too would make history_restore replay every fragment after a reconnect.
+const TRANSIENT_TYPES = new Set(['pong', 'context', 'repo_analysis_status', 'assistant_chunk']);
 
 // Same rule as the REST analytics endpoints: team-level data only for group leaders.
 const TEAM_ANALYTICS_ACTIONS = new Set([
@@ -36,32 +40,32 @@ const TEAM_ANALYTICS_ACTIONS = new Set([
 const USER_ANALYTICS_ACTIONS = new Set(['get_user_analytics']);
 
 const ERROR_MESSAGES = {
-    VALIDATION_ERROR: 'Solicitud inválida.',
-    NOT_GROUP_MEMBER: 'No eres miembro de ese proyecto.',
-    NOT_GROUP_ADMIN: 'Solo los líderes del equipo pueden ver esos datos.',
-    REPO_NOT_CONNECTED: 'El proyecto no tiene un repositorio de GitHub conectado.',
-    AI_ANALYSIS_DISABLED: 'El análisis con IA está desactivado para este proyecto; un administrador puede activarlo.',
-    INSTALLATION_SUSPENDED: 'La instalación de la GitHub App está suspendida.',
-    REPO_NOT_ACCESSIBLE: 'La GitHub App ya no tiene acceso al repositorio.',
-    APP_PERMISSIONS_MISSING: 'La instalación de la GitHub App no tiene todos los permisos; pide al dueño del repositorio que los acepte en GitHub.',
-    REPO_EMPTY: 'El repositorio está vacío.',
-    GITHUB_RATE_LIMITED: 'GitHub limitó las solicitudes; intenta más tarde.',
-    GITHUB_ERROR: 'No se pudo leer el repositorio en GitHub.',
-    GITHUB_NOT_CONFIGURED: 'La integración con GitHub no está configurada.',
-    ANALYSIS_IN_PROGRESS: 'Ya hay un análisis en curso.',
-    RATE_LIMITED: 'Solo se puede pedir un análisis por minuto.',
-    MESSAGE_TOO_LONG: `El mensaje es demasiado largo (máximo ${MAX_CHAT_MESSAGE} caracteres).`,
-    LLM_TIMEOUT: 'La IA tardó demasiado en responder. Intenta de nuevo.',
-    LLM_RATE_LIMIT: 'El servicio de IA está ocupado. Intenta de nuevo en unos segundos.',
-    LLM_INVALID_OUTPUT: 'La IA devolvió un plan inválido. Intenta de nuevo.',
-    LLM_ERROR: 'El servicio de IA no está disponible en este momento.',
-    ANALYSIS_FAILED: 'No se pudo completar el análisis.',
-    REPO_PLAN_NOT_FOUND: 'El plan ya no está disponible.',
-    REPO_PLAN_EXPIRED: 'El plan expiró; vuelve a analizar el repositorio.',
-    SAVE_FAILED: 'No se pudo guardar el plan.',
-    INTERNAL_ERROR: 'Ocurrió un error inesperado.',
+    VALIDATION_ERROR: 'Invalid request.',
+    NOT_GROUP_MEMBER: 'You are not a member of that project.',
+    NOT_GROUP_ADMIN: 'Only team leaders can see that data.',
+    REPO_NOT_CONNECTED: 'The project has no GitHub repository connected.',
+    AI_ANALYSIS_DISABLED: 'AI analysis is turned off for this project; an admin can turn it on.',
+    INSTALLATION_SUSPENDED: 'The GitHub App installation is suspended.',
+    REPO_NOT_ACCESSIBLE: 'The GitHub App no longer has access to the repository.',
+    APP_PERMISSIONS_MISSING: 'The GitHub App installation is missing permissions; ask the repository owner to accept them on GitHub.',
+    REPO_EMPTY: 'The repository is empty.',
+    GITHUB_RATE_LIMITED: 'GitHub rate-limited the requests; try again later.',
+    GITHUB_ERROR: 'Could not read the repository on GitHub.',
+    GITHUB_NOT_CONFIGURED: 'The GitHub integration is not configured.',
+    ANALYSIS_IN_PROGRESS: 'An analysis is already running.',
+    RATE_LIMITED: 'You can only ask for one analysis per minute.',
+    MESSAGE_TOO_LONG: `The message is too long (limit ${MAX_CHAT_MESSAGE} characters).`,
+    LLM_TIMEOUT: 'The AI took too long to answer. Please try again.',
+    LLM_RATE_LIMIT: 'The AI service is busy. Try again in a few seconds.',
+    LLM_INVALID_OUTPUT: 'The AI returned an invalid plan. Please try again.',
+    LLM_ERROR: 'The AI service is not available right now.',
+    ANALYSIS_FAILED: 'Could not complete the analysis.',
+    REPO_PLAN_NOT_FOUND: 'The plan is no longer available.',
+    REPO_PLAN_EXPIRED: 'The plan expired; analyze the repository again.',
+    SAVE_FAILED: 'Could not save the plan.',
+    INTERNAL_ERROR: 'An unexpected error occurred.',
 };
-const CHAT_RATE_LIMITED_MESSAGE = 'Estás enviando mensajes muy rápido; espera un momento.';
+const CHAT_RATE_LIMITED_MESSAGE = 'You are sending messages too fast; wait a moment.';
 const PASSTHROUGH_ANALYSIS_CODES = new Set(['LLM_TIMEOUT', 'LLM_RATE_LIMIT', 'LLM_INVALID_OUTPUT', 'LLM_ERROR', 'MESSAGE_TOO_LONG']);
 
 // Per user (not per session): a reconnect or a second tab does not reset these limits.
@@ -72,6 +76,7 @@ const analyticsWindowByUser = new Map();
 const isUuid = (value) => typeof value === 'string' && UUID_RE.test(value);
 const sameId = (a, b) => typeof a === 'string' && typeof b === 'string' && a.toLowerCase() === b.toLowerCase();
 const isPlainObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+const sameGroup = (a, b) => (a && b ? String(a).toLowerCase() === String(b).toLowerCase() : a === b);
 const clientRequestIdOf = (value) => (typeof value === 'string' && CLIENT_ID_RE.test(value) ? value : null);
 
 const cooldownRemainingSec = (userId, now = Date.now()) => {
@@ -157,6 +162,8 @@ class UserSession {
         this.chatHistory = []; // Store chat messages
         this.maxHistorySize = 100; // Limit history to prevent memory issues
         this.analysis = null;
+        // Project selected in the chat; its context is built on the first message and reused.
+        this.chatContext = { groupId: null, cache: null, building: null };
         this.pendingPlans = new Map();
         // requestId sent to Python -> { kind: 'chat' | 'analytics', clientRequestId, timer }
         this.pendingRequests = new Map();
@@ -239,13 +246,21 @@ class UserSession {
         });
 
         this.trackRequest(requestId, 'chat', clientRequestId);
+        let project = null;
+        try {
+            project = await this.ensureProjectContext();
+        } catch (error) {
+            // Lost membership or a DB hiccup: answer without project data rather than not at all.
+            console.warn('Chat project context unavailable:', error && (error.code || error.message));
+        }
         const sent = await this.llmService.send({
             requestId,
             sessionId: this.sessionId,
             method: 'handle_user_message', // All user messages from the client go to this single method
             params: {
                 message: message.content,
-                context: { userId: this.userId }
+                context: { userId: this.userId },
+                project,
             }
         });
         if (!sent) this.failRequest(requestId, 'LLM_ERROR');
@@ -312,12 +327,14 @@ class UserSession {
 
     async handleSetContext(message) {
         const groupId = message.groupId === undefined || message.groupId === '' ? null : message.groupId;
+        if (!sameGroup(this.chatContext.groupId, groupId)) this.chatContext = { groupId: null, cache: null, building: null };
         if (groupId === null) {
             this.sendMessage({ type: 'context', groupId: null, groupName: null, repo: null });
             return;
         }
         const group = await this.loadMemberGroup(groupId);
         const repo = await githubModel.getGroupRepository(groupId);
+        this.chatContext.groupId = groupId;
         this.sendMessage({
             type: 'context',
             groupId,
@@ -326,11 +343,87 @@ class UserSession {
         });
     }
 
+    // The selected project's context for the chat: built once (GitHub snapshot + tasks + milestones +
+    // team) on the first message after a selection, then reused until the project changes.
+    async ensureProjectContext() {
+        const ctx = this.chatContext;
+        if (!ctx.groupId) return null;
+        if (ctx.cache) return this.revalidatedContext(ctx);
+        if (!ctx.building) {
+            ctx.building = this.buildProjectContext(ctx.groupId).finally(() => { ctx.building = null; });
+        }
+        const built = await ctx.building;
+        // Only cached for the project still selected, and only when the repository could be read.
+        if (this.chatContext === ctx && built.cacheable) ctx.cache = built.context;
+        return built.context;
+    }
+
+    // The cache is reused only while the user is still a member and the repository data is still
+    // allowed (consent on, installation not suspended): both re-checked on every message.
+    async revalidatedContext(ctx) {
+        const { cache } = ctx;
+        const [member, repo] = await Promise.all([
+            accessModel.isGroupMember(this.userId, ctx.groupId),
+            cache.snapshot ? githubModel.getGroupRepository(ctx.groupId) : null,
+        ]);
+        if (!member) {
+            this.chatContext = { groupId: null, cache: null, building: null };
+            return null;
+        }
+        if (cache.snapshot && (!repo || repo.suspendedAt || repo.aiAnalysisEnabled !== true)) {
+            ctx.cache = { ...cache, snapshot: null, repoNote: 'Repository data is no longer available to the AI for this project.' };
+        }
+        return ctx.cache;
+    }
+
+    async buildProjectContext(groupId) {
+        const group = await this.loadMemberGroup(groupId);
+        const [repo, tasks, nodes, members, assignees] = await Promise.all([
+            githubModel.getGroupRepository(groupId),
+            tasksModel.getTasksByGroupId(groupId),
+            nodesModel.getNodesByGroupId(groupId),
+            userGroupModel.getMembersByGroupId(groupId),
+            usertaskModel.getAssigneesByGroup(groupId),
+        ]);
+        const assignments = {};
+        for (const { taskName, username } of assignees || []) {
+            if (taskName && username) (assignments[taskName] = assignments[taskName] || []).push(username);
+        }
+        let snapshot = null;
+        let repoNote = '';
+        let cacheable = true;
+        if (!repo) repoNote = 'No GitHub repository is connected to this project.';
+        else if (repo.suspendedAt) repoNote = 'The GitHub App installation is suspended.';
+        else if (repo.aiAnalysisEnabled !== true) repoNote = 'The group has not allowed AI analysis of its repository.';
+        else {
+            try {
+                snapshot = await buildRepoSnapshot(repo);
+            } catch (error) {
+                repoNote = 'The repository could not be read right now.';
+                cacheable = false; // retried on the next message
+            }
+        }
+        console.log(`[chat] project context built for ${groupId} (repo: ${snapshot ? 'yes' : repoNote || 'no'})`);
+        return {
+            cacheable,
+            context: {
+                groupId,
+                groupName: group.groupName,
+                repoNote,
+                members: (members || []).map((m) => m.username).filter(Boolean),
+                assignments,
+                snapshot,
+                existing: buildExisting(tasks || [], nodes || []),
+            },
+        };
+    }
+
     async handleRepoAnalysis(message) {
         const clientRequestId = clientRequestIdOf(message.requestId) || uuidv4();
-        const refuse = (code, extra = {}) => this.refuse(code, { requestId: clientRequestId, ...extra });
+        // kind lets the client tell an analysis error (e.g. its cooldown) from a chat one with the same code.
+        const refuse = (code, extra = {}) => this.refuse(code, { requestId: clientRequestId, kind: 'analysis', ...extra });
 
-        const { groupId } = message;
+        const { groupId, fromChat = false } = message;
         const instructions = message.instructions === undefined || message.instructions === null ? '' : message.instructions;
         if (!isUuid(groupId) || typeof instructions !== 'string') return refuse('VALIDATION_ERROR');
         if (this.analysis) return refuse('ANALYSIS_IN_PROGRESS');
@@ -348,12 +441,15 @@ class UserSession {
             // From here the analysis is part of the conversation: history_restore shows the request
             // (same text ChatPage shows) before its plan or error. The requestId lets ChatPage tell
             // whether a restore already holds the request it is showing.
-            this.addToHistory({
-                type: 'user',
-                content: cleanInstructions || `Analiza el repositorio de «${group.groupName}» y propón las siguientes tareas.`,
-                requestId: clientRequestId,
-                timestamp: new Date(),
-            });
+            // A plan asked for in the chat already has its message in history.
+            if (!fromChat) {
+                this.addToHistory({
+                    type: 'user',
+                    content: cleanInstructions || `Analyze the repository of “${group.groupName}” and propose the next tasks.`,
+                    requestId: clientRequestId,
+                    timestamp: new Date(),
+                });
+            }
             analysis.inHistory = true;
             const repo = await githubModel.getGroupRepository(groupId);
             if (!repo) throw new AppError('REPO_NOT_CONNECTED', 'This group has no connected repository', 409);
@@ -369,8 +465,9 @@ class UserSession {
             };
 
             this.sendMessage({ type: 'repo_analysis_status', requestId: clientRequestId, stage: 'fetching_repo' });
+            const cached = this.chatContext.cache;
             const [snapshot, tasks, nodes] = await Promise.all([
-                buildRepoSnapshot(repo),
+                cached && sameGroup(cached.groupId, groupId) && cached.snapshot ? cached.snapshot : buildRepoSnapshot(repo),
                 tasksModel.getTasksByGroupId(groupId),
                 nodesModel.getNodesByGroupId(groupId),
             ]);
@@ -410,7 +507,7 @@ class UserSession {
         if (this.analysis !== analysis) return;
         clearTimeout(analysis.timer);
         this.analysis = null;
-        const extra = { requestId: analysis.clientRequestId };
+        const extra = { requestId: analysis.clientRequestId, kind: 'analysis' };
         if (Number.isFinite(retryAfterSec)) extra.retryAfterSec = retryAfterSec;
         // Kept only next to the request it answers (a refused request is not in history; see refuse).
         const options = { persist: analysis.inHistory };
@@ -517,12 +614,27 @@ class UserSession {
             if (pending) message.requestId = pending.clientRequestId;
             this.sendMessage(message);
         } else if (event === 'response_chunk') {
+            // Streamed text of a chat reply. Only for a request still in flight: once it has
+            // timed out or been answered, a late chunk would paint a bubble under that outcome.
+            const pending = response.requestId ? this.pendingRequests.get(response.requestId) : null;
             const content = typeof response.data === 'string' ? response.data : data.content;
-            if (typeof content === 'string' && content) {
-                this.sendMessage({ type: 'assistant_chunk', content, timestamp: new Date() });
+            if (pending && typeof content === 'string' && content) {
+                // The client groups chunks into one bubble by its own request id; the final
+                // 'assistant' message carries the same id and replaces the streamed text.
+                this.sendMessage({ type: 'assistant_chunk', content, requestId: pending.clientRequestId, timestamp: new Date() });
             }
         } else if (event === 'response_stream_end') {
-            // The stream end event can be used to signify the end of a stream on the client.
+            // Nothing to do: the final 'response' event closes the stream on the client.
+        } else if (event === 'plan_request') {
+            // The user asked for a plan in the chat: run the repository analysis for that message.
+            const pending = this.clearRequest(response.requestId);
+            if (!pending || !this.chatContext.groupId) return;
+            await this.run(this.handleRepoAnalysis({
+                groupId: this.chatContext.groupId,
+                instructions: typeof data.instructions === 'string' ? data.instructions.slice(0, MAX_INSTRUCTIONS) : '',
+                requestId: pending.clientRequestId,
+                fromChat: true,
+            }));
         } else if (event === 'save_plan') {
             this.clearRequest(response.requestId);
             await this.saveProjectPlan(response.requestId, data);
@@ -587,7 +699,7 @@ class UserSession {
             });
             await this.notifySaveResult(requestId, { success: true, groupId: result.groupId, groupName });
         } else {
-            this.sendError('SAVE_FAILED', { content: 'No se pudo crear el proyecto.' });
+            this.sendError('SAVE_FAILED', { content: 'Could not create the project.' });
             await this.notifySaveResult(requestId, { success: false, errorCode: 'SAVE_FAILED' });
         }
     }

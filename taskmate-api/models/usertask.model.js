@@ -47,6 +47,16 @@ const getUsertasksByTid = async (tid) => {
     return execReadCommand(query, params);
 };
 
+// Who is assigned to each active task of the group (chat context).
+const getAssigneesByGroup = async (gid) => {
+    const query = `SELECT t.name AS taskName, u.username
+        FROM dbo.UserTask ut
+        JOIN dbo.Tasks t ON t.tid = ut.tid
+        JOIN dbo.Users u ON u.uid = ut.uid
+        WHERE t.gid = @gid`;
+    return execReadCommand(query, [{ name: 'gid', type: TYPES.UniqueIdentifier, value: gid }]);
+};
+
 /**
  * populateAssignmentsForGroup(gid) → {assigned, group, members, totalTasks}
  * Demo-data utility (formerly inline in server.js /api/utils/populate-assignments): every task
@@ -110,5 +120,6 @@ module.exports = {
     addUsertask,
     deleteUsertask,
     getUsertasksByTid,
+    getAssigneesByGroup,
     populateAssignmentsForGroup,
 };

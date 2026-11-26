@@ -14,6 +14,8 @@ const syncService = require('../services/github/syncService');
 const pipelineService = require('../services/github/pipelineService');
 const actionsService = require('../services/github/actionsService');
 const deployService = require('../services/github/deployService');
+const taskFileService = require('../services/github/taskFileService');
+const { taskAi } = require('../services/aiServer/taskAi');
 const { githubWebhookHandler } = require('../services/github/webhookHandler');
 
 const SELECTION_ID_RE = /^[A-Za-z0-9_-]{43}$/;
@@ -86,6 +88,8 @@ const createGithubRouter = ({ auth = requireAuth } = {}) => {
     const branchLimiter = createLimiter({ windowMs: 60 * 1000, limit: 20, keyByUser: true });
     const syncLimiter = createLimiter({ windowMs: 30 * 1000, limit: 1, keyByUser: true, message: 'Sync is limited to once every 30 seconds.' });
     // A proposal or an apply reads several files of the repository; previews only re-render.
+    // AI reviews hold a GPU slot for ~20 s each.
+    const aiLimiter = createLimiter({ windowMs: 60 * 1000, limit: 5, keyByUser: true });
     const pipelineLimiter = createLimiter({ windowMs: 60 * 1000, limit: 10, keyByUser: true });
     const previewLimiter = createLimiter({ windowMs: 60 * 1000, limit: 60, keyByUser: true });
     // Running, re-running or cancelling uses the repository's Actions minutes: a few per minute.
@@ -152,6 +156,60 @@ const createGithubRouter = ({ auth = requireAuth } = {}) => {
     router.post('/tasks/:tid/branch', requireResourceMember('task', 'tid', { notFoundCode: 'TASK_NOT_FOUND' }), branchLimiter, route(async (req, res) => {
         const { status, data } = await branchService.createTaskBranch({ tid: req.resourceId, gid: req.groupId, uid: req.user.userId });
         res.status(status).json({ data });
+    }));
+
+    // The files a task touched. Recorded automatically when its PR merges; fetched on demand
+    // here for a task whose PR merged before this feature existed, or merged into a base other
+    // than the default branch (which does not complete the task, so nothing recorded it).
+    router.get('/tasks/:tid/files', requireResourceMember('task', 'tid', { notFoundCode: 'TASK_NOT_FOUND' }), browseLimiter, route(async (req, res) => {
+        const tid = req.resourceId;
+        let files = await githubModel.getTaskFiles(tid);
+        let backfilled = false;
+
+        if (files.length === 0 && req.query.refresh !== 'false') {
+            const links = await githubModel.getTaskLinksByGroup(req.groupId);
+            const link = links.find((item) => String(item.tid).toLowerCase() === String(tid).toLowerCase());
+            if (link && link.pr && link.pr.number) {
+                const repo = await repoService.getConnectedRepo(req.groupId);
+                const result = await taskFileService.recordFilesForTask({ tid, repo, prNumber: link.pr.number });
+                if (result.recorded) {
+                    files = await githubModel.getTaskFiles(tid);
+                    backfilled = true;
+                }
+            }
+        }
+
+        res.json({ data: { files, backfilled } });
+    }));
+
+    // AI audit of the task branch (rules + local model) via the AI server.
+    router.post('/tasks/:tid/audit', requireResourceMember('task', 'tid', { notFoundCode: 'TASK_NOT_FOUND' }), aiLimiter, route(async (req, res) => {
+        res.json({ data: await taskAi.auditTask({ gid: req.groupId, tid: req.resourceId }) });
+    }));
+
+    // Proposed unit tests for the task branch (not executed, not committed).
+    router.post('/tasks/:tid/generate-tests', requireResourceMember('task', 'tid', { notFoundCode: 'TASK_NOT_FOUND' }), aiLimiter, route(async (req, res) => {
+        res.json({ data: await taskAi.generateTestsForTask({ gid: req.groupId, tid: req.resourceId }) });
+    }));
+
+    // AI review of the task's PR: the latest stored one, or run it now on the open PR.
+    router.get('/tasks/:tid/review', requireResourceMember('task', 'tid', { notFoundCode: 'TASK_NOT_FOUND' }), route(async (req, res) => {
+        res.json({ data: await taskAi.latestReview({ tid: req.resourceId }) });
+    }));
+    router.post('/tasks/:tid/review', requireResourceMember('task', 'tid', { notFoundCode: 'TASK_NOT_FOUND' }), aiLimiter, route(async (req, res) => {
+        res.json({ data: await taskAi.reviewTaskPr({ gid: req.groupId, tid: req.resourceId }) });
+    }));
+
+    // Which other tasks of the group touch the same paths. Fase 7 (colision de archivos)
+    // is the consumer; exposed now because the data is already here.
+    router.get('/tasks/:tid/overlaps', requireResourceMember('task', 'tid', { notFoundCode: 'TASK_NOT_FOUND' }), route(async (req, res) => {
+        const files = await githubModel.getTaskFiles(req.resourceId);
+        const overlaps = await githubModel.findTasksTouchingPaths(
+            req.groupId,
+            files.map((f) => f.path),
+            { excludeTid: req.resourceId },
+        );
+        res.json({ data: { overlaps } });
     }));
 
     router.get('/groups/:gid/task-links', requireGroupMember('gid'), route(async (req, res) => {

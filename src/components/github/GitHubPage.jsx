@@ -3,13 +3,12 @@ import GitHubIcon from '@mui/icons-material/GitHub';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import SyncIcon from '@mui/icons-material/Sync';
 import { Alert, Box, Chip, CircularProgress, Container, Snackbar, Tab, Tabs, Typography } from '@mui/material';
-import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-dom';
 import { getRepository, install, syncGroup } from '../../api/github';
 import { GroupContext } from '../GroupContext';
 import Button from '../ui/Button';
 import Card from '../ui/Card';
-import CicdPanel from './cicd/CicdPanel';
 import CommitList from './CommitList';
 import RepoExplorer from './RepoExplorer';
 import RepoSelection from './RepoSelection';
@@ -25,14 +24,18 @@ import {
   staticCardSx,
 } from './githubUtils';
 
+// Heavy tabs load on first open.
+const CicdPanel = lazy(() => import('./cicd/CicdPanel'));
+const DeploymentPanel = lazy(() => import('../deploy/DeploymentPanel'));
+
 const PENDING_MESSAGE =
-  'La instalación quedó pendiente: un propietario de la organización debe aprobarla en GitHub. ' +
-  'Cuando la apruebe, vuelve aquí y pulsa «Ya instalé la App».';
-const UPDATED_REDIRECT_MESSAGE = 'Acceso actualizado en GitHub. Abriendo la lista de repositorios…';
+  'The installation is pending: an organization owner must approve it on GitHub. ' +
+  'Once approved, come back here and click “I already installed the App”.';
+const UPDATED_REDIRECT_MESSAGE = 'Access updated on GitHub. Opening the repository list…';
 const UPDATED_NOT_ADMIN_MESSAGE =
-  'La instalación de la GitHub App cambió en GitHub. Solo el administrador del grupo puede conectar el repositorio.';
+  'The GitHub App installation changed on GitHub. Only the group admin can connect the repository.';
 const UPDATED_NO_GROUP_MESSAGE =
-  'La instalación de la GitHub App cambió en GitHub. Elige el grupo y pulsa «Ya instalé la App» para conectar el repositorio.';
+  'The GitHub App installation changed on GitHub. Choose the group and click “I already installed the App” to connect the repository.';
 
 function CenteredStatus({ children }) {
   return (
@@ -53,7 +56,7 @@ function GroupPrompt({ title, message }) {
         {message}
       </Typography>
       <Button variant="primary" component={RouterLink} to="/groups">
-        Ir a Grupos
+        Go to Groups
       </Button>
     </Card>
   );
@@ -113,7 +116,7 @@ export default function GitHubPage() {
       setSelectionId(searchParams.get('selection'));
       setNotice(null);
     } else if (status === 'connected') {
-      setNotice({ severity: 'success', message: 'Repositorio conectado correctamente.' });
+      setNotice({ severity: 'success', message: 'Repository connected.' });
     } else if (status === 'pending') {
       setNotice({ severity: 'info', message: PENDING_MESSAGE });
     } else if (status === 'updated') {
@@ -148,7 +151,7 @@ export default function GitHubPage() {
       .then(() => setGroupsState({ loading: false, error: null }))
       .catch((err) => {
         if (isAbortError(err)) return;
-        setGroupsState({ loading: false, error: errorMessage(err, 'No se pudieron cargar tus grupos.') });
+        setGroupsState({ loading: false, error: errorMessage(err, 'Could not load your groups.') });
       });
     return () => controller.abort();
   }, [uid, refreshGroups]);
@@ -161,7 +164,7 @@ export default function GitHubPage() {
       .then((repo) => setRepoState({ gid, loading: false, error: null, repo: repo || null }))
       .catch((err) => {
         if (isAbortError(err)) return;
-        setRepoState({ gid, loading: false, repo: null, error: errorMessage(err, 'No se pudo cargar el repositorio.') });
+        setRepoState({ gid, loading: false, repo: null, error: errorMessage(err, 'Could not load the repository.') });
       });
     return () => controller.abort();
   }, [gid, repoVersion]);
@@ -223,7 +226,7 @@ export default function GitHubPage() {
       .catch((err) => {
         reauthStarted.current = false;
         setReauth(false);
-        setNotice({ severity: 'error', message: errorMessage(err, 'No se pudo abrir la selección de repositorios. Pulsa «Ya instalé la App».') });
+        setNotice({ severity: 'error', message: errorMessage(err, 'Could not open the repository selection. Click “I already installed the App”.') });
       });
   }, [reauth, gid, isAdmin, groupsState.loading]);
 
@@ -234,7 +237,7 @@ export default function GitHubPage() {
       selectGroup(target ? target.gid : linkedGid, target ? target.name : '');
     }
     const name = linkedRepo && linkedRepo.fullName ? ` ${linkedRepo.fullName}` : '';
-    setNotice({ severity: 'success', message: `Repositorio${name} conectado correctamente.` });
+    setNotice({ severity: 'success', message: `Repository${name} connected.` });
     setTab('repo');
     reloadRepo();
   };
@@ -252,16 +255,16 @@ export default function GitHubPage() {
       const count = (value) => Number(value) || 0;
       showToast(
         'success',
-        `Sincronización completa: ${count(result.branchesChecked)} ramas revisadas, ` +
-          `${count(result.pullRequestsFound)} PR encontrados, ${count(result.updated)} actualizados.`
+        `Sync complete: ${count(result.branchesChecked)} branches checked, ` +
+          `${count(result.pullRequestsFound)} PRs found, ${count(result.updated)} updated.`
       );
     } catch (err) {
       const limited = err && err.code === 'RATE_LIMITED';
       showToast(
         limited ? 'warning' : 'error',
         limited
-          ? 'Ya se sincronizó hace poco. Espera unos 30 segundos e inténtalo de nuevo.'
-          : errorMessage(err, 'No se pudo sincronizar con GitHub.')
+          ? 'It was synced a moment ago. Wait about 30 seconds and try again.'
+          : errorMessage(err, 'Could not sync with GitHub.')
       );
     } finally {
       setSyncing(false);
@@ -288,15 +291,15 @@ export default function GitHubPage() {
   if (!gid) {
     content = (
       <GroupPrompt
-        title="Selecciona un grupo"
-        message="Para conectar o explorar un repositorio de GitHub, primero elige el grupo con el que quieres trabajar."
+        title="Select a group"
+        message="To connect or explore a GitHub repository, first choose the group you want to work with."
       />
     );
   } else if (groupMissing) {
     content = (
       <GroupPrompt
-        title="Grupo no disponible"
-        message="El grupo seleccionado ya no existe o ya no perteneces a él. Elige otro grupo."
+        title="Group not available"
+        message="The selected group no longer exists or you are no longer a member. Choose another group."
       />
     );
   } else {
@@ -305,28 +308,29 @@ export default function GitHubPage() {
         <Tabs
           value={tab}
           onChange={(event, value) => setTab(value)}
-          aria-label="Secciones de GitHub"
+          aria-label="GitHub sections"
           textColor="inherit"
           indicatorColor="secondary"
           variant="scrollable"
           allowScrollButtonsMobile
           sx={{ mb: 2, borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}
         >
-          <Tab value="repo" label="Repositorio" id="gh-tab-repo" aria-controls="gh-panel" />
-          <Tab value="files" label="Archivos" id="gh-tab-files" aria-controls="gh-panel" disabled={!usable} />
+          <Tab value="repo" label="Repository" id="gh-tab-repo" aria-controls="gh-panel" />
+          <Tab value="files" label="Files" id="gh-tab-files" aria-controls="gh-panel" disabled={!usable} />
           <Tab value="commits" label="Commits" id="gh-tab-commits" aria-controls="gh-panel" disabled={!usable} />
           <Tab value="cicd" label="CI/CD" id="gh-tab-cicd" aria-controls="gh-panel" disabled={!usable} />
+          <Tab value="deploys" label="Vercel (monitoring)" id="gh-tab-deploys" aria-controls="gh-panel" />
         </Tabs>
         <Box role="tabpanel" id="gh-panel" aria-labelledby={`gh-tab-${tab}`}>
           {tab === 'repo' &&
             (repoLoading ? (
-              <CenteredStatus>Cargando repositorio…</CenteredStatus>
+              <CenteredStatus>Loading repository…</CenteredStatus>
             ) : repoState.error ? (
               <Alert
                 severity="error"
                 action={
                   <Button variant="ghost" size="small" onClick={reloadRepo}>
-                    Reintentar
+                    Retry
                   </Button>
                 }
               >
@@ -339,18 +343,27 @@ export default function GitHubPage() {
                 isAdmin={isAdmin}
                 onRepoChange={updateRepo}
                 onUnlinked={() => {
-                  showToast('success', 'Repositorio desconectado del grupo.');
+                  showToast('success', 'Repository disconnected from the group.');
                   reloadRepo();
                 }}
               />
             ))}
           {tab === 'files' && usable && <RepoExplorer gid={gid} repo={repo} />}
+          {tab === 'deploys' && (
+            <Suspense fallback={<CircularProgress size={24} />}>
+              <DeploymentPanel gid={gid} isAdmin={isAdmin} />
+            </Suspense>
+          )}
           {tab === 'commits' && usable && (
             <Card variant="default" component="section" sx={staticCardSx}>
               <CommitList gid={gid} gitRef={repo.defaultBranch || undefined} />
             </Card>
           )}
-          {tab === 'cicd' && usable && <CicdPanel gid={gid} repo={repo} isAdmin={isAdmin} />}
+          {tab === 'cicd' && usable && (
+            <Suspense fallback={<CircularProgress size={24} />}>
+              <CicdPanel gid={gid} repo={repo} isAdmin={isAdmin} />
+            </Suspense>
+          )}
         </Box>
       </>
     );
@@ -365,18 +378,18 @@ export default function GitHubPage() {
             <Typography variant="h4" component="h1" sx={{ fontWeight: 700 }}>
               GitHub
             </Typography>
-            {gid && groupName && <Chip label={`Grupo: ${groupName}`} size="small" color="primary" variant="outlined" />}
+            {gid && groupName && <Chip label={`Group: ${groupName}`} size="small" color="primary" variant="outlined" />}
           </Box>
           <Typography color="text.secondary" sx={{ mt: 0.5 }}>
-            Conecta el repositorio del grupo, explora su código, maneja su CI/CD y deja que la IA proponga las siguientes
-            tareas.
+            Connect the group repository, explore its code, manage its CI/CD and let the AI propose the next
+            tasks.
           </Typography>
         </Box>
         {gid && usable && !groupMissing && (
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: { xs: 'stretch', sm: 'flex-end' }, gap: 1, maxWidth: 420 }}>
             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
               <Button variant="ghost" size="small" startIcon={syncing ? <CircularProgress size={16} color="inherit" /> : <SyncIcon />} onClick={handleSync} disabled={syncing}>
-                Sincronizar PRs
+                Sync PRs
               </Button>
               <Button
                 variant="accent"
@@ -386,7 +399,7 @@ export default function GitHubPage() {
                 disabled={!aiEnabled}
                 aria-describedby="gh-ai-consent"
               >
-                Analizar con IA
+                Analyze with AI
               </Button>
             </Box>
             <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'flex-start' }}>
@@ -395,8 +408,8 @@ export default function GitHubPage() {
                 {aiEnabled
                   ? AI_CONSENT_TEXT
                   : isAdmin
-                    ? 'El análisis con IA está desactivado. Actívalo con «Permitir análisis con IA» en la pestaña Repositorio.'
-                    : 'El análisis con IA está desactivado para este repositorio. Pide al administrador del grupo que lo active.'}
+                    ? 'AI analysis is turned off. Turn it on with “Allow AI analysis” in the Repository tab.'
+                    : 'AI analysis is turned off for this repository. Ask the group admin to turn it on.'}
               </Typography>
             </Box>
           </Box>
@@ -410,7 +423,7 @@ export default function GitHubPage() {
       )}
       {groupsState.error && gid && (
         <Alert severity="warning" sx={{ mb: 2 }}>
-          {groupsState.error} Las acciones de administrador no están disponibles.
+          {groupsState.error} Admin actions are not available.
         </Alert>
       )}
       {selectionId && (

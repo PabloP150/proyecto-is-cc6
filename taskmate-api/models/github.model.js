@@ -521,6 +521,94 @@ const purgeDeliveries = async (olderThanDays = 30) => {
     );
 };
 
+
+// ---------------------------------------------------------------- task files
+
+const FILE_STATUSES = ['added', 'modified', 'removed', 'renamed', 'copied', 'changed'];
+
+/**
+ * Replace the recorded file list of a task.
+ *
+ * A replace rather than a merge: the pull request's file list is the authoritative diff
+ * against the base, so a file that disappears from it (a change reverted before merge) must
+ * disappear here too.
+ */
+const replaceTaskFiles = async (tid, files, { prNumber = null, headSha = null } = {}, options = {}) =>
+    useTransaction(options, async (tx) => {
+        await tx.write(`DELETE FROM dbo.TaskFiles WHERE tid = @tid`, [
+            { name: 'tid', type: TYPES.UniqueIdentifier, value: tid },
+        ]);
+
+        const rows = (Array.isArray(files) ? files : []).filter((f) => f && f.path);
+        for (const file of rows) {
+            const status = FILE_STATUSES.includes(file.status) ? file.status : 'modified';
+            await tx.write(
+                `INSERT INTO dbo.TaskFiles (tid, path, status, additions, deletions, pr_number, head_sha)
+                 VALUES (@tid, @path, @status, @add, @del, @pr, @sha)`,
+                [
+                    { name: 'tid', type: TYPES.UniqueIdentifier, value: tid },
+                    { name: 'path', type: TYPES.NVarChar, value: String(file.path).slice(0, 400), options: { length: 400 } },
+                    { name: 'status', type: TYPES.VarChar, value: status, options: { length: 10 } },
+                    { name: 'add', type: TYPES.Int, value: Number(file.additions) || 0 },
+                    { name: 'del', type: TYPES.Int, value: Number(file.deletions) || 0 },
+                    { name: 'pr', type: TYPES.Int, value: prNumber === null ? null : Number(prNumber) },
+                    { name: 'sha', type: TYPES.Char, value: headSha || null, options: { length: 40 } },
+                ],
+            );
+        }
+        return rows.length;
+    });
+
+const getTaskFiles = async (tid, options = {}) => {
+    const rows = await read(
+        options,
+        `SELECT path, status, additions, deletions, pr_number, head_sha, recorded_at
+           FROM dbo.TaskFiles WHERE tid = @tid ORDER BY path`,
+        [{ name: 'tid', type: TYPES.UniqueIdentifier, value: tid }],
+    );
+    return (rows || []).map((r) => ({
+        path: r.path,
+        status: r.status,
+        additions: r.additions,
+        deletions: r.deletions,
+        prNumber: toNumber(r.pr_number),
+        headSha: r.head_sha,
+        recordedAt: r.recorded_at,
+    }));
+};
+
+/**
+ * Other tasks in the same group that touched any of these paths.
+ *
+ * Fase 7 (file-collision detection, 6-20 nov) is the consumer: this is the query that turns
+ * "which files did past tasks touch" into "which active tasks overlap with mine".
+ */
+const findTasksTouchingPaths = async (gid, paths, { excludeTid = null } = {}, options = {}) => {
+    const list = (Array.isArray(paths) ? paths : []).filter(Boolean).slice(0, 200);
+    if (list.length === 0) return [];
+
+    // A table-valued parameter would need a declared type; a short IN list is simpler and the
+    // cap above bounds it.
+    const params = [{ name: 'gid', type: TYPES.UniqueIdentifier, value: gid }];
+    const placeholders = list.map((path, i) => {
+        params.push({ name: `p${i}`, type: TYPES.NVarChar, value: String(path).slice(0, 400), options: { length: 400 } });
+        return `@p${i}`;
+    });
+    if (excludeTid) params.push({ name: 'skip', type: TYPES.UniqueIdentifier, value: excludeTid });
+
+    const rows = await read(
+        options,
+        `SELECT tf.tid, tf.path, tf.status, t.name AS task_name
+           FROM dbo.TaskFiles tf
+           INNER JOIN dbo.Tasks t ON t.tid = tf.tid
+          WHERE t.gid = @gid AND tf.path IN (${placeholders.join(', ')})
+            ${excludeTid ? 'AND tf.tid <> @skip' : ''}
+          ORDER BY tf.path`,
+        params,
+    );
+    return (rows || []).map((r) => ({ tid: r.tid, path: r.path, status: r.status, taskName: r.task_name }));
+};
+
 module.exports = {
     upsertInstallation,
     setInstallationSuspended,
@@ -541,4 +629,8 @@ module.exports = {
     finishDelivery,
     failDelivery,
     purgeDeliveries,
+    replaceTaskFiles,
+    getTaskFiles,
+    findTasksTouchingPaths,
+    FILE_STATUSES,
 };

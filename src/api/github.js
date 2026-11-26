@@ -126,3 +126,25 @@ export const rejectDeployRequest = (gid, requestId, note, { signal } = {}) =>
 
 export const cancelDeployRequest = (gid, requestId, { signal } = {}) =>
   request(`/groups/${seg(gid)}/deploy-requests/${seg(requestId)}/cancel`, { method: 'POST', signal });
+export const getTaskFiles = (tid, { signal } = {}) =>
+  request(`/tasks/${seg(tid)}/files`, { signal });
+
+export const getTaskOverlaps = (tid, { signal } = {}) =>
+  request(`/tasks/${seg(tid)}/overlaps`, { signal });
+
+// ---------------------------------------------------------------- AI server (task branch)
+
+/** Rules + local-model audit of the task branch. Slow (~20 s): pass a signal. */
+export const auditTask = (tid, { signal } = {}) =>
+  request(`/tasks/${seg(tid)}/audit`, { method: 'POST', signal });
+
+/** Proposed unit tests for the task branch (not executed, not committed). Slow: pass a signal. */
+export const generateTaskTests = (tid, { signal } = {}) =>
+  request(`/tasks/${seg(tid)}/generate-tests`, { method: 'POST', signal });
+
+/** Latest stored AI review of the task's PR (null if none). */
+export const getTaskReview = (tid, { signal } = {}) => request(`/tasks/${seg(tid)}/review`, { signal });
+
+/** Run the AI review on the task's open PR now (the webhook normally does it). Slow: pass a signal. */
+export const reviewTaskPr = (tid, { signal } = {}) =>
+  request(`/tasks/${seg(tid)}/review`, { method: 'POST', signal });

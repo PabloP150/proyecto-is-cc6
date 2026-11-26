@@ -1,6 +1,6 @@
 # Tareas: flujos
 
-**En una frase:** cada acción de la pantalla `/tasks` es una sola llamada a la API; completar y mandar a la papelera mueven la tarea a otra tabla en una transacción y después avisan a analytics y limpian su rama de GitHub.
+**En una frase:** cada acción de la pantalla `/tasks` es una sola llamada a la API; completar y mandar a la papelera mueven la tarea a otra tabla en una transacción (su rama vinculada, sus archivos y sus revisiones de IA se borran con ella) y después avisan a analytics y limpian su rama de GitHub.
 
 ## Completar una tarea
 
@@ -21,6 +21,7 @@ sequenceDiagram
     DB-->>API: Sí
     API->>DB: Transacción: bloquea la tarea, copia a Complete con 100 %
     API->>DB: Cierra TaskAnalytics pending como completed, borra UserTask y Tasks
+    Note over DB: Por cascada caen TaskBranches, TaskFiles y AiReviews de la tarea
     DB-->>API: Commit, con la rama que tenía la tarea, si había
     API--)AN: onTaskCompletion, sin esperar
     AN->>DB: Recalcula UserMetrics y UserExpertise
@@ -46,9 +47,9 @@ stateDiagram-v2
     Completada --> [*]: Empty Completed
     Papelera --> [*]: Empty Deleted
 
-    note right of Activa: tabla Tasks, con sus filas de UserTask
-    note right of Completada: tabla Complete
-    note right of Papelera: tabla DeleteTask, sin restaurar
+    note right of Activa: tabla Tasks, con UserTask, TaskBranches, TaskFiles y AiReviews
+    note right of Completada: tabla Complete, sin rama, archivos ni revisiones de IA
+    note right of Papelera: tabla DeleteTask, sin restaurar ni rama, archivos o revisiones
 ```
 
 ## Guardar una edición
@@ -71,18 +72,19 @@ flowchart TD
 **Completar** (diagrama de arriba)
 1. La tarjeta se marca al 100 % antes de que responda la API.
 2. La API revisa el JWT y que el usuario sea miembro del grupo de la tarea.
-3. En una transacción: copia a `Complete` (con su `created_at`), cierra los registros de analytics, borra asignaciones y la tarea.
+3. En una transacción: copia a `Complete` (con su `created_at`), cierra los registros de analytics, borra asignaciones y la tarea. Por cascada se borran también su rama vinculada (`TaskBranches`), su lista de archivos (`TaskFiles`) y sus revisiones de IA (`AiReviews`).
 4. Analytics recalcula las métricas en segundo plano; un fallo ahí no cambia la respuesta.
 5. Si había rama, `branchService` la borra cuando es seguro (sin cambios sin fusionar ni otro PR abierto) y la API espera hasta 5 s.
 6. La pantalla recarga las completadas, muestra el aviso y quita la tarjeta a los 3 s del clic.
 
 **Otros flujos**
 - **Crear:** `POST /api/tasks` → la API genera el `tid`, la BD le pone `created_at` y la tarjeta se agrega al final de su lista («Creation Date»).
-- **Mandar a la papelera:** `POST /api/tasks/{tid}/trash`. Igual que completar, pero copia a `DeleteTask` con su avance y cierra los registros de analytics como `failed`.
-- **Borrar una lista:** `DELETE /api/tasks/list/{gid}/{lista}`. Borra todas sus tareas en una transacción, sin copiarlas a la papelera, y limpia sus ramas. La lista se marca ocupada mientras tanto.
+- **Mandar a la papelera:** `POST /api/tasks/{tid}/trash`. Igual que completar (también con las cascadas), pero copia a `DeleteTask` con su avance y cierra los registros de analytics como `failed`.
+- **Borrar una lista:** `DELETE /api/tasks/list/{gid}/{lista}`. Borra todas sus tareas en una transacción, sin copiarlas a la papelera, con sus archivos y revisiones de IA, y limpia sus ramas. La lista se marca ocupada mientras tanto.
 - **Asignar:** el interruptor cambia al instante y llama a `POST /api/usertask`. La API responde y después registra la asignación en analytics. Quitar llama a `DELETE /api/usertask` y cierra el registro como `reassigned`.
 - **Vaciar:** `DELETE /api/completados/{gid}` o `DELETE /api/delete/{gid}`. Borra para siempre todas las completadas, o toda la papelera, del grupo.
-- **PR fusionado:** el webhook de GitHub completa la tarea con la misma función. Ver [GitHub](07-github.md).
+- **PR fusionado:** el webhook de GitHub completa la tarea con la misma función. Después del commit intenta guardar la lista de archivos del PR. Según el código no se guarda: al repositorio que pasa el webhook le falta `owner` y, aunque no faltara, la tarea ya no está en `Tasks` y el `INSERT` chocaría con la FK de `TaskFiles`; solo queda un aviso en el log ([limitaciones](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)). Ver [GitHub](07-github.md).
+- **Ver archivos de la tarea:** el ícono «View task files» de una tarjeta activa con rama abre «Task files» y llama a `GET /api/github/tasks/{tid}/files`. Si no hay lista guardada y la rama tiene PR, la API la pide a GitHub en ese momento («recovered from GitHub»). Con archivos, pide también `GET …/overlaps`. Paso a paso en [GitHub](07-github.md). Los botones de «AI on the branch» siguen en [IA sobre el código](10-ia-sobre-el-codigo.md).
 
 ## Qué ve el usuario si algo falla
 
@@ -95,7 +97,7 @@ Los avisos rojos muestran el mensaje que manda la API (en inglés).
 | `NOT_GROUP_MEMBER` (403) | Ya no es miembro del grupo | Aviso rojo «You are not a member of this group» |
 | `TASK_NOT_FOUND` (404) al completar o borrar | Otro miembro ya la borró o un PR la completó | La tarjeta sale y aparece «This task no longer exists. The list was refreshed.» |
 | `TASK_NOT_FOUND` (404) al editar o asignar | La tarea ya no existe | Aviso rojo «Task not found» |
-| `RATE_LIMITED` (429) | Más de 300 peticiones en un minuto | «Demasiadas solicitudes. Espera un momento e inténtalo de nuevo.» |
+| `RATE_LIMITED` (429) | Más de 300 peticiones en un minuto | «Too many requests. Wait a moment and try again.» |
 | `DB_BUSY` (503) | La base siguió bloqueada tras reintentar (completar, papelera, borrar lista, quitar persona) | «The database is busy, please try again» |
 | `INTERNAL_ERROR` (500) | Error inesperado en el servidor | «Internal server error» |
 | `NETWORK_ERROR` (sin respuesta) | La API no está corriendo o no hay red | «Could not reach the server. Check your connection.» |
@@ -111,4 +113,5 @@ Qué se deshace en la pantalla:
 - Quién puede hacer cada acción: [04-casos-de-uso/03-tareas.md](../04-casos-de-uso/03-tareas.md)
 - Tablas que cambian: [03-base-de-datos/03-tareas.md](../03-base-de-datos/03-tareas.md)
 - Arquitectura del módulo: [02-arquitectura/03-tareas.md](../02-arquitectura/03-tareas.md)
-- Limitaciones conocidas: [cierre del proyecto](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)
+- Archivos de la tarea: [07-github.md](07-github.md) · IA de la rama: [10-ia-sobre-el-codigo.md](10-ia-sobre-el-codigo.md)
+- Limitaciones conocidas: [cierre de la línea de Pablo y estado](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)

@@ -28,13 +28,13 @@ const DEPLOYED_STATES = new Set(['success', 'inactive']);
 // abandoned (runner lost, run cancelled before its failure step) and counts as failed.
 const ABANDONED_STATES = new Set(['pending', 'queued', 'in_progress']);
 const ABANDONED_AFTER_MS = 60 * 60 * 1000;
-// The CI job of the generated workflow is named "CI (Node.js)", "CI (Python)" or "CI (sitio estático)".
+// The CI job of the generated workflow is named "CI (Node.js)", "CI (Python)" or "CI (static site)" (older workflows: "CI (sitio estático)").
 const CI_CHECK_PREFIX = 'CI (';
 const CI_APP_SLUG = 'github-actions';
 const MAX_CHECK_RUNS = 100;
 
-const STALE_REPOSITORY_NOTE = 'El grupo cambió de repositorio.';
-const STALE_STAGING_NOTE = 'La versión de staging cambió; pide de nuevo.';
+const STALE_REPOSITORY_NOTE = 'The group changed repository.';
+const STALE_STAGING_NOTE = 'The staging version changed; ask again.';
 const DISPATCH_FAILED_NOTE = 'No se pudo iniciar el deploy en GitHub; pide de nuevo.';
 
 // GitHub's check runs and compare results lag a few seconds behind a push, so a negative answer

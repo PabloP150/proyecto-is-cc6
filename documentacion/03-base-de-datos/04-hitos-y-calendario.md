@@ -89,7 +89,7 @@ Valores de `Edges.prerequisite`:
 
 **Columnas sin efecto en la interfaz**
 - `connections`: ningún código la lee ni la escribe.
-- `completed`: la interfaz lo pone en 1 cuando alguien escribe 100 en «Progress». La tarjeta se pinta completada por `percentage = 100`, no por esta columna. Sí la lee el análisis del repositorio con IA (`repoSnapshot.buildExisting`).
+- `completed`: la interfaz lo pone en 1 cuando alguien escribe 100 en «Progress». La tarjeta se pinta completada por `percentage = 100`, no por esta columna. Sí la leen el contexto del chat y el análisis del repositorio con IA (`repoSnapshot.buildExisting`), para decirle al modelo qué hitos ya están completos.
 
 ## Dónde se usa
 
@@ -97,7 +97,7 @@ Valores de `Edges.prerequisite`:
 |---|---|---|
 | `models/nodes.model.js` | `addNode`, `updateNode`, `updateNodeCoords`, `updateNodePercentage`, `updateNodeCompleted`, `deleteNode`, `getNode`, `getNodesByGroupId`, `getNodesAndTasks` | `controllers/nodes.controller.js` |
 | `models/nodes.model.js` | `addNode`, `getNodeLayout` (bloquea el rango para que dos planes no usen la misma fila del lienzo) | `services/ProjectService.js`: planes del chat y del análisis del repositorio |
-| `models/nodes.model.js` | `getNodesByGroupId` | `services/UserSession.js`: hitos existentes que se mandan a la IA al analizar el repositorio |
+| `models/nodes.model.js` | `getNodesByGroupId` | `services/UserSession.js`: hasta 15 hitos del grupo (nombre, fecha y `completed`) que van a la IA en el contexto del chat y al analizar el repositorio |
 | `models/edges.model.js` | `addEdge`, `getEdgesById`, `getEdgesByGroupId`, `updatePrerequisite`, `deleteEdge`, `deleteEdgeBySource` | `controllers/edges.controller.js` |
 | `models/tasks.model.js` | `updateTaskFromNode` | `PUT /api/tasks/nodes/:id`: copia nombre, descripción y fecha del hito a su tarea |
 | `models/access.model.js` | `resolveGroupId('node' \| 'edge')` | Guardias de `middleware/groupAccess.js` |
@@ -106,7 +106,7 @@ Valores de `Edges.prerequisite`:
 Pruebas con SQL Server real: `tests/db/migrations.dbtest.js` (unicidad de flechas, promedio, cadena con ciclo y cambio a prerrequisito) y `tests/db/groups.dbtest.js`.
 
 ## Para saber más
-- Esquema completo (24 tablas): [00-general.md](00-general.md)
+- Esquema completo (29 tablas): [00-general.md](00-general.md)
 - Arquitectura del módulo: [02-arquitectura/04-hitos-y-calendario.md](../02-arquitectura/04-hitos-y-calendario.md)
 - Cómo se ve la propagación paso a paso: [06-flujos/04-hitos-y-calendario.md](../06-flujos/04-hitos-y-calendario.md)
-- Limitaciones conocidas: [cierre del proyecto](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)
+- Limitaciones conocidas: [cierre de la línea de Pablo y estado](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)

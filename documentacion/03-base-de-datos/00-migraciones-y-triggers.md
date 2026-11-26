@@ -1,20 +1,31 @@
 # Migraciones, triggers e índices
 
-**En una frase:** el esquema base crea 14 tablas y ocho migraciones numeradas (001–008) lo llevan a 24 tablas, 2 triggers que propagan el porcentaje de los hitos, los índices de cada llave foránea y la fecha de creación de las tareas.
+**En una frase:** el esquema base crea 14 tablas y once migraciones numeradas (001–011) lo llevan a 29 tablas, con 2 triggers que propagan el porcentaje de los hitos, los índices y la fecha de creación de las tareas.
 
 ```mermaid
-flowchart LR
-    base["taskmate_tables.sql<br/>14 tablas, solo en BD vacía"]
-    ctl["_schema_migrations.sql<br/>SchemaMigrations"]
-    m1["001 índices, UQ<br/>y AnalyticsConfig"]
-    m2["002 GitHub<br/>6 tablas"]
-    m3["003 triggers<br/>con cursores"]
-    m4["004 reparar admins"]
-    m5["005 NVARCHAR, joined_at<br/>y anti-repetición"]
-    m6["006 triggers BFS"]
-    m7["007 CI/CD<br/>2 tablas"]
-    m8["008 created_at<br/>de las tareas"]
-    base --> ctl --> m1 --> m2 --> m3 --> m4 --> m5 --> m6 --> m7 --> m8
+flowchart TB
+    subgraph pablo["Línea de Pablo: Fases 1–4 y cierre (en master)"]
+        direction LR
+        base["taskmate_tables.sql<br/>14 tablas, solo en BD vacía"]
+        ctl["_schema_migrations.sql<br/>SchemaMigrations"]
+        m1["001 índices, UQ<br/>y AnalyticsConfig"]
+        m2["002 GitHub<br/>6 tablas"]
+        m3["003 triggers<br/>con cursores"]
+        m4["004 reparar admins"]
+        m5["005 NVARCHAR, joined_at<br/>y anti-repetición"]
+        m6["006 triggers BFS"]
+        m7["007 CI/CD<br/>2 tablas"]
+        m8["008 created_at<br/>de las tareas"]
+        base --> ctl --> m1 --> m2 --> m3 --> m4 --> m5 --> m6 --> m7 --> m8
+    end
+    subgraph christian["Línea de Christian: 18 nov 2026 (en master desde el 26 nov)"]
+        direction LR
+        m9["009 despliegues de Vercel<br/>3 tablas"]
+        m10["010 archivos<br/>por tarea"]
+        m11["011 revisiones<br/>de PR con IA"]
+        m9 --> m10 --> m11
+    end
+    pablo --> christian
 ```
 
 ## Qué hace cada migración
@@ -31,19 +42,28 @@ flowchart LR
 | 006 | `006_bfs_progress_triggers.sql` | Reemplaza los triggers de la 003 (`CREATE OR ALTER`) por la versión por conjuntos con recorrido en anchura (BFS) |
 | 007 | `007_cicd.sql` | Crea `RepoPipelines` y `DeployRequests` |
 | 008 | `008_task_created_at.sql` | Agrega `created_at` (`DATETIMEOFFSET(7)`, `DEFAULT SYSDATETIMEOFFSET()`) y `created_seq` (desempate) a `Tasks`, `Complete` y `DeleteTask`, con los que se ordenan las listas de `/tasks` («Creation Date»). A las filas que ya había les pone su primera asignación en `TaskAnalytics` si la tienen; si no, la hora de la migración |
+| 009 | `009_deployments.sql` | Crea las 3 tablas del monitoreo de Vercel: `Deployments` (un despliegue por `provider` + `deployment_id`, en cascada desde `Groups`), `DeploymentWebhookDeliveries` (bitácora del webhook, sin FK) y `GroupDeployTargets` (qué proyecto de Vercel es de cada grupo). `Deployments.repo_id` admite `NULL` y su FK no tiene `ON DELETE` |
+| 010 | `010_task_files.sql` | Crea `TaskFiles`: los archivos que tocó cada tarea según su PR (PK `tid` + `path`, en cascada desde `Tasks`) |
+| 011 | `011_ai_reviews.sql` | Crea `AiReviews`: la revisión de PR con IA, una por commit (`UQ_AiReviews_TaskSha`), en cascada desde `Tasks` |
 
-Cada migración tiene su `.down.sql`. La de 004 no hace nada (solo reparó datos), la de 006 reinstala los triggers de la 003, la de 005 puede perder caracteres al volver a `VARCHAR` y la de 008 borra las fechas de creación.
+- 009, 010 y 011 solo crean tablas e índices: no alteran tablas que ya existían ni tocan los triggers.
+- En la línea de Christian, 009 y 010 se llamaban `007_deployments.sql` y `008_task_files.sql`. Se renumeraron al unirla (merge `fea7541`, 18 nov 2026), porque `master` ya tenía 007 y 008.
+
+Cada migración tiene su `.down.sql`. La de 004 no hace nada (solo reparó datos), la de 006 reinstala los triggers de la 003, la de 005 puede perder caracteres al volver a `VARCHAR`, la de 008 borra las fechas de creación, y las de 009, 010 y 011 borran sus tablas **con los datos**.
 
 ## Cómo se aplican
 
 1. **Contenedor:** `setup-db.sh` crea la BD y el login de la app; corre `taskmate_tables.sql` solo si no existe `dbo.Users`.
 2. **Migraciones:** `run-migrations.sh` (con `sqlcmd`, como `SA`) aplica las que faltan en `SchemaMigrations`, en orden.
 3. **Una transacción por migración:** `_begin.sql` + la migración + `_record.sql` (que inserta su fila) van juntos; si algo falla, no queda nada a medias.
-4. **Desde Node:** `node migrations/runner.js up | down | status | reapply` hace lo mismo con `tedious` (`npm run db:migrate` = `up`). Acepta `--to`, `--steps` y `--with-base`.
+4. **Desde Node:** `node migrations/runner.js up | down | status | reapply` hace lo mismo con `tedious` (`npm run db:migrate` = `up`). Acepta `--to`, `--steps` y `--with-base`. Lo usan `npm run db:migrate`, las pruebas de BD y `scripts/local-up.sh`.
 5. **Credenciales:** el runner usa `MIGRATION_DB_USERNAME`/`MIGRATION_DB_PASSWORD` si están; el login de la app no puede cambiar el esquema.
 6. **Idempotentes:** cada paso revisa si ya está hecho, así que `reapply` puede volver a correr una migración aplicada.
 7. **Sin borrar datos:** si la 001 encuentra duplicados, omite esa restricción única con un `WARNING` y crea un índice simple en su lugar (`IX_UserGroupRoles_Uid`, `IX_GroupRoles_Gid`, `IX_Edges_SourceId` o `IX_UserTask_Utid`). Al corregir los datos y hacer `reapply 1`, se crea la restricción y se borra ese índice.
-8. **Una BD que ya existía:** la imagen solo trae las migraciones que había al construirla, así que un contenedor viejo no aplica las nuevas al arrancar. Se aplican desde el host con `npm run db:migrate`; `taskmate-sql` ya tiene 001–008 (la 008 se aplicó el 5 nov 2026) ([guía de la BD en Docker, §5](../07-guias/base-de-datos-docker.md#5-migrar-una-bd-que-ya-existía)).
+8. **Una BD que ya existía:** la imagen solo trae las migraciones que había al construirla, así que un contenedor viejo no aplica las nuevas al arrancar. Una imagen construida antes del 18 nov 2026 no trae 009–011. Se aplican desde el host con `npm run db:migrate` ([guía de la BD en Docker, §5](../07-guias/base-de-datos-docker.md#5-migrar-una-bd-que-ya-existía)):
+   - En Linux, `scripts/local-up.sh` corre `npm run db:migrate` en cada arranque.
+   - `start.sh` solo arranca el contenedor: no migra.
+   - Al 5 nov 2026, `taskmate-sql` tenía 001–008. Si ya tiene 009–011 se ve con `node migrations/runner.js status`.
 
 ## Triggers (migración 006)
 
@@ -77,7 +97,7 @@ Ejemplo: A (40 %) y B (80 %) son fuentes progresoras de C, y C lo es de D. Si A 
 - El conjunto de visitados hace que los ciclos terminen.
 - Los dos salen sin hacer nada si `TRIGGER_NESTLEVEL()` pasa de 10.
 - Crear o borrar una arista no recalcula nada: los dos son `AFTER UPDATE`, y una arista nueva nace como prerrequisito.
-- El esquema base no tiene triggers.
+- El esquema base no tiene triggers, y las migraciones 009–011 tampoco agregan.
 
 ## Índices importantes
 
@@ -96,11 +116,18 @@ Además de las llaves primarias y de las restricciones únicas (ver [tablas y ca
 | 002 | `IX_GroupRepositories_RepoId`, `IX_GroupRepositories_ConnectedBy` | `GroupRepositories (repo_id)`, `(connected_by)` | Grupos de un repo |
 | 002 | `IX_TaskBranches_CreatedBy` | `TaskBranches (created_by)` | FK a `Users` |
 | 002 | `IX_PullRequests_Repo_HeadBranch` | `PullRequests (repo_id, head_branch)` | Unir cada PR con la rama de su tarea |
-| 002 | `IX_GitHubWebhookDeliveries_ReceivedAt` | `GitHubWebhookDeliveries (received_at)` | Purga diaria de entregas viejas |
+| 002 | `IX_GitHubWebhookDeliveries_ReceivedAt` | `GitHubWebhookDeliveries (received_at)` | Purga diaria de entregas viejas de GitHub |
 | 005 | `IX_GitHubWebhookDeliveries_PayloadSha256` (único, filtrado) | `(payload_sha256) WHERE payload_sha256 IS NOT NULL` | Rechazar un webhook repetido |
 | 007 | `UX_DeployRequests_Pending` (único, filtrado) | `DeployRequests (gid, environment) WHERE status = 'pending'` | Una sola solicitud pendiente por grupo y entorno |
 | 007 | `IX_DeployRequests_Gid_RequestedAt` | `(gid, requested_at DESC)` | Historial de solicitudes del grupo |
 | 007 | `IX_DeployRequests_RepoId`, `_RequestedBy`, `_DecidedBy`; `IX_RepoPipelines_ConfiguredBy` | Una columna FK cada uno | FKs a repositorios y usuarios |
+| 009 | `IX_Deployments_Gid_CreatedAt` | `Deployments (gid, created_at DESC)` | Últimos despliegues del grupo (pestaña «Vercel (monitoring)») |
+| 009 | `IX_DeploymentDeliveries_ReceivedAt` | `DeploymentWebhookDeliveries (received_at)` | Hoy ninguna consulta lo usa: las entregas de Vercel no se purgan |
+| 010 | `IX_TaskFiles_Path` | `TaskFiles (path) INCLUDE (tid, status)` | Qué otras tareas tocan la misma ruta (`/overlaps`) |
+| 011 | `IX_AiReviews_Task` | `AiReviews (tid, created_at DESC)` | Última revisión de la tarea |
+
+- **Restricciones únicas nuevas.** `UQ_GroupDeployTargets_Project` (`provider`, `project_ref`) impide vincular un proyecto de Vercel a dos grupos (la API responde 409 `CONFLICT`). `UQ_AiReviews_TaskSha` (`tid`, `head_sha`) hace que un webhook repetido no revise dos veces el mismo commit.
+- **FK sin índice.** Desde la 009, `Deployments.repo_id` y `GroupDeployTargets.connected_by` son las únicas FK sin índice. Las demás FK nuevas (`gid`, `tid`) van primero en una llave o un índice.
 
 ## Dónde está en el código
 
@@ -112,10 +139,13 @@ Además de las llaves primarias y de las restricciones únicas (ver [tablas y ca
 | `taskmate-api/migrations/run-migrations.sh` | Aplicador con `sqlcmd` (lo usa el contenedor) |
 | `taskmate-api/migrations/runner.js` | Aplicador en Node: `up`, `down`, `status`, `reapply` |
 | `taskmate-api/setup-db.sh` | Arranque del contenedor: BD, login, esquema base y migraciones |
+| `scripts/local-up.sh` | Arranque en Linux con Podman: corre `npm run db:migrate` cada vez |
+| `taskmate-api/tests/db/migrations.dbtest.js` | Prueba de BD: baja todas las migraciones y las vuelve a subir hasta la 011 |
 
 ## Para saber más
 
-- Diagrama de las 24 tablas: [00-general.md](00-general.md) · todos los campos: [00-tablas-y-campos.md](00-tablas-y-campos.md)
+- Diagrama de las 29 tablas: [00-general.md](00-general.md) · todos los campos: [00-tablas-y-campos.md](00-tablas-y-campos.md)
 - Los hitos y sus flechas en detalle: [hitos y calendario](04-hitos-y-calendario.md)
+- La revisión de PR con IA (`AiReviews`, 011) en detalle: [IA sobre el código](10-ia-sobre-el-codigo.md)
 - Correr las migraciones y la BD de pruebas: [guía de la base de datos](../07-guias/base-de-datos-docker.md#4-migraciones)
-- Limitaciones conocidas: [cierre del proyecto](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)
+- Limitaciones conocidas: [cierre de la línea de Pablo y estado](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)

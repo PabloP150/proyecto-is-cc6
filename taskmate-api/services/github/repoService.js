@@ -9,6 +9,9 @@ const MAX_COMMITS = 30;
 const MAX_PATH_LENGTH = 1024;
 const MAX_REF_LENGTH = 255;
 const MAX_COMMIT_MESSAGE = 2000;
+// GitHub caps the PR files endpoint at 3000 files and 100 per page; a task's PR being larger
+// than this page means the list shown is partial, which is better than refusing to show one.
+const MAX_PR_FILES = 100;
 const BINARY_SNIFF_BYTES = 8000;
 
 const invalid = (message) => new AppError('VALIDATION_ERROR', message, 400);
@@ -176,6 +179,63 @@ const getCommitsForRepo = async (repo, { ref, perPage } = {}) => {
     });
 };
 
+/**
+ * The files a pull request changed.
+ *
+ * The PR files endpoint is the authoritative diff against the base branch: already
+ * deduplicated across commits, with a final status per file. Walking the branch's commits
+ * instead would double-count a file edited more than once.
+ */
+const getPullRequestFiles = async (repo, prNumber) => {
+    const number = Number(prNumber);
+    if (!Number.isInteger(number) || number <= 0) throw invalid('prNumber must be a positive integer');
+
+    // The PR endpoints need pull_requests:read; a contents-only token gets a 404 from GitHub.
+    const { data } = await githubApp.request(repoAuth(repo), 'GET', `${repoPath(repo)}/pulls/${number}/files`, {
+        ...scope(repo, PERMISSIONS.pulls),
+        query: { per_page: MAX_PR_FILES },
+        notFoundCode: 'NOT_FOUND',
+    });
+
+    return (Array.isArray(data) ? data : []).map((file) => ({
+        path: String(file.filename || '').slice(0, 400),
+        status: file.status || 'modified',
+        additions: Number(file.additions) || 0,
+        deletions: Number(file.deletions) || 0,
+        // Present only on a rename; the UI shows it so a moved file is not read as a delete.
+        previousPath: file.previous_filename ? String(file.previous_filename).slice(0, 400) : null,
+    })).filter((file) => file.path);
+};
+
+/**
+ * Per-file unified patches between two refs (three-dot: against the merge base), for the AI server.
+ * GitHub inlines at most 300 files and omits `patch` for binary or very large files.
+ */
+const getComparePatches = async (repo, base, head) => {
+    const b = validateRef(base);
+    const h = validateRef(head);
+    if (!b || !h) throw invalid('base and head are required');
+    const { data } = await githubApp.request(
+        repoAuth(repo), 'GET', `${repoPath(repo)}/compare/${encodeURIComponent(b)}...${encodeURIComponent(h)}`,
+        { ...scope(repo), notFoundCode: 'NOT_FOUND' },
+    );
+    const files = (Array.isArray(data && data.files) ? data.files : []).map((file) => ({
+        path: String(file.filename || '').slice(0, 400),
+        status: file.status || 'modified',
+        patch: typeof file.patch === 'string' ? file.patch : null,
+    })).filter((file) => file.path);
+    return { files, aheadBy: Number(data && data.ahead_by) || 0 };
+};
+
+const getPullRequest = async (repo, prNumber) => {
+    const number = Number(prNumber);
+    if (!Number.isInteger(number) || number <= 0) throw invalid('prNumber must be a positive integer');
+    const { data } = await githubApp.request(repoAuth(repo), 'GET', `${repoPath(repo)}/pulls/${number}`, {
+        ...scope(repo, PERMISSIONS.pulls), notFoundCode: 'NOT_FOUND',
+    });
+    return data || {};
+};
+
 const getRepoMeta = async (repo) => {
     const { data } = await githubApp.request(repoAuth(repo), 'GET', repoPath(repo), scope(repo));
     return data || {};
@@ -193,6 +253,9 @@ module.exports = {
     getFileForRepo,
     getReadmeForRepo,
     getCommitsForRepo,
+    getPullRequestFiles,
+    getComparePatches,
+    getPullRequest,
     getRepoMeta,
     // Input is validated before touching the DB or GitHub.
     getTree: async (gid, opts = {}) => {

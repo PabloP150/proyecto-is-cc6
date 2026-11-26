@@ -86,7 +86,7 @@ const run = async (script, { fake, eventName = 'push', env }) => {
 const pushEnv = (sha = HEAD) => ({ TARGET_ENV: 'staging', TARGET_VERSION: sha, REQUESTED_BY: '' });
 
 describe('versions script', () => {
-    const script = scriptOf('build', 'Versiones a publicar');
+    const script = scriptOf('build', 'Versions to publish');
 
     test('a push at the head of the default branch deploys staging over the newest published site', async () => {
         const fake = fakeGitHub({
@@ -123,7 +123,7 @@ describe('versions script', () => {
         expect(fake.outputs).toEqual({ skip: 'true' });
         expect(fake.github.rest.repos.createDeployment).not.toHaveBeenCalled();
         expect(fake.github.rest.repos.listDeployments).not.toHaveBeenCalled();
-        expect(fake.core.notice).toHaveBeenCalledWith(expect.stringMatching(/ya no es la última versión de main/));
+        expect(fake.core.notice).toHaveBeenCalledWith(expect.stringMatching(/no longer the latest version of main/));
     });
 
     test('a deploy from TaskMate does not look at the branch head', async () => {
@@ -161,7 +161,7 @@ describe('versions script', () => {
         await run(script, { fake: expired, env: pushEnv() });
         expect(expired.calls).toContainEqual(['listWorkflowRunArtifacts', 40, 'github-pages']);
         expect(expired.outputs).toMatchObject({ base_run: '', other_version: SHA('c') });
-        expect(expired.core.info).toHaveBeenCalledWith(expect.stringMatching(/ya no está guardado en GitHub/));
+        expect(expired.core.info).toHaveBeenCalledWith(expect.stringMatching(/no longer stored on GitHub/));
 
         // If GitHub cannot say, the download is still attempted (and falls back on its own).
         const unknown = fakeGitHub({ deployments, artifactsError: new Error('boom') });
@@ -180,27 +180,27 @@ describe('versions script', () => {
 
     test('rejects an unknown environment or a version that is not a full SHA', async () => {
         await expect(run(script, { fake: fakeGitHub(), eventName: 'workflow_dispatch', env: { TARGET_ENV: 'qa', TARGET_VERSION: HEAD } }))
-            .rejects.toThrow(/Entorno inválido/);
+            .rejects.toThrow(/Invalid environment/);
         await expect(run(script, { fake: fakeGitHub(), eventName: 'workflow_dispatch', env: { TARGET_ENV: 'production', TARGET_VERSION: 'main' } }))
-            .rejects.toThrow(/Versión inválida/);
+            .rejects.toThrow(/Invalid version/);
     });
 });
 
 describe('deploy recorders', () => {
     test('success: staging gets its /staging/ URL; failure closes the deployment', async () => {
         const fake = fakeGitHub();
-        await run(scriptOf('deploy', 'Registrar el deploy'), {
+        await run(scriptOf('deploy', 'Record the deploy'), {
             fake, env: { DEPLOYMENT_ID: '900', TARGET_ENV: 'staging', PAGE_URL: 'https://grupo.github.io/app' },
         });
         expect(fake.github.rest.repos.createDeploymentStatus).toHaveBeenCalledWith(expect.objectContaining({
             deployment_id: 900, state: 'success', environment_url: 'https://grupo.github.io/app/staging/', auto_inactive: true,
         }));
-        await run(scriptOf('build', 'Registrar el deploy fallido'), { fake, env: { DEPLOYMENT_ID: '900' } });
+        await run(scriptOf('build', 'Record the failed deploy'), { fake, env: { DEPLOYMENT_ID: '900' } });
         expect(fake.github.rest.repos.createDeploymentStatus).toHaveBeenLastCalledWith(expect.objectContaining({ deployment_id: 900, state: 'failure' }));
     });
 
     test.each([['build'], ['deploy'], ['close']])('the %s failure recorder closes only a deployment that is still open', async (job) => {
-        const script = scriptOf(job, 'Registrar el deploy fallido');
+        const script = scriptOf(job, 'Record the failed deploy');
         for (const statuses of [['in_progress'], ['queued', 'pending'], []]) {
             const fake = fakeGitHub({ deployments: [{ id: 900, environment: 'staging', sha: HEAD, payload: {}, statuses }] });
             await run(script, { fake, env: { DEPLOYMENT_ID: '900' } });
@@ -216,7 +216,7 @@ describe('deploy recorders', () => {
 });
 
 describe('deploy attempt check', () => {
-    const script = scriptOf('deploy', 'Comprobar que el build es de este intento');
+    const script = scriptOf('deploy', 'Check that the build is from this attempt');
 
     test('a deploy job of the same attempt as its build goes on', async () => {
         const fake = fakeGitHub();
@@ -230,7 +230,7 @@ describe('deploy attempt check', () => {
     ])('%s: fails, telling to deploy again from TaskMate, and calls no API', async (_, env) => {
         const fake = fakeGitHub();
         await run(script, { fake, env });
-        expect(fake.core.setFailed).toHaveBeenCalledWith(expect.stringMatching(/Vuelve a desplegar desde TaskMate/));
+        expect(fake.core.setFailed).toHaveBeenCalledWith(expect.stringMatching(/Deploy again from TaskMate/));
         expect(fake.calls).toEqual([]);
     });
 });

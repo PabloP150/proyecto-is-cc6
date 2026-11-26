@@ -3,13 +3,13 @@ import { Navigate, Route, BrowserRouter as Router, Routes, useNavigate } from 'r
 import { Box, CircularProgress } from '@mui/material';
 import { UNAUTHORIZED_EVENT } from './api/client';
 import { GroupContext, GroupProvider } from './components/GroupContext';
-import CicdNotifications from './components/realtime/CicdNotifications';
 import { RealtimeProvider } from './components/realtime/RealtimeContext';
 import { ThemeProvider } from './theme';
 
 const AnalyticsDashboard = lazy(() => import('./components/AnalyticsDashboard'));
 const BlockDiagram = lazy(() => import('./components/BlockDiagram'));
 const CalendarView = lazy(() => import('./components/CalendarView'));
+const CicdNotifications = lazy(() => import('./components/realtime/CicdNotifications'));
 const ChatPage = lazy(() => import('./components/ChatPage'));
 const GitHubPage = lazy(() => import('./components/github/GitHubPage'));
 const GroupsView = lazy(() => import('./components/GroupsView'));

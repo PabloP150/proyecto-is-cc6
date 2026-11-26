@@ -1,6 +1,6 @@
 # Tiempo real y avisos: flujos
 
-**En una frase:** el navegador se suscribe a sus grupos por `/events`; cuando GitHub avisa de una ejecución o de un deploy (o cambia una solicitud de producción), la API reparte el evento a los miembros, las pantallas se recargan y puede aparecer un aviso.
+**En una frase:** el navegador se suscribe a sus grupos por `/events`; cuando GitHub avisa de una ejecución o de un deploy (o cambia una solicitud de producción), la API reparte el evento a los miembros, las pantallas se recargan y puede aparecer un aviso. Los despliegues de Vercel no siguen este camino.
 
 ## Flujo principal: de GitHub al aviso
 
@@ -17,6 +17,7 @@ sequenceDiagram
 
     U->>FE: inicia sesión
     FE->>WS: upgrade a /events?token=JWT
+    Note over WS: Origin de FRONTEND_URL, sin Origin o, con ALLOW_LAN_ORIGINS=true, http con IPv4 privada
     alt Origin no permitido o token inválido
         WS-->>FE: HTTP 403 o 401, el navegador reintenta más tarde
     end
@@ -37,7 +38,7 @@ sequenceDiagram
     end
     HUB-->>FE: event con event, gid, data y at
     FE->>FE: las pantallas de ese grupo recargan sus datos
-    FE-->>U: aviso abajo a la derecha, si le corresponde
+    FE-->>U: aviso abajo a la derecha, si le corresponde (CicdNotifications, en inglés)
 ```
 
 ## Ciclo de vida de la conexión
@@ -83,8 +84,8 @@ Los eventos de un mismo grupo llegan en orden: mientras uno espera su comprobaci
 
 ## Paso a paso
 
-1. Al iniciar sesión, `RealtimeProvider` abre `/events` con el JWT en `?token=`.
-2. Antes del upgrade, el servidor revisa el `Origin` y el token.
+1. Al iniciar sesión, `RealtimeProvider` abre `ws://<host de la página>:9000/events` (o `REACT_APP_WS_URL`) con el JWT en `?token=`. A la vez, `App.js` descarga aparte `CicdNotifications` (`React.lazy`) y lo monta.
+2. Antes del upgrade, el servidor revisa el `Origin` (los de `FRONTEND_URL` y, con `ALLOW_LAN_ORIGINS=true`, `http://` con IPv4 privada) y el token.
 3. Si la lista de grupos está vacía (por ejemplo, tras recargar), el navegador la pide a la API.
 4. El navegador manda `subscribe` con sus grupos: al conectar, al reconectar y cuando cambian.
 5. El hub deja los grupos donde es miembro y responde `subscribed`.
@@ -92,7 +93,7 @@ Los eventos de un mismo grupo llegan en orden: mientras uno espera su comprobaci
 7. La API publica el evento en cada grupo; `deploy_request` lo publica sin pasar por GitHub.
 8. El hub re-verifica la membresía si hace falta y envía el evento a cada socket del grupo.
 9. Las pantallas de ese grupo recargan, agrupando ráfagas (1 s la lista, 800 ms detalle y entornos).
-10. `CicdNotifications` decide el aviso; el de una ejecución terminada espera 3 s por si antes llega el del deploy.
+10. `CicdNotifications` decide el aviso; el de una ejecución terminada espera 3 s por si antes llega el del deploy. «View» activa el grupo y abre `/github?tab=cicd`.
 11. Si el socket se cae, se reconecta solo y, al confirmar la suscripción, las pantallas se recargan una vez.
 
 ## Qué ve el usuario si algo falla
@@ -100,6 +101,7 @@ Los eventos de un mismo grupo llegan en orden: mientras uno espera su comprobaci
 | Situación | Código | Qué ve el usuario |
 |---|---|---|
 | `Origin` no permitido | HTTP 403 en el upgrade | Sin avisos en vivo; el navegador reintenta y las pantallas consultan cada 10–15 s |
+| App abierta desde otro equipo de la red (`http://192.168.x.x:3000`) sin `ALLOW_LAN_ORIGINS=true` | CORS en la API REST; 403 en el upgrade | La app no funciona: el navegador bloquea las respuestas de la API (ni el login pasa) y `/events` daría 403. Con `ALLOW_LAN_ORIGINS=true` (solo desarrollo) funciona todo, avisos incluidos |
 | Sin token o token inválido | HTTP 401 en el upgrade | Igual que arriba. Si el token ya no sirve, la API REST también da 401 y TaskMate vuelve a «Sign In» |
 | El token vence con el socket abierto | Cierre 4001 | TaskMate cierra la sesión y vuelve a «Sign In» |
 | El navegador manda un mensaje de más de 64 KB | Cierre 1009 | El socket se reconecta solo. En `/events` no pasa en la práctica: el navegador solo manda `ping` y los ids de sus grupos |
@@ -111,6 +113,7 @@ Los eventos de un mismo grupo llegan en orden: mientras uno espera su comprobaci
 | Te sacan de un grupo | — | Puedes recibir sus eventos hasta 5 min más; luego dejan de llegar |
 | Webhook con firma inválida | HTTP 401 | Nadie recibe nada |
 | Webhook de un repositorio sin grupo | Entrega `ignored` | Nadie recibe nada |
+| Cambia un despliegue de Vercel | — | Ningún aviso ni recarga: el webhook de Vercel no publica en `/events`. Se ve al abrir «Vercel (monitoring)» o con «Refresh» |
 
 ## Para saber más
 
@@ -118,6 +121,7 @@ Los eventos de un mismo grupo llegan en orden: mientras uno espera su comprobaci
 - Quién ve cada aviso: [04-casos-de-uso/09-tiempo-real-y-avisos.md](../04-casos-de-uso/09-tiempo-real-y-avisos.md)
 - Cómo se ven: [05-interfaz/09-tiempo-real-y-avisos.md](../05-interfaz/09-tiempo-real-y-avisos.md)
 - Webhooks, ejecuciones y deploys: [08-cicd.md](08-cicd.md)
+- El webhook de Vercel, que no pasa por aquí: [08-cicd.md](08-cicd.md#monitoreo-de-vercel-del-webhook-a-la-pestaña)
 - El chat por `/chat`: [05-chat-ia.md](05-chat-ia.md)
-- Pruebas: `taskmate-api/tests/realtime.test.js`, `taskmate-api/tests/api/websocket.test.js`, `src/components/realtime/__tests__/Realtime.test.jsx`
-- Limitaciones conocidas: [cierre del proyecto](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)
+- Pruebas: `taskmate-api/tests/realtime.test.js`, `taskmate-api/tests/api/websocket.test.js`, `taskmate-api/tests/middleware/cors.test.js` (`ALLOW_LAN_ORIGINS`), `src/components/realtime/__tests__/Realtime.test.jsx`
+- Limitaciones conocidas: [cierre de la línea de Pablo y estado](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)

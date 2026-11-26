@@ -1,6 +1,6 @@
 # Tareas: base de datos
 
-**En una frase:** cuatro tablas guardan las tareas activas (`Tasks`), quién está asignado a cada una (`UserTask`), el archivo de las completadas (`Complete`) y la papelera (`DeleteTask`); las listas no tienen tabla propia, son la columna `Tasks.list`.
+**En una frase:** cuatro tablas guardan las tareas activas (`Tasks`), quién está asignado a cada una (`UserTask`), el archivo de las completadas (`Complete`) y la papelera (`DeleteTask`); las listas no tienen tabla propia, son la columna `Tasks.list`. Al borrar una fila de `Tasks` caen solas su rama (`TaskBranches`), su lista de archivos (`TaskFiles`) y sus revisiones de IA (`AiReviews`).
 
 ```mermaid
 erDiagram
@@ -11,6 +11,8 @@ erDiagram
     Tasks ||--o{ UserTask : "tid"
     Users ||--o{ UserTask : "uid"
     Tasks ||--o| TaskBranches : "tid, ON DELETE CASCADE"
+    Tasks ||--o{ TaskFiles : "tid, ON DELETE CASCADE (010)"
+    Tasks ||--o{ AiReviews : "tid, ON DELETE CASCADE (011)"
     Tasks |o..o{ TaskAnalytics : "tid, sin FK desde 001"
 
     Groups {
@@ -59,6 +61,14 @@ erDiagram
     TaskBranches {
         UNIQUEIDENTIFIER tid PK, FK "solo la llave, ver GitHub"
     }
+    TaskFiles {
+        UNIQUEIDENTIFIER tid PK, FK "solo la llave, ver GitHub"
+        NVARCHAR(400) path PK "BIN2"
+    }
+    AiReviews {
+        BIGINT id PK "solo la llave, ver IA sobre el código"
+        UNIQUEIDENTIFIER tid FK "a Tasks"
+    }
     TaskAnalytics {
         UNIQUEIDENTIFIER id PK "solo lo que toca este módulo, ver Analytics"
         UNIQUEIDENTIFIER tid "sin FK"
@@ -66,7 +76,7 @@ erDiagram
     }
 ```
 
-`Groups`, `Users`, `TaskBranches` y `TaskAnalytics` aparecen solo con las columnas que conectan con este módulo. El diagrama de toda la base está en [00-general.md](00-general.md).
+`Groups`, `Users`, `TaskBranches`, `TaskFiles`, `AiReviews` y `TaskAnalytics` aparecen solo con las columnas que conectan con este módulo. `TaskFiles` se explica en [GitHub](07-github.md) y `AiReviews` en [IA sobre el código](10-ia-sobre-el-codigo.md). El diagrama de toda la base está en [00-general.md](00-general.md).
 
 ## Tablas
 
@@ -88,12 +98,14 @@ erDiagram
 
 **Borrado**
 - Estas cuatro tablas **no tienen** `ON DELETE CASCADE` entre ellas: el código borra en orden.
-- Completar o mandar a la papelera, en una transacción: copia a `Complete` o `DeleteTask` → cierra los registros `pending` de `TaskAnalytics` (`completed` o `failed`) → borra `UserTask` → borra `Tasks`.
+- Completar o mandar a la papelera, en una transacción: copia a `Complete` o `DeleteTask` → cierra los registros `pending` de `TaskAnalytics` (`completed` o `failed`) → borra `UserTask` → borra `Tasks` (y con ella, por cascada, sus filas de `TaskBranches`, `TaskFiles` y `AiReviews`).
 - Borrar una lista hace lo mismo con todas sus tareas, pero **sin copiarlas** a `DeleteTask`.
 - Desasignar borra la fila de `UserTask` y cierra el registro `pending` de esa persona como `reassigned`.
-- La única cascada del módulo: al borrar una fila de `Tasks`, su fila de `TaskBranches` cae sola (`ON DELETE CASCADE`).
+- Las cascadas que salen de `Tasks` (`ON DELETE CASCADE`): al borrar una fila de `Tasks` caen solas su fila de `TaskBranches` (002), sus filas de `TaskFiles` (010) y sus filas de `AiReviews` (011).
+- Efecto de esas cascadas: `Complete` y `DeleteTask` no guardan rama, archivos ni revisiones de IA. Una tarea completada, en la papelera o de una lista borrada pierde su lista de archivos y sus revisiones del PR.
+- Al fusionar el PR, la lista de archivos se intenta grabar **después** de que `completeTask` borró la tarea. Según el código no se graba: al repositorio que pasa el webhook le falta `owner`, así que la llamada a GitHub falla, y aunque no faltara, el `INSERT` en `TaskFiles` chocaría con `FK_TaskFiles_Tasks`. Solo queda un aviso en el log. En la práctica, `TaskFiles` solo se llena al abrir «Task files» en una tarea activa con PR. Ver [Limitaciones conocidas](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas).
 - `TaskAnalytics` perdió su FK a `Tasks` en la migración 001 para conservar el historial.
-- Borrar un grupo borra, en orden y en una transacción, `TaskAnalytics`, `UserTask`, `Tasks`, `Complete` y `DeleteTask` del grupo, entre otras (`group.model.deleteGroupCascade`).
+- Borrar un grupo borra, en orden y en una transacción, `TaskAnalytics`, `UserTask`, `Tasks` (con sus cascadas), `Complete` y `DeleteTask` del grupo, entre otras (`group.model.deleteGroupCascade`).
 - Quitar a alguien de un grupo borra su membresía y sus roles, pero no sus filas de `UserTask`.
 
 **Triggers**
@@ -121,18 +133,20 @@ erDiagram
 | `models/tasks.model.js` | Crear, editar, leer, completar (`completeTask`), mandar a la papelera (`trashTask`) y borrar una lista (`deleteTasksByList`) |
 | `models/complete.model.js` | Listar y vaciar `Complete` de un grupo |
 | `models/delete.model.js` | Listar y vaciar `DeleteTask` de un grupo |
-| `models/usertask.model.js` | Asignar, desasignar, leer asignaciones y repartir asignaciones de demo (`populateAssignmentsForGroup`) |
+| `models/usertask.model.js` | Asignar, desasignar, leer asignaciones, leer quién tiene cada tarea del grupo para el contexto del chat (`getAssigneesByGroup`, con `Tasks` y `Users`) y repartir asignaciones de demo (`populateAssignmentsForGroup`) |
 | `models/access.model.js` | Averiguar el grupo de una tarea, una completada, una borrada o una asignación |
 | `models/group.model.js` | Borrar todo al eliminar un grupo |
 | `models/nodes.model.js` | El calendario lee las fechas de `Tasks` junto con las de los hitos |
 | `services/ProjectService.js` | El plan del chat inserta tareas en una transacción |
-| `services/github/pullRequestProcessor.js` | Un PR fusionado completa la tarea con `completeTask` |
+| `services/github/pullRequestProcessor.js` | Un PR fusionado completa la tarea con `completeTask`; después del commit intenta grabar su lista de archivos (ver Borrado) |
+| `models/github.model.js` | `TaskFiles`: reemplazar la lista de una tarea (`replaceTaskFiles`), leerla (`getTaskFiles`) y buscar otras tareas activas que tocan las mismas rutas (`findTasksTouchingPaths`, con `JOIN` a `Tasks`) |
+| `models/aiReview.model.js` | `AiReviews`: reservar la revisión de un commit (`claim`), cerrarla (`finish`) y leer la última de la tarea (`getLatest`) |
 | `services/AnalyticsService.js`, `services/analyticsContext.js` | Registran asignaciones y cuentan la carga actual con `UserTask` |
 
 ## Para saber más
 
 - Arquitectura del módulo: [02-arquitectura/03-tareas.md](../02-arquitectura/03-tareas.md)
 - Flujos que escriben en estas tablas: [06-flujos/03-tareas.md](../06-flujos/03-tareas.md)
-- Ramas y PRs de las tareas: [GitHub](07-github.md) · métricas: [Analytics](06-analytics.md)
-- Modelo completo con las 24 tablas: [00-general.md](00-general.md)
-- Limitaciones conocidas: [cierre del proyecto](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)
+- Ramas, PRs y archivos de las tareas: [GitHub](07-github.md) · revisiones de IA: [IA sobre el código](10-ia-sobre-el-codigo.md) · métricas: [Analytics](06-analytics.md)
+- Modelo completo con las 29 tablas: [00-general.md](00-general.md)
+- Limitaciones conocidas: [cierre de la línea de Pablo y estado](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)

@@ -15,13 +15,15 @@ architecture-beta
     junction jh in api
     service hook(mdi:api)[webhook Handler] in api
     junction jx in api
+    service vhook(mdi:webhook)[webhook Vercel no pasa por el hub] in api
 
-    group docker(logos:docker-icon)[Docker]
-    service db(mdi:database)[SQL Server 2019] in docker
+    group docker(logos:docker-icon)[Contenedor]
+    service db(mdi:database)[SQL Server 2019 en Docker o Podman] in docker
 
     group ext(cloud)[Internet]
     service smee(mdi:web)[smee solo en desarrollo] in ext
     service gh(logos:github-icon)[GitHub] in ext
+    service vercel(logos:vercel-icon)[Vercel] in ext
 
     provider:T -- B:jt
     jt:L --> R:toasts
@@ -37,3 +39,4 @@ architecture-beta
     jx:B --> T:db
     smee:L --> R:hook
     gh:L --> R:smee
+    vercel:L --> R:vhook

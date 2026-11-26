@@ -97,7 +97,7 @@ describe('proposePipeline', () => {
         cicdModel.getPipeline.mockResolvedValue({ spec: { ...saved, test: { kind: 'script', name: 'gone' } } });
         const fresh = await pipelineService.proposePipeline({ gid: GID, uid: UID });
         expect(fresh.source).toBe('detected');
-        expect(fresh.notes[0]).toMatch(/ya no coincide/);
+        expect(fresh.notes[0]).toMatch(/no longer matches/);
     });
 
     test('dir/stack switch to another project', async () => {
@@ -175,7 +175,7 @@ describe('proposePipeline with the AI', () => {
         const result = await pipelineService.proposePipeline({ gid: GID, uid: UID });
         expect(result.source).toBe('ai');
         expect(result.notes[0]).toBe(EXPLANATION);
-        expect(result.notes[1]).toMatch(/ya no coincide/);
+        expect(result.notes[1]).toMatch(/no longer matches/);
     });
 
     test('ai: true asks the AI even with a saved spec; ai: false never asks it', async () => {
@@ -227,17 +227,17 @@ describe('proposePipeline with the AI', () => {
         const result = await pipelineService.proposePipeline({ gid: GID, uid: UID });
         expect(result.source).toBe('detected');
         expect(result.spec).toEqual(DETECTED);
-        expect(result.notes[0]).toBe('No se pudo usar la IA (propuso algo que no coincide con el repositorio); esta es la propuesta de la detección automática.');
+        expect(result.notes[0]).toBe('The AI could not be used (it proposed something that does not match the repository); this is the automatic detection proposal.');
         expect(result.notes).not.toContain(EXPLANATION);
         expect(result.ai).toEqual({ available: true, used: false, error: 'LLM_INVALID_OUTPUT' });
         expect(result.yaml).not.toContain('x; rm');
     });
 
     test.each([
-        ['LLM_TIMEOUT', 504, /tardó demasiado/],
-        ['LLM_RATE_LIMIT', 503, /límite de uso/],
-        ['LLM_INVALID_OUTPUT', 502, /no coincide con el repositorio/],
-        ['LLM_ERROR', 503, /no está disponible/],
+        ['LLM_TIMEOUT', 504, /took too long/],
+        ['LLM_RATE_LIMIT', 503, /usage limit/],
+        ['LLM_INVALID_OUTPUT', 502, /does not match the repository/],
+        ['LLM_ERROR', 503, /not available/],
     ])('an AI failure (%s) falls back to the detected proposal', async (code, status, reason) => {
         useFakeGitHub(routes());
         pipelineAi.proposeWithAi.mockRejectedValue(new AppError(code, 'x', status));
@@ -245,7 +245,7 @@ describe('proposePipeline with the AI', () => {
         expect(result.source).toBe('detected');
         expect(result.spec).toEqual(DETECTED);
         expect(result.notes[0]).toMatch(reason);
-        expect(result.notes[0]).toMatch(/^No se pudo usar la IA \(.+\); esta es la propuesta de la detección automática\.$/);
+        expect(result.notes[0]).toMatch(/^The AI could not be used \(.+\); this is the automatic detection proposal\.$/);
         expect(result.ai).toEqual({ available: true, used: false, error: code });
     });
 

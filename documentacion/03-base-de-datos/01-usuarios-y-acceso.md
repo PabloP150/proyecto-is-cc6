@@ -45,7 +45,7 @@ Origen: `taskmate_tables.sql` (esquema base). La migración 005 pasó `username`
 - **Contraseña.** La base solo guarda el hash bcrypt (`VARCHAR(60)`), nunca la contraseña.
 - **Límites de la API antes de escribir.** `username` de 1 a 25 caracteres; contraseña de 6 caracteres a 72 bytes (bcrypt ignora lo que pase de 72 bytes).
 - **Nombre del grupo personal.** «`<usuario>`'s Group», recortado a 25 caracteres.
-- **Sin cascadas.** Ninguna FK hacia `Users` tiene `ON DELETE`. Además de `Groups` y `UserGroups`, apuntan a `Users.uid` `UserTask`, `UserGroupRoles`, `TaskAnalytics`, `UserMetrics`, `UserExpertise`, `GroupRepositories`, `TaskBranches`, `RepoPipelines` y `DeployRequests`. No existe ninguna ruta para borrar un usuario.
+- **Sin cascadas.** Ninguna FK hacia `Users` tiene `ON DELETE`. Además de `Groups` y `UserGroups`, apuntan a `Users.uid` `UserTask`, `UserGroupRoles`, `TaskAnalytics`, `UserMetrics`, `UserExpertise`, `GroupRepositories`, `TaskBranches`, `RepoPipelines`, `DeployRequests` y `GroupDeployTargets` (`connected_by`, migración 009). No existe ninguna ruta para borrar un usuario.
 - **Sin triggers.** Estas tablas no tienen triggers; los de la migración 006 son de los hitos (`Nodes` y `Edges`).
 - **Índices (001).** `IX_Groups_AdminId` sobre `Groups (adminId)` e `IX_UserGroups_Gid` sobre `UserGroups (gid)`.
 - **Reparación de admins (004 y 005).** Si el admin de un grupo ya no es miembro, pasa a serlo el miembro más antiguo (`joined_at`, luego `uid`).
@@ -63,8 +63,8 @@ Los tres últimos pertenecen al módulo [Grupos y roles](02-grupos-y-roles.md).
 
 ## Para saber más
 
-- Diagrama completo de las 24 tablas: [00-general.md](00-general.md)
+- Diagrama completo de las 29 tablas: [00-general.md](00-general.md)
 - Todas las llaves y restricciones: [00-general.md, Llaves y restricciones](00-general.md#llaves-y-restricciones)
 - Arquitectura del módulo: [02-arquitectura/01-usuarios-y-acceso.md](../02-arquitectura/01-usuarios-y-acceso.md)
 - Flujo del registro paso a paso: [06-flujos/01-usuarios-y-acceso.md](../06-flujos/01-usuarios-y-acceso.md)
-- Levantar la base en Docker: [guía de la base de datos](../07-guias/base-de-datos-docker.md)
+- Levantar la base en Docker o Podman: [guía de la base de datos](../07-guias/base-de-datos-docker.md)

@@ -1,8 +1,8 @@
 # Tablas y campos
 
-**En una frase:** referencia completa de las 24 tablas de TaskMate, con todos sus campos, tipos, llaves y restricciones, tal como quedan con el esquema base más las migraciones 001–008.
+**En una frase:** referencia completa de las 29 tablas de TaskMate, con todos sus campos, tipos, llaves y restricciones, tal como quedan con el esquema base más las migraciones 001–011.
 
-Fuente: `taskmate-api/taskmate_tables.sql` (esquema base), `taskmate-api/migrations/001`–`008` y `_schema_migrations.sql`. El diagrama con solo las llaves está en [00-general.md](00-general.md).
+Fuente: `taskmate-api/taskmate_tables.sql` (esquema base), `taskmate-api/migrations/001`–`011` y `_schema_migrations.sql`. El diagrama con solo las llaves está en [00-general.md](00-general.md). El servidor de IA local tiene su propia base (Postgres + pgvector, 7 tablas), que no cuenta aquí: ver [IA sobre el código](10-ia-sobre-el-codigo.md).
 
 **Cómo leer los diagramas:** `PK` = llave primaria · `FK` = llave foránea · `UK` = parte de un valor único · `||--o{` = uno a muchos · `||--o|` = uno a cero o uno · `|o--o{` = FK que admite `NULL` · línea punteada = relación sin FK en la base. Una tabla de otra área aparece solo con su llave.
 
@@ -300,6 +300,100 @@ erDiagram
 
 `GitHubWebhookDeliveries` no tiene FKs a propósito: registra lo que manda GitHub aunque la instalación no exista en la base.
 
+## Despliegues de Vercel
+
+Migración 009, del módulo [8 · CI/CD](08-cicd.md).
+
+```mermaid
+erDiagram
+    Groups ||--o{ Deployments : "gid, CASCADE"
+    GitHubRepositories |o--o{ Deployments : "repo_id, sin ON DELETE"
+    Groups ||--o{ GroupDeployTargets : "gid, CASCADE"
+    Users ||--o{ GroupDeployTargets : "connected_by"
+
+    Users {
+        UNIQUEIDENTIFIER uid PK
+    }
+    Groups {
+        UNIQUEIDENTIFIER gid PK
+    }
+    GitHubRepositories {
+        BIGINT repo_id PK
+    }
+    Deployments {
+        NVARCHAR(128) deployment_id PK
+        VARCHAR(20) provider PK
+        UNIQUEIDENTIFIER gid FK
+        BIGINT repo_id FK
+        VARCHAR(12) state
+        VARCHAR(20) environment
+        NVARCHAR(255) branch
+        CHAR(40) commit_sha
+        NVARCHAR(512) url
+        NVARCHAR(1024) error_message
+        DATETIMEOFFSET(0) created_at
+        DATETIMEOFFSET(0) updated_at
+    }
+    DeploymentWebhookDeliveries {
+        NVARCHAR(128) delivery_id PK
+        VARCHAR(20) provider
+        VARCHAR(50) event
+        DATETIMEOFFSET(0) received_at
+        DATETIMEOFFSET(0) processed_at
+        VARCHAR(12) status
+        NVARCHAR(1024) error_message
+    }
+    GroupDeployTargets {
+        UNIQUEIDENTIFIER gid PK, FK
+        VARCHAR(20) provider PK, UK
+        NVARCHAR(128) project_ref UK
+        UNIQUEIDENTIFIER connected_by FK
+        DATETIMEOFFSET(0) created_at
+    }
+```
+
+- `DeploymentWebhookDeliveries` no tiene FKs a propósito: registra lo que manda Vercel aunque el proyecto no esté vinculado.
+- Entre `GroupDeployTargets` y `Deployments` no hay FK: el webhook busca el grupo por `project_ref` y guarda el despliegue con ese `gid`. Desvincular el proyecto borra solo la fila de `GroupDeployTargets`; los despliegues se quedan.
+
+## Archivos por tarea y revisiones de IA
+
+`TaskFiles` (010) es del módulo [7 · GitHub](07-github.md); `AiReviews` (011), del módulo [10 · IA sobre el código](10-ia-sobre-el-codigo.md).
+
+```mermaid
+erDiagram
+    Tasks ||--o{ TaskFiles : "tid, CASCADE"
+    Tasks ||--o{ AiReviews : "tid, CASCADE"
+
+    Tasks {
+        UNIQUEIDENTIFIER tid PK
+    }
+    TaskFiles {
+        UNIQUEIDENTIFIER tid PK, FK
+        NVARCHAR(400) path PK
+        VARCHAR(10) status
+        INT additions
+        INT deletions
+        INT pr_number
+        CHAR(40) head_sha
+        DATETIMEOFFSET(0) recorded_at
+    }
+    AiReviews {
+        BIGINT id PK
+        UNIQUEIDENTIFIER tid FK, UK
+        INT pr_number
+        CHAR(40) head_sha UK
+        VARCHAR(12) status
+        VARCHAR(4) verdict
+        VARCHAR(14) posted
+        NVARCHAR(400) review_url
+        NVARCHAR(MAX) result_json
+        VARCHAR(40) error_code
+        DATETIMEOFFSET(0) created_at
+    }
+```
+
+`pr_number` es el número del PR en GitHub, sin FK a `PullRequests` en ninguna de las dos tablas.
+
 ## Control
 
 ```mermaid
@@ -313,7 +407,7 @@ erDiagram
 
 ## Diccionario de datos
 
-Todos los campos son `NOT NULL` salvo los marcados **NULL**. «005», «007» u «008» indica la migración que agregó o cambió el campo. Los `UNIQUEIDENTIFIER` del núcleo los genera la API (uuid v4); los `BIGINT` de GitHub son los ids que da GitHub.
+Todos los campos son `NOT NULL` salvo los marcados **NULL**. El número del título (001, 002, 007, 009, 010 u 011) es la migración que creó la tabla; «005», «007» u «008» en una nota indica la migración que agregó o cambió el campo. Los `UNIQUEIDENTIFIER` del núcleo los genera la API (uuid v4); los `BIGINT` de GitHub son los ids que da GitHub, y `deployment_id` y `project_ref`, los que da Vercel.
 
 ### Users
 | Campo | Tipo | Nota |
@@ -562,6 +656,78 @@ Se lee y se guarda, pero hoy no cambia lo que se registra ni lo que se muestra (
 | `decided_at` | DATETIMEOFFSET(0) | **NULL** si y solo si `pending` |
 | `note` | NVARCHAR(500) | **NULL** |
 
+### Deployments (009)
+| Campo | Tipo | Nota |
+|---|---|---|
+| `deployment_id` | NVARCHAR(128) | PK (`provider`, `deployment_id`): el id solo es único dentro de su proveedor; collation BIN2 |
+| `provider` | VARCHAR(20) | PK; `vercel` o `aws` (hoy solo llega `vercel`) |
+| `gid` | UNIQUEIDENTIFIER | FK → `Groups`, CASCADE; el grupo vinculado al proyecto del evento |
+| `repo_id` | BIGINT | **NULL**; FK → `GitHubRepositories` **sin** `ON DELETE` (la única hacia esa tabla sin cascada); el repo conectado al grupo cuando llegó el evento; una vez lleno no vuelve a NULL |
+| `state` | VARCHAR(12) | `queued`, `building`, `ready`, `error` o `canceled`; sale del tipo de evento |
+| `environment` | VARCHAR(20) | DEFAULT `'production'`; sin CHECK; la API guarda `production` o `preview` y no lo cambia después |
+| `branch` | NVARCHAR(255) | **NULL**; collation BIN2 |
+| `commit_sha` | CHAR(40) | **NULL**; solo hexadecimal |
+| `url` | NVARCHAR(512) | **NULL**; la API la corta a 500 caracteres y le antepone `https://` si no empieza con `http` |
+| `error_message` | NVARCHAR(1024) | **NULL**; solo en `error`; un evento posterior de otro estado lo borra |
+| `created_at` | DATETIMEOFFSET(0) | DEFAULT `SYSDATETIMEOFFSET()`; en la práctica, la hora del evento que creó la fila |
+| `updated_at` | DATETIMEOFFSET(0) | DEFAULT `SYSDATETIMEOFFSET()`; hora del último evento aplicado: uno más viejo no lo sobrescribe |
+
+Índice: `IX_Deployments_Gid_CreatedAt` (`gid`, `created_at DESC`), para el panel del grupo. Según el código, la FK de `repo_id` sin cascada puede impedir que se borre un repositorio o una instalación ([limitaciones](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)).
+
+### DeploymentWebhookDeliveries (009)
+| Campo | Tipo | Nota |
+|---|---|---|
+| `delivery_id` | NVARCHAR(128) | PK (sin `provider`); collation BIN2; el `id` del evento de Vercel o, si falta, el SHA-256 del cuerpo |
+| `provider` | VARCHAR(20) | Sin CHECK; hoy siempre `vercel` |
+| `event` | VARCHAR(50) | Tipo del evento, por ejemplo `deployment.created` |
+| `received_at` | DATETIMEOFFSET(0) | DEFAULT `SYSDATETIMEOFFSET()`; ninguna purga borra estas filas |
+| `processed_at` | DATETIMEOFFSET(0) | **NULL**; la API lo llena al cerrar la entrega (ningún CHECK lo liga con `status`) |
+| `status` | VARCHAR(12) | DEFAULT `'received'`; `received`, `processed`, `ignored` o `failed` |
+| `error_message` | NVARCHAR(1024) | **NULL**; el error o el motivo de `ignored` |
+
+Sin FKs a propósito. Índice: `IX_DeploymentDeliveries_ReceivedAt` (`received_at`). A diferencia de `GitHubWebhookDeliveries`, no hay único por hash del cuerpo.
+
+### GroupDeployTargets (009)
+| Campo | Tipo | Nota |
+|---|---|---|
+| `gid` | UNIQUEIDENTIFIER | PK (`gid`, `provider`): un proyecto por proveedor y grupo; FK → `Groups`, CASCADE |
+| `provider` | VARCHAR(20) | PK; `vercel` o `aws`; único con `project_ref` (`UQ_GroupDeployTargets_Project`) |
+| `project_ref` | NVARCHAR(128) | Collation BIN2; el Project ID de Vercel (`prj_…`); un proyecto pertenece a un solo grupo |
+| `connected_by` | UNIQUEIDENTIFIER | FK → `Users`, sin cascada; el admin que lo vinculó |
+| `created_at` | DATETIMEOFFSET(0) | DEFAULT `SYSDATETIMEOFFSET()`; se reinicia al volver a vincular |
+
+Sin índices aparte de la PK y `UQ_GroupDeployTargets_Project`.
+
+### TaskFiles (010)
+| Campo | Tipo | Nota |
+|---|---|---|
+| `tid` | UNIQUEIDENTIFIER | PK (`tid`, `path`): un registro por archivo y tarea; FK → `Tasks`, CASCADE |
+| `path` | NVARCHAR(400) | PK; collation BIN2; ruta del archivo en el repositorio |
+| `status` | VARCHAR(10) | `added`, `modified`, `removed`, `renamed`, `copied` o `changed`, como lo da GitHub (otro valor se guarda como `modified`) |
+| `additions`, `deletions` | INT | DEFAULT 0 cada uno; sin CHECK de no negativo |
+| `pr_number` | INT | **NULL**; el PR del que salió la lista |
+| `head_sha` | CHAR(40) | **NULL**; solo hexadecimal; commit en que se leyó la lista (la recuperación bajo demanda lo deja NULL) |
+| `recorded_at` | DATETIMEOFFSET(0) | DEFAULT `SYSDATETIMEOFFSET()` |
+
+Índice: `IX_TaskFiles_Path` (`path`) INCLUDE (`tid`, `status`), para saber qué otras tareas tocan una ruta. La lista sale de los archivos del PR en GitHub y se reemplaza entera. Al completar la tarea, mandarla a la papelera o borrar su lista, la fila sale de `Tasks` y sus archivos se borran en cascada ([limitaciones](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)).
+
+### AiReviews (011)
+| Campo | Tipo | Nota |
+|---|---|---|
+| `id` | BIGINT | PK; `IDENTITY(1, 1)` |
+| `tid` | UNIQUEIDENTIFIER | FK → `Tasks`, CASCADE; único con `head_sha` (`UQ_AiReviews_TaskSha`): una revisión por commit |
+| `pr_number` | INT | Número del PR revisado; sin CHECK |
+| `head_sha` | CHAR(40) | Solo hexadecimal; el commit revisado |
+| `status` | VARCHAR(12) | Sin DEFAULT; `pending` (se reserva antes de revisar), `done` o `failed` |
+| `verdict` | VARCHAR(4) | **NULL**; `pass`, `warn` o `fail` |
+| `posted` | VARCHAR(14) | **NULL**; si llegó a GitHub: `posted`, `no_permission` (a la App le falta Pull requests: write) o `failed` |
+| `review_url` | NVARCHAR(400) | **NULL**; enlace a la revisión publicada |
+| `result_json` | NVARCHAR(MAX) | **NULL**; respuesta del servidor de IA local; sin CHECK `ISJSON`; la API guarda NULL si pasa de 200 000 caracteres |
+| `error_code` | VARCHAR(40) | **NULL**; código del error si `failed`, por ejemplo `AI_SERVER_UNAVAILABLE` |
+| `created_at` | DATETIMEOFFSET(0) | DEFAULT `SYSDATETIMEOFFSET()` |
+
+Índice: `IX_AiReviews_Task` (`tid`, `created_at DESC`): la vista de la tarea pide la revisión más reciente. Una revisión `done`, o una `pending` reciente, ocupa su commit. Una `failed`, o una `pending` de más de 15 minutos, vuelve a `pending` al reclamarla y se repite sobre el mismo commit (desde el 26 nov 2026).
+
 ### SchemaMigrations
 | Campo | Tipo | Nota |
 |---|---|---|
@@ -571,6 +737,7 @@ Se lee y se guarda, pero hoy no cambia lo que se registra ni lo que se muestra (
 
 ## Para saber más
 
-- Diagrama de las 24 tablas y tablas por módulo: [00-general.md](00-general.md)
+- Diagrama de las 29 tablas y tablas por módulo: [00-general.md](00-general.md)
 - Migraciones, triggers e índices: [00-migraciones-y-triggers.md](00-migraciones-y-triggers.md)
-- Reglas de cada módulo: [usuarios](01-usuarios-y-acceso.md), [grupos y roles](02-grupos-y-roles.md), [tareas](03-tareas.md), [hitos](04-hitos-y-calendario.md), [chat IA](05-chat-ia.md), [analytics](06-analytics.md), [GitHub](07-github.md), [CI/CD](08-cicd.md)
+- Reglas de cada módulo: [usuarios](01-usuarios-y-acceso.md), [grupos y roles](02-grupos-y-roles.md), [tareas](03-tareas.md), [hitos](04-hitos-y-calendario.md), [chat IA](05-chat-ia.md), [analytics](06-analytics.md), [GitHub](07-github.md), [CI/CD](08-cicd.md), [IA sobre el código](10-ia-sobre-el-codigo.md)
+- Límites conocidos de estas tablas: [cierre de la línea de Pablo y estado](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)

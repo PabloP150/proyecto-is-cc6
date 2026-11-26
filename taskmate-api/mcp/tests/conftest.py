@@ -7,6 +7,13 @@ os.environ.pop("LLM_API_KEY", None)
 TEST_SHARED_SECRET = "3f9c1a7e5b2d4c6e8a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f"
 os.environ["MCP_SHARED_SECRET"] = TEST_SHARED_SECRET
 os.environ.pop("MCP_ALLOW_NO_SECRET", None)
+# llm_service loads the repository's .env, and load_dotenv never overrides a variable that is already
+# set -- so pinning these here keeps a developer's local configuration out of the suite. Without it,
+# scripts/local-up.sh writing LLM_PROVIDER=ollama and AI_SERVER_URL into .env made 10 Groq tests run
+# against Ollama and the orchestrator tests wait on a real AI server.
+os.environ["LLM_PROVIDER"] = "groq"
+os.environ["AI_SERVER_URL"] = ""
+os.environ["LLM_STREAM_CHAT"] = "1"
 AUTH_HEADERS = {"X-MCP-Secret": TEST_SHARED_SECRET}
 
 MCP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

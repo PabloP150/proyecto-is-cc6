@@ -421,7 +421,7 @@ const Flow = ({ handleNodeEdit, setSelectedNode }) => {
         </div>
       </div>
       {!selectedGroupId && (
-        <div style={{color: 'white', padding: '1rem'}}>Selecciona un grupo para ver y crear milestones.</div>
+        <div style={{color: 'white', padding: '1rem'}}>Select a group to view and create milestones.</div>
       )}
       {selectedGroupId && <ReactFlow
         key={selectedGroupId}

@@ -86,7 +86,7 @@ export default function Recordatorios() {
   const { selectedGroupId, selectedGroupName } = useContext(GroupContext); // Usa el contexto para obtener el gid y el nombre
   const [feedback, setFeedback] = useState({ open: false, message: '', severity: 'error', url: null, duration: null });
   // One request per group for every task's branch/PR (not one per task).
-  const { getLink: getTaskLink, repoConnected, refresh: refreshTaskLinks } = useTaskLinks(selectedGroupId);
+  const { getLink: getTaskLink, repo, repoConnected, refresh: refreshTaskLinks } = useTaskLinks(selectedGroupId);
 
   // `url`/`duration` only for a toast that tells what happened to a GitHub branch.
   const notify = useCallback(
@@ -207,7 +207,7 @@ export default function Recordatorios() {
 
   const handleCreateList = () => {
     if (nombreLista.trim() === '') {
-      alert('El nombre de la lista no puede estar vacío.');
+      alert('The list name cannot be empty.');
       return;
     }
     const nuevaLista = { nombre: nombreLista, recordatorios: [] };
@@ -416,7 +416,7 @@ export default function Recordatorios() {
   }, [filtro, listas, eliminados, completados]);
 
   // { severity, message, url } of the list-deletion pill; one timer so a newer pill is not hidden early.
-  // Like the Snackbars, it stays while hovered or focused (it can hold «Ver rama») and then hides
+  // Like the Snackbars, it stays while hovered or focused (it can hold «View branch») and then hides
   // after half its time.
   const [listToast, setListToast] = useState(null);
   const listToastTimer = useRef(null);
@@ -697,7 +697,7 @@ export default function Recordatorios() {
           <Box sx={{ flexGrow: 1, overflow: 'auto', position: 'relative' }}>
             {!selectedGroupId && (
               <Box sx={{color:'white', textAlign:'center', mt:4, opacity:0.85}}>
-                Selecciona un grupo para gestionar tareas.
+                Select a group to manage tasks.
               </Box>
             )}
             {selectedGroupId && <ListaRecordatorios
@@ -714,6 +714,7 @@ export default function Recordatorios() {
               handleVaciarCompletados={handleVaciarCompletados}
               handleVaciarEliminados={handleVaciarEliminados}
               getTaskLink={getTaskLink}
+              repo={repo}
               repoConnected={repoConnected}
               onTaskLinkChange={refreshTaskLinks}
               members={members}
@@ -739,7 +740,7 @@ export default function Recordatorios() {
                   px: 2.5,
                   py: 1.25,
                   borderRadius: '999px',
-                  background: `linear-gradient(135deg, rgba(${listToastStyle.light},0.15) 0%, rgba(${listToastStyle.deep},0.4) 100%)`,
+                  background: `linear-gradient(135deg, rgba(${listToastStyle.light},0.15) 0%, rgba(${listToastStyle.deep},0.4) 100%), #0f172a`,
                   border: `1px solid rgba(${listToastStyle.light},0.5)`,
                   boxShadow: `0 4px 18px -2px rgba(${listToastStyle.light},0.4)`,
                   backdropFilter: 'blur(12px)',

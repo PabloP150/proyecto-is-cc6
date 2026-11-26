@@ -26,7 +26,7 @@ Fuente del diagrama: [fuentes/03-tareas.mmd](fuentes/03-tareas.mmd).
 | Diálogos (nueva lista, nueva tarea, editar) | MUI `Dialog` y `Slider` | `src/components/Dialogos.jsx`, `src/constants/limits.js` |
 | Filtros | MUI `Drawer` (panel lateral) | `src/components/BarraLateral.jsx` |
 | Asignar personas | MUI `Menu` con interruptores | `src/components/SeleccionarPersona.jsx` |
-| Chips de GitHub de cada tarea | Módulo GitHub | `src/components/github/TaskGitHubActions.jsx`, `useTaskLinks.js` ([ver GitHub](07-github.md)) |
+| Chips de GitHub, ícono «View task files» y su diálogo | Módulos GitHub e IA sobre el código | `src/components/github/TaskGitHubActions.jsx`, `TaskFilesDialog.jsx`, `TaskAiPanel.jsx`, `useTaskLinks.js` ([ver GitHub](07-github.md) e [IA sobre el código](10-ia-sobre-el-codigo.md)) |
 | Cliente HTTP | `fetch` con el JWT | `src/api/client.js` |
 | requireAuth y límite de peticiones | JWT HS256 de 24 h; 300 peticiones por minuto por usuario | `taskmate-api/middleware/auth.middleware.js`, `middleware/rateLimit.js` |
 | Guardias de grupo | Middleware de Express | `taskmate-api/middleware/groupAccess.js`, `models/access.model.js` |
@@ -36,7 +36,7 @@ Fuente del diagrama: [fuentes/03-tareas.mmd](fuentes/03-tareas.mmd).
 | Modelos y transacciones | `tedious` + `withTransaction` | `models/tasks.model.js`, `complete.model.js`, `delete.model.js`, `usertask.model.js`; `helpers/transaction.js`, `helpers/execQuery.js` |
 | Analytics Integration | Servicio de Node | `services/AnalyticsIntegration.js`, `services/AnalyticsService.js` |
 | branchService | GitHub App (REST) | `services/github/branchService.js` |
-| SQL Server 2019 | Contenedor Docker `taskmate-sql` | Tablas `Tasks`, `UserTask`, `Complete` y `DeleteTask` |
+| SQL Server 2019 | Contenedor `taskmate-sql` (Docker o Podman) | Tablas `Tasks`, `UserTask`, `Complete` y `DeleteTask`; borrar una tarea arrastra `TaskBranches`, `TaskFiles` y `AiReviews` |
 
 **Términos:**
 - **Guardia:** middleware (función que corre antes de la ruta) que revisa permisos y corta la petición si no se cumplen.
@@ -47,13 +47,15 @@ Fuente del diagrama: [fuentes/03-tareas.mmd](fuentes/03-tareas.mmd).
 
 - **Primero el JWT, luego el grupo.** `requireAuth` valida el token. La guardia saca el grupo del `gid` de la petición o, si llega un id de tarea, de la fila de la tarea (`access.model.resolveGroupId`). Solo pasa quien es miembro de ese grupo; aquí no hay acciones solo para el admin.
 - **Completar y mandar a la papelera son atómicos.** `completeTask` y `trashTask` bloquean la fila de la tarea, la copian a `Complete` o `DeleteTask`, cierran sus registros pendientes de analytics, borran sus asignaciones y borran la tarea, todo en una transacción. Si dos personas completan a la vez, la segunda recibe `already_completed`.
+- **Borrar la fila de `Tasks` arrastra lo de GitHub y la IA.** Por `ON DELETE CASCADE` caen su rama vinculada (`TaskBranches`), su lista de archivos (`TaskFiles`, migración 010) y sus revisiones de IA del PR (`AiReviews`, migración 011). Pasa al completar, al mandar a la papelera y al borrar la lista. Una tarea completada ya no tiene archivos ni revisiones, y según el código la lista de archivos que se intenta grabar tras fusionar el PR no llega a guardarse ([limitaciones](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)).
 - **Analytics: una parte dentro de la transacción, otra después.**
   - Asignar responde primero y después crea un registro `pending` en `TaskAnalytics`, con una categoría deducida del nombre, la descripción y la lista (frontend, backend, database, testing o general).
   - Completar, mandar a la papelera, borrar una lista y desasignar cierran ese registro dentro de su transacción: `completed`, `failed`, `failed` y `reassigned`.
   - Tras completar o mandar a la papelera, `AnalyticsIntegration` recalcula las métricas de la persona sin frenar la respuesta. Detalle en [Analytics](06-analytics.md).
 - **La rama de GitHub se limpia después.** Si la tarea tenía rama, la transacción la desliga (`TaskBranches` cae por cascada) y, tras el commit, `branchService` la borra en GitHub cuando es seguro. La API espera hasta 5 s y responde el resultado en `branch`. Detalle en [GitHub](07-github.md).
 - **Fechas sin zona horaria.** La API devuelve `datetime` como texto `YYYY-MM-DDTHH:mm`, igual en tareas activas, completadas y en la papelera, para que la hora no se corra.
-- **Otros módulos también leen o crean tareas.** El [calendario](04-hitos-y-calendario.md) muestra sus fechas, el [plan del chat](05-chat-ia.md) las crea en una transacción y un PR fusionado las completa por el mismo `completeTask`.
+- **La tarjeta también habla con el módulo GitHub.** Los chips de rama y PR y el ícono «View task files» no pasan por las rutas de tareas: llaman a `/api/github/...`. Desde el diálogo «Task files» se piden los archivos de la tarea y las otras tareas que tocan los mismos archivos ([GitHub](07-github.md)), y el panel «AI on the branch» audita la rama, propone pruebas o revisa el PR ([IA sobre el código](10-ia-sobre-el-codigo.md)).
+- **Otros módulos también leen o crean tareas.** El [calendario](04-hitos-y-calendario.md) muestra sus fechas, el [plan del chat](05-chat-ia.md) las crea en una transacción y un PR fusionado las completa por el mismo `completeTask`. El chat además lee las tareas del grupo y quién tiene cada una (`usertask.model.getAssigneesByGroup`) para armar el contexto del proyecto.
 
 ## Para saber más
 
@@ -61,5 +63,6 @@ Fuente del diagrama: [fuentes/03-tareas.mmd](fuentes/03-tareas.mmd).
 - Quién puede hacer qué: [04-casos-de-uso/03-tareas.md](../04-casos-de-uso/03-tareas.md)
 - Pantalla: [05-interfaz/03-tareas.md](../05-interfaz/03-tareas.md)
 - Flujos y errores: [06-flujos/03-tareas.md](../06-flujos/03-tareas.md)
+- Ramas, PRs y archivos de la tarea: [07-github.md](07-github.md) · IA de la rama: [10-ia-sobre-el-codigo.md](10-ia-sobre-el-codigo.md)
 - Arquitectura de todo el sistema: [00-general.md](00-general.md)
-- Limitaciones conocidas: [cierre del proyecto](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)
+- Limitaciones conocidas: [cierre de la línea de Pablo y estado](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)
