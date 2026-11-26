@@ -2,9 +2,11 @@ architecture-beta
     service user(mdi:account)[Usuario]
 
     group nav(logos:react)[Frontend React 18 y MUI puerto 3000]
+    junction jin in nav
+    service navsel(mdi:account-switch)[Selector de grupo del navbar] in nav
     service rolesui(logos:material-ui)[Paneles de roles] in nav
     service ui(logos:react)[GroupsView] in nav
-    service ctx(mdi:account-group)[GroupContext] in nav
+    service ctx(mdi:account-group)[GroupContext grupo activo de toda la app] in nav
     junction jroles in nav
     junction jui in nav
     junction jctx in nav
@@ -15,13 +17,18 @@ architecture-beta
     service ctrl(logos:express)[Controllers] in api
     service models(logos:javascript)[Modelos] in api
     junction jusers in api
+    junction jusers2 in api
     service ana(mdi:chart-bar)[Analytics] in api
     service plan(mdi:robot)[Plan del chat] in api
+    service aimods(mdi:robot-outline)[Módulos con IA] in api
 
-    group docker(logos:docker-icon)[Docker]
+    group docker(logos:docker-icon)[Docker o Podman]
     service db(mdi:database)[SQL Server 2019] in docker
 
-    user:R --> L:ui
+    user:R -- L:jin
+    jin:R --> L:ui
+    jin:B --> T:navsel
+    navsel:R --> L:ctx
     rolesui:R -- L:jroles
     ui:R -- L:jui
     ctx:R -- L:jctx
@@ -33,5 +40,7 @@ architecture-beta
     ctrl:R --> L:models
     models:R --> L:db
     ana:R -- L:jusers
-    plan:L -- R:jusers
+    jusers:R -- L:jusers2
+    plan:L -- R:jusers2
+    aimods:B -- T:jusers2
     jusers:B --> T:models

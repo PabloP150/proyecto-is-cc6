@@ -87,4 +87,4 @@ Verificadas contra los guardias de `nodes.controller.js`, `edges.controller.js` 
 - Pantallas: [05-interfaz/04-hitos-y-calendario.md](../05-interfaz/04-hitos-y-calendario.md)
 - Paso a paso y errores: [06-flujos/04-hitos-y-calendario.md](../06-flujos/04-hitos-y-calendario.md)
 - Tablas y triggers: [03-base-de-datos/04-hitos-y-calendario.md](../03-base-de-datos/04-hitos-y-calendario.md)
-- Limitaciones conocidas: [cierre del proyecto](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)
+- Limitaciones conocidas: [cierre de la línea de Pablo y estado](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas)

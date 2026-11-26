@@ -1,6 +1,6 @@
 # 08 · Fases
 
-**En una frase:** un capítulo por cada fase que se hizo (1–4), con sus fechas, su PR y sus resultados; las Fases 5–8 no tienen capítulo porque no se realizaron.
+**En una frase:** un capítulo por cada fase que se hizo en la línea de Pablo (1–4), con sus fechas, su PR y sus resultados; las Fases 5–8 no tienen capítulo porque no se realizaron (la 7 quedó pospuesta en la línea de Christian).
 
 ```mermaid
 flowchart TB
@@ -10,7 +10,7 @@ flowchart TB
         F2 --> F3["F3 · GitHub<br/>4–18 sep"]
         F3 --> F4["F4 · CI/CD<br/>18 sep – 9 oct"]
     end
-    subgraph N["No realizadas: el proyecto se cerró el 3 nov 2026"]
+    subgraph N["No realizadas: la línea de Pablo cerró el 3 nov 2026"]
         direction LR
         F5["F5 · Testing automático<br/>9–23 oct"] -.-> F6["F6 · SonarQube<br/>23 oct – 6 nov"]
         F6 -.-> F7["F7 · Colisión de archivos<br/>6–20 nov"]
@@ -20,12 +20,14 @@ flowchart TB
     classDef done fill:#dcfce7,stroke:#16a34a,color:#14532d
     classDef no fill:#f3f4f6,stroke:#9ca3af,color:#374151
     classDef cancel fill:#fee2e2,stroke:#dc2626,color:#7f1d1d
+    classDef post fill:#fef3c7,stroke:#d97706,color:#78350f
     class F1,F2,F3,F4 done
-    class F5,F7,F8 no
+    class F5,F8 no
     class F6 cancel
+    class F7 post
 ```
 
-Verde: hecha y en `master` · gris: no se realizará · rojo: cancelada en la etapa de plan. Las fechas del diagrama son las **planificadas** y no cambian.
+Verde: hecha y en `master` · gris: no se realizará · rojo: cancelada en la etapa de plan · ámbar: pospuesta en la línea de Christian. Las fechas del diagrama son las **planificadas** y no cambian.
 
 ## Las 8 fases
 
@@ -37,10 +39,12 @@ Verde: hecha y en `master` · gris: no se realizará · rojo: cancelada en la et
 | 4 | Pipeline CI/CD completo | 18 sep – 9 oct | 9–22 oct; E2E real 22 oct | ✅ PR #5 (`56f7136`), 22 oct | [Fase 4](fase-04-pipeline-cicd/README.md) |
 | 5 | Testing automático | 9–23 oct | — | ❌ No se realizará | [Cierre](../01-proyecto/cierre-del-proyecto.md#qué-no-se-hizo) |
 | 6 | Integración con SonarQube | 23 oct – 6 nov | Plan el 23 oct, sin código | 🚫 Cancelada en la etapa de plan | [Cierre](../01-proyecto/cierre-del-proyecto.md#qué-no-se-hizo) |
-| 7 | Colisión de archivos (con Christian Martínez) | 6–20 nov | — | ❌ No se realizará | [Cierre](../01-proyecto/cierre-del-proyecto.md#qué-no-se-hizo) |
+| 7 | Colisión de archivos (con Christian Martínez) | 6–20 nov | — | ⏸️ Pospuesta en la línea de Christian, con la base hecha | [Línea de Christian](../09-linea-christian/README.md) |
 | 8 | Pruebas finales | 20–27 nov | — | ❌ No se realizará | [Cierre](../01-proyecto/cierre-del-proyecto.md#qué-no-se-hizo) |
 
 Todas las fechas son de 2026. Detalle de fechas y ramas: [calendarización](../01-proyecto/calendarizacion.md).
+
+> **Línea de Christian.** Estos capítulos cubren solo la línea de Pablo, que cerró el 3 nov 2026. Christian Martínez siguió con su propia línea (9 puntos, fechas corridas): servidor de IA local, monitoreo de Vercel, archivos por tarea, `audit`, generar pruebas, revisión de PR con IA y el chat sobre el modelo local. Está en la rama `test/e2e`, todavía sin fusionar en `master`. Su registro: [09-linea-christian](../09-linea-christian/README.md).
 
 ## Capítulos y anexos
 
@@ -72,8 +76,9 @@ Cada capítulo abre con «En una frase» y un «Resumen en 1 minuto»; lo demás
 
 ## Ramas
 
-- `master` tiene todo el trabajo. `feature/fase-4-cicd-github-actions` sigue existiendo (local y en `origin`), ya fusionada con el PR #5.
-- Quedan `feature/fase-5-testing-automatico`, `feature/fase-6-sonarqube` y `feature/fase-7-colision-archivos`: vacías, creadas desde `master` el 6 oct 2026 (`fe9d87d`). Se pueden borrar cuando Pablo lo decida. La Fase 8 nunca tuvo rama.
+- `master` tiene las Fases 1–4 y el cierre de la línea de Pablo (PR #6, `ea25733`, 5 nov 2026). `feature/fase-4-cicd-github-actions`, ya fusionada con el PR #5, se borró.
+- Las ramas vacías `feature/fase-5-testing-automatico`, `feature/fase-6-sonarqube` y `feature/fase-7-colision-archivos` (creadas desde `master` el 6 oct 2026, `fe9d87d`) también se borraron. La Fase 8 nunca tuvo rama.
+- La línea de Christian está en `test/e2e` y en sus ramas de trabajo (`feature/linea-christian` y las que salen de ella), todavía sin fusionar en `master`.
 
 ## Diagramas e imágenes
 
@@ -82,5 +87,5 @@ Cada capítulo abre con «En una frase» y un «Resumen en 1 minuto»; lo demás
 
 ## Para saber más
 
-- Limitaciones y pendientes de todas las fases: [cierre del proyecto](../01-proyecto/cierre-del-proyecto.md#pendientes-todo).
+- Limitaciones y pendientes de todas las fases: [cierre de la línea de Pablo y estado](../01-proyecto/cierre-del-proyecto.md#pendientes-todo).
 - [Índice de la documentación](../README.md).

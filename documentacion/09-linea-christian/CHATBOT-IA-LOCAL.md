@@ -1,32 +1,44 @@
 # Chatbot sobre la IA local, con streaming
 
-El chatbot de TaskMate llamaba a **Groq** (un servicio en la nube). Ahora puede funcionar sobre el
-**mismo modelo local** que el servidor de IA de `../ai-server` (Gemma 4 en Ollama), consultar el
-conocimiento indexado de ese servidor y responder **token a token**.
+El chatbot de TaskMate llamaba a **Groq** (un servicio en la nube). Ahora funciona sobre el
+**mismo modelo local** que el servidor de IA de `../ai-server` (Gemma 4, `gemma4:e2b-it-qat`, en
+Ollama), consulta el conocimiento indexado de ese servidor y responde **token a token**. Groq queda
+solo como respaldo en la nube.
+
+> **Actualizado el 25 nov 2026** contra `test/e2e` (`50f77da`). Desde el 19 nov el chat es un
+> asistente del proyecto, sigue el grupo elegido en la barra de navegación y la interfaz está en
+> inglés ([README](README.md#chatbot-como-asistente-del-proyecto)). Documentación general del chat:
+> módulo [5 · Chat con IA](../02-arquitectura/05-chat-ia.md); del servidor de IA local: módulo
+> [10 · IA sobre el código](../02-arquitectura/10-ia-sobre-el-codigo.md). Límites:
+> [limitaciones conocidas](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas).
 
 ## Arquitectura
 
 ```
 navegador ──ws──▶ API Node (/chat) ──ws──▶ servicio Python (:8001) ──▶ Ollama (:11434)
-                                                       │
+                                                       │                  (Groq solo como respaldo en la nube)
                                                        └──▶ servidor de IA (:8000) /search
+                                                            (solo sin proyecto, con X-AI-Server-Secret)
 ```
 
 Un mismo modelo en la GPU de 4 GB para los dos servicios, en lugar de dos compitiendo por ella.
 
 ## 1. Modelo local
 
-`mcp/llm_service.py` tiene ahora dos proveedores, elegidos con `LLM_PROVIDER`:
+`mcp/llm_service.py` tiene ahora dos proveedores, elegidos con `LLM_PROVIDER`. Todo el texto que
+genera la IA dentro de TaskMate pasa por ahí: chat y plan del proyecto, analytics y recomendaciones
+de asignación, análisis del repositorio y propuesta de pipeline.
 
-| | `groq` | `ollama` |
+| | `ollama` (el que usa TaskMate) | `groq` (respaldo en la nube) |
 |---|---|---|
-| Dónde corre | nube | esta máquina |
-| Necesita | `GROQ_API_KEY` | Ollama con el modelo descargado |
-| Por defecto en el código | ✅ | |
-| Lo que pone `local-up.sh` | | ✅ |
+| Dónde corre | esta máquina (`127.0.0.1:11434`) | nube |
+| Modelo | Gemma 4 (`gemma4:e2b-it-qat`) | `openai/gpt-oss-20b` |
+| Necesita | Ollama con el modelo descargado | `GROQ_API_KEY` |
+| Lo que pone `local-up.sh` | ✅ | |
+| Por defecto en el código | | ✅ |
 
-Groq sigue siendo el valor por defecto del código para no romper el entorno de quien no tenga
-Ollama; el script de despliegue local elige `ollama`.
+`local-up.sh` pone `LLM_PROVIDER=ollama`. Groq sigue siendo el valor por defecto del código solo
+para no romper el entorno de quien no tenga Ollama.
 
 Las tres funciones (`generate`, `generate_json`, `generate_stream`) tienen ruta local. Los errores
 se traducen a los mismos tipos que con Groq (`LLMTimeoutError`, etc.), así que el resto del
@@ -50,6 +62,12 @@ usa `/api/generate`. Ahora va desactivado (`OLLAMA_THINK=0`).
 Antes de responder, el chatbot pregunta al servidor de IA qué fragmentos indexados (documentos,
 código) son relevantes para el mensaje (`mcp/knowledge.py`) y los incluye en el prompt.
 
+**Desde el 19 nov (`f152a9e`) esto solo pasa sin un proyecto seleccionado** (chat de proyecto
+nuevo). Con proyecto, el prompt lleva el contexto que arma la API (equipo, tareas, hitos y, con
+«Allow AI analysis», el repositorio). La consulta lleva la cabecera `X-AI-Server-Secret` cuando
+`AI_SERVER_SECRET` está definido; el servidor de IA rechaza las que no la traen (salvo si arrancó
+sin secreto y con `AI_SERVER_ALLOW_NO_SECRET=1`), y entonces el chat sigue sin ese contexto.
+
 - **Umbral de similitud (0,3).** Casi todo el chat trata de *proyectos nuevos*, que no coinciden con
   nada indexado. Sin el umbral cada respuesta cargaría los fragmentos menos malos y el modelo los
   arrastraría a la conversación.
@@ -68,13 +86,15 @@ no tenía antes):
 | Chat de proyecto nuevo (no debe verse afectado) | 0/5 mencionan TaskMate, 5/5 hacen preguntas |
 
 La regla solo se añade cuando hay fragmentos relevantes, así que no afecta a los chats nuevos.
+Estas mediciones son del 9 oct, con el prompt anterior; el actual pide hacer una pregunta solo
+cuando haga falta para responder.
 
 ## 3. Streaming
 
 | Capa | Antes | Ahora |
 |---|---|---|
 | Python | nunca emitía fragmentos | `response_chunk` por fragmento, luego la `response` completa |
-| Node | reenviaba sin `requestId`, **los guardaba en el historial** | los reenvía con el `requestId` del navegador, nunca los guarda, descarta los que llegan tarde |
+| Node | reenviaba sin `requestId`, **los guardaba en el historial** | los reenvía como `assistant_chunk` con el `requestId` del pedido (lo genera Node: el navegador no lo manda), nunca los guarda, descarta los que llegan tarde |
 | Navegador | no los entendía | una burbuja por petición que crece; la respuesta final la reemplaza |
 
 Decisiones:
@@ -87,8 +107,8 @@ Decisiones:
   del mensaje de error.
 - **El navegador agrupa los fragmentos por frame** (`requestAnimationFrame`): unos pocos renders por
   respuesta en vez de uno por token, y cada render re-procesa el Markdown.
-- **Mientras llega el texto se oculta «AI is typing…»**, pero la entrada sigue bloqueada hasta la
-  respuesta final.
+- **Mientras llega el texto se oculta «Thinking...»** (antes «AI is typing...») y se ve el cursor ▍,
+  pero el envío sigue bloqueado hasta la respuesta final.
 
 Medido de extremo a extremo (navegador → Node → Python → Ollama): primer fragmento en **~0,2–1 s**,
 respuesta completa en ~2 s, y los fragmentos reconstruyen exactamente el texto final.
@@ -97,18 +117,29 @@ Los planes de proyecto no se transmiten en streaming: son JSON y solo se resumen
 
 ## Pruebas
 
+Cifras de la rama al hacer este cambio (9 oct, sobre `fe9d87d`), no las actuales:
+
 | | Antes | Ahora |
 |---|---|---|
 | Python (chatbot) | 106 | 122 |
 | API | 882 | 885 |
 | Frontend | 310 | 316 |
 
-Las pruebas de Python usan un transporte HTTP simulado: no necesitan Ollama.
+Lo que aportó este cambio (`921f8ed`): `test_local_provider.py` (8; hoy 9), `test_knowledge.py`
+(6; hoy 7), `test_server.py` (+2), el streaming en las pruebas de `UserSession` (+4) y
+`ChatPageStreaming.test.jsx` (6). Medido el 25 nov 2026 en `test/e2e`: Python 210, API 1322 y
+frontend 438, todas en verde.
+
+Las pruebas de Python usan un transporte HTTP simulado: no necesitan Ollama. `tests/conftest.py`
+fija `LLM_PROVIDER=groq`, `LLM_STREAM_CHAT=1` y deja vacío `AI_SERVER_URL` para que el `.env` local
+no se cuele.
 
 ## Límite conocido
 
 El proyecto de conocimiento es fijo (`AI_SERVER_PROJECT`, por defecto `TaskMate`). El chatbot no
-traduce aún «el grupo seleccionado» a un proyecto del servidor de IA.
+traduce aún «el grupo seleccionado» a un proyecto del servidor de IA; por eso, desde el 19 nov, el
+conocimiento solo se consulta en el chat sin proyecto. Los demás límites están en
+[limitaciones conocidas](../01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas).
 
 ## Rendimiento (19 nov 2026)
 

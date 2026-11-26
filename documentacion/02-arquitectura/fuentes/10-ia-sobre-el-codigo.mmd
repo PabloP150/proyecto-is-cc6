@@ -1,0 +1,48 @@
+architecture-beta
+    group nav(logos:react)[Navegador]
+    service fe(logos:react)[Task files y AI on the branch] in nav
+
+    service ghw(logos:github-icon)[GitHub webhook pull request]
+
+    group api(logos:nodejs-icon)[API Express puerto 9000]
+    service rest(mdi:api)[Rutas de IA por tarea] in api
+    service hook(mdi:shield-key)[Webhook HMAC] in api
+    service svc(mdi:robot)[taskAi y prReview] in api
+    junction jt
+
+    service db(mdi:database)[SQL Server 2019]
+    service gha(logos:github-icon)[GitHub API compare y reviews]
+    junction m2
+    junction m3
+    junction m5
+
+    service py(logos:python)[Servicio Python del chat]
+
+    group ias(logos:fastapi-icon)[Servidor de IA local puerto 8000]
+    junction jp in ias
+    service cmd(logos:fastapi-icon)[API FastAPI] in ias
+    service pg(logos:postgresql)[Postgres 17 y pgvector] in ias
+    junction jc
+
+    service oll(logos:ollama)[Ollama con Gemma 4]
+
+    ghw:R --> L:hook
+    hook:R -- L:jt
+    jt:B --> T:svc
+
+    fe:R --> L:rest
+    rest:R --> L:svc
+
+    svc:R -- L:m2
+    m2:R --> L:cmd
+    m2:B -- T:m3
+    m3:L --> R:db
+    m3:B -- T:m5
+    m5:L --> R:gha
+
+    py:R -- L:jp
+    jp:B --> T:cmd
+
+    cmd:R -- L:jc
+    jc:R --> L:oll
+    jc:B --> T:pg

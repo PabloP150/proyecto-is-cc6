@@ -1,6 +1,7 @@
 architecture-beta
     group nav(mdi:web)[Navegador]
-    service page(logos:react)[ChatPage y selector de proyecto] in nav
+    service navsel(mdi:account-group)[Grupo del navbar] in nav
+    service page(logos:react)[ChatPage y ChatProjectInfo] in nav
 
     junction jnav
 
@@ -8,39 +9,61 @@ architecture-beta
     service wss(logos:websocket)[WebSocket /chat] in api
     service sess(mdi:message-processing)[SessionManager y UserSession] in api
     junction js in api
+    junction jx in api
     service llms(mdi:lan)[LLMService] in api
-    service proj(mdi:sitemap)[ProjectService] in api
+    service snap(logos:github-icon)[repoSnapshot lee GitHub] in api
+    service proj(mdi:sitemap)[Modelos y ProjectService] in api
 
     group docker(logos:docker-icon)[Docker]
     service db(mdi:database)[SQL Server 2019] in docker
 
     junction jia
 
-    group ia(logos:fastapi-icon)[Servidor de IA FastAPI]
+    group ia(logos:fastapi-icon)[Servicio Python del chat]
     service ws(mdi:api)[Ruta /ws con X-MCP-Secret] in ia
     junction jw in ia
     service orch(mdi:robot)[Orquestador] in ia
+    junction jk in ia
     junction jo in ia
     junction jp in ia
+    service know(mdi:book-search)[knowledge.py] in ia
     service recs(mdi:checkbox-marked-outline)[Agente del plan] in ia
     service llmpy(logos:python)[llm_service.py] in ia
 
-    service groq(logos:groq)[Groq gpt-oss-20b]
+    junction jk2
+    service aisrv(mdi:server)[Servidor de IA local /search]
 
+    junction jl
+    junction jg
+    junction jol
+    service groq(logos:groq)[Groq respaldo en la nube]
+    service ollama(logos:ollama)[Ollama con Gemma 4 local]
+
+    navsel:R --> L:page
     page:R -- L:jnav
     jnav:R --> L:wss
     wss:R --> L:sess
     sess:R -- L:js
     js:R --> L:llms
-    js:B --> T:proj
+    js:B -- T:jx
+    jx:R --> L:snap
+    jx:B --> T:proj
     proj:L --> R:db
     llms:R -- L:jia
     jia:R --> L:ws
     ws:R -- L:jw
     jw:B --> T:orch
+    orch:L -- R:jk
+    jk:B --> T:know
+    know:L -- R:jk2
+    jk2:B --> T:aisrv
     orch:R -- L:jo
     jo:B --> T:recs
     jo:R -- L:jp
     jp:B --> T:llmpy
     recs:R --> L:llmpy
-    llmpy:R --> L:groq
+    llmpy:R -- L:jl
+    jl:T -- B:jg
+    jg:R --> L:ollama
+    jl:B -- T:jol
+    jol:R --> L:groq

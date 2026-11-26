@@ -1,6 +1,6 @@
 # Analytics: casos de uso
 
-**En una frase:** el líder ve el panel del equipo y pide recomendaciones de asignación a la IA; el resto de los casos son solo de API o los hace el sistema por su cuenta.
+**En una frase:** el líder ve el panel del equipo y pide recomendaciones de asignación a la IA (el modelo local, Gemma 4 en Ollama; Groq solo si el servidor usa el respaldo en la nube); el resto de los casos son solo de API o los hace el sistema por su cuenta.
 
 ```mermaid
 flowchart LR
@@ -49,9 +49,9 @@ Los roles se heredan: el admin siempre es líder, el líder siempre es miembro y
 
 | Caso | Quién puede | Qué pasa |
 |------|-------------|----------|
-| Ver el panel del equipo | Líder | `/analytics` llama a `GET /api/analytics/dashboard/:groupId` y muestra el resumen, la carga de trabajo y la experiencia por categoría |
+| Ver el panel del equipo | Líder | `/analytics` llama a `GET /api/analytics/dashboard/:groupId` con el grupo activo (el del selector de la barra de navegación) y muestra el resumen, la carga de trabajo y la experiencia por categoría |
 | Filtrar la carga por rol | Líder | El filtro corre en el navegador y ofrece los roles que tienen los miembros del grupo, más «No role» si alguien no tiene ninguno |
-| Pedir recomendaciones de asignación a la IA | Líder | El panel manda la tarea por `/insights`. Node arma el `team_context` y el `AnalyticsAgent` devuelve hasta 3 personas y un plan |
+| Pedir recomendaciones de asignación a la IA | Líder | El panel manda la tarea por `/insights`. Node arma el `team_context` y el `AnalyticsAgent` devuelve hasta 3 personas y un plan. El modelo no lo elige el usuario: lo fija `LLM_PROVIDER` en el servidor (`ollama`, el modelo local Gemma 4 que pone `scripts/local-up.sh`; o `groq`, el respaldo en la nube y valor por defecto si la variable falta) |
 | Ver datos del equipo, carga o experiencia (solo API) | Líder | `GET /team/:groupId`, `/workload/:groupId` y `/expertise/:groupId` (con `?category=` opcional) |
 | Ver los analytics de otro miembro (solo API) | Líder de un grupo de esa persona | `GET /user/:userId?groupId=…` devuelve solo lo de ese grupo |
 | Leer o guardar la configuración (solo API) | Líder | `GET` y `PUT /config/:groupId`. Se guarda en `AnalyticsConfig`, pero no cambia nada |
@@ -83,16 +83,16 @@ Verificadas en `analytics.controller.js`, `UserSession.prepareAnalyticsData`, `W
 - **`assignment`:** exige ser miembro; la tarea debe ser del grupo (si no, 404) y la persona asignada, miembro (si no, 400).
 - **`completion`:** exige ser miembro del grupo de la tarea. El grupo se busca en `Tasks`, `Complete` y `DeleteTask`.
 - **`/insights`:**
-  - Al conectar se revisan el `Origin` (si no está permitido, 403) y el JWT (si falta o es inválido, 401).
+  - Al conectar se revisan el `Origin` (si no está en `FRONTEND_URL`, 403; con `ALLOW_LAN_ORIGINS=true` también se aceptan orígenes `http` de IPv4 privadas, solo para desarrollo) y el JWT (si falta o es inválido, 401).
   - Cada pedido de analytics cuenta para un límite de 10 por minuto y usuario. `/insights` y los analytics por `/chat` comparten ese límite.
   - Las acciones de equipo exigen ser líder del grupo, y el `team_context` que mande el navegador se descarta.
   - Una acción desconocida responde `VALIDATION_ERROR`.
 - **Demo:** `populate-assignments` exige ser el admin del grupo (`requireGroupAdmin`).
-- **La interfaz no decide:** la ruta `/analytics` solo pide sesión. La pantalla muestra «Solo líderes del equipo» cuando la API responde 403.
+- **La interfaz no decide:** la ruta `/analytics` solo pide sesión. La pantalla muestra «Team leaders only» cuando la API responde 403.
 
 ## Para saber más
 
 - La pantalla por rol: [05-interfaz/06-analytics.md](../05-interfaz/06-analytics.md)
 - Arquitectura del módulo: [02-arquitectura/06-analytics.md](../02-arquitectura/06-analytics.md)
 - Casos de uso de todo el sistema: [00-general.md](00-general.md)
-- Limitaciones (rutas sin pantalla, configuración sin efecto): [cierre del proyecto](../01-proyecto/cierre-del-proyecto.md#analytics)
+- Limitaciones (rutas sin pantalla, configuración sin efecto): [cierre de la línea de Pablo y estado](../01-proyecto/cierre-del-proyecto.md#analytics)

@@ -99,11 +99,11 @@ Las categorías son `frontend`, `backend`, `database`, `testing` y `general`. Al
 - **Sin duplicados pendientes, a medias:** el `INSERT … WHERE NOT EXISTS` evita un segundo registro `pending` del mismo `(tid, uid)`, pero no hay índice único que lo garantice (ver [limitaciones](../01-proyecto/cierre-del-proyecto.md#analytics)).
 - **Índices (migración 001):** `IX_TaskAnalytics_Tid (tid, success_status)`, `IX_TaskAnalytics_Uid (uid, success_status)` e `IX_TaskAnalytics_Gid (gid)`.
 - **Cascadas:**
-  - Solo `AnalyticsConfig` cae sola al borrar el grupo (`ON DELETE CASCADE`).
+  - De estas cuatro tablas, solo `AnalyticsConfig` cae sola al borrar el grupo (`ON DELETE CASCADE`).
   - Los `TaskAnalytics` del grupo los borra `group.model.deleteGroupCascade`, dentro de la misma transacción que borra el grupo.
   - `UserMetrics` y `UserExpertise` son por persona, no por grupo: no se borran con el grupo.
   - Las FK a `Users` y a `Groups` no tienen cascada. La API no borra usuarios.
-- **Triggers:** ninguno. Los dos triggers de TaskMate (migración 006) están en `Nodes` y `Edges`.
+- **Triggers:** ninguno. Los dos triggers de TaskMate (migración 006) están en `Nodes` y `Edges`. Las migraciones 009–011 no tocan estas tablas.
 - **Columnas que nadie escribe:** `UserMetrics.avg_completion_time_hours` y `UserMetrics.success_rate_percentage` se quedan en su valor por defecto, 0. Ningún código las lee.
 - **Cómo se calcula la experiencia:** `expertise_score` = mínimo(100, tasa de éxito + bono). El bono es 10 sin tiempos medidos; si no, máximo(0, 20 − horas medias / 2). La tasa de éxito usa los registros `completed` contra los `completed` + `failed`.
   - Pese a su nombre, `tasks_completed` cuenta los registros cerrados: `completed` + `failed`. Sin ninguno, el puntaje es 0.
@@ -146,5 +146,5 @@ No hay un archivo en `models/` para analytics. El SQL está en:
 
 - Arquitectura del módulo: [02-arquitectura/06-analytics.md](../02-arquitectura/06-analytics.md)
 - Cómo nace y se cierra un registro: [06-flujos/06-analytics.md](../06-flujos/06-analytics.md)
-- Las 24 tablas: [00-general.md](00-general.md)
-- Limitaciones: [cierre del proyecto](../01-proyecto/cierre-del-proyecto.md#analytics)
+- Las 29 tablas: [00-general.md](00-general.md)
+- Limitaciones: [cierre de la línea de Pablo y estado](../01-proyecto/cierre-del-proyecto.md#analytics)
