@@ -48,7 +48,7 @@ flowchart LR
 ## Diagramas e imágenes
 
 - **Arquitectura con íconos:** cada página la muestra como PNG desde [`imagenes/`](imagenes/) (`00-general.png`, `00-despliegue.png` y `01-…` a `10-….png`), con una tabla de conexiones debajo.
-- **Fuentes de esas imágenes:** [`fuentes/`](fuentes/), un `.mmd` de Mermaid `architecture-beta` por imagen, con el mismo nombre.
+- **Fuentes de esas imágenes:** [`fuentes/`](fuentes/), un `.mmd` de Mermaid `architecture-beta` por imagen, con el mismo nombre. La excepción es la arquitectura general: `00-general.png` y `00-capas.png` salen de `00-general.html` y `00-capas.html` (HTML y SVG, los mismos diagramas de la presentación); en [00-general.md](00-general.md) está el comando para regenerarlas.
 - **Bloques Mermaid** (los de `00-general`, `00-capas-del-codigo`, `00-seguridad` y este índice): su copia en PNG también está en `imagenes/`, como `<página>-<n>.png` (n = orden del diagrama en la página).
 
 ## Para saber más

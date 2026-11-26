@@ -63,6 +63,34 @@ flowchart LR
 - Una línea une a un actor con un módulo cuando **su rol** agrega algo ahí. Cada actor tiene su color: gris usuario, azul miembro, morado líder, rojo admin y verde los sistemas externos (GitHub, Vercel y el servidor de IA local).
 - Los roles se heredan: el admin también es líder, el líder también es miembro y el miembro también es usuario. Por eso el admin también puede hacer todo lo del miembro, aunque no tenga línea a ese módulo.
 
+## Rol por rol
+
+El diagrama completo de arriba tiene muchas líneas. Estos cuatro lo muestran por partes: cada uno deja a un solo rol con **sus propias** conexiones y solo los casos que ese rol agrega (lo heredado no se repite). La barra de arriba de cada imagen dice en qué rol se está. Son los mismos diagramas de la presentación; sus fuentes HTML están en [`fuentes/`](fuentes/).
+
+### Usuario
+
+Cuenta e inicio de sesión, crear grupos (y quedar como admin), elegir el grupo activo y el chat sin grupo activo, que arma un plan para un grupo nuevo con documentos del servidor de IA local.
+
+![Casos de uso del usuario y sus conexiones](imagenes/00-general-rol-usuario.png)
+
+### Miembro
+
+Lo que agrega al pertenecer a un grupo: tareas, hitos y calendario, chat sobre el grupo, GitHub, CI/CD, avisos en vivo y la IA sobre el código, con sus líneas a GitHub, Vercel y el servidor de IA local.
+
+![Casos de uso del miembro y sus conexiones](imagenes/00-general-rol-miembro.png)
+
+### Líder
+
+Solo analytics: el panel del equipo, la carga por rol y la recomendación de a quién asignar una tarea; lo que no tiene pantalla se usa por la API.
+
+![Casos de uso del líder y sus conexiones](imagenes/00-general-rol-lider.png)
+
+### Admin
+
+Miembros y roles, CI/CD (pipeline, publicar, aprobar, rollback y vincular Vercel), el repositorio, los avisos que solo le llegan a él y el permiso de análisis con IA.
+
+![Casos de uso del admin y sus conexiones](imagenes/00-general-rol-admin.png)
+
 ## Actores
 
 | Actor | Quién es | Cómo lo comprueba el código |

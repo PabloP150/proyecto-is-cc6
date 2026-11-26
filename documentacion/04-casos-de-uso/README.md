@@ -36,6 +36,7 @@ flowchart LR
 
 - Los diagramas de estas páginas son bloques Mermaid (los de casos de uso son flowcharts con actores y casos).
 - Su copia en PNG está en [`imagenes/`](imagenes/), con el nombre `<página>-<n>.png` (n = orden del diagrama en la página).
+- Los cuatro diagramas «rol por rol» de [Visión general](00-general.md) no son Mermaid: son `imagenes/00-general-rol-<rol>.png`, dibujados desde [`fuentes/`](fuentes/) en HTML y SVG (los mismos de la presentación). Se regeneran igual que la arquitectura general: Chrome sin interfaz a 1370×990 y escala 2.
 
 ## Para saber más
 

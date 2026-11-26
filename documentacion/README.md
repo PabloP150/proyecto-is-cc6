@@ -62,7 +62,7 @@ Dónde cae lo de la línea de Christian: el chat con el modelo local va en el 5,
 
 - Cada página abre con **«En una frase»** y sus diagramas, y sigue con «Qué hace», «Cómo funciona», «Dónde está en el código» y «Para saber más».
 - Los diagramas son bloques Mermaid. Cada carpeta guarda su copia en PNG en `imagenes/`.
-- La arquitectura con íconos se dibuja desde `02-arquitectura/fuentes/*.mmd`.
+- La arquitectura con íconos se dibuja desde `02-arquitectura/fuentes/*.mmd`, salvo la general y la de capas, que salen de `00-general.html` y `00-capas.html`. Los casos de uso por rol salen de `04-casos-de-uso/fuentes/*.html`. Estos HTML son los mismos diagramas de la presentación.
 - Las docs están en español, pero los textos de la app se citan en inglés, tal como los muestra la interfaz desde el 19 nov 2026. Las capturas de `05-interfaz/capturas/` se retomaron el 26 nov 2026 y ya muestran la interfaz en inglés y el selector de grupo.
 - Las limitaciones y los pendientes viven en un solo lugar: el [cierre de la línea de Pablo y estado](01-proyecto/cierre-del-proyecto.md#limitaciones-conocidas).
 - Si algo no coincide con el código, manda el código.
