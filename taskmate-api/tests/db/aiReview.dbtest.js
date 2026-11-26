@@ -1,4 +1,5 @@
 const aiReview = require('../../models/aiReview.model');
+const { execWriteCommand } = require('../../helpers/execQuery');
 const h = require('./helpers');
 
 const SHA1 = 'a'.repeat(40);
@@ -31,6 +32,29 @@ describe('AiReviews (migration 011)', () => {
         await aiReview.finish(id, { status: 'done', verdict: 'pass', posted: 'posted', reviewUrl: 'https://gh/x', result: { body: 'Revisión ✓ ñ' } });
         expect(await aiReview.getLatest(tid)).toMatchObject({ verdict: 'pass', posted: 'posted', result: { body: 'Revisión ✓ ñ' } });
         expect(await aiReview.getLatest(await task())).toBeNull();
+    });
+
+    test('a failed review is claimed again and reset to pending; a done one is not', async () => {
+        const tid = await task();
+        const id = await aiReview.claim({ tid, prNumber: 4, headSha: SHA1 });
+        await aiReview.finish(id, { status: 'failed', errorCode: 'AI_SERVER_UNAVAILABLE' });
+
+        expect(await aiReview.claim({ tid, prNumber: 4, headSha: SHA1 })).toBe(id);
+        expect(await aiReview.getLatest(tid)).toMatchObject({ id, status: 'pending', errorCode: null, verdict: null });
+        // In progress again: a second caller gets nothing.
+        expect(await aiReview.claim({ tid, prNumber: 4, headSha: SHA1 })).toBeNull();
+
+        await aiReview.finish(id, { status: 'done', verdict: 'pass', posted: 'posted' });
+        expect(await aiReview.claim({ tid, prNumber: 4, headSha: SHA1 })).toBeNull();
+    });
+
+    test('a pending review abandoned for too long is claimed again', async () => {
+        const tid = await task();
+        const id = await aiReview.claim({ tid, prNumber: 5, headSha: SHA1 });
+        await execWriteCommand(
+            `UPDATE dbo.AiReviews SET created_at = DATEADD(MINUTE, -${aiReview.STALE_PENDING_MINUTES + 1}, SYSDATETIMEOFFSET()) WHERE id = ${id}`,
+        );
+        expect(await aiReview.claim({ tid, prNumber: 5, headSha: SHA1 })).toBe(id);
     });
 
     test('check constraints reject bad values', async () => {
