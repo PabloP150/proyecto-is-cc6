@@ -5,6 +5,9 @@ import llm_service
 # Lowered limit due to local model
 MIN_TASKS = 8
 
+PLAN_REPEAT_PENALTY = 1.1
+
+
 class RecommendationsAgent:
     def __init__(self):
         pass
@@ -39,8 +42,12 @@ class RecommendationsAgent:
             '"considerations":{"risks":[],"requirements":[],"success_criteria":[]}}}'
         )
 
-    async def handle(self, message: str, phase: str = 'final_plan', context: dict = None) -> dict:
+    async def handle(self, message: str, phase: str = 'final_plan', context: dict = None,
+                     timeout: float = None) -> dict:
         """Returns the parsed plan. Raises llm_service.LLMError subclasses (LLMInvalidOutputError for bad JSON)."""
         clarifications = context.get('clarifications', '') if context else ''
         prompt = self._build_comprehensive_plan_prompt(message, clarifications)
-        return await llm_service.generate_json(prompt, max_tokens=llm_service.MAX_TOKENS_PLAN)
+        # Gemma 4 on Ollama loops while writing this long JSON about half the time (unusable output or
+        # "token repeat limit reached"); a mild repeat penalty fixed it (12 of 12 plans vs 6 of 12). Ollama only.
+        return await llm_service.generate_json(prompt, max_tokens=llm_service.MAX_TOKENS_PLAN,
+                                               local_repeat_penalty=PLAN_REPEAT_PENALTY, timeout=timeout)

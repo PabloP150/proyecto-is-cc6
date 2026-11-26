@@ -208,6 +208,10 @@ class ProjectContext(_Lenient):
     groupId: str = ''
     groupName: str = ''
     repoNote: str = ''
+    # True when a GitHub repository is linked, even if the AI may not read it.
+    hasRepository: bool = False
+    # Node's never-used check (no active, completed or deleted tasks, milestones or repository).
+    isEmpty: bool = False
     members: List[str] = Field(default_factory=list)
     assignments: Dict[str, List[str]] = Field(default_factory=dict)
     snapshot: Optional[RepoSnapshot] = None

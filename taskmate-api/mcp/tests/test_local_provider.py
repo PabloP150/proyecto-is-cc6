@@ -62,6 +62,24 @@ async def test_generate_json_uses_json_format(ollama):
     assert ollama["requests"][0]["format"] == "json"
 
 
+async def test_repeat_penalty_goes_out_only_when_asked(ollama):
+    ollama["respond"](lambda body: _reply('{"ok": true}'))
+    await llm_service.generate_json("Return json")
+    await llm_service.generate_json("Return json", local_repeat_penalty=1.1)
+    await llm_service.generate("hi")
+    first, second, chat = ollama["requests"]
+    assert "repeat_penalty" not in first["options"] and "repeat_penalty" not in chat["options"]
+    assert second["options"]["repeat_penalty"] == 1.1
+
+
+async def test_the_new_project_plan_asks_for_the_repeat_penalty(ollama):
+    # Without it Gemma 4 looped on this long JSON about half the time ("token repeat limit reached").
+    from agents.recommendations_agent import RecommendationsAgent, PLAN_REPEAT_PENALTY
+    ollama["respond"](lambda body: _reply('{"recommendations": {"tasks": []}}'))
+    await RecommendationsAgent().handle("an e-commerce app")
+    assert ollama["requests"][0]["options"]["repeat_penalty"] == PLAN_REPEAT_PENALTY == 1.1
+
+
 async def test_generate_json_rejects_non_objects(ollama):
     ollama["respond"](lambda body: _reply("not json at all"))
     with pytest.raises(llm_service.LLMInvalidOutputError):
